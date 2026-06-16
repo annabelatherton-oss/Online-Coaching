@@ -209,9 +209,15 @@ export default function GenerateTemplates() {
   const [weeks, setWeeks] = useState([])
   const [expanded, setExpanded] = useState(new Set())
   const [loading, setLoading] = useState(true)
+  const [prefsSaved, setPrefsSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveProgress, setSaveProgress] = useState('')
   const [saveError, setSaveError] = useState('')
+
+  function flashSaved() {
+    setPrefsSaved(true)
+    setTimeout(() => setPrefsSaved(false), 1500)
+  }
 
   useEffect(() => {
     supabase
@@ -242,14 +248,15 @@ export default function GenerateTemplates() {
     return meals.map(m => ({ ...m, _subtype: getSubtype(m) }))
   }
 
-  function toggleExclude(id) {
+  async function toggleExclude(id) {
+    const nowExcluded = !excluded.has(id)
     setExcluded(prev => {
       const s = new Set(prev)
-      const nowExcluded = !s.has(id)
       nowExcluded ? s.add(id) : s.delete(id)
-      supabase.from('meals').update({ excluded_from_templates: nowExcluded }).eq('id', id)
       return s
     })
+    await supabase.from('meals').update({ excluded_from_templates: nowExcluded }).eq('id', id)
+    flashSaved()
   }
 
   function handleGenerate() {
@@ -321,6 +328,9 @@ export default function GenerateTemplates() {
             Back
           </button>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Generate 20 Weeks</h1>
+          {prefsSaved && (
+            <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>
+          )}
         </div>
 
         <div className="card bg-pink-50/60 dark:bg-pink-900/10 border-pink-100 dark:border-pink-900/30">
@@ -367,10 +377,11 @@ export default function GenerateTemplates() {
                         <select
                           className={`text-xs py-0.5 px-2 rounded-full font-medium border-0 focus:ring-1 focus:ring-brand-300 cursor-pointer ${SUBTYPE_COLOURS[sub] || 'bg-gray-100 text-gray-600'}`}
                           value={sub}
-                          onChange={e => {
+                          onChange={async e => {
                             const val = e.target.value
                             setSubtypeOverrides(prev => ({ ...prev, [m.id]: val }))
-                            supabase.from('meals').update({ template_subtype: val }).eq('id', m.id)
+                            await supabase.from('meals').update({ template_subtype: val }).eq('id', m.id)
+                            flashSaved()
                           }}
                         >
                           {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
