@@ -87,21 +87,36 @@ class DeckPool {
 // ── Generation ─────────────────────────────────────────────────────────────────
 
 const WEEK_COUNT = 20
+// Calorie split across meal types
+const SPLIT = { breakfast: 0.25, lunch: 0.35, dinner: 0.40 }
 
-function generateWeeks(classifiedMeals, excluded) {
+function calFilter(meals, target) {
+  // Prefer meals within ±25% of target; fall back to ±40%; then no filter
+  const tight = meals.filter(m => m._totalCals > 0 && m._totalCals >= target * 0.75 && m._totalCals <= target * 1.25)
+  if (tight.length >= 3) return tight
+  const loose = meals.filter(m => m._totalCals > 0 && m._totalCals >= target * 0.60 && m._totalCals <= target * 1.40)
+  if (loose.length >= 2) return loose
+  return meals
+}
+
+function generateWeeks(classifiedMeals, excluded, calorieTarget) {
   const avail = classifiedMeals.filter(m => !excluded.has(m.id))
   const by = (cat, sub) => avail.filter(m => m.category === cat && m._subtype === sub)
 
-  const sweetPool   = new DeckPool(by('breakfast', 'sweet'))
-  const savouryPool = new DeckPool(by('breakfast', 'savoury'))
+  const BT = Math.round(calorieTarget * SPLIT.breakfast)
+  const LT = Math.round(calorieTarget * SPLIT.lunch)
+  const DT = Math.round(calorieTarget * SPLIT.dinner)
+
+  const sweetPool   = new DeckPool(calFilter(by('breakfast', 'sweet'), BT))
+  const savouryPool = new DeckPool(calFilter(by('breakfast', 'savoury'), BT))
 
   const lunchTypes = ['wrap', 'pasta', 'rice/bowl', 'salad', 'sandwich', 'other']
-  const lunchPools = Object.fromEntries(lunchTypes.map(t => [t, new DeckPool(by('lunch', t))]))
+  const lunchPools = Object.fromEntries(lunchTypes.map(t => [t, new DeckPool(calFilter(by('lunch', t), LT))]))
   const activeLunchTypes = lunchTypes.filter(t => !lunchPools[t].empty())
   let lunchTypeIdx = 0
 
   const dinnerProteins = ['chicken', 'beef', 'fish', 'pork/lamb', 'veggie', 'other']
-  const dinnerPools = Object.fromEntries(dinnerProteins.map(p => [p, new DeckPool(by('dinner', p))]))
+  const dinnerPools = Object.fromEntries(dinnerProteins.map(p => [p, new DeckPool(calFilter(by('dinner', p), DT))]))
   const activeDinnerProteins = dinnerProteins.filter(p => !dinnerPools[p].empty())
   let dinnerProteinIdx = 0
 
@@ -114,7 +129,6 @@ function generateWeeks(classifiedMeals, excluded) {
         if (meal) { lunchTypeIdx = (lunchTypeIdx + 1) % activeLunchTypes.length; return { meal, type } }
       }
     }
-    // fallback: any different lunch
     const fallback = new DeckPool(avail.filter(m => m.category === 'lunch' && m.id !== excludeId))
     return { meal: fallback.pick(), type: 'other' }
   }
@@ -204,6 +218,7 @@ export default function GenerateTemplates() {
 
   const [phase, setPhase] = useState('setup')
   const [meals, setMeals] = useState([])
+  const [calorieTarget, setCalorieTarget] = useState(1600)
   const [excluded, setExcluded] = useState(new Set())
   const [subtypeOverrides, setSubtypeOverrides] = useState({})
   const [dirty, setDirty] = useState(new Set()) // meal IDs with unsaved changes
@@ -220,11 +235,15 @@ export default function GenerateTemplates() {
   useEffect(() => {
     supabase
       .from('meals')
-      .select('id, name, category, template_subtype, excluded_from_templates')
+      .select('id, name, category, template_subtype, excluded_from_templates, meal_ingredients(calories)')
       .eq('coach_id', profile.id)
       .order('name')
       .then(({ data }) => {
-        const classified = (data || []).map(m => ({ ...m, _subtype: classifyMeal(m) }))
+        const classified = (data || []).map(m => ({
+          ...m,
+          _subtype: classifyMeal(m),
+          _totalCals: Math.round((m.meal_ingredients || []).reduce((s, i) => s + (parseFloat(i.calories) || 0), 0)),
+        }))
         setMeals(classified)
         setExcluded(new Set(classified.filter(m => m.excluded_from_templates).map(m => m.id)))
         const overrides = {}
@@ -314,7 +333,7 @@ export default function GenerateTemplates() {
   }
 
   function handleGenerate() {
-    const generated = generateWeeks(withOverrides(), excluded)
+    const generated = generateWeeks(withOverrides(), excluded, calorieTarget)
     setWeeks(generated)
     saveDraft(generated)
     setExpanded(new Set())
@@ -452,6 +471,30 @@ export default function GenerateTemplates() {
         })}
 
         <div className="card space-y-3">
+          <h2 className="font-semibold text-gray-900 dark:text-white">Daily Calorie Target</h2>
+          <div className="flex items-center gap-3">
+            <input
+              className="input w-32"
+              type="number"
+              min="1000"
+              max="5000"
+              step="50"
+              value={calorieTarget}
+              onChange={e => setCalorieTarget(parseInt(e.target.value) || 1600)}
+            />
+            <span className="text-sm text-gray-500 dark:text-gray-400">kcal / day</span>
+          </div>
+          <p className="text-xs text-gray-400">
+            Meals will be chosen to hit this split: Breakfast ~{Math.round(calorieTarget * SPLIT.breakfast)} ·
+            Lunch ~{Math.round(calorieTarget * SPLIT.lunch)} ·
+            Dinner ~{Math.round(calorieTarget * SPLIT.dinner)} kcal
+          </p>
+          <p className="text-xs text-gray-400">
+            Both options for each meal type will have similar calories so they're interchangeable.
+          </p>
+        </div>
+
+        <div className="card space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {meals.length - excluded.size} meals included
@@ -531,12 +574,13 @@ export default function GenerateTemplates() {
       )}
 
       <p className="text-xs text-gray-400 dark:text-gray-500">
-        Click any week to expand it. Change meals using the dropdowns, then save.
+        Click any week to expand it. Swap meals using the dropdowns. Red total = over your {calorieTarget} kcal target.
       </p>
 
       {weeks.map((week, weekIdx) => {
         const isOpen = expanded.has(week.weekNum)
-        const filledCount = SLOTS.filter(s => week[s.key]).length
+        const total = SLOTS.reduce((s, sl) => s + (week[sl.key]?._totalCals || 0), 0)
+        const overTarget = total > calorieTarget
 
         return (
           <div key={weekIdx} className="card p-0 overflow-hidden">
@@ -546,15 +590,11 @@ export default function GenerateTemplates() {
             >
               <div className="flex items-center gap-3">
                 <span className="font-semibold text-gray-900 dark:text-white text-sm">Week {week.weekNum}</span>
-                <span className="text-xs text-gray-400">{filledCount} / {SLOTS.length} meals</span>
-                {/* mini meal pill preview */}
-                <div className="hidden sm:flex gap-1 flex-wrap">
-                  {SLOTS.slice(0, 4).map(s => week[s.key] && (
-                    <span key={s.key} className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[100px]">
-                      {week[s.key].name.split(' ').slice(0, 2).join(' ')}
-                    </span>
-                  )).filter(Boolean).flatMap((el, i, arr) => i < arr.length - 1 ? [el, <span key={`sep${i}`} className="text-gray-300">·</span>] : [el])}
-                </div>
+                {total > 0 && (
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${overTarget ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                    {total} kcal
+                  </span>
+                )}
               </div>
               <svg className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -578,9 +618,16 @@ export default function GenerateTemplates() {
                       >
                         <option value="">— None —</option>
                         {options.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
+                          <option key={m.id} value={m.id}>
+                            {m.name}{m._totalCals ? ` (${m._totalCals} kcal)` : ''}
+                          </option>
                         ))}
                       </select>
+                      {meal?._totalCals > 0 && (
+                        <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 w-16 text-right">
+                          {meal._totalCals} kcal
+                        </span>
+                      )}
                     </div>
                   )
                 })}
