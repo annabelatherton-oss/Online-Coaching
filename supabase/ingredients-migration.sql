@@ -9,7 +9,8 @@ create table if not exists ingredients (
   protein_per_serving numeric(8,2) default 0 not null,
   carbs_per_serving numeric(8,2) default 0 not null,
   fat_per_serving numeric(8,2) default 0 not null,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  unique (coach_id, name)
 );
 
 alter table ingredients enable row level security;
