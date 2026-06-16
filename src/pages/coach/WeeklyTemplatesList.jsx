@@ -7,20 +7,54 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 export default function WeeklyTemplatesList() {
   const { profile } = useAuth()
   const navigate = useNavigate()
-  const [templates, setTemplates] = useState([])
+  const [planGroups, setPlanGroups] = useState([])
+  const [weekCounts, setWeekCounts] = useState({})
+  const [individualTemplates, setIndividualTemplates] = useState([])
   const [loading, setLoading] = useState(true)
 
   async function load() {
-    const { data } = await supabase
-      .from('weekly_templates')
-      .select('*, template_meal_slots(id)')
-      .eq('coach_id', profile.id)
-      .order('created_at', { ascending: false })
-    setTemplates(data || [])
+    const [{ data: groups }, { data: templates }] = await Promise.all([
+      supabase
+        .from('plan_groups')
+        .select('*')
+        .eq('coach_id', profile.id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('weekly_templates')
+        .select('id, plan_group_id, name, week_number, calorie_target, template_meal_slots(id)')
+        .eq('coach_id', profile.id)
+        .order('created_at', { ascending: false }),
+    ])
+
+    const counts = {}
+    const individual = []
+    for (const t of (templates || [])) {
+      if (t.plan_group_id) {
+        counts[t.plan_group_id] = (counts[t.plan_group_id] || 0) + 1
+      } else {
+        individual.push(t)
+      }
+    }
+
+    setPlanGroups(groups || [])
+    setWeekCounts(counts)
+    setIndividualTemplates(individual)
     setLoading(false)
   }
 
   useEffect(() => { load() }, [profile.id])
+
+  async function updateWeek(groupId, week) {
+    await supabase.from('plan_groups').update({ current_week: week }).eq('id', groupId)
+    setPlanGroups(prev => prev.map(g => g.id === groupId ? { ...g, current_week: week } : g))
+  }
+
+  async function handleDeleteGroup(groupId) {
+    if (!confirm('Delete this 20-week plan? This cannot be undone.')) return
+    await supabase.from('weekly_templates').delete().eq('plan_group_id', groupId)
+    await supabase.from('plan_groups').delete().eq('id', groupId)
+    load()
+  }
 
   async function handleDelete(id) {
     if (!confirm('Delete this template? This cannot be undone.')) return
@@ -28,33 +62,7 @@ export default function WeeklyTemplatesList() {
     load()
   }
 
-  async function handleDeleteGroup(groupId) {
-    if (!confirm('Delete this entire 20-week plan? This cannot be undone.')) return
-    await supabase.from('weekly_templates').delete().eq('plan_group_id', groupId)
-    load()
-  }
-
-  // Split into plan groups and individual templates
-  const planGroupMap = {}
-  const individualTemplates = []
-
-  for (const t of templates) {
-    if (t.plan_group_id) {
-      if (!planGroupMap[t.plan_group_id]) {
-        planGroupMap[t.plan_group_id] = {
-          id: t.plan_group_id,
-          name: t.plan_group_name || '20 Week Plan',
-          weeks: [],
-          created_at: t.created_at,
-        }
-      }
-      planGroupMap[t.plan_group_id].weeks.push(t)
-    } else {
-      individualTemplates.push(t)
-    }
-  }
-
-  const planGroups = Object.values(planGroupMap)
+  const totalTemplates = planGroups.length + individualTemplates.length
 
   return (
     <div className="space-y-6">
@@ -62,8 +70,10 @@ export default function WeeklyTemplatesList() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Meal Templates</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {planGroups.length > 0 && `${planGroups.length} plan set${planGroups.length !== 1 ? 's' : ''} · `}
-            {individualTemplates.length} individual template{individualTemplates.length !== 1 ? 's' : ''} — build once, assign to any client
+            {planGroups.length > 0 && `${planGroups.length} plan set${planGroups.length !== 1 ? 's' : ''}`}
+            {planGroups.length > 0 && individualTemplates.length > 0 && ' · '}
+            {individualTemplates.length > 0 && `${individualTemplates.length} individual template${individualTemplates.length !== 1 ? 's' : ''}`}
+            {totalTemplates === 0 && 'No templates yet'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -84,51 +94,74 @@ export default function WeeklyTemplatesList() {
 
       {loading ? (
         <LoadingSpinner size="lg" className="py-20" />
-      ) : (templates.length === 0) ? (
+      ) : totalTemplates === 0 ? (
         <div className="card text-center py-16">
-          <p className="text-gray-400 dark:text-gray-500 mb-3">No templates yet. Create your first one!</p>
-          <button onClick={() => navigate('/coach/meal-templates/new')} className="btn-primary">
-            Create First Template
-          </button>
+          <p className="text-gray-400 dark:text-gray-500 mb-3">No templates yet.</p>
+          <div className="flex items-center justify-center gap-3">
+            <button onClick={() => navigate('/coach/meal-templates/generate')} className="btn-secondary">Generate 20 Weeks</button>
+            <button onClick={() => navigate('/coach/meal-templates/new')} className="btn-primary">New Template</button>
+          </div>
         </div>
       ) : (
         <div className="space-y-8">
+
           {/* 20-Week Plan Sets */}
           {planGroups.length > 0 && (
-            <div className="space-y-3">
-              <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">20-Week Plans</h2>
-              <div className="space-y-3">
-                {planGroups.map(group => (
-                  <div key={group.id} className="card">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-4 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
-                          <svg className="w-5 h-5 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="font-semibold text-gray-900 dark:text-white truncate">{group.name}</h3>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                            {group.weeks.length} weeks · assign to any client at their own calorie target
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400">
-                          {group.weeks.length} weeks
-                        </span>
-                        <button
-                          onClick={() => handleDeleteGroup(group.id)}
-                          className="text-xs text-red-400 hover:text-red-600 font-medium"
-                        >
-                          Delete
-                        </button>
-                      </div>
+            <div className="space-y-4">
+              <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                20-Week Plans
+              </h2>
+              {planGroups.map(group => (
+                <div key={group.id} className="card space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-gray-900 dark:text-white">{group.name}</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                        {weekCounts[group.id] || 0} weeks · all clients follow the same week simultaneously
+                      </p>
                     </div>
+                    <button
+                      onClick={() => handleDeleteGroup(group.id)}
+                      className="text-xs text-red-400 hover:text-red-600 font-medium flex-shrink-0"
+                    >
+                      Delete
+                    </button>
                   </div>
-                ))}
-              </div>
+
+                  {/* Week control */}
+                  <div className="flex items-center gap-4 pt-2 border-t border-gray-100 dark:border-gray-800">
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-gray-500 dark:text-gray-400 mr-2">Current week:</span>
+                      <button
+                        onClick={() => updateWeek(group.id, group.current_week > 1 ? group.current_week - 1 : 20)}
+                        className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        title="Previous week"
+                      >
+                        ‹
+                      </button>
+                      <select
+                        className="mx-1 text-sm font-semibold text-gray-900 dark:text-white bg-pink-50 dark:bg-pink-900/20 border-0 rounded-lg px-2 py-1 focus:ring-2 focus:ring-brand-300 cursor-pointer"
+                        value={group.current_week}
+                        onChange={e => updateWeek(group.id, parseInt(e.target.value))}
+                      >
+                        {Array.from({ length: 20 }, (_, i) => (
+                          <option key={i + 1} value={i + 1}>Week {i + 1}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => updateWeek(group.id, group.current_week < 20 ? group.current_week + 1 : 1)}
+                        className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        title="Next week"
+                      >
+                        ›
+                      </button>
+                    </div>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      Advance this each week — all clients update automatically
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -136,7 +169,9 @@ export default function WeeklyTemplatesList() {
           {individualTemplates.length > 0 && (
             <div className="space-y-3">
               {planGroups.length > 0 && (
-                <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Individual Templates</h2>
+                <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                  Individual Templates
+                </h2>
               )}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {individualTemplates.map(t => {

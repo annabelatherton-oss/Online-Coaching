@@ -710,74 +710,65 @@ function NotesTab({ client }) {
 function MealPlanTab({ client, coachId }) {
   const [planGroups, setPlanGroups] = useState([])
   const [assignment, setAssignment] = useState(null)
+  const [planGroup, setPlanGroup] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [showOverride, setShowOverride] = useState(false)
   const [form, setForm] = useState({
     plan_group_id: '',
     calorie_target: client.current_calories || '',
-    start_date: client.start_date ? client.start_date.split('T')[0] : new Date().toISOString().split('T')[0],
+    starting_week: '',
   })
+  const [overrideWeek, setOverrideWeek] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   async function load() {
-    const { data: templates } = await supabase
-      .from('weekly_templates')
-      .select('plan_group_id, plan_group_name')
-      .eq('coach_id', coachId)
-      .not('plan_group_id', 'is', null)
+    const [{ data: groups }, { data: asgn }] = await Promise.all([
+      supabase.from('plan_groups').select('*').eq('coach_id', coachId).order('created_at', { ascending: false }),
+      supabase
+        .from('client_plan_assignments')
+        .select('*')
+        .eq('client_id', client.id)
+        .eq('active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
 
-    const groups = {}
-    for (const t of (templates || [])) {
-      if (!groups[t.plan_group_id]) {
-        groups[t.plan_group_id] = { plan_group_id: t.plan_group_id, plan_group_name: t.plan_group_name, weekCount: 0 }
-      }
-      groups[t.plan_group_id].weekCount++
-    }
-    setPlanGroups(Object.values(groups))
-
-    const { data: asgn } = await supabase
-      .from('client_plan_assignments')
-      .select('*')
-      .eq('client_id', client.id)
-      .eq('active', true)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
+    const allGroups = groups || []
+    setPlanGroups(allGroups)
     setAssignment(asgn || null)
+
+    if (asgn) {
+      const pg = allGroups.find(g => g.id === asgn.plan_group_id) || null
+      setPlanGroup(pg)
+      setOverrideWeek(asgn.week_override ?? '')
+    }
+
     setLoading(false)
   }
 
   useEffect(() => { load() }, [client.id])
-
-  function currentWeekNumber(asgn) {
-    if (!asgn) return null
-    const start = new Date(asgn.start_date)
-    const now = new Date()
-    const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24))
-    const week = Math.floor(diffDays / 7) + 1
-    return Math.min(Math.max(week, 1), 20)
-  }
 
   async function handleAssign(e) {
     e.preventDefault()
     setSaving(true)
     setError('')
 
-    await supabase
-      .from('client_plan_assignments')
-      .update({ active: false })
-      .eq('client_id', client.id)
+    await supabase.from('client_plan_assignments').update({ active: false }).eq('client_id', client.id)
 
-    const group = planGroups.find(g => g.plan_group_id === form.plan_group_id)
+    const group = planGroups.find(g => g.id === form.plan_group_id)
+    const startingWeek = form.starting_week ? parseInt(form.starting_week) : null
+
     const { error: err } = await supabase.from('client_plan_assignments').insert({
       client_id: client.id,
       coach_id: coachId,
       plan_group_id: form.plan_group_id,
-      plan_group_name: group?.plan_group_name || '20 Week Plan',
+      plan_group_name: group?.name || '20 Week Plan',
       calorie_target: form.calorie_target ? parseInt(form.calorie_target) : null,
-      start_date: form.start_date,
+      start_date: new Date().toISOString().split('T')[0],
+      week_override: startingWeek,
     })
 
     setSaving(false)
@@ -786,76 +777,122 @@ function MealPlanTab({ client, coachId }) {
     load()
   }
 
+  async function handleSaveOverride(e) {
+    e.preventDefault()
+    const val = overrideWeek !== '' ? parseInt(overrideWeek) : null
+    await supabase.from('client_plan_assignments').update({ week_override: val }).eq('id', assignment.id)
+    setShowOverride(false)
+    load()
+  }
+
+  async function handleClearOverride() {
+    await supabase.from('client_plan_assignments').update({ week_override: null }).eq('id', assignment.id)
+    setOverrideWeek('')
+    load()
+  }
+
   async function handleRemove() {
     if (!confirm('Remove this meal plan assignment?')) return
-    await supabase
-      .from('client_plan_assignments')
-      .update({ active: false })
-      .eq('client_id', client.id)
+    await supabase.from('client_plan_assignments').update({ active: false }).eq('client_id', client.id)
     load()
   }
 
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
-  const week = currentWeekNumber(assignment)
+  const globalWeek = planGroup?.current_week ?? null
+  const effectiveWeek = assignment?.week_override ?? globalWeek
+  const isOverridden = assignment?.week_override != null
 
   return (
     <div className="space-y-6 max-w-2xl">
-      {assignment ? (
+      {assignment && planGroup ? (
         <div className="card space-y-5">
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-semibold text-gray-900 dark:text-white">
-                {assignment.plan_group_name || '20 Week Plan'}
+                {assignment.plan_group_name || planGroup.name || '20 Week Plan'}
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                Started{' '}
-                {new Date(assignment.start_date).toLocaleDateString('en-GB', {
-                  day: 'numeric', month: 'long', year: 'numeric',
-                })}
-              </p>
+              {assignment.calorie_target && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  {assignment.calorie_target} kcal / day
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
               <button
                 onClick={() => {
-                  setForm({
-                    plan_group_id: assignment.plan_group_id,
-                    calorie_target: assignment.calorie_target || '',
-                    start_date: assignment.start_date,
-                  })
+                  setForm({ plan_group_id: assignment.plan_group_id, calorie_target: assignment.calorie_target || '', starting_week: '' })
                   setShowForm(true)
+                  setShowOverride(false)
                 }}
                 className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
               >
                 Change
               </button>
-              <button
-                onClick={handleRemove}
-                className="text-xs text-red-400 hover:text-red-600 font-medium"
-              >
+              <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">
                 Remove
               </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-8">
+          {/* Week display */}
+          <div className="flex items-center gap-6 py-3 px-4 rounded-xl bg-pink-50/60 dark:bg-pink-900/10">
             <div className="text-center">
-              <p className="text-4xl font-bold text-brand-600 dark:text-brand-400">{week}</p>
+              <p className="text-4xl font-bold text-brand-600 dark:text-brand-400">{effectiveWeek ?? '—'}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wide">Current Week</p>
             </div>
-            {assignment.calorie_target && (
-              <div className="text-center">
-                <p className="text-4xl font-bold text-gray-800 dark:text-gray-200">{assignment.calorie_target}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wide">kcal / day</p>
-              </div>
-            )}
+            <div className="flex-1 space-y-1">
+              {isOverridden ? (
+                <>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    Week {assignment.week_override} <span className="text-xs font-normal text-orange-500">(manual override)</span>
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    Plan is on Week {globalWeek} — this client is on a different week
+                  </p>
+                  <button
+                    onClick={handleClearOverride}
+                    className="text-xs text-brand-500 hover:text-brand-700 font-medium"
+                  >
+                    Clear override → follow plan (Week {globalWeek})
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    Following plan — same as all other clients
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    Advance the week from the Templates page each week
+                  </p>
+                  <button
+                    onClick={() => { setOverrideWeek(globalWeek ?? 1); setShowOverride(true) }}
+                    className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium"
+                  >
+                    Set a different week for this client
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
-          <div className="pt-3 border-t border-gray-100 dark:border-gray-800">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Week {week} of 20 — this client follows the same meal plan as all your other clients on this programme, but at their own calorie target.
-            </p>
-          </div>
+          {showOverride && (
+            <form onSubmit={handleSaveOverride} className="flex items-center gap-3 p-3 rounded-xl bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/30">
+              <label className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">Put this client on week:</label>
+              <select
+                className="input py-1 w-auto"
+                value={overrideWeek}
+                onChange={e => setOverrideWeek(e.target.value)}
+                required
+              >
+                {Array.from({ length: 20 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>Week {i + 1}</option>
+                ))}
+              </select>
+              <button type="submit" className="btn-primary py-1.5 px-3 text-sm">Save</button>
+              <button type="button" onClick={() => setShowOverride(false)} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
+            </form>
+          )}
         </div>
       ) : (
         !showForm && (
@@ -886,13 +923,14 @@ function MealPlanTab({ client, coachId }) {
               className="input"
               required
               value={form.plan_group_id}
-              onChange={e => setForm(f => ({ ...f, plan_group_id: e.target.value }))}
+              onChange={e => {
+                const pg = planGroups.find(g => g.id === e.target.value)
+                setForm(f => ({ ...f, plan_group_id: e.target.value, starting_week: pg?.current_week ?? '' }))
+              }}
             >
               <option value="">Select a plan…</option>
               {planGroups.map(g => (
-                <option key={g.plan_group_id} value={g.plan_group_id}>
-                  {g.plan_group_name || '20 Week Plan'} ({g.weekCount} weeks)
-                </option>
+                <option key={g.id} value={g.id}>{g.name} (currently Week {g.current_week})</option>
               ))}
             </select>
           </div>
@@ -910,18 +948,20 @@ function MealPlanTab({ client, coachId }) {
                 onChange={e => setForm(f => ({ ...f, calorie_target: e.target.value }))}
                 placeholder="e.g. 1800"
               />
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Their individual daily target</p>
             </div>
             <div>
-              <label className="label">Start date</label>
-              <input
+              <label className="label">Starting week</label>
+              <select
                 className="input"
-                type="date"
-                required
-                value={form.start_date}
-                onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
-              />
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">When Week 1 begins for them</p>
+                value={form.starting_week}
+                onChange={e => setForm(f => ({ ...f, starting_week: e.target.value }))}
+              >
+                <option value="">Follow plan's current week</option>
+                {Array.from({ length: 20 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>Week {i + 1}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Leave blank to join at the plan's current week</p>
             </div>
           </div>
 

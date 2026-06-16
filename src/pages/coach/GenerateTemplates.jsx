@@ -343,7 +343,14 @@ export default function GenerateTemplates() {
     setSaving(true)
     setSaveError('')
 
-    const groupId = crypto.randomUUID()
+    setSaveProgress('Creating plan…')
+    const { data: planGroup, error: pgErr } = await supabase
+      .from('plan_groups')
+      .insert({ coach_id: profile.id, name: planName.trim() || '20 Week Plan', current_week: 1 })
+      .select('id')
+      .single()
+
+    if (pgErr) { setSaveError(pgErr.message); setSaving(false); return }
 
     for (let i = 0; i < weeks.length; i++) {
       const w = weeks[i]
@@ -355,7 +362,7 @@ export default function GenerateTemplates() {
           coach_id: profile.id,
           name: `Week ${w.weekNum}`,
           week_number: w.weekNum,
-          plan_group_id: groupId,
+          plan_group_id: planGroup.id,
           plan_group_name: planName.trim() || '20 Week Plan',
         })
         .select('id')
