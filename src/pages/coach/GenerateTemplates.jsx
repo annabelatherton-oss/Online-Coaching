@@ -216,11 +216,20 @@ export default function GenerateTemplates() {
   useEffect(() => {
     supabase
       .from('meals')
-      .select('id, name, category')
+      .select('id, name, category, template_subtype, excluded_from_templates')
       .eq('coach_id', profile.id)
       .order('name')
       .then(({ data }) => {
-        setMeals((data || []).map(m => ({ ...m, _subtype: classifyMeal(m) })))
+        const classified = (data || []).map(m => ({ ...m, _subtype: classifyMeal(m) }))
+        setMeals(classified)
+        // Restore saved exclusions
+        setExcluded(new Set(classified.filter(m => m.excluded_from_templates).map(m => m.id)))
+        // Restore saved subtype overrides
+        const overrides = {}
+        for (const m of classified) {
+          if (m.template_subtype) overrides[m.id] = m.template_subtype
+        }
+        setSubtypeOverrides(overrides)
         setLoading(false)
       })
   }, [profile.id])
@@ -234,7 +243,13 @@ export default function GenerateTemplates() {
   }
 
   function toggleExclude(id) {
-    setExcluded(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+    setExcluded(prev => {
+      const s = new Set(prev)
+      const nowExcluded = !s.has(id)
+      nowExcluded ? s.add(id) : s.delete(id)
+      supabase.from('meals').update({ excluded_from_templates: nowExcluded }).eq('id', id)
+      return s
+    })
   }
 
   function handleGenerate() {
@@ -352,7 +367,11 @@ export default function GenerateTemplates() {
                         <select
                           className={`text-xs py-0.5 px-2 rounded-full font-medium border-0 focus:ring-1 focus:ring-brand-300 cursor-pointer ${SUBTYPE_COLOURS[sub] || 'bg-gray-100 text-gray-600'}`}
                           value={sub}
-                          onChange={e => setSubtypeOverrides(prev => ({ ...prev, [m.id]: e.target.value }))}
+                          onChange={e => {
+                            const val = e.target.value
+                            setSubtypeOverrides(prev => ({ ...prev, [m.id]: val }))
+                            supabase.from('meals').update({ template_subtype: val }).eq('id', m.id)
+                          }}
                         >
                           {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
