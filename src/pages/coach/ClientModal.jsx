@@ -112,14 +112,11 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
 
         if (signUpErr) {
           if (signUpErr.message?.toLowerCase().includes('already registered')) {
-            // User exists from a previous failed attempt — look them up by email
-            const { data: existing } = await supabase
-              .from('profiles')
-              .select('id')
-              .eq('email', form.email)
-              .single()
-            if (!existing) throw new Error('User already exists but profile not found. Please contact support.')
-            newUserId = existing.id
+            // User exists from a previous failed attempt — look them up via RPC (bypasses RLS)
+            const { data: existingId } = await supabase
+              .rpc('get_profile_id_by_email', { email_address: form.email })
+            if (!existingId) throw new Error('Account exists but profile not found. Try a different email address.')
+            newUserId = existingId
           } else {
             throw signUpErr
           }
