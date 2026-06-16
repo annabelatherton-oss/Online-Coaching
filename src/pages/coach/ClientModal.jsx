@@ -110,18 +110,15 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           options: { data: { full_name: form.full_name } },
         })
 
-        if (signUpErr) {
-          if (signUpErr.message?.toLowerCase().includes('already registered')) {
-            // User exists from a previous failed attempt — look them up via RPC (bypasses RLS)
-            const { data: existingId } = await supabase
-              .rpc('get_profile_id_by_email', { email_address: form.email })
-            if (!existingId) throw new Error('Account exists but profile not found. Try a different email address.')
-            newUserId = existingId
-          } else {
-            throw signUpErr
-          }
-        } else {
-          newUserId = signUpData.user?.id
+        // Use the returned user ID if available, otherwise fall back to RPC lookup
+        if (signUpData?.user?.id) {
+          newUserId = signUpData.user.id
+        } else if (signUpErr) {
+          // User likely already exists — look them up via RPC (bypasses RLS)
+          const { data: existingId } = await supabase
+            .rpc('get_profile_id_by_email', { email_address: form.email })
+          if (!existingId) throw new Error(`Could not find account for ${form.email}. Error: ${signUpErr.message}`)
+          newUserId = existingId
         }
 
         if (!newUserId) throw new Error('Failed to create user account.')
