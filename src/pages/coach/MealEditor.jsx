@@ -452,7 +452,7 @@ function IngredientsTab({ mealId, coachId }) {
 }
 
 // ─── Variants Tab ─────────────────────────────────────────────────────────────
-function VariantsTab({ mealId }) {
+function VariantsTab({ mealId, coachId }) {
   const [baseIngredients, setBaseIngredients] = useState([])
   const [variantMap, setVariantMap] = useState({}) // {variantName: {id, ingredients: []}}
   const [loading, setLoading] = useState(true)
@@ -462,26 +462,32 @@ function VariantsTab({ mealId }) {
   const [error, setError] = useState('')
 
   async function load() {
-    const [ingRes, varRes] = await Promise.all([
+    const [ingRes, varRes, libRes] = await Promise.all([
       supabase.from('meal_ingredients').select('*').eq('meal_id', mealId).order('id'),
       supabase.from('meal_variants')
         .select('id, variant_name, calories, protein_g, carbs_g, fat_g, meal_variant_ingredients(*)')
         .eq('meal_id', mealId),
+      supabase.from('ingredients').select('*').eq('coach_id', coachId).order('name'),
     ])
     setBaseIngredients(ingRes.data || [])
+    const lib = libRes.data || []
     const map = {}
     for (const v of (varRes.data || [])) {
       map[v.variant_name] = {
         ...v,
         ingredients: (v.meal_variant_ingredients || [])
           .sort((a, b) => a.id > b.id ? 1 : -1)
-          .map(ing => ({
-            ...ing,
-            _calPerG:  ing.quantity_g > 0 ? ing.calories  / ing.quantity_g : 0,
-            _proPerG:  ing.quantity_g > 0 ? ing.protein_g / ing.quantity_g : 0,
-            _carbPerG: ing.quantity_g > 0 ? ing.carbs_g   / ing.quantity_g : 0,
-            _fatPerG:  ing.quantity_g > 0 ? ing.fat_g     / ing.quantity_g : 0,
-          })),
+          .map(ing => {
+            const libIng = ing.ingredient_id ? lib.find(l => l.id === ing.ingredient_id) || null : null
+            return {
+              ...ing,
+              _library:  libIng,
+              _calPerG:  ing.quantity_g > 0 ? ing.calories  / ing.quantity_g : 0,
+              _proPerG:  ing.quantity_g > 0 ? ing.protein_g / ing.quantity_g : 0,
+              _carbPerG: ing.quantity_g > 0 ? ing.carbs_g   / ing.quantity_g : 0,
+              _fatPerG:  ing.quantity_g > 0 ? ing.fat_g     / ing.quantity_g : 0,
+            }
+          }),
       }
     }
     setVariantMap(map)
@@ -556,6 +562,29 @@ function VariantsTab({ mealId }) {
           protein_g: round1(qty * (ing._proPerG  || 0)),
           carbs_g:   round1(qty * (ing._carbPerG || 0)),
           fat_g:     round1(qty * (ing._fatPerG  || 0)),
+        }
+      })
+      const totals = calcTotals(updated)
+      return { ...prev, [variantName]: { ...v, ingredients: updated, ...totals } }
+    })
+  }
+
+  function snapIngQty(variantName, idx) {
+    setVariantMap(prev => {
+      const v = prev[variantName]
+      const ing = v.ingredients[idx]
+      if (!ing._library) return prev
+      const snapped = snapToConstraints(ing.quantity_g, ing._library)
+      if (isNaN(snapped) || snapped === parseFloat(ing.quantity_g)) return prev
+      const updated = v.ingredients.map((item, i) => {
+        if (i !== idx) return item
+        return {
+          ...item,
+          quantity_g: snapped,
+          calories:  round1(snapped * (item._calPerG  || 0)),
+          protein_g: round1(snapped * (item._proPerG  || 0)),
+          carbs_g:   round1(snapped * (item._carbPerG || 0)),
+          fat_g:     round1(snapped * (item._fatPerG  || 0)),
         }
       })
       const totals = calcTotals(updated)
@@ -717,11 +746,12 @@ function VariantsTab({ mealId }) {
                             <td className="py-2 px-3">
                               <input
                                 type="number"
-                                min="0"
-                                step="1"
+                                min={ing._library?.min_amount ?? 0}
+                                step={ing._library?.serving_step ?? 1}
                                 className="input py-1 text-sm w-16"
                                 value={ing.quantity_g}
                                 onChange={e => updateIngQty(name, idx, e.target.value)}
+                                onBlur={() => snapIngQty(name, idx)}
                               />
                             </td>
                             <td className="py-2 px-3 text-gray-500 dark:text-gray-400 text-sm tabular-nums">{Math.round(parseFloat(ing.calories) || 0)}</td>
@@ -873,7 +903,7 @@ export default function MealEditor() {
       <div>
         {activeTab === 'Details' && <DetailsTab meal={meal} mealId={currentId} isNew={isNew} onSaved={handleDetailsSaved} coachId={profile.id} />}
         {activeTab === 'Ingredients' && currentId && <IngredientsTab mealId={currentId} coachId={profile.id} />}
-        {activeTab === 'Variants' && currentId && <VariantsTab mealId={currentId} />}
+        {activeTab === 'Variants' && currentId && <VariantsTab mealId={currentId} coachId={profile.id} />}
       </div>
     </div>
   )
