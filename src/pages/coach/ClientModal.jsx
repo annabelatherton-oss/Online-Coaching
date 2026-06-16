@@ -20,6 +20,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
     tags: [],
   })
   const [tagInput, setTagInput] = useState('')
+  const [showOptional, setShowOptional] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -269,75 +270,90 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="label">Protein (g)</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                value={form.current_protein}
-                onChange={e => set('current_protein', e.target.value)}
-                placeholder="e.g. 150"
-              />
-            </div>
-            <div>
-              <label className="label">Carbs (g)</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                value={form.current_carbs}
-                onChange={e => set('current_carbs', e.target.value)}
-                placeholder="e.g. 200"
-              />
-            </div>
-            <div>
-              <label className="label">Fat (g)</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                value={form.current_fat}
-                onChange={e => set('current_fat', e.target.value)}
-                placeholder="e.g. 70"
-              />
-            </div>
-          </div>
+          {/* Optional fields toggle */}
+          <button
+            type="button"
+            onClick={() => setShowOptional(v => !v)}
+            className="flex items-center gap-2 text-sm text-brand-600 dark:text-brand-400 hover:underline"
+          >
+            <svg className={`w-4 h-4 transition-transform ${showOptional ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            {showOptional ? 'Hide' : 'Add'} macros & tags (optional)
+          </button>
 
-          {/* Tags */}
-          <div>
-            <label className="label">Tags</label>
-            <input
-              className="input"
-              type="text"
-              value={tagInput}
-              onChange={e => setTagInput(e.target.value)}
-              onKeyDown={handleTagKeyDown}
-              placeholder="Type a tag and press Enter"
-            />
-            {form.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {form.tags.map(tag => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400"
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(tag)}
-                      className="hover:text-brand-900 dark:hover:text-brand-200"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </span>
-                ))}
+          {showOptional && (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="label">Protein (g)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    value={form.current_protein}
+                    onChange={e => set('current_protein', e.target.value)}
+                    placeholder="e.g. 150"
+                  />
+                </div>
+                <div>
+                  <label className="label">Carbs (g)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    value={form.current_carbs}
+                    onChange={e => set('current_carbs', e.target.value)}
+                    placeholder="e.g. 200"
+                  />
+                </div>
+                <div>
+                  <label className="label">Fat (g)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    value={form.current_fat}
+                    onChange={e => set('current_fat', e.target.value)}
+                    placeholder="e.g. 70"
+                  />
+                </div>
               </div>
-            )}
-          </div>
+
+              <div>
+                <label className="label">Tags</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={tagInput}
+                  onChange={e => setTagInput(e.target.value)}
+                  onKeyDown={handleTagKeyDown}
+                  placeholder="Type a tag and press Enter"
+                />
+                {form.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {form.tags.map(tag => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => removeTag(tag)}
+                          className="hover:text-brand-900 dark:hover:text-brand-200"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {error && (
             <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
