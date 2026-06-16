@@ -87,36 +87,21 @@ class DeckPool {
 // ── Generation ─────────────────────────────────────────────────────────────────
 
 const WEEK_COUNT = 20
-// Calorie split across meal types
-const SPLIT = { breakfast: 0.25, lunch: 0.35, dinner: 0.40 }
 
-function calFilter(meals, target) {
-  // Prefer meals within ±25% of target; fall back to ±40%; then no filter
-  const tight = meals.filter(m => m._totalCals > 0 && m._totalCals >= target * 0.75 && m._totalCals <= target * 1.25)
-  if (tight.length >= 3) return tight
-  const loose = meals.filter(m => m._totalCals > 0 && m._totalCals >= target * 0.60 && m._totalCals <= target * 1.40)
-  if (loose.length >= 2) return loose
-  return meals
-}
-
-function generateWeeks(classifiedMeals, excluded, calorieTarget) {
+function generateWeeks(classifiedMeals, excluded) {
   const avail = classifiedMeals.filter(m => !excluded.has(m.id))
   const by = (cat, sub) => avail.filter(m => m.category === cat && m._subtype === sub)
 
-  const BT = Math.round(calorieTarget * SPLIT.breakfast)
-  const LT = Math.round(calorieTarget * SPLIT.lunch)
-  const DT = Math.round(calorieTarget * SPLIT.dinner)
-
-  const sweetPool   = new DeckPool(calFilter(by('breakfast', 'sweet'), BT))
-  const savouryPool = new DeckPool(calFilter(by('breakfast', 'savoury'), BT))
+  const sweetPool   = new DeckPool(by('breakfast', 'sweet'))
+  const savouryPool = new DeckPool(by('breakfast', 'savoury'))
 
   const lunchTypes = ['wrap', 'pasta', 'rice/bowl', 'salad', 'sandwich', 'other']
-  const lunchPools = Object.fromEntries(lunchTypes.map(t => [t, new DeckPool(calFilter(by('lunch', t), LT))]))
+  const lunchPools = Object.fromEntries(lunchTypes.map(t => [t, new DeckPool(by('lunch', t))]))
   const activeLunchTypes = lunchTypes.filter(t => !lunchPools[t].empty())
   let lunchTypeIdx = 0
 
   const dinnerProteins = ['chicken', 'beef', 'fish', 'pork/lamb', 'veggie', 'other']
-  const dinnerPools = Object.fromEntries(dinnerProteins.map(p => [p, new DeckPool(calFilter(by('dinner', p), DT))]))
+  const dinnerPools = Object.fromEntries(dinnerProteins.map(p => [p, new DeckPool(by('dinner', p))]))
   const activeDinnerProteins = dinnerProteins.filter(p => !dinnerPools[p].empty())
   let dinnerProteinIdx = 0
 
@@ -218,7 +203,6 @@ export default function GenerateTemplates() {
 
   const [phase, setPhase] = useState('setup')
   const [meals, setMeals] = useState([])
-  const [calorieTarget, setCalorieTarget] = useState(1600)
   const [excluded, setExcluded] = useState(new Set())
   const [subtypeOverrides, setSubtypeOverrides] = useState({})
   const [dirty, setDirty] = useState(new Set()) // meal IDs with unsaved changes
@@ -334,7 +318,7 @@ export default function GenerateTemplates() {
   }
 
   function handleGenerate() {
-    const generated = generateWeeks(withOverrides(), excluded, calorieTarget)
+    const generated = generateWeeks(withOverrides(), excluded)
     setWeeks(generated)
     saveDraft(generated)
     setExpanded(new Set())
@@ -480,33 +464,9 @@ export default function GenerateTemplates() {
         })}
 
         <div className="card space-y-3">
-          <h2 className="font-semibold text-gray-900 dark:text-white">Daily Calorie Target</h2>
-          <div className="flex items-center gap-3">
-            <input
-              className="input w-32"
-              type="number"
-              min="1000"
-              max="5000"
-              step="50"
-              value={calorieTarget}
-              onChange={e => setCalorieTarget(parseInt(e.target.value) || 1600)}
-            />
-            <span className="text-sm text-gray-500 dark:text-gray-400">kcal / day</span>
-          </div>
-          <p className="text-xs text-gray-400">
-            Meals will be chosen to hit this split: Breakfast ~{Math.round(calorieTarget * SPLIT.breakfast)} ·
-            Lunch ~{Math.round(calorieTarget * SPLIT.lunch)} ·
-            Dinner ~{Math.round(calorieTarget * SPLIT.dinner)} kcal
-          </p>
-          <p className="text-xs text-gray-400">
-            Both options for each meal type will have similar calories so they're interchangeable.
-          </p>
-        </div>
-
-        <div className="card space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {meals.length - excluded.size} meals included
+              {meals.length - excluded.size} meals included · calorie targets are set per client when assigning
               {dirty.size > 0 && (
                 <span className="ml-2 text-orange-500 font-medium">· {dirty.size} unsaved change{dirty.size !== 1 ? 's' : ''}</span>
               )}
@@ -595,13 +555,12 @@ export default function GenerateTemplates() {
       </div>
 
       <p className="text-xs text-gray-400 dark:text-gray-500">
-        Click any week to expand it. Swap meals using the dropdowns. Red total = over your {calorieTarget} kcal target.
+        Click any week to expand it. Swap meals using the dropdowns. Every client on this plan gets the same meals — calorie targets are set per client when you assign the plan.
       </p>
 
       {weeks.map((week, weekIdx) => {
         const isOpen = expanded.has(week.weekNum)
         const total = SLOTS.reduce((s, sl) => s + (week[sl.key]?._totalCals || 0), 0)
-        const overTarget = total > calorieTarget
 
         return (
           <div key={weekIdx} className="card p-0 overflow-hidden">
@@ -612,8 +571,8 @@ export default function GenerateTemplates() {
               <div className="flex items-center gap-3">
                 <span className="font-semibold text-gray-900 dark:text-white text-sm">Week {week.weekNum}</span>
                 {total > 0 && (
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${overTarget ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
-                    {total} kcal
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                    ~{total} kcal base
                   </span>
                 )}
               </div>
