@@ -92,10 +92,8 @@ function generateWeeks(classifiedMeals, excluded) {
   const avail = classifiedMeals.filter(m => !excluded.has(m.id))
   const by = (cat, sub) => avail.filter(m => m.category === cat && m._subtype === sub)
 
-  const sweetPool    = new DeckPool(by('breakfast', 'sweet'))
-  const savouryPool  = new DeckPool(by('breakfast', 'savoury'))
-  const preworkoutPool = new DeckPool(avail.filter(m => m.category === 'pre_workout'))
-  const snackPool    = new DeckPool(avail.filter(m => m.category === 'evening_snack' || m.category === 'snack'))
+  const sweetPool   = new DeckPool(by('breakfast', 'sweet'))
+  const savouryPool = new DeckPool(by('breakfast', 'savoury'))
 
   const lunchTypes = ['wrap', 'pasta', 'rice/bowl', 'salad', 'sandwich', 'other']
   const lunchPools = Object.fromEntries(lunchTypes.map(t => [t, new DeckPool(by('lunch', t))]))
@@ -144,10 +142,8 @@ function generateWeeks(classifiedMeals, excluded) {
       breakfast2: savouryPool.pick(),
       lunch1: l1?.meal || null,
       lunch2: l2?.meal || null,
-      preworkout: preworkoutPool.pick(),
       dinner1: d1?.meal || null,
       dinner2: d2?.meal || null,
-      evening_snack: snackPool.pick(),
     }
   })
 }
@@ -159,10 +155,8 @@ const SLOTS = [
   { key: 'breakfast2', label: 'Breakfast (Savoury)', cat: 'breakfast' },
   { key: 'lunch1',     label: 'Lunch A',            cat: 'lunch' },
   { key: 'lunch2',     label: 'Lunch B',             cat: 'lunch' },
-  { key: 'preworkout', label: 'Pre-Workout',         cat: 'pre_workout' },
   { key: 'dinner1',    label: 'Dinner A',            cat: 'dinner' },
   { key: 'dinner2',    label: 'Dinner B',            cat: 'dinner' },
-  { key: 'evening_snack', label: 'Evening Snack',   cat: ['evening_snack', 'snack'] },
 ]
 
 const BREAKFAST_SUBTYPES = [
@@ -196,12 +190,10 @@ function subtypeOptions(cat) {
 // ── Setup sections ─────────────────────────────────────────────────────────────
 
 const SETUP_SECTIONS = [
-  { label: 'Breakfast — Sweet',   cat: 'breakfast',     sub: 'sweet'   },
-  { label: 'Breakfast — Savoury', cat: 'breakfast',     sub: 'savoury' },
-  { label: 'Lunch',               cat: 'lunch',          sub: null      },
-  { label: 'Pre-Workout',         cat: 'pre_workout',    sub: null      },
-  { label: 'Dinner',              cat: 'dinner',         sub: null      },
-  { label: 'Evening Snack',       cat: 'evening_snack',  sub: null,  extra: 'snack' },
+  { label: 'Breakfast — Sweet',   cat: 'breakfast', sub: 'sweet'   },
+  { label: 'Breakfast — Savoury', cat: 'breakfast', sub: 'savoury' },
+  { label: 'Lunch',               cat: 'lunch',     sub: null      },
+  { label: 'Dinner',              cat: 'dinner',    sub: null      },
 ]
 
 // ── Main component ─────────────────────────────────────────────────────────────
