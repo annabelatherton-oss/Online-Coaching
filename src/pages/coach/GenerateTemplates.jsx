@@ -226,14 +226,32 @@ export default function GenerateTemplates() {
       .then(({ data }) => {
         const classified = (data || []).map(m => ({ ...m, _subtype: classifyMeal(m) }))
         setMeals(classified)
-        // Restore saved exclusions
         setExcluded(new Set(classified.filter(m => m.excluded_from_templates).map(m => m.id)))
-        // Restore saved subtype overrides
         const overrides = {}
         for (const m of classified) {
           if (m.template_subtype) overrides[m.id] = m.template_subtype
         }
         setSubtypeOverrides(overrides)
+
+        // Restore any unsaved generated draft
+        try {
+          const draft = localStorage.getItem(`generated_weeks_${profile.id}`)
+          if (draft) {
+            const parsed = JSON.parse(draft)
+            // Re-hydrate meal objects from the loaded meal list
+            const mealMap = Object.fromEntries(classified.map(m => [m.id, m]))
+            const hydrated = parsed.map(w => {
+              const week = { weekNum: w.weekNum }
+              for (const s of SLOTS) {
+                week[s.key] = w[s.key] ? (mealMap[w[s.key].id] || null) : null
+              }
+              return week
+            })
+            setWeeks(hydrated)
+            setPhase('review')
+          }
+        } catch {}
+
         setLoading(false)
       })
   }, [profile.id])
@@ -279,9 +297,26 @@ export default function GenerateTemplates() {
     setPrefsSaving(false)
   }
 
+  function saveDraft(generatedWeeks) {
+    try {
+      // Store only meal IDs to keep it lightweight
+      const slim = generatedWeeks.map(w => {
+        const week = { weekNum: w.weekNum }
+        for (const s of SLOTS) { week[s.key] = w[s.key] ? { id: w[s.key].id } : null }
+        return week
+      })
+      localStorage.setItem(`generated_weeks_${profile.id}`, JSON.stringify(slim))
+    } catch {}
+  }
+
+  function clearDraft() {
+    try { localStorage.removeItem(`generated_weeks_${profile.id}`) } catch {}
+  }
+
   function handleGenerate() {
     const generated = generateWeeks(withOverrides(), excluded)
     setWeeks(generated)
+    saveDraft(generated)
     setExpanded(new Set())
     setPhase('review')
     window.scrollTo(0, 0)
@@ -289,7 +324,11 @@ export default function GenerateTemplates() {
 
   function changeSlot(weekIdx, slotKey, mealId) {
     const meal = meals.find(m => m.id === mealId) || null
-    setWeeks(prev => prev.map((w, i) => i === weekIdx ? { ...w, [slotKey]: meal } : w))
+    setWeeks(prev => {
+      const updated = prev.map((w, i) => i === weekIdx ? { ...w, [slotKey]: meal } : w)
+      saveDraft(updated)
+      return updated
+    })
   }
 
   function toggleExpand(weekNum) {
@@ -327,6 +366,7 @@ export default function GenerateTemplates() {
       }
     }
 
+    clearDraft()
     navigate('/coach/meal-templates')
   }
 
@@ -469,6 +509,12 @@ export default function GenerateTemplates() {
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Review 20 Weeks</h1>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => { clearDraft(); setPhase('setup'); setWeeks([]) }}
+            className="text-sm text-gray-400 hover:text-red-500 transition-colors"
+          >
+            Discard
+          </button>
           <button onClick={handleGenerate} className="btn-secondary text-sm">
             Regenerate
           </button>
