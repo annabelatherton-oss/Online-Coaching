@@ -29,6 +29,8 @@ const EMPTY_FORM = {
   category: '',
   serving_size: '100',
   serving_unit: 'g',
+  serving_step: '',
+  min_amount: '',
   calories_per_serving: '',
   protein_per_serving: '',
   carbs_per_serving: '',
@@ -41,6 +43,8 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
     category: ingredient.category || '',
     serving_size: String(ingredient.serving_size),
     serving_unit: ingredient.serving_unit,
+    serving_step: ingredient.serving_step != null ? String(ingredient.serving_step) : '',
+    min_amount: ingredient.min_amount != null ? String(ingredient.min_amount) : '',
     calories_per_serving: String(ingredient.calories_per_serving),
     protein_per_serving: String(ingredient.protein_per_serving),
     carbs_per_serving: String(ingredient.carbs_per_serving),
@@ -65,6 +69,8 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
       category: form.category || null,
       serving_size: parseFloat(form.serving_size),
       serving_unit: (form.serving_unit || 'g').trim(),
+      serving_step: form.serving_step !== '' ? parseFloat(form.serving_step) : null,
+      min_amount: form.min_amount !== '' ? parseFloat(form.min_amount) : null,
       calories_per_serving: parseFloat(form.calories_per_serving) || 0,
       protein_per_serving: parseFloat(form.protein_per_serving) || 0,
       carbs_per_serving: parseFloat(form.carbs_per_serving) || 0,
@@ -145,6 +151,19 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
               </datalist>
             </div>
             <p className="mt-1 text-xs text-gray-400">e.g. 100 g · 15 g · 1 square · 1 tbsp</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Step (increment)</label>
+              <input className="input" type="number" min="0.01" step="0.01" value={form.serving_step} onChange={e => set('serving_step', e.target.value)} placeholder="e.g. 5, 1, 0.5" />
+              <p className="mt-1 text-xs text-gray-400">Amount must be a multiple of this</p>
+            </div>
+            <div>
+              <label className="label">Min amount</label>
+              <input className="input" type="number" min="0.01" step="0.01" value={form.min_amount} onChange={e => set('min_amount', e.target.value)} placeholder="e.g. 40" />
+              <p className="mt-1 text-xs text-gray-400">Never use less than this</p>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

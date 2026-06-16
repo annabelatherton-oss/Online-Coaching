@@ -29,6 +29,19 @@ function round1(n) {
   return Math.round(parseFloat(n || 0) * 10) / 10
 }
 
+function snapToConstraints(amount, libIng) {
+  let val = parseFloat(amount)
+  if (isNaN(val) || val <= 0) return val
+  const step = libIng?.serving_step
+  const min = libIng?.min_amount
+  if (step && step > 0) {
+    val = Math.round(val / step) * step
+    val = Math.round(val * 10000) / 10000
+  }
+  if (min != null && val > 0 && val < min) val = min
+  return val
+}
+
 function calcTotals(ingredients) {
   const totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
   for (const ing of ingredients) {
@@ -280,6 +293,15 @@ function IngredientsTab({ mealId, coachId }) {
     }
   }
 
+  function blurAmount(idx) {
+    const row = ingredients[idx]
+    if (!row._library) return
+    const snapped = snapToConstraints(row.quantity_g, row._library)
+    if (!isNaN(snapped) && snapped !== parseFloat(row.quantity_g)) {
+      updateRow(idx, { quantity_g: snapped, ...calcMacros(row._library, snapped) })
+    }
+  }
+
   function addRow() {
     setIngredients(prev => [...prev, {
       _isNew: true,
@@ -442,10 +464,11 @@ function IngredientsTab({ mealId, coachId }) {
                       <input
                         className="input py-1.5 text-sm w-20"
                         type="number"
-                        min="0"
-                        step="0.1"
+                        min={ing._library?.min_amount ?? 0}
+                        step={ing._library?.serving_step ?? 0.1}
                         value={ing.quantity_g}
                         onChange={e => updateAmount(idx, e.target.value)}
+                        onBlur={() => blurAmount(idx)}
                         placeholder="0"
                       />
                       {ing._library && (
@@ -524,6 +547,7 @@ function IngredientsTab({ mealId, coachId }) {
 // ─── Scaled Versions Tab ──────────────────────────────────────────────────────
 function ScaledVersionsTab({ mealId }) {
   const [ingredients, setIngredients] = useState([])
+  const [library, setLibrary] = useState([])
   const [scaledVersions, setScaledVersions] = useState([])
   const [loading, setLoading] = useState(true)
   const [calorieTarget, setCalorieTarget] = useState('')
@@ -534,15 +558,17 @@ function ScaledVersionsTab({ mealId }) {
   const [editValue, setEditValue] = useState('')
 
   async function load() {
-    const [ingRes, verRes] = await Promise.all([
+    const [ingRes, verRes, libRes] = await Promise.all([
       supabase.from('meal_ingredients').select('*').eq('meal_id', mealId).order('id', { ascending: true }),
       supabase.from('meal_scaled_versions').select(`
         id, meal_id, calorie_target, scaling_factor, created_at,
         meal_scaled_ingredients(id, ingredient_id, name, quantity_g, calories, protein_g, carbs_g, fat_g, is_manually_overridden)
       `).eq('meal_id', mealId).order('created_at', { ascending: false }),
+      supabase.from('ingredients').select('id, serving_step, min_amount'),
     ])
     setIngredients(ingRes.data || [])
     setScaledVersions(verRes.data || [])
+    setLibrary(libRes.data || [])
     setLoading(false)
   }
 
@@ -571,17 +597,24 @@ function ScaledVersionsTab({ mealId }) {
 
     if (verErr) { setGenError(verErr.message); setGenerating(false); return }
 
-    const scaledIngRows = ingredients.map(ing => ({
-      scaled_version_id: version.id,
-      ingredient_id: ing.id,
-      name: ing.name,
-      quantity_g: round1((ing.quantity_g || 0) * scalingFactor),
-      calories: round1((ing.calories || 0) * scalingFactor),
-      protein_g: round1((ing.protein_g || 0) * scalingFactor),
-      carbs_g: round1((ing.carbs_g || 0) * scalingFactor),
-      fat_g: round1((ing.fat_g || 0) * scalingFactor),
-      is_manually_overridden: false,
-    }))
+    const scaledIngRows = ingredients.map(ing => {
+      const libIng = library.find(l => l.id === ing.ingredient_id)
+      const rawQty = (ing.quantity_g || 0) * scalingFactor
+      const qty = round1(snapToConstraints(rawQty, libIng))
+      const origQty = ing.quantity_g || 0
+      const ratio = origQty > 0 ? qty / origQty : scalingFactor
+      return {
+        scaled_version_id: version.id,
+        ingredient_id: ing.id,
+        name: ing.name,
+        quantity_g: qty,
+        calories: round1((ing.calories || 0) * ratio),
+        protein_g: round1((ing.protein_g || 0) * ratio),
+        carbs_g: round1((ing.carbs_g || 0) * ratio),
+        fat_g: round1((ing.fat_g || 0) * ratio),
+        is_manually_overridden: false,
+      }
+    })
 
     if (scaledIngRows.length > 0) {
       const { error: ingErr } = await supabase.from('meal_scaled_ingredients').insert(scaledIngRows)
