@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import ClientModal from './ClientModal'
@@ -18,13 +19,24 @@ function StatusBadge({ client }) {
   return <span className="badge bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">Inactive</span>
 }
 
+function TagChip({ tag }) {
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400">
+      {tag}
+    </span>
+  )
+}
+
 export default function ClientsList() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [tagFilter, setTagFilter] = useState('All')
   const [showModal, setShowModal] = useState(false)
   const [editClient, setEditClient] = useState(null)
+  const [duplicateData, setDuplicateData] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
 
@@ -32,8 +44,9 @@ export default function ClientsList() {
     const { data, error } = await supabase
       .from('clients')
       .select(`
-        id, coach_id, profile_id, goal, current_calories, start_date,
-        access_weeks, access_expires_at, is_active, is_paused, created_at,
+        id, coach_id, profile_id, goal, current_calories, current_protein,
+        current_carbs, current_fat, start_date, access_weeks, access_expires_at,
+        is_active, is_paused, tags, created_at,
         profiles!clients_profile_id_fkey(full_name, email)
       `)
       .eq('coach_id', profile.id)
@@ -75,11 +88,36 @@ export default function ClientsList() {
     setActionLoading(null)
   }
 
+  function openDuplicate(client) {
+    setDuplicateData({
+      goal: client.goal,
+      current_calories: client.current_calories,
+      current_protein: client.current_protein,
+      current_carbs: client.current_carbs,
+      current_fat: client.current_fat,
+      access_weeks: client.access_weeks,
+      tags: client.tags,
+    })
+    setEditClient(null)
+    setShowModal(true)
+  }
+
+  function closeModal() {
+    setShowModal(false)
+    setEditClient(null)
+    setDuplicateData(null)
+  }
+
+  // Collect all unique tags across clients
+  const allTags = [...new Set(clients.flatMap(c => c.tags || []))].sort()
+
   const filtered = clients.filter(c => {
     const name = c.profiles?.full_name?.toLowerCase() || ''
     const email = c.profiles?.email?.toLowerCase() || ''
     const q = search.toLowerCase()
-    return name.includes(q) || email.includes(q)
+    const matchesSearch = name.includes(q) || email.includes(q)
+    const matchesTag = tagFilter === 'All' || (c.tags || []).includes(tagFilter)
+    return matchesSearch && matchesTag
   })
 
   function formatDate(d) {
@@ -97,7 +135,7 @@ export default function ClientsList() {
           </p>
         </div>
         <button
-          onClick={() => { setEditClient(null); setShowModal(true) }}
+          onClick={() => { setEditClient(null); setDuplicateData(null); setShowModal(true) }}
           className="btn-primary"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,17 +145,31 @@ export default function ClientsList() {
         </button>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-        <input
-          className="input pl-9"
-          placeholder="Search by name or email…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+      {/* Search + tag filter */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            className="input pl-9"
+            placeholder="Search by name or email…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        {allTags.length > 0 && (
+          <select
+            className="input sm:w-48"
+            value={tagFilter}
+            onChange={e => setTagFilter(e.target.value)}
+          >
+            <option value="All">All tags</option>
+            {allTags.map(tag => (
+              <option key={tag} value={tag}>{tag}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {loading ? (
@@ -128,7 +180,7 @@ export default function ClientsList() {
             <>
               <p className="text-gray-400 dark:text-gray-500 mb-3">You haven't added any clients yet.</p>
               <button
-                onClick={() => { setEditClient(null); setShowModal(true) }}
+                onClick={() => { setEditClient(null); setDuplicateData(null); setShowModal(true) }}
                 className="btn-primary"
               >
                 Add your first client
@@ -167,6 +219,11 @@ export default function ClientsList() {
                             {client.profiles?.full_name || '—'}
                           </p>
                           <p className="text-xs text-gray-400">{client.profiles?.email}</p>
+                          {(client.tags || []).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {client.tags.map(tag => <TagChip key={tag} tag={tag} />)}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -182,10 +239,23 @@ export default function ClientsList() {
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => { setEditClient(client); setShowModal(true) }}
+                          onClick={() => navigate(`/coach/clients/${client.id}`)}
+                          className="btn-secondary py-1.5 px-3 text-xs"
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => { setEditClient(client); setDuplicateData(null); setShowModal(true) }}
                           className="btn-secondary py-1.5 px-3 text-xs"
                         >
                           Edit
+                        </button>
+                        <button
+                          onClick={() => openDuplicate(client)}
+                          className="btn-secondary py-1.5 px-3 text-xs"
+                          title="Duplicate client settings"
+                        >
+                          Dupe
                         </button>
                         <button
                           onClick={() => togglePause(client)}
@@ -236,11 +306,18 @@ export default function ClientsList() {
                   </div>
                   <StatusBadge client={client} />
                 </div>
+                {(client.tags || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {client.tags.map(tag => <TagChip key={tag} tag={tag} />)}
+                  </div>
+                )}
                 <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 space-y-1">
                   <p>Access: {client.access_weeks} weeks · Expires: {formatDate(client.access_expires_at)}</p>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button onClick={() => { setEditClient(client); setShowModal(true) }} className="btn-secondary py-1.5 px-3 text-xs">Edit</button>
+                  <button onClick={() => navigate(`/coach/clients/${client.id}`)} className="btn-secondary py-1.5 px-3 text-xs">View</button>
+                  <button onClick={() => { setEditClient(client); setDuplicateData(null); setShowModal(true) }} className="btn-secondary py-1.5 px-3 text-xs">Edit</button>
+                  <button onClick={() => openDuplicate(client)} className="btn-secondary py-1.5 px-3 text-xs">Dupe</button>
                   <button onClick={() => togglePause(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">{client.is_paused ? 'Resume' : 'Pause'}</button>
                   <button onClick={() => extendAccess(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">+4 weeks</button>
                   <button onClick={() => setConfirmDelete(client)} className="py-1.5 px-3 text-xs rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 transition-colors">Delete</button>
@@ -251,12 +328,13 @@ export default function ClientsList() {
         </>
       )}
 
-      {/* Add/Edit modal */}
+      {/* Add/Edit/Duplicate modal */}
       {showModal && (
         <ClientModal
           client={editClient}
-          onClose={() => { setShowModal(false); setEditClient(null) }}
-          onSaved={() => { setShowModal(false); setEditClient(null); loadClients() }}
+          duplicateData={duplicateData}
+          onClose={closeModal}
+          onSaved={() => { closeModal(); loadClients() }}
         />
       )}
 

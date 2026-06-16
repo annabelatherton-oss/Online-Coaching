@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import WeightChart from '../../components/WeightChart'
 
 function InfoRow({ label, value }) {
   return (
@@ -15,20 +16,70 @@ function InfoRow({ label, value }) {
 export default function ClientProfile() {
   const { profile, session } = useAuth()
   const [clientData, setClientData] = useState(null)
+  const [weightEntries, setWeightEntries] = useState([])
+  const [measurements, setMeasurements] = useState([])
   const [loading, setLoading] = useState(true)
+
+  // Weight form
+  const [showWeightForm, setShowWeightForm] = useState(false)
+  const [weightForm, setWeightForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    weight_kg: '',
+  })
+  const [savingWeight, setSavingWeight] = useState(false)
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase
+      // Load client data
+      const { data: clientRow } = await supabase
         .from('clients')
         .select('*')
         .eq('profile_id', session.user.id)
         .single()
-      setClientData(data)
+      setClientData(clientRow)
+
+      if (clientRow) {
+        // Load weight entries
+        const { data: weights } = await supabase
+          .from('weight_entries')
+          .select('*')
+          .eq('client_id', clientRow.id)
+          .order('recorded_at', { ascending: false })
+        setWeightEntries(weights || [])
+
+        // Load measurements
+        const { data: meas } = await supabase
+          .from('measurements')
+          .select('*')
+          .eq('client_id', clientRow.id)
+          .order('recorded_at', { ascending: false })
+        setMeasurements(meas || [])
+      }
+
       setLoading(false)
     }
     load()
   }, [session.user.id])
+
+  async function addWeightEntry(e) {
+    e.preventDefault()
+    setSavingWeight(true)
+    await supabase.from('weight_entries').insert({
+      client_id: clientData.id,
+      weight_kg: parseFloat(weightForm.weight_kg),
+      recorded_at: weightForm.date,
+    })
+    // Reload
+    const { data: weights } = await supabase
+      .from('weight_entries')
+      .select('*')
+      .eq('client_id', clientData.id)
+      .order('recorded_at', { ascending: false })
+    setWeightEntries(weights || [])
+    setSavingWeight(false)
+    setShowWeightForm(false)
+    setWeightForm({ date: new Date().toISOString().split('T')[0], weight_kg: '' })
+  }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
@@ -36,12 +87,22 @@ export default function ClientProfile() {
     ? new Date(clientData.access_expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—'
 
+  const latestMeasurement = measurements[0]
+
+  function fmtDate(d) {
+    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  function fmtVal(v) {
+    return v != null ? `${v} cm` : '—'
+  }
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Profile</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Your details as set by your coach. More tracking features coming soon.
+          Your programme details and progress tracking.
         </p>
       </div>
 
@@ -60,7 +121,7 @@ export default function ClientProfile() {
         </div>
       </div>
 
-      {/* Details */}
+      {/* Programme Details */}
       <div className="card">
         <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">Programme Details</h3>
         <dl>
@@ -77,20 +138,112 @@ export default function ClientProfile() {
         </dl>
       </div>
 
-      {/* Coming soon sections */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {[
-          'Weight History & Trends',
-          'Progress Photos',
-          'Body Measurements',
-          'Coach Notes',
-        ].map(title => (
-          <div key={title} className="card opacity-60 border-dashed">
-            <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{title}</p>
-            <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Coming in Phase 2</p>
+      {/* Macros */}
+      {(clientData?.current_protein || clientData?.current_carbs || clientData?.current_fat) && (
+        <div className="card">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Daily Macro Targets</h3>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Protein</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{clientData.current_protein ?? '—'}<span className="text-sm font-normal text-gray-400 ml-0.5">g</span></p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Carbs</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{clientData.current_carbs ?? '—'}<span className="text-sm font-normal text-gray-400 ml-0.5">g</span></p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Fat</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{clientData.current_fat ?? '—'}<span className="text-sm font-normal text-gray-400 ml-0.5">g</span></p>
+            </div>
           </div>
-        ))}
+        </div>
+      )}
+
+      {/* Weight History */}
+      <div className="card space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">Weight History</h3>
+          <button
+            onClick={() => setShowWeightForm(v => !v)}
+            className="btn-secondary py-1.5 px-3 text-xs"
+          >
+            {showWeightForm ? 'Cancel' : 'Log Weight'}
+          </button>
+        </div>
+
+        {showWeightForm && (
+          <form onSubmit={addWeightEntry} className="flex flex-col sm:flex-row gap-3 items-end border-t border-gray-100 dark:border-gray-800 pt-4">
+            <div className="flex-1">
+              <label className="label">Date</label>
+              <input
+                className="input"
+                type="date"
+                required
+                value={weightForm.date}
+                onChange={e => setWeightForm(f => ({ ...f, date: e.target.value }))}
+              />
+            </div>
+            <div className="flex-1">
+              <label className="label">Weight (kg)</label>
+              <input
+                className="input"
+                type="number"
+                step="0.1"
+                min="0"
+                required
+                value={weightForm.weight_kg}
+                onChange={e => setWeightForm(f => ({ ...f, weight_kg: e.target.value }))}
+                placeholder="e.g. 72.5"
+              />
+            </div>
+            <button type="submit" disabled={savingWeight} className="btn-primary whitespace-nowrap">
+              {savingWeight ? 'Saving…' : 'Add'}
+            </button>
+          </form>
+        )}
+
+        <WeightChart data={weightEntries} />
+
+        {weightEntries.length > 0 && (
+          <div className="border-t border-gray-100 dark:border-gray-800 pt-3">
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {weightEntries.map(entry => (
+                <div key={entry.id} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">{fmtDate(entry.recorded_at)}</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{entry.weight_kg} kg</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {weightEntries.length === 0 && !showWeightForm && (
+          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No weight entries yet. Click "Log Weight" to get started.</p>
+        )}
       </div>
+
+      {/* Latest Measurements */}
+      {latestMeasurement && (
+        <div className="card">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
+            Latest Measurements — {fmtDate(latestMeasurement.recorded_at)}
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+            {[
+              { label: 'Chest', value: latestMeasurement.chest_cm },
+              { label: 'Waist', value: latestMeasurement.waist_cm },
+              { label: 'Hips', value: latestMeasurement.hips_cm },
+              { label: 'Thighs', value: latestMeasurement.thighs_cm },
+              { label: 'Arms', value: latestMeasurement.arms_cm },
+            ].map(({ label, value }) => (
+              <div key={label} className="text-center">
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">{label}</p>
+                <p className="text-base font-semibold text-gray-900 dark:text-white">{fmtVal(value)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

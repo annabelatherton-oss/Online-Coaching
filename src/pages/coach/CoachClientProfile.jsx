@@ -1,0 +1,820 @@
+import { useEffect, useRef, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../contexts/AuthContext'
+import LoadingSpinner from '../../components/LoadingSpinner'
+import WeightChart from '../../components/WeightChart'
+
+const TABS = ['Overview', 'Weight', 'Measurements', 'Photos', 'Notes']
+
+function StatusBadge({ client }) {
+  const now = new Date()
+  const exp = client.access_expires_at ? new Date(client.access_expires_at) : null
+  const expired = exp && exp < now
+  if (client.is_paused)
+    return <span className="badge bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">Paused</span>
+  if (expired)
+    return <span className="badge bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Expired</span>
+  if (client.is_active)
+    return <span className="badge bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Active</span>
+  return <span className="badge bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">Inactive</span>
+}
+
+// ─── Overview Tab ────────────────────────────────────────────────────────────
+function OverviewTab({ client, onSaved }) {
+  const [form, setForm] = useState({
+    goal: client.goal || '',
+    current_calories: client.current_calories || '',
+    current_protein: client.current_protein || '',
+    current_carbs: client.current_carbs || '',
+    current_fat: client.current_fat || '',
+    start_date: client.start_date ? client.start_date.split('T')[0] : '',
+    access_weeks: client.access_weeks || 4,
+    is_paused: client.is_paused || false,
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  function set(field, value) {
+    setForm(f => ({ ...f, [field]: value }))
+  }
+
+  async function handleSave(e) {
+    e.preventDefault()
+    setSaving(true)
+    setError('')
+    setSaved(false)
+    const { error: err } = await supabase
+      .from('clients')
+      .update({
+        goal: form.goal,
+        current_calories: form.current_calories ? parseInt(form.current_calories) : null,
+        current_protein: form.current_protein ? parseInt(form.current_protein) : null,
+        current_carbs: form.current_carbs ? parseInt(form.current_carbs) : null,
+        current_fat: form.current_fat ? parseInt(form.current_fat) : null,
+        start_date: form.start_date,
+        access_weeks: parseInt(form.access_weeks),
+        is_paused: form.is_paused,
+      })
+      .eq('id', client.id)
+    setSaving(false)
+    if (err) { setError(err.message); return }
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+    onSaved()
+  }
+
+  const expiry = client.access_expires_at
+    ? new Date(client.access_expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    : '—'
+
+  return (
+    <form onSubmit={handleSave} className="space-y-6 max-w-2xl">
+      {/* Goal */}
+      <div className="card space-y-4">
+        <h3 className="font-semibold text-gray-900 dark:text-white">Programme Details</h3>
+        <div>
+          <label className="label">Goal</label>
+          <textarea
+            className="input resize-none"
+            rows={3}
+            value={form.goal}
+            onChange={e => set('goal', e.target.value)}
+            placeholder="e.g. Lose 10kg, build lean muscle"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Start date</label>
+            <input
+              className="input"
+              type="date"
+              value={form.start_date}
+              onChange={e => set('start_date', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">Access (weeks)</label>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={52}
+              value={form.access_weeks}
+              onChange={e => set('access_weeks', e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Access expires: <span className="font-medium text-gray-700 dark:text-gray-200">{expiry}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            id="is_paused"
+            type="checkbox"
+            checked={form.is_paused}
+            onChange={e => set('is_paused', e.target.checked)}
+            className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500"
+          />
+          <label htmlFor="is_paused" className="text-sm text-gray-700 dark:text-gray-300">Pause client access</label>
+        </div>
+      </div>
+
+      {/* Nutrition */}
+      <div className="card space-y-4">
+        <h3 className="font-semibold text-gray-900 dark:text-white">Current Nutrition Targets</h3>
+        <div>
+          <label className="label">Calories (kcal/day)</label>
+          <input
+            className="input"
+            type="number"
+            min={0}
+            value={form.current_calories}
+            onChange={e => set('current_calories', e.target.value)}
+            placeholder="e.g. 1800"
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="label">Protein (g)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              value={form.current_protein}
+              onChange={e => set('current_protein', e.target.value)}
+              placeholder="e.g. 150"
+            />
+          </div>
+          <div>
+            <label className="label">Carbs (g)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              value={form.current_carbs}
+              onChange={e => set('current_carbs', e.target.value)}
+              placeholder="e.g. 200"
+            />
+          </div>
+          <div>
+            <label className="label">Fat (g)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              value={form.current_fat}
+              onChange={e => set('current_fat', e.target.value)}
+              placeholder="e.g. 70"
+            />
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+          <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button type="submit" disabled={saving} className="btn-primary">
+          {saving ? 'Saving…' : 'Save Changes'}
+        </button>
+        {saved && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
+      </div>
+    </form>
+  )
+}
+
+// ─── Weight Tab ───────────────────────────────────────────────────────────────
+function WeightTab({ clientId }) {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    weight_kg: '',
+  })
+  const [saving, setSaving] = useState(false)
+
+  async function load() {
+    const { data } = await supabase
+      .from('weight_entries')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('recorded_at', { ascending: false })
+    setEntries(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [clientId])
+
+  async function addEntry(e) {
+    e.preventDefault()
+    setSaving(true)
+    await supabase.from('weight_entries').insert({
+      client_id: clientId,
+      weight_kg: parseFloat(form.weight_kg),
+      recorded_at: form.date,
+    })
+    setSaving(false)
+    setShowForm(false)
+    setForm({ date: new Date().toISOString().split('T')[0], weight_kg: '' })
+    load()
+  }
+
+  async function deleteEntry(id) {
+    await supabase.from('weight_entries').delete().eq('id', id)
+    load()
+  }
+
+  function formatDate(d) {
+    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  if (loading) return <LoadingSpinner size="lg" className="py-12" />
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      {/* Chart */}
+      <div className="card">
+        <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Weight Trend</h3>
+        <WeightChart data={entries} />
+      </div>
+
+      {/* Add entry */}
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-gray-900 dark:text-white">Entries</h3>
+        <button onClick={() => setShowForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">
+          {showForm ? 'Cancel' : 'Add Entry'}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={addEntry} className="card flex flex-col sm:flex-row gap-3 items-end">
+          <div className="flex-1">
+            <label className="label">Date</label>
+            <input
+              className="input"
+              type="date"
+              required
+              value={form.date}
+              onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+            />
+          </div>
+          <div className="flex-1">
+            <label className="label">Weight (kg)</label>
+            <input
+              className="input"
+              type="number"
+              step="0.1"
+              min="0"
+              required
+              value={form.weight_kg}
+              onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))}
+              placeholder="e.g. 72.5"
+            />
+          </div>
+          <button type="submit" disabled={saving} className="btn-primary whitespace-nowrap">
+            {saving ? 'Saving…' : 'Add'}
+          </button>
+        </form>
+      )}
+
+      {/* Table */}
+      {entries.length === 0 ? (
+        <div className="card text-center py-10">
+          <p className="text-gray-400 dark:text-gray-500 text-sm">No weight entries yet. Add the first one above.</p>
+        </div>
+      ) : (
+        <div className="card p-0 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-800">
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Weight</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {entries.map(entry => (
+                <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDate(entry.recorded_at)}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{entry.weight_kg} kg</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => deleteEntry(entry.id)}
+                      className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Measurements Tab ────────────────────────────────────────────────────────
+function MeasurementsTab({ clientId }) {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    chest_cm: '', waist_cm: '', hips_cm: '', thighs_cm: '', arms_cm: '',
+  })
+  const [saving, setSaving] = useState(false)
+
+  async function load() {
+    const { data } = await supabase
+      .from('measurements')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('recorded_at', { ascending: false })
+    setEntries(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [clientId])
+
+  async function addEntry(e) {
+    e.preventDefault()
+    setSaving(true)
+    await supabase.from('measurements').insert({
+      client_id: clientId,
+      recorded_at: form.date,
+      chest_cm: form.chest_cm ? parseFloat(form.chest_cm) : null,
+      waist_cm: form.waist_cm ? parseFloat(form.waist_cm) : null,
+      hips_cm: form.hips_cm ? parseFloat(form.hips_cm) : null,
+      thighs_cm: form.thighs_cm ? parseFloat(form.thighs_cm) : null,
+      arms_cm: form.arms_cm ? parseFloat(form.arms_cm) : null,
+    })
+    setSaving(false)
+    setShowForm(false)
+    setForm({ date: new Date().toISOString().split('T')[0], chest_cm: '', waist_cm: '', hips_cm: '', thighs_cm: '', arms_cm: '' })
+    load()
+  }
+
+  async function deleteEntry(id) {
+    await supabase.from('measurements').delete().eq('id', id)
+    load()
+  }
+
+  function fmtDate(d) {
+    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  function fmtVal(v) {
+    return v != null ? `${v} cm` : '—'
+  }
+
+  if (loading) return <LoadingSpinner size="lg" className="py-12" />
+
+  const latest = entries[0]
+
+  return (
+    <div className="space-y-6">
+      {/* Latest summary card */}
+      {latest && (
+        <div className="card">
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Latest Measurements — {fmtDate(latest.recorded_at)}</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+            {[
+              { label: 'Chest', value: latest.chest_cm },
+              { label: 'Waist', value: latest.waist_cm },
+              { label: 'Hips', value: latest.hips_cm },
+              { label: 'Thighs', value: latest.thighs_cm },
+              { label: 'Arms', value: latest.arms_cm },
+            ].map(({ label, value }) => (
+              <div key={label} className="text-center">
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">{label}</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">{fmtVal(value)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Add button */}
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-gray-900 dark:text-white">History</h3>
+        <button onClick={() => setShowForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">
+          {showForm ? 'Cancel' : 'Add Measurements'}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={addEntry} className="card space-y-4">
+          <div>
+            <label className="label">Date</label>
+            <input
+              className="input"
+              type="date"
+              required
+              value={form.date}
+              onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+            />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {[
+              { key: 'chest_cm', label: 'Chest (cm)' },
+              { key: 'waist_cm', label: 'Waist (cm)' },
+              { key: 'hips_cm', label: 'Hips (cm)' },
+              { key: 'thighs_cm', label: 'Thighs (cm)' },
+              { key: 'arms_cm', label: 'Arms (cm)' },
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="label">{label}</label>
+                <input
+                  className="input"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={form[key]}
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  placeholder="—"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-3">
+            <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary">
+              {saving ? 'Saving…' : 'Save Measurements'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* History table */}
+      {entries.length === 0 ? (
+        <div className="card text-center py-10">
+          <p className="text-gray-400 dark:text-gray-500 text-sm">No measurements yet.</p>
+        </div>
+      ) : (
+        <div className="card p-0 overflow-x-auto">
+          <table className="w-full text-sm whitespace-nowrap">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-800">
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Chest</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Waist</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Hips</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Thighs</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Arms</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {entries.map(e => (
+                <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{fmtDate(e.recorded_at)}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmtVal(e.chest_cm)}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmtVal(e.waist_cm)}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmtVal(e.hips_cm)}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmtVal(e.thighs_cm)}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmtVal(e.arms_cm)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => deleteEntry(e.id)}
+                      className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Photos Tab ───────────────────────────────────────────────────────────────
+function PhotosTab({ clientId }) {
+  const [photos, setPhotos] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [storageError, setStorageError] = useState(false)
+  const [lightbox, setLightbox] = useState(null)
+  const fileRef = useRef()
+
+  async function load() {
+    const { data } = await supabase
+      .from('progress_photos')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('recorded_at', { ascending: false })
+    setPhotos(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [clientId])
+
+  async function handleUpload(e) {
+    const files = Array.from(e.target.files)
+    if (!files.length) return
+    setUploading(true)
+    setStorageError(false)
+
+    for (const file of files) {
+      const path = `${clientId}/${Date.now()}-${file.name}`
+      const { error: uploadErr } = await supabase.storage
+        .from('progress-photos')
+        .upload(path, file)
+
+      if (uploadErr) {
+        console.error(uploadErr)
+        setStorageError(true)
+        setUploading(false)
+        return
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('progress-photos')
+        .getPublicUrl(path)
+
+      await supabase.from('progress_photos').insert({
+        client_id: clientId,
+        photo_url: urlData.publicUrl,
+        recorded_at: new Date().toISOString().split('T')[0],
+      })
+    }
+
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+    load()
+  }
+
+  async function deletePhoto(photo) {
+    // Extract storage path from URL
+    const url = photo.photo_url
+    const bucketMarker = '/progress-photos/'
+    const idx = url.indexOf(bucketMarker)
+    if (idx !== -1) {
+      const storagePath = decodeURIComponent(url.slice(idx + bucketMarker.length))
+      await supabase.storage.from('progress-photos').remove([storagePath])
+    }
+    await supabase.from('progress_photos').delete().eq('id', photo.id)
+    if (lightbox?.id === photo.id) setLightbox(null)
+    load()
+  }
+
+  function fmtDate(d) {
+    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  if (loading) return <LoadingSpinner size="lg" className="py-12" />
+
+  return (
+    <div className="space-y-6">
+      {storageError && (
+        <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+          <p className="text-sm text-yellow-800 dark:text-yellow-300">
+            Photo storage not configured yet — see SETUP.md
+          </p>
+        </div>
+      )}
+
+      {/* Upload button */}
+      <div className="flex items-center gap-4">
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="btn-primary"
+        >
+          {uploading ? 'Uploading…' : 'Upload Photos'}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={handleUpload}
+        />
+        <p className="text-xs text-gray-400">Accepts JPG, PNG, HEIC, WebP</p>
+      </div>
+
+      {/* Grid */}
+      {photos.length === 0 ? (
+        <div className="card text-center py-10">
+          <p className="text-gray-400 dark:text-gray-500 text-sm">No progress photos yet. Upload the first one above.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {photos.map(photo => (
+            <div key={photo.id} className="group relative rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+              <img
+                src={photo.photo_url}
+                alt={photo.caption || 'Progress photo'}
+                className="w-full aspect-square object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => setLightbox(photo)}
+              />
+              <div className="p-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">{fmtDate(photo.recorded_at)}</p>
+                {photo.caption && <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 truncate">{photo.caption}</p>}
+              </div>
+              <button
+                onClick={() => deletePhoto(photo)}
+                className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Delete photo"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-full"
+            onClick={e => e.stopPropagation()}
+          >
+            <img
+              src={lightbox.photo_url}
+              alt={lightbox.caption || 'Progress photo'}
+              className="max-w-full max-h-[85vh] object-contain rounded-xl"
+            />
+            <div className="mt-2 text-center text-white/80 text-sm">{fmtDate(lightbox.recorded_at)}{lightbox.caption ? ` — ${lightbox.caption}` : ''}</div>
+            <button
+              onClick={() => setLightbox(null)}
+              className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Notes Tab ────────────────────────────────────────────────────────────────
+function NotesTab({ client }) {
+  const [notes, setNotes] = useState(client.notes || '')
+  const [saving, setSaving] = useState(false)
+  const [savedMsg, setSavedMsg] = useState(false)
+
+  async function handleBlur() {
+    if (notes === (client.notes || '')) return
+    setSaving(true)
+    await supabase
+      .from('clients')
+      .update({ notes })
+      .eq('id', client.id)
+    setSaving(false)
+    setSavedMsg(true)
+    setTimeout(() => setSavedMsg(false), 2000)
+  }
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-gray-900 dark:text-white">Coach Notes</h3>
+        {saving && <span className="text-xs text-gray-400">Saving…</span>}
+        {savedMsg && <span className="text-xs text-green-600 dark:text-green-400 font-medium">Saved</span>}
+      </div>
+      <textarea
+        className="input resize-y min-h-[300px]"
+        value={notes}
+        onChange={e => setNotes(e.target.value)}
+        onBlur={handleBlur}
+        placeholder="Private notes about this client — auto-saves when you click away."
+      />
+      <p className="text-xs text-gray-400 dark:text-gray-500">Notes are private and only visible to you. Auto-saves on blur.</p>
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+export default function CoachClientProfile() {
+  const { clientId } = useParams()
+  const navigate = useNavigate()
+  const { profile } = useAuth()
+  const [client, setClient] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [activeTab, setActiveTab] = useState('Overview')
+
+  async function loadClient() {
+    const { data, error: err } = await supabase
+      .from('clients')
+      .select(`
+        id, coach_id, profile_id, goal, current_calories, current_protein,
+        current_carbs, current_fat, start_date, access_weeks, access_expires_at,
+        is_active, is_paused, notes, created_at, tags,
+        profiles!clients_profile_id_fkey(full_name, email)
+      `)
+      .eq('id', clientId)
+      .eq('coach_id', profile.id)
+      .single()
+
+    if (err || !data) {
+      setError('Client not found or you do not have access.')
+    } else {
+      setClient(data)
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => { loadClient() }, [clientId])
+
+  if (loading) return <LoadingSpinner size="lg" className="py-20" />
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+          <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+        <button
+          onClick={() => navigate('/coach/clients')}
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Clients
+        </button>
+        <div className="flex items-center gap-3 sm:ml-2">
+          <div className="w-10 h-10 rounded-full bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
+            <span className="font-semibold text-brand-700 dark:text-brand-400 text-sm">
+              {client.profiles?.full_name?.charAt(0)?.toUpperCase() || '?'}
+            </span>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">{client.profiles?.full_name || '—'}</h1>
+              <StatusBadge client={client} />
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{client.profiles?.email}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Bar */}
+      <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-800 -mx-1 px-1">
+        {TABS.map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+              activeTab === tab
+                ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab Content */}
+      <div>
+        {activeTab === 'Overview' && (
+          <OverviewTab client={client} onSaved={loadClient} />
+        )}
+        {activeTab === 'Weight' && (
+          <WeightTab clientId={client.id} />
+        )}
+        {activeTab === 'Measurements' && (
+          <MeasurementsTab clientId={client.id} />
+        )}
+        {activeTab === 'Photos' && (
+          <PhotosTab clientId={client.id} />
+        )}
+        {activeTab === 'Notes' && (
+          <NotesTab client={client} />
+        )}
+      </div>
+    </div>
+  )
+}
