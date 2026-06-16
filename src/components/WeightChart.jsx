@@ -71,10 +71,10 @@ export default function WeightChart({ data }) {
         <Line
           type="monotone"
           dataKey="weight"
-          stroke="#10b981"
+          stroke="#f472b6"
           strokeWidth={2.5}
-          dot={{ r: 4, fill: '#10b981', strokeWidth: 0 }}
-          activeDot={{ r: 6, fill: '#10b981', stroke: '#fff', strokeWidth: 2 }}
+          dot={{ r: 4, fill: '#f472b6', strokeWidth: 0 }}
+          activeDot={{ r: 6, fill: '#f472b6', stroke: '#fff', strokeWidth: 2 }}
         />
       </LineChart>
     </ResponsiveContainer>

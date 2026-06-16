@@ -86,13 +86,13 @@ export default function CoachLayout() {
   }
 
   const Sidebar = () => (
-    <aside className="flex flex-col w-64 min-h-screen bg-gray-900 dark:bg-gray-950 text-white">
+    <aside className="flex flex-col w-64 min-h-screen bg-white border-r border-pink-100 text-gray-700">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-800">
-        <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center flex-shrink-0">
-          <span className="text-sm font-bold">C</span>
+      <div className="flex items-center gap-3 px-6 py-5 border-b border-pink-100">
+        <div className="w-8 h-8 rounded-lg bg-brand-400 flex items-center justify-center flex-shrink-0">
+          <span className="text-sm font-bold text-white">C</span>
         </div>
-        <span className="font-semibold text-white">CoachHub</span>
+        <span className="font-semibold text-gray-800">CoachHub</span>
       </div>
 
       {/* Nav */}
@@ -101,12 +101,12 @@ export default function CoachLayout() {
           item.disabled ? (
             <div
               key={item.label}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-600 cursor-not-allowed select-none"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 cursor-not-allowed select-none"
             >
               {item.icon}
               <span className="text-sm">{item.label}</span>
               {item.soon && (
-                <span className="ml-auto text-xs bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded">
+                <span className="ml-auto text-xs bg-pink-50 text-pink-300 px-1.5 py-0.5 rounded-full">
                   Soon
                 </span>
               )}
@@ -120,8 +120,8 @@ export default function CoachLayout() {
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                   isActive
-                    ? 'bg-brand-500 text-white'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                    ? 'bg-pink-100 text-brand-600 font-medium'
+                    : 'text-gray-500 hover:bg-pink-50 hover:text-gray-800'
                 }`
               }
             >
@@ -133,15 +133,15 @@ export default function CoachLayout() {
       </nav>
 
       {/* User footer */}
-      <div className="px-3 py-4 border-t border-gray-800">
+      <div className="px-3 py-4 border-t border-pink-100">
         <div className="flex items-center gap-3 px-3 py-2">
-          <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center flex-shrink-0">
-            <span className="text-sm font-semibold">
+          <div className="w-8 h-8 rounded-full bg-brand-200 flex items-center justify-center flex-shrink-0">
+            <span className="text-sm font-semibold text-brand-700">
               {profile?.full_name?.charAt(0)?.toUpperCase() || 'C'}
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">
+            <p className="text-sm font-medium text-gray-800 truncate">
               {profile?.full_name || 'Coach'}
             </p>
             <p className="text-xs text-gray-400 truncate">{profile?.email}</p>
@@ -149,7 +149,7 @@ export default function CoachLayout() {
         </div>
         <button
           onClick={handleLogout}
-          className="mt-2 w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+          className="mt-2 w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-pink-50 hover:text-gray-700 transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -184,7 +184,7 @@ export default function CoachLayout() {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="flex items-center justify-between px-4 lg:px-6 py-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-30">
+        <header className="flex items-center justify-between px-4 lg:px-6 py-4 bg-white border-b border-pink-100 sticky top-0 z-30">
           <button
             onClick={() => setSidebarOpen(true)}
             className="lg:hidden p-2 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
