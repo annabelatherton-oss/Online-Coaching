@@ -37,12 +37,20 @@ export default function WeeklyTemplatesList() {
             {templates.length} template{templates.length !== 1 ? 's' : ''} — build once, assign to any client
           </p>
         </div>
-        <button onClick={() => navigate('/coach/meal-templates/new')} className="btn-primary">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New Template
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/coach/meal-templates/generate')} className="btn-secondary">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Generate 20 Weeks
+          </button>
+          <button onClick={() => navigate('/coach/meal-templates/new')} className="btn-primary">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Template
+          </button>
+        </div>
       </div>
 
       {loading ? (

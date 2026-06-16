@@ -11,6 +11,7 @@ import MealEditor from './pages/coach/MealEditor'
 import IngredientsLibrary from './pages/coach/IngredientsLibrary'
 import WeeklyTemplatesList from './pages/coach/WeeklyTemplatesList'
 import WeeklyTemplateEditor from './pages/coach/WeeklyTemplateEditor'
+import GenerateTemplates from './pages/coach/GenerateTemplates'
 import ClientLayout from './pages/client/ClientLayout'
 import ClientDashboard from './pages/client/ClientDashboard'
 import ClientProfile from './pages/client/ClientProfile'
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="meals/:mealId" element={<MealEditor />} />
             <Route path="ingredients" element={<IngredientsLibrary />} />
             <Route path="meal-templates" element={<WeeklyTemplatesList />} />
+            <Route path="meal-templates/generate" element={<GenerateTemplates />} />
             <Route path="meal-templates/new" element={<WeeklyTemplateEditor />} />
             <Route path="meal-templates/:templateId" element={<WeeklyTemplateEditor />} />
           </Route>
