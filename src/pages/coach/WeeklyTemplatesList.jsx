@@ -116,18 +116,26 @@ export default function WeeklyTemplatesList() {
               {planGroups.map(group => (
                 <div key={group.id} className="card space-y-4">
                   <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-gray-900 dark:text-white">{group.name}</h3>
+                    <div className="min-w-0 flex-1 cursor-pointer" onClick={() => navigate(`/coach/meal-templates/plans/${group.id}`)}>
+                      <h3 className="font-semibold text-gray-900 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors">{group.name}</h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                         {weekCounts[group.id] || 0} weeks · all clients follow the same week simultaneously
                       </p>
                     </div>
-                    <button
-                      onClick={() => handleDeleteGroup(group.id)}
-                      className="text-xs text-red-400 hover:text-red-600 font-medium flex-shrink-0"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <button
+                        onClick={() => navigate(`/coach/meal-templates/plans/${group.id}`)}
+                        className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteGroup(group.id)}
+                        className="text-xs text-red-400 hover:text-red-600 font-medium"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
 
                   {/* Week control */}

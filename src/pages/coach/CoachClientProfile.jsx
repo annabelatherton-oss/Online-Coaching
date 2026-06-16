@@ -20,7 +20,6 @@ function StatusBadge({ client }) {
   return <span className="badge bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">Inactive</span>
 }
 
-// ─── Overview Tab ────────────────────────────────────────────────────────────
 function OverviewTab({ client, onSaved }) {
   const [form, setForm] = useState({
     goal: client.goal || '',
@@ -71,7 +70,6 @@ function OverviewTab({ client, onSaved }) {
 
   return (
     <form onSubmit={handleSave} className="space-y-6 max-w-2xl">
-      {/* Goal */}
       <div className="card space-y-4">
         <h3 className="font-semibold text-gray-900 dark:text-white">Programme Details</h3>
         <div>
@@ -87,23 +85,11 @@ function OverviewTab({ client, onSaved }) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="label">Start date</label>
-            <input
-              className="input"
-              type="date"
-              value={form.start_date}
-              onChange={e => set('start_date', e.target.value)}
-            />
+            <input className="input" type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} />
           </div>
           <div>
             <label className="label">Access (weeks)</label>
-            <input
-              className="input"
-              type="number"
-              min={1}
-              max={52}
-              value={form.access_weeks}
-              onChange={e => set('access_weeks', e.target.value)}
-            />
+            <input className="input" type="number" min={1} max={52} value={form.access_weeks} onChange={e => set('access_weeks', e.target.value)} />
           </div>
         </div>
         <div className="text-sm text-gray-500 dark:text-gray-400">
@@ -111,9 +97,7 @@ function OverviewTab({ client, onSaved }) {
         </div>
         <div className="flex items-center gap-2">
           <input
-            id="is_paused"
-            type="checkbox"
-            checked={form.is_paused}
+            id="is_paused" type="checkbox" checked={form.is_paused}
             onChange={e => set('is_paused', e.target.checked)}
             className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500"
           />
@@ -121,53 +105,24 @@ function OverviewTab({ client, onSaved }) {
         </div>
       </div>
 
-      {/* Nutrition */}
       <div className="card space-y-4">
         <h3 className="font-semibold text-gray-900 dark:text-white">Current Nutrition Targets</h3>
         <div>
           <label className="label">Calories (kcal/day)</label>
-          <input
-            className="input"
-            type="number"
-            min={0}
-            value={form.current_calories}
-            onChange={e => set('current_calories', e.target.value)}
-            placeholder="e.g. 1800"
-          />
+          <input className="input" type="number" min={0} value={form.current_calories} onChange={e => set('current_calories', e.target.value)} placeholder="e.g. 1800" />
         </div>
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="label">Protein (g)</label>
-            <input
-              className="input"
-              type="number"
-              min={0}
-              value={form.current_protein}
-              onChange={e => set('current_protein', e.target.value)}
-              placeholder="e.g. 150"
-            />
+            <input className="input" type="number" min={0} value={form.current_protein} onChange={e => set('current_protein', e.target.value)} placeholder="e.g. 150" />
           </div>
           <div>
             <label className="label">Carbs (g)</label>
-            <input
-              className="input"
-              type="number"
-              min={0}
-              value={form.current_carbs}
-              onChange={e => set('current_carbs', e.target.value)}
-              placeholder="e.g. 200"
-            />
+            <input className="input" type="number" min={0} value={form.current_carbs} onChange={e => set('current_carbs', e.target.value)} placeholder="e.g. 200" />
           </div>
           <div>
             <label className="label">Fat (g)</label>
-            <input
-              className="input"
-              type="number"
-              min={0}
-              value={form.current_fat}
-              onChange={e => set('current_fat', e.target.value)}
-              placeholder="e.g. 70"
-            />
+            <input className="input" type="number" min={0} value={form.current_fat} onChange={e => set('current_fat', e.target.value)} placeholder="e.g. 70" />
           </div>
         </div>
       </div>
@@ -188,23 +143,15 @@ function OverviewTab({ client, onSaved }) {
   )
 }
 
-// ─── Weight Tab ───────────────────────────────────────────────────────────────
 function WeightTab({ clientId }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({
-    date: new Date().toISOString().split('T')[0],
-    weight_kg: '',
-  })
+  const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], weight_kg: '' })
   const [saving, setSaving] = useState(false)
 
   async function load() {
-    const { data } = await supabase
-      .from('weight_entries')
-      .select('*')
-      .eq('client_id', clientId)
-      .order('recorded_at', { ascending: false })
+    const { data } = await supabase.from('weight_entries').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false })
     setEntries(data || [])
     setLoading(false)
   }
@@ -214,11 +161,7 @@ function WeightTab({ clientId }) {
   async function addEntry(e) {
     e.preventDefault()
     setSaving(true)
-    await supabase.from('weight_entries').insert({
-      client_id: clientId,
-      weight_kg: parseFloat(form.weight_kg),
-      recorded_at: form.date,
-    })
+    await supabase.from('weight_entries').insert({ client_id: clientId, weight_kg: parseFloat(form.weight_kg), recorded_at: form.date })
     setSaving(false)
     setShowForm(false)
     setForm({ date: new Date().toISOString().split('T')[0], weight_kg: '' })
@@ -238,13 +181,11 @@ function WeightTab({ clientId }) {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      {/* Chart */}
       <div className="card">
         <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Weight Trend</h3>
         <WeightChart data={entries} />
       </div>
 
-      {/* Add entry */}
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-gray-900 dark:text-white">Entries</h3>
         <button onClick={() => setShowForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">
@@ -256,34 +197,16 @@ function WeightTab({ clientId }) {
         <form onSubmit={addEntry} className="card flex flex-col sm:flex-row gap-3 items-end">
           <div className="flex-1">
             <label className="label">Date</label>
-            <input
-              className="input"
-              type="date"
-              required
-              value={form.date}
-              onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-            />
+            <input className="input" type="date" required value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
           </div>
           <div className="flex-1">
             <label className="label">Weight (kg)</label>
-            <input
-              className="input"
-              type="number"
-              step="0.1"
-              min="0"
-              required
-              value={form.weight_kg}
-              onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))}
-              placeholder="e.g. 72.5"
-            />
+            <input className="input" type="number" step="0.1" min="0" required value={form.weight_kg} onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder="e.g. 72.5" />
           </div>
-          <button type="submit" disabled={saving} className="btn-primary whitespace-nowrap">
-            {saving ? 'Saving…' : 'Add'}
-          </button>
+          <button type="submit" disabled={saving} className="btn-primary whitespace-nowrap">{saving ? 'Saving…' : 'Add'}</button>
         </form>
       )}
 
-      {/* Table */}
       {entries.length === 0 ? (
         <div className="card text-center py-10">
           <p className="text-gray-400 dark:text-gray-500 text-sm">No weight entries yet. Add the first one above.</p>
@@ -304,12 +227,7 @@ function WeightTab({ clientId }) {
                   <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDate(entry.recorded_at)}</td>
                   <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{entry.weight_kg} kg</td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => deleteEntry(entry.id)}
-                      className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400"
-                    >
-                      Delete
-                    </button>
+                    <button onClick={() => deleteEntry(entry.id)} className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400">Delete</button>
                   </td>
                 </tr>
               ))}
@@ -321,7 +239,6 @@ function WeightTab({ clientId }) {
   )
 }
 
-// ─── Measurements Tab ────────────────────────────────────────────────────────
 function MeasurementsTab({ clientId }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
@@ -333,11 +250,7 @@ function MeasurementsTab({ clientId }) {
   const [saving, setSaving] = useState(false)
 
   async function load() {
-    const { data } = await supabase
-      .from('measurements')
-      .select('*')
-      .eq('client_id', clientId)
-      .order('recorded_at', { ascending: false })
+    const { data } = await supabase.from('measurements').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false })
     setEntries(data || [])
     setLoading(false)
   }
@@ -381,7 +294,6 @@ function MeasurementsTab({ clientId }) {
 
   return (
     <div className="space-y-6">
-      {/* Latest summary card */}
       {latest && (
         <div className="card">
           <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Latest Measurements — {fmtDate(latest.recorded_at)}</h3>
@@ -402,7 +314,6 @@ function MeasurementsTab({ clientId }) {
         </div>
       )}
 
-      {/* Add button */}
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-gray-900 dark:text-white">History</h3>
         <button onClick={() => setShowForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">
@@ -414,13 +325,7 @@ function MeasurementsTab({ clientId }) {
         <form onSubmit={addEntry} className="card space-y-4">
           <div>
             <label className="label">Date</label>
-            <input
-              className="input"
-              type="date"
-              required
-              value={form.date}
-              onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-            />
+            <input className="input" type="date" required value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {[
@@ -432,28 +337,17 @@ function MeasurementsTab({ clientId }) {
             ].map(({ key, label }) => (
               <div key={key}>
                 <label className="label">{label}</label>
-                <input
-                  className="input"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={form[key]}
-                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                  placeholder="—"
-                />
+                <input className="input" type="number" step="0.1" min="0" value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} placeholder="—" />
               </div>
             ))}
           </div>
           <div className="flex gap-3">
             <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
-            <button type="submit" disabled={saving} className="btn-primary">
-              {saving ? 'Saving…' : 'Save Measurements'}
-            </button>
+            <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving…' : 'Save Measurements'}</button>
           </div>
         </form>
       )}
 
-      {/* History table */}
       {entries.length === 0 ? (
         <div className="card text-center py-10">
           <p className="text-gray-400 dark:text-gray-500 text-sm">No measurements yet.</p>
@@ -463,12 +357,9 @@ function MeasurementsTab({ clientId }) {
           <table className="w-full text-sm whitespace-nowrap">
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-800">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Chest</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Waist</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Hips</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Thighs</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Arms</th>
+                {['Date','Chest','Waist','Hips','Thighs','Arms'].map(h => (
+                  <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+                ))}
                 <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
               </tr>
             </thead>
@@ -482,12 +373,7 @@ function MeasurementsTab({ clientId }) {
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmtVal(e.thighs_cm)}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmtVal(e.arms_cm)}</td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => deleteEntry(e.id)}
-                      className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400"
-                    >
-                      Delete
-                    </button>
+                    <button onClick={() => deleteEntry(e.id)} className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400">Delete</button>
                   </td>
                 </tr>
               ))}
@@ -499,7 +385,6 @@ function MeasurementsTab({ clientId }) {
   )
 }
 
-// ─── Photos Tab ───────────────────────────────────────────────────────────────
 function PhotosTab({ clientId }) {
   const [photos, setPhotos] = useState([])
   const [loading, setLoading] = useState(true)
@@ -509,11 +394,7 @@ function PhotosTab({ clientId }) {
   const fileRef = useRef()
 
   async function load() {
-    const { data } = await supabase
-      .from('progress_photos')
-      .select('*')
-      .eq('client_id', clientId)
-      .order('recorded_at', { ascending: false })
+    const { data } = await supabase.from('progress_photos').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false })
     setPhotos(data || [])
     setLoading(false)
   }
@@ -528,26 +409,10 @@ function PhotosTab({ clientId }) {
 
     for (const file of files) {
       const path = `${clientId}/${Date.now()}-${file.name}`
-      const { error: uploadErr } = await supabase.storage
-        .from('progress-photos')
-        .upload(path, file)
-
-      if (uploadErr) {
-        console.error(uploadErr)
-        setStorageError(true)
-        setUploading(false)
-        return
-      }
-
-      const { data: urlData } = supabase.storage
-        .from('progress-photos')
-        .getPublicUrl(path)
-
-      await supabase.from('progress_photos').insert({
-        client_id: clientId,
-        photo_url: urlData.publicUrl,
-        recorded_at: new Date().toISOString().split('T')[0],
-      })
+      const { error: uploadErr } = await supabase.storage.from('progress-photos').upload(path, file)
+      if (uploadErr) { console.error(uploadErr); setStorageError(true); setUploading(false); return }
+      const { data: urlData } = supabase.storage.from('progress-photos').getPublicUrl(path)
+      await supabase.from('progress_photos').insert({ client_id: clientId, photo_url: urlData.publicUrl, recorded_at: new Date().toISOString().split('T')[0] })
     }
 
     setUploading(false)
@@ -556,7 +421,6 @@ function PhotosTab({ clientId }) {
   }
 
   async function deletePhoto(photo) {
-    // Extract storage path from URL
     const url = photo.photo_url
     const bucketMarker = '/progress-photos/'
     const idx = url.indexOf(bucketMarker)
@@ -579,33 +443,18 @@ function PhotosTab({ clientId }) {
     <div className="space-y-6">
       {storageError && (
         <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
-          <p className="text-sm text-yellow-800 dark:text-yellow-300">
-            Photo storage not configured yet — see SETUP.md
-          </p>
+          <p className="text-sm text-yellow-800 dark:text-yellow-300">Photo storage not configured yet — see SETUP.md</p>
         </div>
       )}
 
-      {/* Upload button */}
       <div className="flex items-center gap-4">
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          className="btn-primary"
-        >
+        <button onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-primary">
           {uploading ? 'Uploading…' : 'Upload Photos'}
         </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={handleUpload}
-        />
+        <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleUpload} />
         <p className="text-xs text-gray-400">Accepts JPG, PNG, HEIC, WebP</p>
       </div>
 
-      {/* Grid */}
       {photos.length === 0 ? (
         <div className="card text-center py-10">
           <p className="text-gray-400 dark:text-gray-500 text-sm">No progress photos yet. Upload the first one above.</p>
@@ -614,21 +463,12 @@ function PhotosTab({ clientId }) {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {photos.map(photo => (
             <div key={photo.id} className="group relative rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-              <img
-                src={photo.photo_url}
-                alt={photo.caption || 'Progress photo'}
-                className="w-full aspect-square object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                onClick={() => setLightbox(photo)}
-              />
+              <img src={photo.photo_url} alt={photo.caption || 'Progress photo'} className="w-full aspect-square object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightbox(photo)} />
               <div className="p-2">
                 <p className="text-xs text-gray-500 dark:text-gray-400">{fmtDate(photo.recorded_at)}</p>
                 {photo.caption && <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 truncate">{photo.caption}</p>}
               </div>
-              <button
-                onClick={() => deletePhoto(photo)}
-                className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Delete photo"
-              >
+              <button onClick={() => deletePhoto(photo)} className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity" title="Delete photo">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -638,26 +478,12 @@ function PhotosTab({ clientId }) {
         </div>
       )}
 
-      {/* Lightbox */}
       {lightbox && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setLightbox(null)}
-        >
-          <div
-            className="relative max-w-4xl max-h-full"
-            onClick={e => e.stopPropagation()}
-          >
-            <img
-              src={lightbox.photo_url}
-              alt={lightbox.caption || 'Progress photo'}
-              className="max-w-full max-h-[85vh] object-contain rounded-xl"
-            />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightbox(null)}>
+          <div className="relative max-w-4xl max-h-full" onClick={e => e.stopPropagation()}>
+            <img src={lightbox.photo_url} alt={lightbox.caption || 'Progress photo'} className="max-w-full max-h-[85vh] object-contain rounded-xl" />
             <div className="mt-2 text-center text-white/80 text-sm">{fmtDate(lightbox.recorded_at)}{lightbox.caption ? ` — ${lightbox.caption}` : ''}</div>
-            <button
-              onClick={() => setLightbox(null)}
-              className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80"
-            >
+            <button onClick={() => setLightbox(null)} className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -669,7 +495,6 @@ function PhotosTab({ clientId }) {
   )
 }
 
-// ─── Notes Tab ────────────────────────────────────────────────────────────────
 function NotesTab({ client }) {
   const [notes, setNotes] = useState(client.notes || '')
   const [saving, setSaving] = useState(false)
@@ -678,10 +503,7 @@ function NotesTab({ client }) {
   async function handleBlur() {
     if (notes === (client.notes || '')) return
     setSaving(true)
-    await supabase
-      .from('clients')
-      .update({ notes })
-      .eq('id', client.id)
+    await supabase.from('clients').update({ notes }).eq('id', client.id)
     setSaving(false)
     setSavedMsg(true)
     setTimeout(() => setSavedMsg(false), 2000)
@@ -706,7 +528,7 @@ function NotesTab({ client }) {
   )
 }
 
-// ─── Meal Plan Tab ────────────────────────────────────────────────────────────
+// Meal Plan helpers
 
 const MEAL_SLOTS = [
   { key: 'breakfast1', label: 'Breakfast A', cat: 'breakfast' },
@@ -717,29 +539,119 @@ const MEAL_SLOTS = [
   { key: 'dinner2',    label: 'Dinner B',    cat: 'dinner' },
 ]
 
+function mealTotal(mealId, mealMap) {
+  if (!mealId || !mealMap[mealId]) return { cal: 0, prot: 0, carb: 0, fat: 0 }
+  return (mealMap[mealId].meal_ingredients || []).reduce(
+    (acc, ing) => ({
+      cal:  acc.cal  + (parseFloat(ing.calories)  || 0),
+      prot: acc.prot + (parseFloat(ing.protein_g) || 0),
+      carb: acc.carb + (parseFloat(ing.carbs_g)   || 0),
+      fat:  acc.fat  + (parseFloat(ing.fat_g)     || 0),
+    }),
+    { cal: 0, prot: 0, carb: 0, fat: 0 }
+  )
+}
+
+function addTotals(a, b) {
+  return { cal: a.cal + b.cal, prot: a.prot + b.prot, carb: a.carb + b.carb, fat: a.fat + b.fat }
+}
+
+function buildSuggestion({ grandTotal, calorieTarget, protTarget, carbTarget, fatTarget, statics, mealMap }) {
+  if (!calorieTarget) return null
+  const gap = calorieTarget - grandTotal.cal
+  if (Math.abs(gap) < 50) return null
+
+  const suggestions = []
+  for (const { label, mealId } of statics) {
+    if (!mealId) continue
+    for (const ing of (mealMap[mealId]?.meal_ingredients || [])) {
+      const qty  = parseFloat(ing.quantity_g) || 0
+      const cal  = parseFloat(ing.calories)   || 0
+      const prot = parseFloat(ing.protein_g)  || 0
+      const carb = parseFloat(ing.carbs_g)    || 0
+      const fat  = parseFloat(ing.fat_g)      || 0
+      if (!qty || !cal) continue
+      const calPerG = cal / qty
+
+      if (gap < 0) {
+        const newQty = qty + gap / calPerG
+        if (newQty < 10) {
+          suggestions.push({
+            text: `Remove ${ing.name} from ${label}`,
+            detail: `Saves ${Math.round(cal)} kcal · ${Math.round(prot)}g protein`,
+            calAfter:  grandTotal.cal  - cal,
+            protAfter: grandTotal.prot - prot,
+            carbAfter: grandTotal.carb - carb,
+            fatAfter:  grandTotal.fat  - fat,
+          })
+        } else {
+          const dg = newQty - qty
+          suggestions.push({
+            text: `Reduce ${ing.name} in ${label} from ${qty}g to ${Math.round(newQty)}g`,
+            detail: `Saves ~${Math.round(Math.abs(gap))} kcal`,
+            calAfter:  grandTotal.cal  + gap,
+            protAfter: grandTotal.prot + dg * prot / qty,
+            carbAfter: grandTotal.carb + dg * carb / qty,
+            fatAfter:  grandTotal.fat  + dg * fat  / qty,
+          })
+        }
+      } else {
+        const dg = gap / calPerG
+        suggestions.push({
+          text: `Increase ${ing.name} in ${label} from ${qty}g to ${Math.round(qty + dg)}g`,
+          detail: `Adds ~${Math.round(gap)} kcal · +${Math.round(Math.abs(dg * prot / qty))}g protein`,
+          calAfter:  grandTotal.cal  + gap,
+          protAfter: grandTotal.prot + dg * prot / qty,
+          carbAfter: grandTotal.carb + dg * carb / qty,
+          fatAfter:  grandTotal.fat  + dg * fat  / qty,
+        })
+      }
+    }
+  }
+  if (!suggestions.length) return null
+
+  return suggestions.sort((a, b) => {
+    const dCalA = Math.abs(calorieTarget - a.calAfter)
+    const dCalB = Math.abs(calorieTarget - b.calAfter)
+    if (Math.abs(dCalA - dCalB) > 5) return dCalA - dCalB
+    if (protTarget) {
+      const dPA = Math.abs(protTarget - a.protAfter), dPB = Math.abs(protTarget - b.protAfter)
+      if (Math.abs(dPA - dPB) > 2) return dPA - dPB
+    }
+    if (carbTarget) {
+      const dCA = Math.abs(carbTarget - a.carbAfter), dCB = Math.abs(carbTarget - b.carbAfter)
+      if (Math.abs(dCA - dCB) > 2) return dCA - dCB
+    }
+    if (fatTarget) {
+      const dFA = Math.abs(fatTarget - a.fatAfter), dFB = Math.abs(fatTarget - b.fatAfter)
+      return dFA - dFB
+    }
+    return 0
+  })[0]
+}
+
+// Meal Plan Tab
+
 function MealPlanTab({ client, coachId }) {
   const [planGroups, setPlanGroups] = useState([])
   const [assignment, setAssignment] = useState(null)
   const [planGroup, setPlanGroup] = useState(null)
-  // Current week's meal slots: merged from template + any client-specific overrides
-  const [editedSlots, setEditedSlots] = useState({})   // { slotKey: meal_id }
-  const [templateSlots, setTemplateSlots] = useState({}) // { slotKey: meal_id } from template
+  const [editedSlots, setEditedSlots] = useState({})
+  const [templateSlots, setTemplateSlots] = useState({})
   const [slotsDirty, setSlotsDirty] = useState(false)
   const [savingSlots, setSavingSlots] = useState(false)
   const [repeating, setRepeating] = useState(false)
-  // All meals for dropdowns
   const [mealsByCategory, setMealsByCategory] = useState({})
+  const [mealMap, setMealMap] = useState({})
+  const [expandedSlots, setExpandedSlots] = useState(new Set())
+  const [staticEdits, setStaticEdits] = useState({ preworkout_meal_id: null, evening_snack_meal_id: null })
+  const [staticDirty, setStaticDirty] = useState(false)
+  const [savingStatic, setSavingStatic] = useState(false)
   const [loading, setLoading] = useState(true)
-  // Assignment form
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({
-    plan_group_id: '',
-    calorie_target: client.current_calories || '',
-    starting_week: '',
-  })
+  const [form, setForm] = useState({ plan_group_id: '', calorie_target: client.current_calories || '', starting_week: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  // Week override inline
   const [showOverride, setShowOverride] = useState(false)
   const [overrideWeek, setOverrideWeek] = useState('')
 
@@ -776,23 +688,33 @@ function MealPlanTab({ client, coachId }) {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase.from('meals').select('id, name, category').eq('coach_id', coachId).order('name'),
+      supabase
+        .from('meals')
+        .select('id, name, category, meal_ingredients(name, quantity_g, calories, protein_g, carbs_g, fat_g)')
+        .eq('coach_id', coachId)
+        .order('name'),
     ])
 
     const allGroups = groups || []
     setPlanGroups(allGroups)
     setAssignment(asgn || null)
 
-    const byCat = {}
+    const map = {}, byCat = {}
     for (const m of (mealsData || [])) {
+      map[m.id] = m
       ;(byCat[m.category] = byCat[m.category] || []).push(m)
     }
+    setMealMap(map)
     setMealsByCategory(byCat)
 
     if (asgn) {
       const pg = allGroups.find(g => g.id === asgn.plan_group_id) || null
       setPlanGroup(pg)
       setOverrideWeek(asgn.week_override ?? '')
+      setStaticEdits({
+        preworkout_meal_id: asgn.preworkout_meal_id || null,
+        evening_snack_meal_id: asgn.evening_snack_meal_id || null,
+      })
       if (pg) {
         const ew = asgn.week_override ?? pg.current_week
         await loadWeekSlots(asgn, ew, pg.id)
@@ -808,6 +730,28 @@ function MealPlanTab({ client, coachId }) {
   const isOverridden = assignment?.week_override != null
   const hasCustom = MEAL_SLOTS.some(s => editedSlots[s.key] && editedSlots[s.key] !== templateSlots[s.key])
 
+  const rotatingTotal = MEAL_SLOTS.reduce((acc, s) => addTotals(acc, mealTotal(editedSlots[s.key], mealMap)), { cal: 0, prot: 0, carb: 0, fat: 0 })
+  const preworkoutTotal = mealTotal(staticEdits.preworkout_meal_id, mealMap)
+  const snackTotal = mealTotal(staticEdits.evening_snack_meal_id, mealMap)
+  const grandTotal = addTotals(addTotals(rotatingTotal, preworkoutTotal), snackTotal)
+
+  const suggestion = buildSuggestion({
+    grandTotal,
+    calorieTarget: assignment?.calorie_target || 0,
+    protTarget: client.current_protein || 0,
+    carbTarget: client.current_carbs || 0,
+    fatTarget: client.current_fat || 0,
+    statics: [
+      { label: 'Pre-workout', mealId: staticEdits.preworkout_meal_id },
+      { label: 'Evening snack', mealId: staticEdits.evening_snack_meal_id },
+    ],
+    mealMap,
+  })
+
+  function toggleSlot(key) {
+    setExpandedSlots(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
+  }
+
   function changeSlot(key, mealId) {
     setEditedSlots(prev => ({ ...prev, [key]: mealId || null }))
     setSlotsDirty(true)
@@ -822,6 +766,17 @@ function MealPlanTab({ client, coachId }) {
     )
     setSavingSlots(false)
     setSlotsDirty(false)
+  }
+
+  async function handleSaveStaticMeals() {
+    if (!assignment) return
+    setSavingStatic(true)
+    await supabase.from('client_plan_assignments').update({
+      preworkout_meal_id: staticEdits.preworkout_meal_id || null,
+      evening_snack_meal_id: staticEdits.evening_snack_meal_id || null,
+    }).eq('id', assignment.id)
+    setSavingStatic(false)
+    setStaticDirty(false)
   }
 
   async function handleRepeatLastWeek() {
@@ -844,8 +799,7 @@ function MealPlanTab({ client, coachId }) {
     ])
     const prevTSlots = {}
     for (const s of (prevTmpl?.template_meal_slots || [])) prevTSlots[s.slot_type] = s.meal_id
-    const prevMerged = { ...prevTSlots, ...(prevCwm?.slots || {}) }
-    setEditedSlots(prevMerged)
+    setEditedSlots({ ...prevTSlots, ...(prevCwm?.slots || {}) })
     setSlotsDirty(true)
     setRepeating(false)
   }
@@ -894,24 +848,61 @@ function MealPlanTab({ client, coachId }) {
 
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
+  const allMealsFlat = Object.values(mealsByCategory).flat().sort((a, b) => a.name.localeCompare(b.name))
+
+  function ChevronBtn({ slotKey }) {
+    const open = expandedSlots.has(slotKey)
+    return (
+      <button
+        onClick={() => toggleSlot(slotKey)}
+        className="flex-shrink-0 text-gray-300 hover:text-gray-500 dark:hover:text-gray-400 transition-colors p-0.5"
+      >
+        <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    )
+  }
+
+  function IngredientList({ mealId }) {
+    const ings = mealMap[mealId]?.meal_ingredients || []
+    if (!ings.length) return <p className="text-xs text-gray-400 italic">No ingredients recorded</p>
+    const t = mealTotal(mealId, mealMap)
+    return (
+      <div className="space-y-1">
+        {ings.map((ing, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <span className="flex-1 truncate">{ing.name}</span>
+            <span className="tabular-nums w-10 text-right text-gray-400">{ing.quantity_g}g</span>
+            <span className="tabular-nums w-16 text-right">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
+            <span className="tabular-nums w-12 text-right">{Math.round(parseFloat(ing.protein_g) || 0)}g P</span>
+          </div>
+        ))}
+        {t.cal > 0 && (
+          <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800 pt-1.5 mt-1">
+            <span className="flex-1">Meal total</span>
+            <span className="tabular-nums w-16 text-right">{Math.round(t.cal)} kcal</span>
+            <span className="tabular-nums w-12 text-right">{Math.round(t.prot)}g P</span>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5 max-w-2xl">
 
-      {/* ── No assignment ─────────────────────────────────── */}
       {!assignment && !showForm && (
         <div className="card text-center py-12">
           <p className="text-gray-400 dark:text-gray-500 text-sm mb-4">No meal plan assigned yet.</p>
           {planGroups.length === 0 ? (
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              Generate a 20-week plan from the Templates page first.
-            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Generate a 20-week plan from the Templates page first.</p>
           ) : (
             <button onClick={() => setShowForm(true)} className="btn-primary">Assign Meal Plan</button>
           )}
         </div>
       )}
 
-      {/* ── Assign / change form ──────────────────────────── */}
       {showForm && (
         <form onSubmit={handleAssign} className="card space-y-4">
           <h3 className="font-semibold text-gray-900 dark:text-white">
@@ -919,8 +910,7 @@ function MealPlanTab({ client, coachId }) {
           </h3>
           <div>
             <label className="label">Plan</label>
-            <select
-              className="input" required value={form.plan_group_id}
+            <select className="input" required value={form.plan_group_id}
               onChange={e => {
                 const pg = planGroups.find(g => g.id === e.target.value)
                 setForm(f => ({ ...f, plan_group_id: e.target.value, starting_week: pg?.current_week ?? '' }))
@@ -935,8 +925,7 @@ function MealPlanTab({ client, coachId }) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label">Calorie target (kcal/day)</label>
-              <input
-                className="input" type="number" min="800" max="5000" step="50"
+              <input className="input" type="number" min="800" max="5000" step="50"
                 value={form.calorie_target}
                 onChange={e => setForm(f => ({ ...f, calorie_target: e.target.value }))}
                 placeholder="e.g. 1800"
@@ -944,10 +933,7 @@ function MealPlanTab({ client, coachId }) {
             </div>
             <div>
               <label className="label">Starting week</label>
-              <select
-                className="input" value={form.starting_week}
-                onChange={e => setForm(f => ({ ...f, starting_week: e.target.value }))}
-              >
+              <select className="input" value={form.starting_week} onChange={e => setForm(f => ({ ...f, starting_week: e.target.value }))}>
                 <option value="">Follow plan's current week</option>
                 {Array.from({ length: 20 }, (_, i) => (
                   <option key={i + 1} value={i + 1}>Week {i + 1}</option>
@@ -965,34 +951,26 @@ function MealPlanTab({ client, coachId }) {
         </form>
       )}
 
-      {/* ── Active assignment ─────────────────────────────── */}
       {assignment && planGroup && (
         <>
-          {/* Header card */}
+          {/* Plan header */}
           <div className="card space-y-4">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">
-                  {assignment.plan_group_name || planGroup.name}
-                </h3>
+                <h3 className="font-semibold text-gray-900 dark:text-white">{assignment.plan_group_name || planGroup.name}</h3>
                 {assignment.calorie_target && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                    {assignment.calorie_target} kcal / day
-                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{assignment.calorie_target} kcal / day</p>
                 )}
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
                 <button
                   onClick={() => { setForm({ plan_group_id: assignment.plan_group_id, calorie_target: assignment.calorie_target || '', starting_week: '' }); setShowForm(true); setShowOverride(false) }}
                   className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
-                >
-                  Change
-                </button>
+                >Change</button>
                 <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
               </div>
             </div>
 
-            {/* Week status */}
             <div className="flex items-center gap-5 py-3 px-4 rounded-xl bg-pink-50/60 dark:bg-pink-900/10">
               <div className="text-center">
                 <p className="text-4xl font-bold text-brand-600 dark:text-brand-400">{effectiveWeek ?? '—'}</p>
@@ -1006,7 +984,7 @@ function MealPlanTab({ client, coachId }) {
                     </p>
                     <p className="text-xs text-gray-400">Plan is on Week {globalWeek}</p>
                     <button onClick={handleClearOverride} className="text-xs text-brand-500 hover:text-brand-700 font-medium">
-                      Clear → follow plan (Week {globalWeek})
+                      Clear &rarr; follow plan (Week {globalWeek})
                     </button>
                   </>
                 ) : (
@@ -1015,9 +993,7 @@ function MealPlanTab({ client, coachId }) {
                     <button
                       onClick={() => { setOverrideWeek(globalWeek ?? 1); setShowOverride(true) }}
                       className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium"
-                    >
-                      Put on a different week
-                    </button>
+                    >Put on a different week</button>
                   </>
                 )}
               </div>
@@ -1026,10 +1002,7 @@ function MealPlanTab({ client, coachId }) {
             {showOverride && (
               <form onSubmit={handleSaveOverride} className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/20">
                 <span className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">Put on week:</span>
-                <select
-                  className="input py-1" value={overrideWeek}
-                  onChange={e => setOverrideWeek(e.target.value)}
-                >
+                <select className="input py-1" value={overrideWeek} onChange={e => setOverrideWeek(e.target.value)}>
                   {Array.from({ length: 20 }, (_, i) => (
                     <option key={i + 1} value={i + 1}>Week {i + 1}</option>
                   ))}
@@ -1040,24 +1013,19 @@ function MealPlanTab({ client, coachId }) {
             )}
           </div>
 
-          {/* ── Meal slots for this week ─────────────────── */}
+          {/* Rotating meal slots */}
           <div className="card space-y-0 p-0 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Week {effectiveWeek} meals
-                </h3>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Week {effectiveWeek} meals</h3>
                 {hasCustom && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">
-                    Customised
-                  </span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">Customised</span>
                 )}
               </div>
               <button
                 onClick={handleRepeatLastWeek}
                 disabled={repeating || effectiveWeek == null}
                 className="btn-secondary text-xs py-1.5 px-3"
-                title={`Copy Week ${effectiveWeek != null && effectiveWeek > 1 ? effectiveWeek - 1 : 20} meals to this week`}
               >
                 {repeating ? 'Loading…' : `← Repeat Week ${effectiveWeek != null && effectiveWeek > 1 ? effectiveWeek - 1 : 20}`}
               </button>
@@ -1068,28 +1036,39 @@ function MealPlanTab({ client, coachId }) {
                 const currentId = editedSlots[slot.key] || ''
                 const options = mealsByCategory[slot.cat] || []
                 const isChanged = currentId !== (templateSlots[slot.key] || '')
+                const isExpanded = expandedSlots.has(slot.key)
                 return (
-                  <div key={slot.key} className="flex items-center gap-3 px-4 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
-                    <span className="w-28 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-                      {slot.label}
-                    </span>
-                    <select
-                      className={`flex-1 text-sm bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0 ${isChanged ? 'text-orange-600 dark:text-orange-400 font-medium' : 'text-gray-800 dark:text-gray-200'}`}
-                      value={currentId}
-                      onChange={e => changeSlot(slot.key, e.target.value)}
-                    >
-                      <option value="">— None —</option>
-                      {options.map(m => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
-                      ))}
-                    </select>
-                    {isChanged && (
-                      <span className="flex-shrink-0 text-xs text-orange-400 dark:text-orange-500">changed</span>
+                  <div key={slot.key}>
+                    <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
+                      <ChevronBtn slotKey={slot.key} />
+                      <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{slot.label}</span>
+                      <select
+                        className={`flex-1 text-sm bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0 ${isChanged ? 'text-orange-600 dark:text-orange-400 font-medium' : 'text-gray-800 dark:text-gray-200'}`}
+                        value={currentId}
+                        onChange={e => changeSlot(slot.key, e.target.value)}
+                      >
+                        <option value="">— None —</option>
+                        {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                      {isChanged && <span className="flex-shrink-0 text-xs text-orange-400 dark:text-orange-500">changed</span>}
+                    </div>
+                    {isExpanded && currentId && (
+                      <div className="ml-9 px-3 pb-3">
+                        <IngredientList mealId={currentId} />
+                      </div>
                     )}
                   </div>
                 )
               })}
             </div>
+
+            {rotatingTotal.cal > 0 && (
+              <div className="px-4 py-2.5 bg-gray-50/60 dark:bg-gray-800/30 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2">
+                <span className="flex-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Subtotal (6 meals)</span>
+                <span className="tabular-nums text-sm font-semibold text-gray-700 dark:text-gray-200">{Math.round(rotatingTotal.cal)} kcal</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(rotatingTotal.prot)}g P &middot; {Math.round(rotatingTotal.carb)}g C &middot; {Math.round(rotatingTotal.fat)}g F</span>
+              </div>
+            )}
 
             {slotsDirty && (
               <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 bg-gray-50/50 dark:bg-gray-800/30">
@@ -1099,19 +1078,111 @@ function MealPlanTab({ client, coachId }) {
                 <button
                   onClick={() => { setEditedSlots({ ...templateSlots }); setSlotsDirty(false) }}
                   className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                >
-                  Reset to template
-                </button>
+                >Reset to template</button>
               </div>
             )}
           </div>
+
+          {/* Static meals */}
+          <div className="card space-y-0 p-0 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Static Meals</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Same every week — not part of the rotation</p>
+            </div>
+
+            {[
+              { key: 'preworkout_meal_id', label: 'Pre-workout' },
+              { key: 'evening_snack_meal_id', label: 'Evening snack' },
+            ].map(({ key, label }) => {
+              const mealId = staticEdits[key] || ''
+              const isExpanded = expandedSlots.has(key)
+              return (
+                <div key={key} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
+                  <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
+                    <ChevronBtn slotKey={key} />
+                    <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label}</span>
+                    <select
+                      className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
+                      value={mealId}
+                      onChange={e => { setStaticEdits(prev => ({ ...prev, [key]: e.target.value || null })); setStaticDirty(true) }}
+                    >
+                      <option value="">— None —</option>
+                      {allMealsFlat.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </select>
+                  </div>
+                  {isExpanded && mealId && (
+                    <div className="ml-9 px-3 pb-3">
+                      <IngredientList mealId={mealId} />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {staticDirty && (
+              <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 bg-gray-50/50 dark:bg-gray-800/30">
+                <button onClick={handleSaveStaticMeals} disabled={savingStatic} className="btn-primary py-1.5 px-4 text-sm">
+                  {savingStatic ? 'Saving…' : 'Save static meals'}
+                </button>
+                <button
+                  onClick={() => {
+                    setStaticEdits({ preworkout_meal_id: assignment?.preworkout_meal_id || null, evening_snack_meal_id: assignment?.evening_snack_meal_id || null })
+                    setStaticDirty(false)
+                  }}
+                  className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                >Cancel</button>
+              </div>
+            )}
+          </div>
+
+          {/* Daily totals + suggestion */}
+          {(grandTotal.cal > 0 || assignment?.calorie_target) && (
+            <div className="card space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Daily total</span>
+                <div className="text-right">
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{Math.round(grandTotal.cal)} kcal</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    {Math.round(grandTotal.prot)}g P &middot; {Math.round(grandTotal.carb)}g C &middot; {Math.round(grandTotal.fat)}g F
+                  </p>
+                </div>
+              </div>
+
+              {assignment?.calorie_target && (
+                <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-100 dark:border-gray-800">
+                  <span className="text-gray-500 dark:text-gray-400">Target</span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {assignment.calorie_target} kcal
+                    {client.current_protein ? ` · ${client.current_protein}g P` : ''}
+                    {client.current_carbs ? ` · ${client.current_carbs}g C` : ''}
+                    {client.current_fat ? ` · ${client.current_fat}g F` : ''}
+                  </span>
+                </div>
+              )}
+
+              {assignment?.calorie_target && Math.abs(assignment.calorie_target - grandTotal.cal) >= 50 && (
+                <p className={`text-sm font-medium ${grandTotal.cal > assignment.calorie_target ? 'text-orange-500' : 'text-blue-500'}`}>
+                  {grandTotal.cal > assignment.calorie_target
+                    ? `${Math.round(grandTotal.cal - assignment.calorie_target)} kcal over target`
+                    : `${Math.round(assignment.calorie_target - grandTotal.cal)} kcal under target`}
+                </p>
+              )}
+
+              {suggestion && (
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/15 border border-amber-100 dark:border-amber-900/30">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Suggestion</p>
+                  <p className="text-sm text-amber-800 dark:text-amber-300">{suggestion.text}</p>
+                  <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">{suggestion.detail}</p>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
   )
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function CoachClientProfile() {
   const { clientId } = useParams()
   const navigate = useNavigate()
@@ -1158,7 +1229,6 @@ export default function CoachClientProfile() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
         <button
           onClick={() => navigate('/coach/clients')}
@@ -1185,7 +1255,6 @@ export default function CoachClientProfile() {
         </div>
       </div>
 
-      {/* Tab Bar */}
       <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-800 -mx-1 px-1">
         {TABS.map(tab => (
           <button
@@ -1202,26 +1271,13 @@ export default function CoachClientProfile() {
         ))}
       </div>
 
-      {/* Tab Content */}
       <div>
-        {activeTab === 'Overview' && (
-          <OverviewTab client={client} onSaved={loadClient} />
-        )}
-        {activeTab === 'Meal Plan' && (
-          <MealPlanTab client={client} coachId={profile.id} />
-        )}
-        {activeTab === 'Weight' && (
-          <WeightTab clientId={client.id} />
-        )}
-        {activeTab === 'Measurements' && (
-          <MeasurementsTab clientId={client.id} />
-        )}
-        {activeTab === 'Photos' && (
-          <PhotosTab clientId={client.id} />
-        )}
-        {activeTab === 'Notes' && (
-          <NotesTab client={client} />
-        )}
+        {activeTab === 'Overview' && <OverviewTab client={client} onSaved={loadClient} />}
+        {activeTab === 'Meal Plan' && <MealPlanTab client={client} coachId={profile.id} />}
+        {activeTab === 'Weight' && <WeightTab clientId={client.id} />}
+        {activeTab === 'Measurements' && <MeasurementsTab clientId={client.id} />}
+        {activeTab === 'Photos' && <PhotosTab clientId={client.id} />}
+        {activeTab === 'Notes' && <NotesTab client={client} />}
       </div>
     </div>
   )
