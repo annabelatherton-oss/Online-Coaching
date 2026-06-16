@@ -528,7 +528,7 @@ function NotesTab({ client }) {
   )
 }
 
-// Meal Plan helpers
+// ─── Meal Plan helpers ────────────────────────────────────────────────────────
 
 const MEAL_SLOTS = [
   { key: 'breakfast1', label: 'Breakfast A', cat: 'breakfast' },
@@ -539,17 +539,20 @@ const MEAL_SLOTS = [
   { key: 'dinner2',    label: 'Dinner B',    cat: 'dinner' },
 ]
 
-function mealTotal(mealId, mealMap) {
+// overrides: {ingredient_name: qty_g} — if an ingredient is in overrides, scale its macros
+function mealTotal(mealId, mealMap, overrides) {
   if (!mealId || !mealMap[mealId]) return { cal: 0, prot: 0, carb: 0, fat: 0 }
-  return (mealMap[mealId].meal_ingredients || []).reduce(
-    (acc, ing) => ({
-      cal:  acc.cal  + (parseFloat(ing.calories)  || 0),
-      prot: acc.prot + (parseFloat(ing.protein_g) || 0),
-      carb: acc.carb + (parseFloat(ing.carbs_g)   || 0),
-      fat:  acc.fat  + (parseFloat(ing.fat_g)     || 0),
-    }),
-    { cal: 0, prot: 0, carb: 0, fat: 0 }
-  )
+  return (mealMap[mealId].meal_ingredients || []).reduce((acc, ing) => {
+    const origQty = parseFloat(ing.quantity_g) || 0
+    const qty = (overrides && overrides[ing.name] != null) ? overrides[ing.name] : origQty
+    const scale = origQty > 0 ? qty / origQty : 1
+    return {
+      cal:  acc.cal  + (parseFloat(ing.calories)  || 0) * scale,
+      prot: acc.prot + (parseFloat(ing.protein_g) || 0) * scale,
+      carb: acc.carb + (parseFloat(ing.carbs_g)   || 0) * scale,
+      fat:  acc.fat  + (parseFloat(ing.fat_g)     || 0) * scale,
+    }
+  }, { cal: 0, prot: 0, carb: 0, fat: 0 })
 }
 
 function addTotals(a, b) {
@@ -562,16 +565,19 @@ function buildSuggestion({ grandTotal, calorieTarget, protTarget, carbTarget, fa
   if (Math.abs(gap) < 50) return null
 
   const suggestions = []
-  for (const { label, mealId } of statics) {
+  for (const { label, mealId, overrides } of statics) {
     if (!mealId) continue
     for (const ing of (mealMap[mealId]?.meal_ingredients || [])) {
-      const qty  = parseFloat(ing.quantity_g) || 0
-      const cal  = parseFloat(ing.calories)   || 0
-      const prot = parseFloat(ing.protein_g)  || 0
-      const carb = parseFloat(ing.carbs_g)    || 0
-      const fat  = parseFloat(ing.fat_g)      || 0
-      if (!qty || !cal) continue
-      const calPerG = cal / qty
+      const origQty = parseFloat(ing.quantity_g) || 0
+      const qty = (overrides && overrides[ing.name] != null) ? overrides[ing.name] : origQty
+      const origCal = parseFloat(ing.calories) || 0
+      const scale = origQty > 0 ? qty / origQty : 1
+      const cal  = origCal * scale
+      const prot = (parseFloat(ing.protein_g) || 0) * scale
+      const carb = (parseFloat(ing.carbs_g)   || 0) * scale
+      const fat  = (parseFloat(ing.fat_g)     || 0) * scale
+      const calPerG = origQty > 0 ? origCal / origQty : 0
+      if (!calPerG || !qty) continue
 
       if (gap < 0) {
         const newQty = qty + gap / calPerG
@@ -587,7 +593,7 @@ function buildSuggestion({ grandTotal, calorieTarget, protTarget, carbTarget, fa
         } else {
           const dg = newQty - qty
           suggestions.push({
-            text: `Reduce ${ing.name} in ${label} from ${qty}g to ${Math.round(newQty)}g`,
+            text: `Reduce ${ing.name} in ${label} from ${Math.round(qty)}g to ${Math.round(newQty)}g`,
             detail: `Saves ~${Math.round(Math.abs(gap))} kcal`,
             calAfter:  grandTotal.cal  + gap,
             protAfter: grandTotal.prot + dg * prot / qty,
@@ -598,7 +604,7 @@ function buildSuggestion({ grandTotal, calorieTarget, protTarget, carbTarget, fa
       } else {
         const dg = gap / calPerG
         suggestions.push({
-          text: `Increase ${ing.name} in ${label} from ${qty}g to ${Math.round(qty + dg)}g`,
+          text: `Increase ${ing.name} in ${label} from ${Math.round(qty)}g to ${Math.round(qty + dg)}g`,
           detail: `Adds ~${Math.round(gap)} kcal · +${Math.round(Math.abs(dg * prot / qty))}g protein`,
           calAfter:  grandTotal.cal  + gap,
           protAfter: grandTotal.prot + dg * prot / qty,
@@ -630,7 +636,54 @@ function buildSuggestion({ grandTotal, calorieTarget, protTarget, carbTarget, fa
   })[0]
 }
 
-// Meal Plan Tab
+// Defined outside MealPlanTab so React doesn't remount it on every parent render
+// (which would cause inputs to lose focus when state updates)
+function EditableIngredientList({ mealId, mealMap, overrides, onChangeQty }) {
+  const ings = mealMap[mealId]?.meal_ingredients || []
+  if (!ings.length) return <p className="text-xs text-gray-400 italic px-1">No ingredients recorded</p>
+  const t = mealTotal(mealId, mealMap, overrides)
+  return (
+    <div className="space-y-1.5 pt-1">
+      <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium pb-1">
+        <span className="flex-1">Ingredient</span>
+        <span className="w-16 text-right">g</span>
+        <span className="w-16 text-right">kcal</span>
+        <span className="w-12 text-right">Protein</span>
+      </div>
+      {ings.map((ing, i) => {
+        const origQty = parseFloat(ing.quantity_g) || 0
+        const qty = (overrides && overrides[ing.name] != null) ? overrides[ing.name] : origQty
+        const scale = origQty > 0 ? qty / origQty : 1
+        const cal = Math.round((parseFloat(ing.calories) || 0) * scale)
+        const prot = Math.round((parseFloat(ing.protein_g) || 0) * scale)
+        return (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <span className="flex-1 truncate text-gray-600 dark:text-gray-400">{ing.name}</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              className="w-16 text-right text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-brand-400 focus:border-brand-400 tabular-nums"
+              value={qty}
+              onChange={e => onChangeQty(ing.name, parseFloat(e.target.value) || 0)}
+            />
+            <span className="tabular-nums w-16 text-right text-gray-500 dark:text-gray-400">{cal} kcal</span>
+            <span className="tabular-nums w-12 text-right text-gray-400 dark:text-gray-500">{prot}g</span>
+          </div>
+        )
+      })}
+      {t.cal > 0 && (
+        <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800 pt-1.5 mt-0.5">
+          <span className="flex-1">Meal total</span>
+          <span className="tabular-nums w-16 text-right">{Math.round(t.cal)} kcal</span>
+          <span className="tabular-nums w-12 text-right">{Math.round(t.prot)}g</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Meal Plan Tab ────────────────────────────────────────────────────────────
 
 function MealPlanTab({ client, coachId }) {
   const [planGroups, setPlanGroups] = useState([])
@@ -638,13 +691,17 @@ function MealPlanTab({ client, coachId }) {
   const [planGroup, setPlanGroup] = useState(null)
   const [editedSlots, setEditedSlots] = useState({})
   const [templateSlots, setTemplateSlots] = useState({})
-  const [slotsDirty, setSlotsDirty] = useState(false)
+  // {slot_key: {ingredient_name: qty_g}} — per-slot ingredient quantity overrides
+  const [ingOverrides, setIngOverrides] = useState({})
+  const [mealDirty, setMealDirty] = useState(false)
   const [savingSlots, setSavingSlots] = useState(false)
   const [repeating, setRepeating] = useState(false)
   const [mealsByCategory, setMealsByCategory] = useState({})
   const [mealMap, setMealMap] = useState({})
   const [expandedSlots, setExpandedSlots] = useState(new Set())
   const [staticEdits, setStaticEdits] = useState({ preworkout_meal_id: null, evening_snack_meal_id: null })
+  // {preworkout: {ingredient_name: qty_g}, evening_snack: {ingredient_name: qty_g}}
+  const [staticIngOverrides, setStaticIngOverrides] = useState({ preworkout: {}, evening_snack: {} })
   const [staticDirty, setStaticDirty] = useState(false)
   const [savingStatic, setSavingStatic] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -665,7 +722,7 @@ function MealPlanTab({ client, coachId }) {
         .maybeSingle(),
       supabase
         .from('client_week_meals')
-        .select('slots')
+        .select('slots, ingredient_overrides')
         .eq('assignment_id', asgn.id)
         .eq('week_number', weekNum)
         .maybeSingle(),
@@ -674,7 +731,8 @@ function MealPlanTab({ client, coachId }) {
     for (const s of (tmpl?.template_meal_slots || [])) tSlots[s.slot_type] = s.meal_id
     setTemplateSlots(tSlots)
     setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
-    setSlotsDirty(false)
+    setIngOverrides(cwm?.ingredient_overrides || {})
+    setMealDirty(false)
   }
 
   async function load() {
@@ -715,6 +773,7 @@ function MealPlanTab({ client, coachId }) {
         preworkout_meal_id: asgn.preworkout_meal_id || null,
         evening_snack_meal_id: asgn.evening_snack_meal_id || null,
       })
+      setStaticIngOverrides(asgn.static_ingredient_overrides || { preworkout: {}, evening_snack: {} })
       if (pg) {
         const ew = asgn.week_override ?? pg.current_week
         await loadWeekSlots(asgn, ew, pg.id)
@@ -727,12 +786,13 @@ function MealPlanTab({ client, coachId }) {
 
   const globalWeek = planGroup?.current_week ?? null
   const effectiveWeek = assignment?.week_override ?? globalWeek
-  const isOverridden = assignment?.week_override != null
-  const hasCustom = MEAL_SLOTS.some(s => editedSlots[s.key] && editedSlots[s.key] !== templateSlots[s.key])
 
-  const rotatingTotal = MEAL_SLOTS.reduce((acc, s) => addTotals(acc, mealTotal(editedSlots[s.key], mealMap)), { cal: 0, prot: 0, carb: 0, fat: 0 })
-  const preworkoutTotal = mealTotal(staticEdits.preworkout_meal_id, mealMap)
-  const snackTotal = mealTotal(staticEdits.evening_snack_meal_id, mealMap)
+  const rotatingTotal = MEAL_SLOTS.reduce(
+    (acc, s) => addTotals(acc, mealTotal(editedSlots[s.key], mealMap, ingOverrides[s.key])),
+    { cal: 0, prot: 0, carb: 0, fat: 0 }
+  )
+  const preworkoutTotal = mealTotal(staticEdits.preworkout_meal_id, mealMap, staticIngOverrides.preworkout)
+  const snackTotal = mealTotal(staticEdits.evening_snack_meal_id, mealMap, staticIngOverrides.evening_snack)
   const grandTotal = addTotals(addTotals(rotatingTotal, preworkoutTotal), snackTotal)
 
   const suggestion = buildSuggestion({
@@ -742,8 +802,8 @@ function MealPlanTab({ client, coachId }) {
     carbTarget: client.current_carbs || 0,
     fatTarget: client.current_fat || 0,
     statics: [
-      { label: 'Pre-workout', mealId: staticEdits.preworkout_meal_id },
-      { label: 'Evening snack', mealId: staticEdits.evening_snack_meal_id },
+      { label: 'Pre-workout', mealId: staticEdits.preworkout_meal_id, overrides: staticIngOverrides.preworkout },
+      { label: 'Evening snack', mealId: staticEdits.evening_snack_meal_id, overrides: staticIngOverrides.evening_snack },
     ],
     mealMap,
   })
@@ -752,20 +812,32 @@ function MealPlanTab({ client, coachId }) {
     setExpandedSlots(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
   }
 
-  function changeSlot(key, mealId) {
-    setEditedSlots(prev => ({ ...prev, [key]: mealId || null }))
-    setSlotsDirty(true)
+  function changeIngOverride(slotKey, ingName, qty) {
+    setIngOverrides(prev => ({ ...prev, [slotKey]: { ...(prev[slotKey] || {}), [ingName]: qty } }))
+    setMealDirty(true)
+  }
+
+  function changeStaticIngOverride(staticKey, ingName, qty) {
+    setStaticIngOverrides(prev => ({ ...prev, [staticKey]: { ...(prev[staticKey] || {}), [ingName]: qty } }))
+    setStaticDirty(true)
   }
 
   async function handleSaveSlots() {
     if (!assignment || effectiveWeek == null) return
     setSavingSlots(true)
     await supabase.from('client_week_meals').upsert(
-      { client_id: client.id, coach_id: coachId, assignment_id: assignment.id, week_number: effectiveWeek, slots: editedSlots },
+      {
+        client_id: client.id,
+        coach_id: coachId,
+        assignment_id: assignment.id,
+        week_number: effectiveWeek,
+        slots: editedSlots,
+        ingredient_overrides: ingOverrides,
+      },
       { onConflict: 'assignment_id,week_number' }
     )
     setSavingSlots(false)
-    setSlotsDirty(false)
+    setMealDirty(false)
   }
 
   async function handleSaveStaticMeals() {
@@ -774,6 +846,7 @@ function MealPlanTab({ client, coachId }) {
     await supabase.from('client_plan_assignments').update({
       preworkout_meal_id: staticEdits.preworkout_meal_id || null,
       evening_snack_meal_id: staticEdits.evening_snack_meal_id || null,
+      static_ingredient_overrides: staticIngOverrides,
     }).eq('id', assignment.id)
     setSavingStatic(false)
     setStaticDirty(false)
@@ -792,7 +865,7 @@ function MealPlanTab({ client, coachId }) {
         .maybeSingle(),
       supabase
         .from('client_week_meals')
-        .select('slots')
+        .select('slots, ingredient_overrides')
         .eq('assignment_id', assignment.id)
         .eq('week_number', prevWeek)
         .maybeSingle(),
@@ -800,7 +873,8 @@ function MealPlanTab({ client, coachId }) {
     const prevTSlots = {}
     for (const s of (prevTmpl?.template_meal_slots || [])) prevTSlots[s.slot_type] = s.meal_id
     setEditedSlots({ ...prevTSlots, ...(prevCwm?.slots || {}) })
-    setSlotsDirty(true)
+    setIngOverrides(prevCwm?.ingredient_overrides || {})
+    setMealDirty(true)
     setRepeating(false)
   }
 
@@ -848,46 +922,7 @@ function MealPlanTab({ client, coachId }) {
 
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
-  const allMealsFlat = Object.values(mealsByCategory).flat().sort((a, b) => a.name.localeCompare(b.name))
-
-  function ChevronBtn({ slotKey }) {
-    const open = expandedSlots.has(slotKey)
-    return (
-      <button
-        onClick={() => toggleSlot(slotKey)}
-        className="flex-shrink-0 text-gray-300 hover:text-gray-500 dark:hover:text-gray-400 transition-colors p-0.5"
-      >
-        <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-    )
-  }
-
-  function IngredientList({ mealId }) {
-    const ings = mealMap[mealId]?.meal_ingredients || []
-    if (!ings.length) return <p className="text-xs text-gray-400 italic">No ingredients recorded</p>
-    const t = mealTotal(mealId, mealMap)
-    return (
-      <div className="space-y-1">
-        {ings.map((ing, i) => (
-          <div key={i} className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span className="flex-1 truncate">{ing.name}</span>
-            <span className="tabular-nums w-10 text-right text-gray-400">{ing.quantity_g}g</span>
-            <span className="tabular-nums w-16 text-right">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
-            <span className="tabular-nums w-12 text-right">{Math.round(parseFloat(ing.protein_g) || 0)}g P</span>
-          </div>
-        ))}
-        {t.cal > 0 && (
-          <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800 pt-1.5 mt-1">
-            <span className="flex-1">Meal total</span>
-            <span className="tabular-nums w-16 text-right">{Math.round(t.cal)} kcal</span>
-            <span className="tabular-nums w-12 text-right">{Math.round(t.prot)}g P</span>
-          </div>
-        )}
-      </div>
-    )
-  }
+  const isOverridden = assignment?.week_override != null
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -1016,12 +1051,7 @@ function MealPlanTab({ client, coachId }) {
           {/* Rotating meal slots */}
           <div className="card space-y-0 p-0 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Week {effectiveWeek} meals</h3>
-                {hasCustom && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">Customised</span>
-                )}
-              </div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Week {effectiveWeek} meals</h3>
               <button
                 onClick={handleRepeatLastWeek}
                 disabled={repeating || effectiveWeek == null}
@@ -1034,27 +1064,33 @@ function MealPlanTab({ client, coachId }) {
             <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
               {MEAL_SLOTS.map(slot => {
                 const currentId = editedSlots[slot.key] || ''
-                const options = mealsByCategory[slot.cat] || []
-                const isChanged = currentId !== (templateSlots[slot.key] || '')
+                const mealName = currentId ? (mealMap[currentId]?.name || '—') : '— None —'
                 const isExpanded = expandedSlots.has(slot.key)
                 return (
                   <div key={slot.key}>
-                    <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
-                      <ChevronBtn slotKey={slot.key} />
-                      <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{slot.label}</span>
-                      <select
-                        className={`flex-1 text-sm bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0 ${isChanged ? 'text-orange-600 dark:text-orange-400 font-medium' : 'text-gray-800 dark:text-gray-200'}`}
-                        value={currentId}
-                        onChange={e => changeSlot(slot.key, e.target.value)}
+                    <button
+                      className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5 text-left"
+                      onClick={() => currentId && toggleSlot(slot.key)}
+                    >
+                      <svg
+                        className={`w-3.5 h-3.5 flex-shrink-0 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''} ${!currentId ? 'opacity-0' : ''}`}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
                       >
-                        <option value="">— None —</option>
-                        {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                      </select>
-                      {isChanged && <span className="flex-shrink-0 text-xs text-orange-400 dark:text-orange-500">changed</span>}
-                    </div>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{slot.label}</span>
+                      <span className={`flex-1 text-sm ${currentId ? 'text-gray-800 dark:text-gray-200' : 'text-gray-400 dark:text-gray-600 italic'}`}>
+                        {mealName}
+                      </span>
+                    </button>
                     {isExpanded && currentId && (
-                      <div className="ml-9 px-3 pb-3">
-                        <IngredientList mealId={currentId} />
+                      <div className="ml-9 px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
+                        <EditableIngredientList
+                          mealId={currentId}
+                          mealMap={mealMap}
+                          overrides={ingOverrides[slot.key] || {}}
+                          onChangeQty={(ingName, qty) => changeIngOverride(slot.key, ingName, qty)}
+                        />
                       </div>
                     )}
                   </div>
@@ -1070,15 +1106,15 @@ function MealPlanTab({ client, coachId }) {
               </div>
             )}
 
-            {slotsDirty && (
+            {mealDirty && (
               <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 bg-gray-50/50 dark:bg-gray-800/30">
                 <button onClick={handleSaveSlots} disabled={savingSlots} className="btn-primary py-1.5 px-4 text-sm">
-                  {savingSlots ? 'Saving…' : 'Save meal changes'}
+                  {savingSlots ? 'Saving…' : 'Save ingredient changes'}
                 </button>
                 <button
-                  onClick={() => { setEditedSlots({ ...templateSlots }); setSlotsDirty(false) }}
+                  onClick={() => { setIngOverrides({}); setMealDirty(false) }}
                   className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                >Reset to template</button>
+                >Reset</button>
               </div>
             )}
           </div>
@@ -1091,15 +1127,26 @@ function MealPlanTab({ client, coachId }) {
             </div>
 
             {[
-              { key: 'preworkout_meal_id', label: 'Pre-workout' },
-              { key: 'evening_snack_meal_id', label: 'Evening snack' },
-            ].map(({ key, label }) => {
+              { key: 'preworkout_meal_id', ingKey: 'preworkout', label: 'Pre-workout', cat: 'preworkout' },
+              { key: 'evening_snack_meal_id', ingKey: 'evening_snack', label: 'Evening snack', cat: 'snack' },
+            ].map(({ key, ingKey, label, cat }) => {
               const mealId = staticEdits[key] || ''
               const isExpanded = expandedSlots.has(key)
+              const options = mealsByCategory[cat] || []
               return (
                 <div key={key} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
                   <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
-                    <ChevronBtn slotKey={key} />
+                    <button
+                      onClick={() => mealId && toggleSlot(key)}
+                      className="flex-shrink-0"
+                    >
+                      <svg
+                        className={`w-3.5 h-3.5 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''} ${!mealId ? 'opacity-0' : ''}`}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
                     <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label}</span>
                     <select
                       className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
@@ -1107,12 +1154,20 @@ function MealPlanTab({ client, coachId }) {
                       onChange={e => { setStaticEdits(prev => ({ ...prev, [key]: e.target.value || null })); setStaticDirty(true) }}
                     >
                       <option value="">— None —</option>
-                      {allMealsFlat.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
+                    {options.length === 0 && (
+                      <span className="text-xs text-gray-400 italic">No {cat} meals yet</span>
+                    )}
                   </div>
                   {isExpanded && mealId && (
-                    <div className="ml-9 px-3 pb-3">
-                      <IngredientList mealId={mealId} />
+                    <div className="ml-9 px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
+                      <EditableIngredientList
+                        mealId={mealId}
+                        mealMap={mealMap}
+                        overrides={staticIngOverrides[ingKey] || {}}
+                        onChangeQty={(ingName, qty) => changeStaticIngOverride(ingKey, ingName, qty)}
+                      />
                     </div>
                   )}
                 </div>
@@ -1127,6 +1182,7 @@ function MealPlanTab({ client, coachId }) {
                 <button
                   onClick={() => {
                     setStaticEdits({ preworkout_meal_id: assignment?.preworkout_meal_id || null, evening_snack_meal_id: assignment?.evening_snack_meal_id || null })
+                    setStaticIngOverrides(assignment?.static_ingredient_overrides || { preworkout: {}, evening_snack: {} })
                     setStaticDirty(false)
                   }}
                   className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
