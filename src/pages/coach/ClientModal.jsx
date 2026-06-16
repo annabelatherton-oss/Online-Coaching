@@ -103,19 +103,33 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
         if (clientErr) throw clientErr
       } else {
         // Create auth user via secondary client (won't displace coach session)
+        let newUserId = null
         const { data: signUpData, error: signUpErr } = await supabaseAdmin.auth.signUp({
           email: form.email,
           password: form.password,
-          options: {
-            data: { full_name: form.full_name },
-          },
+          options: { data: { full_name: form.full_name } },
         })
-        if (signUpErr) throw signUpErr
 
-        const newUserId = signUpData.user?.id
+        if (signUpErr) {
+          if (signUpErr.message?.toLowerCase().includes('already registered')) {
+            // User exists from a previous failed attempt — look them up by email
+            const { data: existing } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('email', form.email)
+              .single()
+            if (!existing) throw new Error('User already exists but profile not found. Please contact support.')
+            newUserId = existing.id
+          } else {
+            throw signUpErr
+          }
+        } else {
+          newUserId = signUpData.user?.id
+        }
+
         if (!newUserId) throw new Error('Failed to create user account.')
 
-        // The trigger already created the profile row — just update the name/role to be sure
+        // Ensure profile is correct
         await supabase.from('profiles').upsert({
           id: newUserId,
           role: 'client',
@@ -123,7 +137,8 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           email: form.email,
         })
 
-        // Create client row
+        // Create client row (delete any orphaned previous attempt first)
+        await supabase.from('clients').delete().eq('profile_id', newUserId)
         const { error: clientErr } = await supabase.from('clients').insert({
           coach_id: profile.id,
           profile_id: newUserId,
