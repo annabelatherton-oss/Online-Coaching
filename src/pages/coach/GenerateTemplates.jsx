@@ -88,12 +88,36 @@ class DeckPool {
 
 const WEEK_COUNT = 20
 
+// Pick the meal with the closest calories to targetCals from candidates,
+// preferring meals not recently used (usedSet). Tracks usage for variety.
+function pickCalorieMatch(candidates, targetCals, usedSet, excludeId) {
+  if (!candidates.length) return null
+  const eligible = candidates.filter(m => m.id !== excludeId)
+  if (!eligible.length) return null
+
+  const notRecent = eligible.filter(m => !usedSet.has(m.id))
+  const pool = notRecent.length > 0 ? notRecent : eligible
+
+  const picked = targetCals > 0
+    ? [...pool].sort((a, b) => {
+        const ad = a._totalCals > 0 ? Math.abs(a._totalCals - targetCals) : 1e6
+        const bd = b._totalCals > 0 ? Math.abs(b._totalCals - targetCals) : 1e6
+        return ad - bd
+      })[0]
+    : pool[0]
+
+  if (!picked) return null
+  usedSet.add(picked.id)
+  if (usedSet.size >= Math.max(Math.floor(candidates.length * 0.75), 1)) usedSet.clear()
+  return picked
+}
+
 function generateWeeks(classifiedMeals, excluded) {
   const avail = classifiedMeals.filter(m => !excluded.has(m.id))
   const by = (cat, sub) => avail.filter(m => m.category === cat && m._subtype === sub)
 
-  const sweetPool   = new DeckPool(by('breakfast', 'sweet'))
-  const savouryPool = new DeckPool(by('breakfast', 'savoury'))
+  // Primary picks use DeckPool for round-robin variety across 20 weeks
+  const sweetPool = new DeckPool(by('breakfast', 'sweet'))
 
   const lunchTypes = ['wrap', 'pasta', 'rice/bowl', 'salad', 'sandwich', 'other']
   const lunchPools = Object.fromEntries(lunchTypes.map(t => [t, new DeckPool(by('lunch', t))]))
@@ -105,44 +129,69 @@ function generateWeeks(classifiedMeals, excluded) {
   const activeDinnerProteins = dinnerProteins.filter(p => !dinnerPools[p].empty())
   let dinnerProteinIdx = 0
 
-  function pickLunch(excludeType, excludeId) {
-    if (!activeLunchTypes.length) return null
+  // Secondary picks are calorie-matched to the primary to keep A and B interchangeable
+  const allSavoury = by('breakfast', 'savoury')
+  const allLunch   = avail.filter(m => m.category === 'lunch')
+  const allDinner  = avail.filter(m => m.category === 'dinner')
+  const savouryUsed    = new Set()
+  const lunchSecUsed   = new Set()
+  const dinnerSecUsed  = new Set()
+
+  function pickPrimaryLunch() {
     for (let i = 0; i < activeLunchTypes.length; i++) {
       const type = activeLunchTypes[(lunchTypeIdx + i) % activeLunchTypes.length]
-      if (type !== excludeType && !lunchPools[type].empty()) {
-        const meal = lunchPools[type].pick(excludeId)
-        if (meal) { lunchTypeIdx = (lunchTypeIdx + 1) % activeLunchTypes.length; return { meal, type } }
+      if (!lunchPools[type].empty()) {
+        const meal = lunchPools[type].pick()
+        if (meal) { lunchTypeIdx = (lunchTypeIdx + 1) % Math.max(activeLunchTypes.length, 1); return { meal, type } }
       }
     }
-    const fallback = new DeckPool(avail.filter(m => m.category === 'lunch' && m.id !== excludeId))
-    return { meal: fallback.pick(), type: 'other' }
+    const fb = new DeckPool(allLunch).pick()
+    return fb ? { meal: fb, type: 'other' } : null
   }
 
-  function pickDinner(excludeProtein, excludeId) {
-    if (!activeDinnerProteins.length) return null
+  function pickPrimaryDinner() {
     for (let i = 0; i < activeDinnerProteins.length; i++) {
       const protein = activeDinnerProteins[(dinnerProteinIdx + i) % activeDinnerProteins.length]
-      if (protein !== excludeProtein && !dinnerPools[protein].empty()) {
-        const meal = dinnerPools[protein].pick(excludeId)
-        if (meal) { dinnerProteinIdx = (dinnerProteinIdx + 1) % activeDinnerProteins.length; return { meal, protein } }
+      if (!dinnerPools[protein].empty()) {
+        const meal = dinnerPools[protein].pick()
+        if (meal) { dinnerProteinIdx = (dinnerProteinIdx + 1) % Math.max(activeDinnerProteins.length, 1); return { meal, protein } }
       }
     }
-    return null
+    const fb = new DeckPool(allDinner).pick()
+    return fb ? { meal: fb, protein: 'other' } : null
   }
 
   return Array.from({ length: WEEK_COUNT }, (_, i) => {
-    const d1 = pickDinner(null, null)
-    const d2 = pickDinner(d1?.protein, d1?.meal?.id)
-    const l1 = pickLunch(null, null)
-    const l2 = pickLunch(l1?.type, l1?.meal?.id)
+    // Breakfast: B1 = sweet (round-robin), B2 = savoury closest in calories to B1
+    const b1 = sweetPool.pick()
+    const b2 = pickCalorieMatch(allSavoury, b1?._totalCals || 0, savouryUsed, b1?.id)
+
+    // Lunch: L1 = primary type (round-robin), L2 = different type closest in calories to L1
+    const l1res = pickPrimaryLunch()
+    const l2 = l1res?.meal
+      ? pickCalorieMatch(
+          allLunch.filter(m => m._subtype !== l1res.type),
+          l1res.meal._totalCals || 0, lunchSecUsed, l1res.meal.id
+        )
+      : null
+
+    // Dinner: D1 = primary protein (round-robin), D2 = different protein closest in calories to D1
+    const d1res = pickPrimaryDinner()
+    const d2 = d1res?.meal
+      ? pickCalorieMatch(
+          allDinner.filter(m => m._subtype !== d1res.protein),
+          d1res.meal._totalCals || 0, dinnerSecUsed, d1res.meal.id
+        )
+      : null
+
     return {
       weekNum: i + 1,
-      breakfast1: sweetPool.pick(),
-      breakfast2: savouryPool.pick(),
-      lunch1: l1?.meal || null,
-      lunch2: l2?.meal || null,
-      dinner1: d1?.meal || null,
-      dinner2: d2?.meal || null,
+      breakfast1: b1 || null,
+      breakfast2: b2 || null,
+      lunch1: l1res?.meal || null,
+      lunch2: l2 || null,
+      dinner1: d1res?.meal || null,
+      dinner2: d2 || null,
     }
   })
 }
