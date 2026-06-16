@@ -6,6 +6,8 @@ import CoachLayout from './pages/coach/CoachLayout'
 import CoachDashboard from './pages/coach/CoachDashboard'
 import ClientsList from './pages/coach/ClientsList'
 import CoachClientProfile from './pages/coach/CoachClientProfile'
+import MealsList from './pages/coach/MealsList'
+import MealEditor from './pages/coach/MealEditor'
 import ClientLayout from './pages/client/ClientLayout'
 import ClientDashboard from './pages/client/ClientDashboard'
 import ClientProfile from './pages/client/ClientProfile'
@@ -29,6 +31,9 @@ export default function App() {
             <Route index element={<CoachDashboard />} />
             <Route path="clients" element={<ClientsList />} />
             <Route path="clients/:clientId" element={<CoachClientProfile />} />
+            <Route path="meals" element={<MealsList />} />
+            <Route path="meals/new" element={<MealEditor />} />
+            <Route path="meals/:mealId" element={<MealEditor />} />
           </Route>
 
           {/* Client area */}
