@@ -538,7 +538,7 @@ function ScaledVersionsTab({ mealId }) {
       supabase.from('meal_ingredients').select('*').eq('meal_id', mealId).order('id', { ascending: true }),
       supabase.from('meal_scaled_versions').select(`
         id, meal_id, calorie_target, scaling_factor, created_at,
-        meal_scaled_ingredients(id, meal_ingredient_id, name, quantity_g, calories, protein_g, carbs_g, fat_g, is_manually_overridden)
+        meal_scaled_ingredients(id, ingredient_id, name, quantity_g, calories, protein_g, carbs_g, fat_g, is_manually_overridden)
       `).eq('meal_id', mealId).order('created_at', { ascending: false }),
     ])
     setIngredients(ingRes.data || [])
@@ -572,8 +572,8 @@ function ScaledVersionsTab({ mealId }) {
     if (verErr) { setGenError(verErr.message); setGenerating(false); return }
 
     const scaledIngRows = ingredients.map(ing => ({
-      meal_scaled_version_id: version.id,
-      meal_ingredient_id: ing.id,
+      scaled_version_id: version.id,
+      ingredient_id: ing.id,
       name: ing.name,
       quantity_g: round1((ing.quantity_g || 0) * scalingFactor),
       calories: round1((ing.calories || 0) * scalingFactor),
