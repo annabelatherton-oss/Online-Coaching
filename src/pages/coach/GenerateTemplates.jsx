@@ -228,6 +228,7 @@ export default function GenerateTemplates() {
   const [prefsSaving, setPrefsSaving] = useState(false)
   const [prefsSaved, setPrefsSaved] = useState(false)
   const [prefsError, setPrefsError] = useState('')
+  const [planName, setPlanName] = useState('20 Week Plan')
   const [saving, setSaving] = useState(false)
   const [saveProgress, setSaveProgress] = useState('')
   const [saveError, setSaveError] = useState('')
@@ -358,13 +359,21 @@ export default function GenerateTemplates() {
     setSaving(true)
     setSaveError('')
 
+    const groupId = crypto.randomUUID()
+
     for (let i = 0; i < weeks.length; i++) {
       const w = weeks[i]
       setSaveProgress(`Saving week ${i + 1} of ${weeks.length}…`)
 
       const { data: tmpl, error: tmplErr } = await supabase
         .from('weekly_templates')
-        .insert({ coach_id: profile.id, name: `Week ${w.weekNum}`, week_number: w.weekNum })
+        .insert({
+          coach_id: profile.id,
+          name: `Week ${w.weekNum}`,
+          week_number: w.weekNum,
+          plan_group_id: groupId,
+          plan_group_name: planName.trim() || '20 Week Plan',
+        })
         .select('id')
         .single()
 
@@ -572,6 +581,18 @@ export default function GenerateTemplates() {
           <p className="text-sm text-red-700 dark:text-red-400">{saveError}</p>
         </div>
       )}
+
+      <div className="card flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">Plan name</label>
+        <input
+          className="input flex-1"
+          value={planName}
+          onChange={e => setPlanName(e.target.value)}
+          placeholder="e.g. 20 Week Plan"
+          maxLength={80}
+        />
+        <p className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">Used when assigning to clients</p>
+      </div>
 
       <p className="text-xs text-gray-400 dark:text-gray-500">
         Click any week to expand it. Swap meals using the dropdowns. Red total = over your {calorieTarget} kcal target.

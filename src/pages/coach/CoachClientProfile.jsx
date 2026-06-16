@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
 
-const TABS = ['Overview', 'Weight', 'Measurements', 'Photos', 'Notes']
+const TABS = ['Overview', 'Meal Plan', 'Weight', 'Measurements', 'Photos', 'Notes']
 
 function StatusBadge({ client }) {
   const now = new Date()
@@ -706,6 +706,249 @@ function NotesTab({ client }) {
   )
 }
 
+// ─── Meal Plan Tab ────────────────────────────────────────────────────────────
+function MealPlanTab({ client, coachId }) {
+  const [planGroups, setPlanGroups] = useState([])
+  const [assignment, setAssignment] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({
+    plan_group_id: '',
+    calorie_target: client.current_calories || '',
+    start_date: client.start_date ? client.start_date.split('T')[0] : new Date().toISOString().split('T')[0],
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function load() {
+    const { data: templates } = await supabase
+      .from('weekly_templates')
+      .select('plan_group_id, plan_group_name')
+      .eq('coach_id', coachId)
+      .not('plan_group_id', 'is', null)
+
+    const groups = {}
+    for (const t of (templates || [])) {
+      if (!groups[t.plan_group_id]) {
+        groups[t.plan_group_id] = { plan_group_id: t.plan_group_id, plan_group_name: t.plan_group_name, weekCount: 0 }
+      }
+      groups[t.plan_group_id].weekCount++
+    }
+    setPlanGroups(Object.values(groups))
+
+    const { data: asgn } = await supabase
+      .from('client_plan_assignments')
+      .select('*')
+      .eq('client_id', client.id)
+      .eq('active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    setAssignment(asgn || null)
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [client.id])
+
+  function currentWeekNumber(asgn) {
+    if (!asgn) return null
+    const start = new Date(asgn.start_date)
+    const now = new Date()
+    const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24))
+    const week = Math.floor(diffDays / 7) + 1
+    return Math.min(Math.max(week, 1), 20)
+  }
+
+  async function handleAssign(e) {
+    e.preventDefault()
+    setSaving(true)
+    setError('')
+
+    await supabase
+      .from('client_plan_assignments')
+      .update({ active: false })
+      .eq('client_id', client.id)
+
+    const group = planGroups.find(g => g.plan_group_id === form.plan_group_id)
+    const { error: err } = await supabase.from('client_plan_assignments').insert({
+      client_id: client.id,
+      coach_id: coachId,
+      plan_group_id: form.plan_group_id,
+      plan_group_name: group?.plan_group_name || '20 Week Plan',
+      calorie_target: form.calorie_target ? parseInt(form.calorie_target) : null,
+      start_date: form.start_date,
+    })
+
+    setSaving(false)
+    if (err) { setError(err.message); return }
+    setShowForm(false)
+    load()
+  }
+
+  async function handleRemove() {
+    if (!confirm('Remove this meal plan assignment?')) return
+    await supabase
+      .from('client_plan_assignments')
+      .update({ active: false })
+      .eq('client_id', client.id)
+    load()
+  }
+
+  if (loading) return <LoadingSpinner size="lg" className="py-12" />
+
+  const week = currentWeekNumber(assignment)
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      {assignment ? (
+        <div className="card space-y-5">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white">
+                {assignment.plan_group_name || '20 Week Plan'}
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                Started{' '}
+                {new Date(assignment.start_date).toLocaleDateString('en-GB', {
+                  day: 'numeric', month: 'long', year: 'numeric',
+                })}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setForm({
+                    plan_group_id: assignment.plan_group_id,
+                    calorie_target: assignment.calorie_target || '',
+                    start_date: assignment.start_date,
+                  })
+                  setShowForm(true)
+                }}
+                className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
+              >
+                Change
+              </button>
+              <button
+                onClick={handleRemove}
+                className="text-xs text-red-400 hover:text-red-600 font-medium"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-8">
+            <div className="text-center">
+              <p className="text-4xl font-bold text-brand-600 dark:text-brand-400">{week}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wide">Current Week</p>
+            </div>
+            {assignment.calorie_target && (
+              <div className="text-center">
+                <p className="text-4xl font-bold text-gray-800 dark:text-gray-200">{assignment.calorie_target}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wide">kcal / day</p>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-3 border-t border-gray-100 dark:border-gray-800">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Week {week} of 20 — this client follows the same meal plan as all your other clients on this programme, but at their own calorie target.
+            </p>
+          </div>
+        </div>
+      ) : (
+        !showForm && (
+          <div className="card text-center py-12">
+            <p className="text-gray-400 dark:text-gray-500 text-sm mb-4">No meal plan assigned yet.</p>
+            {planGroups.length === 0 ? (
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Generate a 20-week plan from the Templates page first, then come back here to assign it.
+              </p>
+            ) : (
+              <button onClick={() => setShowForm(true)} className="btn-primary">
+                Assign Meal Plan
+              </button>
+            )}
+          </div>
+        )
+      )}
+
+      {showForm && (
+        <form onSubmit={handleAssign} className="card space-y-4">
+          <h3 className="font-semibold text-gray-900 dark:text-white">
+            {assignment ? 'Change Meal Plan' : 'Assign Meal Plan'}
+          </h3>
+
+          <div>
+            <label className="label">Plan</label>
+            <select
+              className="input"
+              required
+              value={form.plan_group_id}
+              onChange={e => setForm(f => ({ ...f, plan_group_id: e.target.value }))}
+            >
+              <option value="">Select a plan…</option>
+              {planGroups.map(g => (
+                <option key={g.plan_group_id} value={g.plan_group_id}>
+                  {g.plan_group_name || '20 Week Plan'} ({g.weekCount} weeks)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Calorie target (kcal/day)</label>
+              <input
+                className="input"
+                type="number"
+                min="800"
+                max="5000"
+                step="50"
+                value={form.calorie_target}
+                onChange={e => setForm(f => ({ ...f, calorie_target: e.target.value }))}
+                placeholder="e.g. 1800"
+              />
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Their individual daily target</p>
+            </div>
+            <div>
+              <label className="label">Start date</label>
+              <input
+                className="input"
+                type="date"
+                required
+                value={form.start_date}
+                onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
+              />
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">When Week 1 begins for them</p>
+            </div>
+          </div>
+
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={saving || !form.plan_group_id}
+              className="btn-primary"
+            >
+              {saving ? 'Saving…' : assignment ? 'Update Assignment' : 'Assign Plan'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function CoachClientProfile() {
   const { clientId } = useParams()
@@ -801,6 +1044,9 @@ export default function CoachClientProfile() {
       <div>
         {activeTab === 'Overview' && (
           <OverviewTab client={client} onSaved={loadClient} />
+        )}
+        {activeTab === 'Meal Plan' && (
+          <MealPlanTab client={client} coachId={profile.id} />
         )}
         {activeTab === 'Weight' && (
           <WeightTab clientId={client.id} />
