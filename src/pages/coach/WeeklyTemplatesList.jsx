@@ -26,12 +26,14 @@ export default function WeeklyTemplatesList() {
         .order('created_at', { ascending: false }),
     ])
 
+    const knownGroupIds = new Set((groups || []).map(g => g.id))
     const counts = {}
     const individual = []
     for (const t of (templates || [])) {
-      if (t.plan_group_id) {
+      if (t.plan_group_id && knownGroupIds.has(t.plan_group_id)) {
         counts[t.plan_group_id] = (counts[t.plan_group_id] || 0) + 1
       } else {
+        // No plan_group_id, or plan_group was deleted — show as individual
         individual.push(t)
       }
     }
