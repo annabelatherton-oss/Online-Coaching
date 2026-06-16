@@ -455,6 +455,7 @@ function IngredientsTab({ mealId, coachId }) {
 function VariantsTab({ mealId, coachId }) {
   const [baseIngredients, setBaseIngredients] = useState([])
   const [variantMap, setVariantMap] = useState({}) // {variantName: {id, ingredients: []}}
+  const [library, setLibrary] = useState([])
   const [loading, setLoading] = useState(true)
   const [expandedVariant, setExpandedVariant] = useState(null)
   const [creating, setCreating] = useState(null)
@@ -471,6 +472,7 @@ function VariantsTab({ mealId, coachId }) {
     ])
     setBaseIngredients(ingRes.data || [])
     const lib = libRes.data || []
+    setLibrary(lib)
     const map = {}
     for (const v of (varRes.data || [])) {
       map[v.variant_name] = {
@@ -510,16 +512,33 @@ function VariantsTab({ mealId, coachId }) {
       const isFixed = ing.scaling_type === 'fixed'
       const scale = isFixed ? 1.0 : factor
       const origQty = parseFloat(ing.quantity_g) || 0
-      const qty = round1(origQty * scale)
+      const libIng = ing.ingredient_id ? library.find(l => l.id === ing.ingredient_id) || null : null
+
+      let qty = round1(origQty * scale)
+      if (libIng) qty = snapToConstraints(qty, libIng) || qty
+
+      if (libIng && libIng.serving_size > 0) {
+        // Use library serving data for accurate macros at the snapped quantity
+        const f = qty / libIng.serving_size
+        return {
+          name: ing.name, quantity_g: qty, unit: ing.unit || 'g',
+          calories:  round1(f * libIng.calories_per_serving),
+          protein_g: round1(f * libIng.protein_per_serving),
+          carbs_g:   round1(f * libIng.carbs_per_serving),
+          fat_g:     round1(f * libIng.fat_per_serving),
+          scaling_type: ing.scaling_type || 'flexible',
+          ingredient_id: ing.ingredient_id || null,
+        }
+      }
+
+      // No library link — scale proportionally from base macros
       const ratio = origQty > 0 ? qty / origQty : scale
       return {
-        name: ing.name,
-        quantity_g: qty,
-        unit: ing.unit || 'g',
-        calories: round1((parseFloat(ing.calories) || 0) * ratio),
+        name: ing.name, quantity_g: qty, unit: ing.unit || 'g',
+        calories:  round1((parseFloat(ing.calories)  || 0) * ratio),
         protein_g: round1((parseFloat(ing.protein_g) || 0) * ratio),
-        carbs_g: round1((parseFloat(ing.carbs_g) || 0) * ratio),
-        fat_g: round1((parseFloat(ing.fat_g) || 0) * ratio),
+        carbs_g:   round1((parseFloat(ing.carbs_g)   || 0) * ratio),
+        fat_g:     round1((parseFloat(ing.fat_g)     || 0) * ratio),
         scaling_type: ing.scaling_type || 'flexible',
         ingredient_id: ing.ingredient_id || null,
       }
