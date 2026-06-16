@@ -473,7 +473,15 @@ function VariantsTab({ mealId }) {
     for (const v of (varRes.data || [])) {
       map[v.variant_name] = {
         ...v,
-        ingredients: (v.meal_variant_ingredients || []).sort((a, b) => a.id > b.id ? 1 : -1),
+        ingredients: (v.meal_variant_ingredients || [])
+          .sort((a, b) => a.id > b.id ? 1 : -1)
+          .map(ing => ({
+            ...ing,
+            _calPerG:  ing.quantity_g > 0 ? ing.calories  / ing.quantity_g : 0,
+            _proPerG:  ing.quantity_g > 0 ? ing.protein_g / ing.quantity_g : 0,
+            _carbPerG: ing.quantity_g > 0 ? ing.carbs_g   / ing.quantity_g : 0,
+            _fatPerG:  ing.quantity_g > 0 ? ing.fat_g     / ing.quantity_g : 0,
+          })),
       }
     }
     setVariantMap(map)
@@ -541,15 +549,13 @@ function VariantsTab({ mealId }) {
       const v = prev[variantName]
       const updated = v.ingredients.map((ing, i) => {
         if (i !== idx) return ing
-        const origQty = parseFloat(ing.quantity_g) || 1
-        const ratio = origQty > 0 ? qty / origQty : 0
         return {
           ...ing,
-          quantity_g: qty,
-          calories: round1((parseFloat(ing.calories) || 0) * ratio),
-          protein_g: round1((parseFloat(ing.protein_g) || 0) * ratio),
-          carbs_g: round1((parseFloat(ing.carbs_g) || 0) * ratio),
-          fat_g: round1((parseFloat(ing.fat_g) || 0) * ratio),
+          quantity_g: newQty,
+          calories:  round1(qty * (ing._calPerG  || 0)),
+          protein_g: round1(qty * (ing._proPerG  || 0)),
+          carbs_g:   round1(qty * (ing._carbPerG || 0)),
+          fat_g:     round1(qty * (ing._fatPerG  || 0)),
         }
       })
       const totals = calcTotals(updated)
