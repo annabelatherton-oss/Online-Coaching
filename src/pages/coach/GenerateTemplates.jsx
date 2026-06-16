@@ -206,18 +206,16 @@ export default function GenerateTemplates() {
   const [meals, setMeals] = useState([])
   const [excluded, setExcluded] = useState(new Set())
   const [subtypeOverrides, setSubtypeOverrides] = useState({})
+  const [dirty, setDirty] = useState(new Set()) // meal IDs with unsaved changes
   const [weeks, setWeeks] = useState([])
   const [expanded, setExpanded] = useState(new Set())
   const [loading, setLoading] = useState(true)
+  const [prefsSaving, setPrefsSaving] = useState(false)
   const [prefsSaved, setPrefsSaved] = useState(false)
+  const [prefsError, setPrefsError] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveProgress, setSaveProgress] = useState('')
   const [saveError, setSaveError] = useState('')
-
-  function flashSaved() {
-    setPrefsSaved(true)
-    setTimeout(() => setPrefsSaved(false), 1500)
-  }
 
   useEffect(() => {
     supabase
@@ -248,15 +246,37 @@ export default function GenerateTemplates() {
     return meals.map(m => ({ ...m, _subtype: getSubtype(m) }))
   }
 
-  async function toggleExclude(id) {
+  function toggleExclude(id) {
     const nowExcluded = !excluded.has(id)
-    setExcluded(prev => {
-      const s = new Set(prev)
-      nowExcluded ? s.add(id) : s.delete(id)
-      return s
-    })
-    await supabase.from('meals').update({ excluded_from_templates: nowExcluded }).eq('id', id)
-    flashSaved()
+    setExcluded(prev => { const s = new Set(prev); nowExcluded ? s.add(id) : s.delete(id); return s })
+    setDirty(prev => { const s = new Set(prev); s.add(id); return s })
+    setPrefsSaved(false)
+  }
+
+  async function handleSavePrefs() {
+    if (dirty.size === 0) return
+    setPrefsSaving(true)
+    setPrefsError('')
+
+    const dirtyMeals = meals.filter(m => dirty.has(m.id))
+    const results = await Promise.all(
+      dirtyMeals.map(m =>
+        supabase.from('meals').update({
+          excluded_from_templates: excluded.has(m.id),
+          template_subtype: subtypeOverrides[m.id] ?? null,
+        }).eq('id', m.id)
+      )
+    )
+
+    const err = results.find(r => r.error)
+    if (err) {
+      setPrefsError(err.error.message)
+    } else {
+      setDirty(new Set())
+      setPrefsSaved(true)
+      setTimeout(() => setPrefsSaved(false), 2500)
+    }
+    setPrefsSaving(false)
   }
 
   function handleGenerate() {
@@ -328,9 +348,6 @@ export default function GenerateTemplates() {
             Back
           </button>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Generate 20 Weeks</h1>
-          {prefsSaved && (
-            <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>
-          )}
         </div>
 
         <div className="card bg-pink-50/60 dark:bg-pink-900/10 border-pink-100 dark:border-pink-900/30">
@@ -377,11 +394,10 @@ export default function GenerateTemplates() {
                         <select
                           className={`text-xs py-0.5 px-2 rounded-full font-medium border-0 focus:ring-1 focus:ring-brand-300 cursor-pointer ${SUBTYPE_COLOURS[sub] || 'bg-gray-100 text-gray-600'}`}
                           value={sub}
-                          onChange={async e => {
-                            const val = e.target.value
-                            setSubtypeOverrides(prev => ({ ...prev, [m.id]: val }))
-                            await supabase.from('meals').update({ template_subtype: val }).eq('id', m.id)
-                            flashSaved()
+                          onChange={e => {
+                            setSubtypeOverrides(prev => ({ ...prev, [m.id]: e.target.value }))
+                            setDirty(prev => { const s = new Set(prev); s.add(m.id); return s })
+                            setPrefsSaved(false)
                           }}
                         >
                           {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -395,13 +411,29 @@ export default function GenerateTemplates() {
           )
         })}
 
-        <div className="flex items-center justify-between pt-2">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {meals.length - excluded.size} meals included · {WEEK_COUNT} weeks to generate
-          </p>
-          <button onClick={handleGenerate} className="btn-primary">
-            Generate {WEEK_COUNT} Weeks →
-          </button>
+        <div className="card space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {meals.length - excluded.size} meals included
+              {dirty.size > 0 && (
+                <span className="ml-2 text-orange-500 font-medium">· {dirty.size} unsaved change{dirty.size !== 1 ? 's' : ''}</span>
+              )}
+            </p>
+            <div className="flex items-center gap-3">
+              {prefsSaved && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
+              <button
+                onClick={handleSavePrefs}
+                disabled={prefsSaving || dirty.size === 0}
+                className="btn-secondary"
+              >
+                {prefsSaving ? 'Saving…' : dirty.size > 0 ? `Save ${dirty.size} Change${dirty.size !== 1 ? 's' : ''}` : 'Saved'}
+              </button>
+              <button onClick={handleGenerate} className="btn-primary">
+                Generate {WEEK_COUNT} Weeks →
+              </button>
+            </div>
+          </div>
+          {prefsError && <p className="text-sm text-red-600 dark:text-red-400">{prefsError}</p>}
         </div>
       </div>
     )
