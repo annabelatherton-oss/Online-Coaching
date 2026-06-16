@@ -115,14 +115,13 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
         const newUserId = signUpData.user?.id
         if (!newUserId) throw new Error('Failed to create user account.')
 
-        // Create profile
-        const { error: profileErr } = await supabase.from('profiles').insert({
+        // The trigger already created the profile row — just update the name/role to be sure
+        await supabase.from('profiles').upsert({
           id: newUserId,
           role: 'client',
           full_name: form.full_name,
           email: form.email,
         })
-        if (profileErr) throw profileErr
 
         // Create client row
         const { error: clientErr } = await supabase.from('clients').insert({
