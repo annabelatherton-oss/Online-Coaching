@@ -221,27 +221,63 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
 }
 
 // ─── Ingredients Tab ──────────────────────────────────────────────────────────
-function IngredientsTab({ mealId }) {
+function IngredientsTab({ mealId, coachId }) {
   const [ingredients, setIngredients] = useState([])
+  const [library, setLibrary] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState(false)
   const [error, setError] = useState('')
+  const [openDropdown, setOpenDropdown] = useState(null)
+  const [searchText, setSearchText] = useState({})
 
   async function load() {
-    const { data } = await supabase
-      .from('meal_ingredients')
-      .select('*')
-      .eq('meal_id', mealId)
-      .order('created_at', { ascending: true })
-    setIngredients(data || [])
+    const [ingRes, libRes] = await Promise.all([
+      supabase.from('meal_ingredients').select('*').eq('meal_id', mealId).order('created_at', { ascending: true }),
+      supabase.from('ingredients').select('*').eq('coach_id', coachId).order('name'),
+    ])
+    const lib = libRes.data || []
+    const ingData = (ingRes.data || []).map(ing => ({
+      ...ing,
+      _library: ing.ingredient_id ? lib.find(l => l.id === ing.ingredient_id) || null : null,
+    }))
+    setIngredients(ingData)
+    setLibrary(lib)
     setLoading(false)
   }
 
   useEffect(() => { load() }, [mealId])
 
-  function updateRow(idx, field, value) {
-    setIngredients(prev => prev.map((ing, i) => i === idx ? { ...ing, [field]: value } : ing))
+  function updateRow(idx, updates) {
+    setIngredients(prev => prev.map((ing, i) => i === idx ? { ...ing, ...updates } : ing))
+  }
+
+  function calcMacros(libIng, amount) {
+    const factor = parseFloat(amount) / libIng.serving_size
+    if (isNaN(factor) || factor < 0) return { calories: '', protein_g: '', carbs_g: '', fat_g: '' }
+    return {
+      calories: round1(factor * libIng.calories_per_serving),
+      protein_g: round1(factor * libIng.protein_per_serving),
+      carbs_g: round1(factor * libIng.carbs_per_serving),
+      fat_g: round1(factor * libIng.fat_per_serving),
+    }
+  }
+
+  function selectLibraryIngredient(idx, libIng) {
+    const amount = ingredients[idx].quantity_g
+    const macros = amount ? calcMacros(libIng, amount) : { calories: '', protein_g: '', carbs_g: '', fat_g: '' }
+    updateRow(idx, { ingredient_id: libIng.id, _library: libIng, name: libIng.name, ...macros })
+    setOpenDropdown(null)
+    setSearchText(prev => ({ ...prev, [idx]: '' }))
+  }
+
+  function updateAmount(idx, amount) {
+    const row = ingredients[idx]
+    if (row._library) {
+      updateRow(idx, { quantity_g: amount, ...calcMacros(row._library, amount) })
+    } else {
+      updateRow(idx, { quantity_g: amount })
+    }
   }
 
   function addRow() {
@@ -249,6 +285,8 @@ function IngredientsTab({ mealId }) {
       _isNew: true,
       _tempId: Date.now(),
       meal_id: mealId,
+      ingredient_id: null,
+      _library: null,
       name: '',
       quantity_g: '',
       calories: '',
@@ -269,10 +307,10 @@ function IngredientsTab({ mealId }) {
   async function saveAll() {
     setSaving(true)
     setError('')
-
     for (const ing of ingredients) {
       const payload = {
         meal_id: mealId,
+        ingredient_id: ing.ingredient_id || null,
         name: ing.name || '',
         quantity_g: parseFloat(ing.quantity_g) || 0,
         calories: parseFloat(ing.calories) || 0,
@@ -280,19 +318,14 @@ function IngredientsTab({ mealId }) {
         carbs_g: parseFloat(ing.carbs_g) || 0,
         fat_g: parseFloat(ing.fat_g) || 0,
       }
-
       if (ing._isNew) {
         const { error: err } = await supabase.from('meal_ingredients').insert(payload)
         if (err) { setError(err.message); setSaving(false); return }
       } else {
-        const { error: err } = await supabase
-          .from('meal_ingredients')
-          .update(payload)
-          .eq('id', ing.id)
+        const { error: err } = await supabase.from('meal_ingredients').update(payload).eq('id', ing.id)
         if (err) { setError(err.message); setSaving(false); return }
       }
     }
-
     setSaving(false)
     setSavedMsg(true)
     setTimeout(() => setSavedMsg(false), 2500)
@@ -306,13 +339,25 @@ function IngredientsTab({ mealId }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-gray-900 dark:text-white">Ingredients</h3>
-        <button onClick={addRow} className="btn-secondary py-1.5 px-3 text-xs">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Ingredient
-        </button>
+        <div>
+          <h3 className="font-semibold text-gray-900 dark:text-white">Ingredients</h3>
+          {library.length > 0 && (
+            <p className="text-xs text-gray-400 mt-0.5">Search your library or type a custom ingredient name</p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {library.length === 0 && (
+            <a href="/coach/ingredients" className="text-xs text-brand-500 hover:text-brand-700 underline">
+              Build your ingredient library first
+            </a>
+          )}
+          <button onClick={addRow} className="btn-secondary py-1.5 px-3 text-xs">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Ingredient
+          </button>
+        </div>
       </div>
 
       {ingredients.length === 0 ? (
@@ -325,8 +370,8 @@ function IngredientsTab({ mealId }) {
           <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="bg-pink-50 dark:bg-pink-900/10 border-b border-pink-100 dark:border-pink-900/30">
-                <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Qty (g)</th>
+                <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-52">Ingredient</th>
+                <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Kcal</th>
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Protein (g)</th>
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Carbs (g)</th>
@@ -337,74 +382,103 @@ function IngredientsTab({ mealId }) {
             <tbody className="divide-y divide-pink-50 dark:divide-pink-900/10">
               {ingredients.map((ing, idx) => (
                 <tr key={ing.id || ing._tempId} className="hover:bg-pink-50/50 dark:hover:bg-pink-900/5 transition-colors">
+                  {/* Ingredient name cell */}
                   <td className="px-3 py-2">
-                    <input
-                      className="input py-1.5 text-sm"
-                      value={ing.name}
-                      onChange={e => updateRow(idx, 'name', e.target.value)}
-                      placeholder="e.g. Oats"
-                    />
+                    {ing.ingredient_id ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{ing.name}</span>
+                        <button
+                          onClick={() => updateRow(idx, { ingredient_id: null, _library: null })}
+                          className="flex-shrink-0 text-gray-300 hover:text-red-400 text-lg leading-none"
+                          title="Unlink from library"
+                        >×</button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input
+                          className="input py-1.5 text-sm"
+                          value={searchText[idx] !== undefined ? searchText[idx] : ing.name}
+                          onChange={e => {
+                            setSearchText(prev => ({ ...prev, [idx]: e.target.value }))
+                            updateRow(idx, { name: e.target.value })
+                            setOpenDropdown(idx)
+                          }}
+                          onFocus={() => {
+                            setSearchText(prev => ({ ...prev, [idx]: ing.name || '' }))
+                            setOpenDropdown(idx)
+                          }}
+                          onBlur={() => setTimeout(() => setOpenDropdown(null), 150)}
+                          placeholder={library.length > 0 ? 'Search library…' : 'Ingredient name'}
+                        />
+                        {openDropdown === idx && library.length > 0 && (
+                          <div className="absolute z-20 left-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg w-72 max-h-52 overflow-y-auto">
+                            {library
+                              .filter(l => l.name.toLowerCase().includes((searchText[idx] || '').toLowerCase()))
+                              .slice(0, 12)
+                              .map(l => (
+                                <button
+                                  key={l.id}
+                                  type="button"
+                                  onMouseDown={() => selectLibraryIngredient(idx, l)}
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-pink-50 dark:hover:bg-pink-900/20 flex items-center justify-between gap-2"
+                                >
+                                  <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{l.name}</span>
+                                  <span className="text-xs text-gray-400 flex-shrink-0">{l.calories_per_serving} kcal/{l.serving_size}{l.serving_unit}</span>
+                                </button>
+                              ))
+                            }
+                            {library.filter(l => l.name.toLowerCase().includes((searchText[idx] || '').toLowerCase())).length === 0 && (
+                              <p className="px-3 py-2 text-sm text-gray-400 italic">No matches — will save as custom</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </td>
+
+                  {/* Amount cell */}
                   <td className="px-3 py-2">
-                    <input
-                      className="input py-1.5 text-sm w-24"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={ing.quantity_g}
-                      onChange={e => updateRow(idx, 'quantity_g', e.target.value)}
-                      placeholder="0"
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        className="input py-1.5 text-sm w-20"
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={ing.quantity_g}
+                        onChange={e => updateAmount(idx, e.target.value)}
+                        placeholder="0"
+                      />
+                      {ing._library && (
+                        <span className="text-xs text-gray-400 whitespace-nowrap">{ing._library.serving_unit}</span>
+                      )}
+                    </div>
                   </td>
-                  <td className="px-3 py-2">
-                    <input
-                      className="input py-1.5 text-sm w-24"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={ing.calories}
-                      onChange={e => updateRow(idx, 'calories', e.target.value)}
-                      placeholder="0"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      className="input py-1.5 text-sm w-24"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={ing.protein_g}
-                      onChange={e => updateRow(idx, 'protein_g', e.target.value)}
-                      placeholder="0"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      className="input py-1.5 text-sm w-24"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={ing.carbs_g}
-                      onChange={e => updateRow(idx, 'carbs_g', e.target.value)}
-                      placeholder="0"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      className="input py-1.5 text-sm w-24"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={ing.fat_g}
-                      onChange={e => updateRow(idx, 'fat_g', e.target.value)}
-                      placeholder="0"
-                    />
-                  </td>
+
+                  {/* Macro cells — read-only if library-linked, editable if custom */}
+                  {['calories', 'protein_g', 'carbs_g', 'fat_g'].map(field => (
+                    <td key={field} className="px-3 py-2">
+                      {ing.ingredient_id ? (
+                        <span className="text-sm text-gray-500 dark:text-gray-400 px-1">{ing[field] || 0}</span>
+                      ) : (
+                        <input
+                          className="input py-1.5 text-sm w-20"
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={ing[field]}
+                          onChange={e => updateRow(idx, { [field]: e.target.value })}
+                          placeholder="0"
+                        />
+                      )}
+                    </td>
+                  ))}
+
+                  {/* Delete */}
                   <td className="px-3 py-2 text-right">
                     <button
                       onClick={() => deleteRow(idx)}
                       className="text-red-400 hover:text-red-600 dark:hover:text-red-400 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                      title="Delete ingredient"
+                      title="Remove ingredient"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -414,7 +488,6 @@ function IngredientsTab({ mealId }) {
                 </tr>
               ))}
             </tbody>
-            {/* Totals row */}
             <tfoot>
               <tr className="bg-pink-50 dark:bg-pink-900/10 border-t border-pink-100 dark:border-pink-900/30 font-semibold">
                 <td className="px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Totals</td>
@@ -841,7 +914,7 @@ export default function MealEditor() {
           />
         )}
         {activeTab === 'Ingredients' && currentId && (
-          <IngredientsTab mealId={currentId} />
+          <IngredientsTab mealId={currentId} coachId={profile.id} />
         )}
         {activeTab === 'Scaled Versions' && currentId && (
           <ScaledVersionsTab mealId={currentId} />
