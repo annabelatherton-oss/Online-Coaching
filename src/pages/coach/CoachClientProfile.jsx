@@ -707,24 +707,66 @@ function NotesTab({ client }) {
 }
 
 // ─── Meal Plan Tab ────────────────────────────────────────────────────────────
+
+const MEAL_SLOTS = [
+  { key: 'breakfast1', label: 'Breakfast A', cat: 'breakfast' },
+  { key: 'breakfast2', label: 'Breakfast B', cat: 'breakfast' },
+  { key: 'lunch1',     label: 'Lunch A',     cat: 'lunch' },
+  { key: 'lunch2',     label: 'Lunch B',     cat: 'lunch' },
+  { key: 'dinner1',    label: 'Dinner A',    cat: 'dinner' },
+  { key: 'dinner2',    label: 'Dinner B',    cat: 'dinner' },
+]
+
 function MealPlanTab({ client, coachId }) {
   const [planGroups, setPlanGroups] = useState([])
   const [assignment, setAssignment] = useState(null)
   const [planGroup, setPlanGroup] = useState(null)
+  // Current week's meal slots: merged from template + any client-specific overrides
+  const [editedSlots, setEditedSlots] = useState({})   // { slotKey: meal_id }
+  const [templateSlots, setTemplateSlots] = useState({}) // { slotKey: meal_id } from template
+  const [slotsDirty, setSlotsDirty] = useState(false)
+  const [savingSlots, setSavingSlots] = useState(false)
+  const [repeating, setRepeating] = useState(false)
+  // All meals for dropdowns
+  const [mealsByCategory, setMealsByCategory] = useState({})
   const [loading, setLoading] = useState(true)
+  // Assignment form
   const [showForm, setShowForm] = useState(false)
-  const [showOverride, setShowOverride] = useState(false)
   const [form, setForm] = useState({
     plan_group_id: '',
     calorie_target: client.current_calories || '',
     starting_week: '',
   })
-  const [overrideWeek, setOverrideWeek] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Week override inline
+  const [showOverride, setShowOverride] = useState(false)
+  const [overrideWeek, setOverrideWeek] = useState('')
+
+  async function loadWeekSlots(asgn, weekNum, planGroupId) {
+    const [{ data: tmpl }, { data: cwm }] = await Promise.all([
+      supabase
+        .from('weekly_templates')
+        .select('template_meal_slots(slot_type, meal_id)')
+        .eq('plan_group_id', planGroupId)
+        .eq('week_number', weekNum)
+        .maybeSingle(),
+      supabase
+        .from('client_week_meals')
+        .select('slots')
+        .eq('assignment_id', asgn.id)
+        .eq('week_number', weekNum)
+        .maybeSingle(),
+    ])
+    const tSlots = {}
+    for (const s of (tmpl?.template_meal_slots || [])) tSlots[s.slot_type] = s.meal_id
+    setTemplateSlots(tSlots)
+    setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
+    setSlotsDirty(false)
+  }
 
   async function load() {
-    const [{ data: groups }, { data: asgn }] = await Promise.all([
+    const [{ data: groups }, { data: asgn }, { data: mealsData }] = await Promise.all([
       supabase.from('plan_groups').select('*').eq('coach_id', coachId).order('created_at', { ascending: false }),
       supabase
         .from('client_plan_assignments')
@@ -734,33 +776,87 @@ function MealPlanTab({ client, coachId }) {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase.from('meals').select('id, name, category').eq('coach_id', coachId).order('name'),
     ])
 
     const allGroups = groups || []
     setPlanGroups(allGroups)
     setAssignment(asgn || null)
 
+    const byCat = {}
+    for (const m of (mealsData || [])) {
+      ;(byCat[m.category] = byCat[m.category] || []).push(m)
+    }
+    setMealsByCategory(byCat)
+
     if (asgn) {
       const pg = allGroups.find(g => g.id === asgn.plan_group_id) || null
       setPlanGroup(pg)
       setOverrideWeek(asgn.week_override ?? '')
+      if (pg) {
+        const ew = asgn.week_override ?? pg.current_week
+        await loadWeekSlots(asgn, ew, pg.id)
+      }
     }
-
     setLoading(false)
   }
 
   useEffect(() => { load() }, [client.id])
 
+  const globalWeek = planGroup?.current_week ?? null
+  const effectiveWeek = assignment?.week_override ?? globalWeek
+  const isOverridden = assignment?.week_override != null
+  const hasCustom = MEAL_SLOTS.some(s => editedSlots[s.key] && editedSlots[s.key] !== templateSlots[s.key])
+
+  function changeSlot(key, mealId) {
+    setEditedSlots(prev => ({ ...prev, [key]: mealId || null }))
+    setSlotsDirty(true)
+  }
+
+  async function handleSaveSlots() {
+    if (!assignment || effectiveWeek == null) return
+    setSavingSlots(true)
+    await supabase.from('client_week_meals').upsert(
+      { client_id: client.id, coach_id: coachId, assignment_id: assignment.id, week_number: effectiveWeek, slots: editedSlots },
+      { onConflict: 'assignment_id,week_number' }
+    )
+    setSavingSlots(false)
+    setSlotsDirty(false)
+  }
+
+  async function handleRepeatLastWeek() {
+    if (!assignment || effectiveWeek == null) return
+    setRepeating(true)
+    const prevWeek = effectiveWeek > 1 ? effectiveWeek - 1 : 20
+    const [{ data: prevTmpl }, { data: prevCwm }] = await Promise.all([
+      supabase
+        .from('weekly_templates')
+        .select('template_meal_slots(slot_type, meal_id)')
+        .eq('plan_group_id', assignment.plan_group_id)
+        .eq('week_number', prevWeek)
+        .maybeSingle(),
+      supabase
+        .from('client_week_meals')
+        .select('slots')
+        .eq('assignment_id', assignment.id)
+        .eq('week_number', prevWeek)
+        .maybeSingle(),
+    ])
+    const prevTSlots = {}
+    for (const s of (prevTmpl?.template_meal_slots || [])) prevTSlots[s.slot_type] = s.meal_id
+    const prevMerged = { ...prevTSlots, ...(prevCwm?.slots || {}) }
+    setEditedSlots(prevMerged)
+    setSlotsDirty(true)
+    setRepeating(false)
+  }
+
   async function handleAssign(e) {
     e.preventDefault()
     setSaving(true)
     setError('')
-
     await supabase.from('client_plan_assignments').update({ active: false }).eq('client_id', client.id)
-
     const group = planGroups.find(g => g.id === form.plan_group_id)
     const startingWeek = form.starting_week ? parseInt(form.starting_week) : null
-
     const { error: err } = await supabase.from('client_plan_assignments').insert({
       client_id: client.id,
       coach_id: coachId,
@@ -770,7 +866,6 @@ function MealPlanTab({ client, coachId }) {
       start_date: new Date().toISOString().split('T')[0],
       week_override: startingWeek,
     })
-
     setSaving(false)
     if (err) { setError(err.message); return }
     setShowForm(false)
@@ -799,130 +894,33 @@ function MealPlanTab({ client, coachId }) {
 
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
-  const globalWeek = planGroup?.current_week ?? null
-  const effectiveWeek = assignment?.week_override ?? globalWeek
-  const isOverridden = assignment?.week_override != null
-
   return (
-    <div className="space-y-6 max-w-2xl">
-      {assignment && planGroup ? (
-        <div className="card space-y-5">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">
-                {assignment.plan_group_name || planGroup.name || '20 Week Plan'}
-              </h3>
-              {assignment.calorie_target && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                  {assignment.calorie_target} kcal / day
-                </p>
-              )}
-            </div>
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <button
-                onClick={() => {
-                  setForm({ plan_group_id: assignment.plan_group_id, calorie_target: assignment.calorie_target || '', starting_week: '' })
-                  setShowForm(true)
-                  setShowOverride(false)
-                }}
-                className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
-              >
-                Change
-              </button>
-              <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">
-                Remove
-              </button>
-            </div>
-          </div>
+    <div className="space-y-5 max-w-2xl">
 
-          {/* Week display */}
-          <div className="flex items-center gap-6 py-3 px-4 rounded-xl bg-pink-50/60 dark:bg-pink-900/10">
-            <div className="text-center">
-              <p className="text-4xl font-bold text-brand-600 dark:text-brand-400">{effectiveWeek ?? '—'}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wide">Current Week</p>
-            </div>
-            <div className="flex-1 space-y-1">
-              {isOverridden ? (
-                <>
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                    Week {assignment.week_override} <span className="text-xs font-normal text-orange-500">(manual override)</span>
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">
-                    Plan is on Week {globalWeek} — this client is on a different week
-                  </p>
-                  <button
-                    onClick={handleClearOverride}
-                    className="text-xs text-brand-500 hover:text-brand-700 font-medium"
-                  >
-                    Clear override → follow plan (Week {globalWeek})
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                    Following plan — same as all other clients
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">
-                    Advance the week from the Templates page each week
-                  </p>
-                  <button
-                    onClick={() => { setOverrideWeek(globalWeek ?? 1); setShowOverride(true) }}
-                    className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium"
-                  >
-                    Set a different week for this client
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {showOverride && (
-            <form onSubmit={handleSaveOverride} className="flex items-center gap-3 p-3 rounded-xl bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/30">
-              <label className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">Put this client on week:</label>
-              <select
-                className="input py-1 w-auto"
-                value={overrideWeek}
-                onChange={e => setOverrideWeek(e.target.value)}
-                required
-              >
-                {Array.from({ length: 20 }, (_, i) => (
-                  <option key={i + 1} value={i + 1}>Week {i + 1}</option>
-                ))}
-              </select>
-              <button type="submit" className="btn-primary py-1.5 px-3 text-sm">Save</button>
-              <button type="button" onClick={() => setShowOverride(false)} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
-            </form>
+      {/* ── No assignment ─────────────────────────────────── */}
+      {!assignment && !showForm && (
+        <div className="card text-center py-12">
+          <p className="text-gray-400 dark:text-gray-500 text-sm mb-4">No meal plan assigned yet.</p>
+          {planGroups.length === 0 ? (
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Generate a 20-week plan from the Templates page first.
+            </p>
+          ) : (
+            <button onClick={() => setShowForm(true)} className="btn-primary">Assign Meal Plan</button>
           )}
         </div>
-      ) : (
-        !showForm && (
-          <div className="card text-center py-12">
-            <p className="text-gray-400 dark:text-gray-500 text-sm mb-4">No meal plan assigned yet.</p>
-            {planGroups.length === 0 ? (
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                Generate a 20-week plan from the Templates page first, then come back here to assign it.
-              </p>
-            ) : (
-              <button onClick={() => setShowForm(true)} className="btn-primary">
-                Assign Meal Plan
-              </button>
-            )}
-          </div>
-        )
       )}
 
+      {/* ── Assign / change form ──────────────────────────── */}
       {showForm && (
         <form onSubmit={handleAssign} className="card space-y-4">
           <h3 className="font-semibold text-gray-900 dark:text-white">
             {assignment ? 'Change Meal Plan' : 'Assign Meal Plan'}
           </h3>
-
           <div>
             <label className="label">Plan</label>
             <select
-              className="input"
-              required
-              value={form.plan_group_id}
+              className="input" required value={form.plan_group_id}
               onChange={e => {
                 const pg = planGroups.find(g => g.id === e.target.value)
                 setForm(f => ({ ...f, plan_group_id: e.target.value, starting_week: pg?.current_week ?? '' }))
@@ -934,16 +932,11 @@ function MealPlanTab({ client, coachId }) {
               ))}
             </select>
           </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label">Calorie target (kcal/day)</label>
               <input
-                className="input"
-                type="number"
-                min="800"
-                max="5000"
-                step="50"
+                className="input" type="number" min="800" max="5000" step="50"
                 value={form.calorie_target}
                 onChange={e => setForm(f => ({ ...f, calorie_target: e.target.value }))}
                 placeholder="e.g. 1800"
@@ -952,8 +945,7 @@ function MealPlanTab({ client, coachId }) {
             <div>
               <label className="label">Starting week</label>
               <select
-                className="input"
-                value={form.starting_week}
+                className="input" value={form.starting_week}
                 onChange={e => setForm(f => ({ ...f, starting_week: e.target.value }))}
               >
                 <option value="">Follow plan's current week</option>
@@ -961,29 +953,159 @@ function MealPlanTab({ client, coachId }) {
                   <option key={i + 1} value={i + 1}>Week {i + 1}</option>
                 ))}
               </select>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Leave blank to join at the plan's current week</p>
             </div>
           </div>
-
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-
           <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={saving || !form.plan_group_id}
-              className="btn-primary"
-            >
-              {saving ? 'Saving…' : assignment ? 'Update Assignment' : 'Assign Plan'}
+            <button type="submit" disabled={saving || !form.plan_group_id} className="btn-primary">
+              {saving ? 'Saving…' : assignment ? 'Update' : 'Assign Plan'}
             </button>
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="btn-secondary"
-            >
-              Cancel
-            </button>
+            <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
           </div>
         </form>
+      )}
+
+      {/* ── Active assignment ─────────────────────────────── */}
+      {assignment && planGroup && (
+        <>
+          {/* Header card */}
+          <div className="card space-y-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="font-semibold text-gray-900 dark:text-white">
+                  {assignment.plan_group_name || planGroup.name}
+                </h3>
+                {assignment.calorie_target && (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                    {assignment.calorie_target} kcal / day
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <button
+                  onClick={() => { setForm({ plan_group_id: assignment.plan_group_id, calorie_target: assignment.calorie_target || '', starting_week: '' }); setShowForm(true); setShowOverride(false) }}
+                  className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
+                >
+                  Change
+                </button>
+                <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
+              </div>
+            </div>
+
+            {/* Week status */}
+            <div className="flex items-center gap-5 py-3 px-4 rounded-xl bg-pink-50/60 dark:bg-pink-900/10">
+              <div className="text-center">
+                <p className="text-4xl font-bold text-brand-600 dark:text-brand-400">{effectiveWeek ?? '—'}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 uppercase tracking-wide">Week</p>
+              </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                {isOverridden ? (
+                  <>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      Week {assignment.week_override} <span className="text-xs font-normal text-orange-500">(individual override)</span>
+                    </p>
+                    <p className="text-xs text-gray-400">Plan is on Week {globalWeek}</p>
+                    <button onClick={handleClearOverride} className="text-xs text-brand-500 hover:text-brand-700 font-medium">
+                      Clear → follow plan (Week {globalWeek})
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Following plan — same week as all clients</p>
+                    <button
+                      onClick={() => { setOverrideWeek(globalWeek ?? 1); setShowOverride(true) }}
+                      className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium"
+                    >
+                      Put on a different week
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {showOverride && (
+              <form onSubmit={handleSaveOverride} className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/20">
+                <span className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">Put on week:</span>
+                <select
+                  className="input py-1" value={overrideWeek}
+                  onChange={e => setOverrideWeek(e.target.value)}
+                >
+                  {Array.from({ length: 20 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>Week {i + 1}</option>
+                  ))}
+                </select>
+                <button type="submit" className="btn-primary py-1.5 px-3 text-sm">Save</button>
+                <button type="button" onClick={() => setShowOverride(false)} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
+              </form>
+            )}
+          </div>
+
+          {/* ── Meal slots for this week ─────────────────── */}
+          <div className="card space-y-0 p-0 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Week {effectiveWeek} meals
+                </h3>
+                {hasCustom && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">
+                    Customised
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={handleRepeatLastWeek}
+                disabled={repeating || effectiveWeek == null}
+                className="btn-secondary text-xs py-1.5 px-3"
+                title={`Copy Week ${effectiveWeek != null && effectiveWeek > 1 ? effectiveWeek - 1 : 20} meals to this week`}
+              >
+                {repeating ? 'Loading…' : `← Repeat Week ${effectiveWeek != null && effectiveWeek > 1 ? effectiveWeek - 1 : 20}`}
+              </button>
+            </div>
+
+            <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
+              {MEAL_SLOTS.map(slot => {
+                const currentId = editedSlots[slot.key] || ''
+                const options = mealsByCategory[slot.cat] || []
+                const isChanged = currentId !== (templateSlots[slot.key] || '')
+                return (
+                  <div key={slot.key} className="flex items-center gap-3 px-4 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
+                    <span className="w-28 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+                      {slot.label}
+                    </span>
+                    <select
+                      className={`flex-1 text-sm bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0 ${isChanged ? 'text-orange-600 dark:text-orange-400 font-medium' : 'text-gray-800 dark:text-gray-200'}`}
+                      value={currentId}
+                      onChange={e => changeSlot(slot.key, e.target.value)}
+                    >
+                      <option value="">— None —</option>
+                      {options.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    {isChanged && (
+                      <span className="flex-shrink-0 text-xs text-orange-400 dark:text-orange-500">changed</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {slotsDirty && (
+              <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 bg-gray-50/50 dark:bg-gray-800/30">
+                <button onClick={handleSaveSlots} disabled={savingSlots} className="btn-primary py-1.5 px-4 text-sm">
+                  {savingSlots ? 'Saving…' : 'Save meal changes'}
+                </button>
+                <button
+                  onClick={() => { setEditedSlots({ ...templateSlots }); setSlotsDirty(false) }}
+                  className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                >
+                  Reset to template
+                </button>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   )
