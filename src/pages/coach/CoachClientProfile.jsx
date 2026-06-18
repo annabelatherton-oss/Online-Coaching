@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
+import { calcStandardMacros } from '../../lib/macros'
 
 const TABS = ['Overview', 'Meal Plan', 'Weight', 'Measurements', 'Photos', 'Notes']
 
@@ -34,8 +35,36 @@ function OverviewTab({ client, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  // Once the coach manually edits a macro field, stop auto-deriving macros from calories.
+  const [macrosTouched, setMacrosTouched] = useState(
+    Boolean(client.current_protein || client.current_carbs || client.current_fat)
+  )
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
+
+  function setCalories(value) {
+    setForm(f => {
+      const next = { ...f, current_calories: value }
+      if (!macrosTouched) {
+        const { protein_g, carbs_g, fat_g } = calcStandardMacros(value)
+        next.current_protein = value ? String(protein_g) : ''
+        next.current_carbs = value ? String(carbs_g) : ''
+        next.current_fat = value ? String(fat_g) : ''
+      }
+      return next
+    })
+  }
+
+  function setMacro(field, value) {
+    setMacrosTouched(true)
+    set(field, value)
+  }
+
+  function resetToStandardSplit() {
+    const { protein_g, carbs_g, fat_g } = calcStandardMacros(form.current_calories)
+    setForm(f => ({ ...f, current_protein: String(protein_g), current_carbs: String(carbs_g), current_fat: String(fat_g) }))
+    setMacrosTouched(false)
+  }
 
   async function handleSave(e) {
     e.preventDefault()
@@ -88,15 +117,25 @@ function OverviewTab({ client, onSaved }) {
       </div>
 
       <div className="card space-y-4">
-        <h3 className="font-semibold text-gray-900 dark:text-white">Current Nutrition Targets</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Current Nutrition Targets</h3>
+          <button
+            type="button"
+            onClick={resetToStandardSplit}
+            disabled={!form.current_calories}
+            className="text-xs text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Use standard split (40/35/25)
+          </button>
+        </div>
         <div>
           <label className="label">Calories (kcal/day)</label>
-          <input className="input" type="number" min={0} value={form.current_calories} onChange={e => set('current_calories', e.target.value)} placeholder="e.g. 1800" />
+          <input className="input" type="number" min={0} value={form.current_calories} onChange={e => setCalories(e.target.value)} placeholder="e.g. 1800" />
         </div>
         <div className="grid grid-cols-3 gap-4">
-          <div><label className="label">Protein (g)</label><input className="input" type="number" min={0} value={form.current_protein} onChange={e => set('current_protein', e.target.value)} placeholder="e.g. 150" /></div>
-          <div><label className="label">Carbs (g)</label><input className="input" type="number" min={0} value={form.current_carbs} onChange={e => set('current_carbs', e.target.value)} placeholder="e.g. 200" /></div>
-          <div><label className="label">Fat (g)</label><input className="input" type="number" min={0} value={form.current_fat} onChange={e => set('current_fat', e.target.value)} placeholder="e.g. 70" /></div>
+          <div><label className="label">Protein (g)</label><input className="input" type="number" min={0} value={form.current_protein} onChange={e => setMacro('current_protein', e.target.value)} placeholder="e.g. 150" /></div>
+          <div><label className="label">Carbs (g)</label><input className="input" type="number" min={0} value={form.current_carbs} onChange={e => setMacro('current_carbs', e.target.value)} placeholder="e.g. 200" /></div>
+          <div><label className="label">Fat (g)</label><input className="input" type="number" min={0} value={form.current_fat} onChange={e => setMacro('current_fat', e.target.value)} placeholder="e.g. 70" /></div>
         </div>
       </div>
 

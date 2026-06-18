@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, supabaseAdmin } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
+import { calcStandardMacros } from '../../lib/macros'
 
 export default function ClientModal({ client, onClose, onSaved, duplicateData }) {
   const { profile } = useAuth()
@@ -23,6 +24,8 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
   const [showOptional, setShowOptional] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Once the coach manually edits a macro field, stop auto-deriving macros from calories.
+  const [macrosTouched, setMacrosTouched] = useState(false)
 
   useEffect(() => {
     if (client) {
@@ -41,6 +44,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           : new Date().toISOString().split('T')[0],
         tags: client.tags || [],
       })
+      setMacrosTouched(Boolean(client.current_protein || client.current_carbs || client.current_fat))
     } else if (duplicateData) {
       setForm(f => ({
         ...f,
@@ -52,11 +56,36 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
         access_weeks: duplicateData.access_weeks || 4,
         tags: duplicateData.tags || [],
       }))
+      setMacrosTouched(Boolean(duplicateData.current_protein || duplicateData.current_carbs || duplicateData.current_fat))
     }
   }, [client, duplicateData])
 
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }))
+  }
+
+  function setCalories(value) {
+    setForm(f => {
+      const next = { ...f, current_calories: value }
+      if (!macrosTouched) {
+        const { protein_g, carbs_g, fat_g } = calcStandardMacros(value)
+        next.current_protein = value ? String(protein_g) : ''
+        next.current_carbs = value ? String(carbs_g) : ''
+        next.current_fat = value ? String(fat_g) : ''
+      }
+      return next
+    })
+  }
+
+  function setMacro(field, value) {
+    setMacrosTouched(true)
+    set(field, value)
+  }
+
+  function resetToStandardSplit() {
+    const { protein_g, carbs_g, fat_g } = calcStandardMacros(form.current_calories)
+    setForm(f => ({ ...f, current_protein: String(protein_g), current_carbs: String(carbs_g), current_fat: String(fat_g) }))
+    setMacrosTouched(false)
   }
 
   function handleTagKeyDown(e) {
@@ -265,9 +294,12 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
               type="number"
               min={0}
               value={form.current_calories}
-              onChange={e => set('current_calories', e.target.value)}
+              onChange={e => setCalories(e.target.value)}
               placeholder="e.g. 1800"
             />
+            <p className="text-xs text-gray-400 mt-1">
+              Macros default to the standard 40% carbs / 35% protein / 25% fat split — expand below to view or override.
+            </p>
           </div>
 
           {/* Optional fields toggle */}
@@ -284,6 +316,17 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
 
           {showOptional && (
             <>
+              <div className="flex items-center justify-between">
+                <label className="label !mb-0">Macros</label>
+                <button
+                  type="button"
+                  onClick={resetToStandardSplit}
+                  disabled={!form.current_calories}
+                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Use standard split (40/35/25)
+                </button>
+              </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="label">Protein (g)</label>
@@ -292,7 +335,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
                     type="number"
                     min={0}
                     value={form.current_protein}
-                    onChange={e => set('current_protein', e.target.value)}
+                    onChange={e => setMacro('current_protein', e.target.value)}
                     placeholder="e.g. 150"
                   />
                 </div>
@@ -303,7 +346,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
                     type="number"
                     min={0}
                     value={form.current_carbs}
-                    onChange={e => set('current_carbs', e.target.value)}
+                    onChange={e => setMacro('current_carbs', e.target.value)}
                     placeholder="e.g. 200"
                   />
                 </div>
@@ -314,7 +357,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
                     type="number"
                     min={0}
                     value={form.current_fat}
-                    onChange={e => set('current_fat', e.target.value)}
+                    onChange={e => setMacro('current_fat', e.target.value)}
                     placeholder="e.g. 70"
                   />
                 </div>
