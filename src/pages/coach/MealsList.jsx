@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { VARIANT_SIZE_FACTORS, missingVariantNames, createMissingVariantsForMeal } from '../../lib/mealVariants'
 
 const CATEGORIES = ['All', 'Breakfast', 'Lunch', 'Dinner', 'Snack', 'Pre-workout', 'Evening Snack']
 
@@ -48,32 +49,74 @@ function round1(n) {
   return Math.round(n * 10) / 10
 }
 
+// Which of the 5 sizes a meal is still missing, based on its saved meal_variants rows.
+function missingSizesFor(meal) {
+  const existing = new Set((meal.meal_variants || []).map(v => v.variant_name))
+  return missingVariantNames(existing)
+}
+
 export default function MealsList() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const [meals, setMeals] = useState([])
+  const [library, setLibrary] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [bulkRunning, setBulkRunning] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState(null)
 
   async function loadMeals() {
-    const { data, error } = await supabase
-      .from('meals')
-      .select(`
-        id, name, category, photo_url, instructions,
-        meal_ingredients(calories, protein_g, carbs_g, fat_g)
-      `)
-      .eq('coach_id', profile.id)
-      .order('created_at', { ascending: false })
+    const [{ data, error }, { data: libData }] = await Promise.all([
+      supabase
+        .from('meals')
+        .select(`
+          id, name, category, photo_url, instructions,
+          meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit),
+          meal_variants(variant_name)
+        `)
+        .eq('coach_id', profile.id)
+        .order('created_at', { ascending: false }),
+      supabase.from('ingredients').select('*').eq('coach_id', profile.id),
+    ])
 
     if (error) console.error(error)
     else setMeals(data || [])
+    setLibrary(libData || [])
     setLoading(false)
   }
 
   useEffect(() => { loadMeals() }, [profile.id])
+
+  const mealsNeedingVariants = meals.filter(
+    m => (m.meal_ingredients || []).length > 0 && missingSizesFor(m).length > 0
+  )
+
+  async function handleBulkCreateVariants() {
+    const targets = mealsNeedingVariants
+    if (targets.length === 0) return
+    setBulkRunning(true)
+    setBulkProgress({ done: 0, total: targets.length })
+    const failed = []
+    for (const meal of targets) {
+      const existing = new Set((meal.meal_variants || []).map(v => v.variant_name))
+      try {
+        await createMissingVariantsForMeal(meal.id, meal.meal_ingredients, library, existing)
+      } catch (err) {
+        console.error(`Failed to create sizes for "${meal.name}":`, err)
+        failed.push(meal.name)
+      }
+      setBulkProgress(p => ({ done: p.done + 1, total: p.total }))
+    }
+    setBulkRunning(false)
+    setBulkProgress(null)
+    await loadMeals()
+    if (failed.length > 0) {
+      alert(`Created missing sizes for ${targets.length - failed.length} of ${targets.length} meals.\n\nFailed: ${failed.join(', ')}\n\nCheck the browser console for error details.`)
+    }
+  }
 
   async function handleDelete(id) {
     setDeleting(true)
@@ -121,15 +164,32 @@ export default function MealsList() {
             {meals.length} meal{meals.length !== 1 ? 's' : ''} total
           </p>
         </div>
-        <button
-          onClick={() => navigate('/coach/meals/new')}
-          className="btn-primary"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Meal
-        </button>
+        <div className="flex items-center gap-2">
+          {mealsNeedingVariants.length > 0 && (
+            <button
+              onClick={handleBulkCreateVariants}
+              disabled={bulkRunning}
+              className="btn-secondary"
+              title="Generate any missing XS/Small/Medium/Large/XL sizes for every meal in your library, scaled from each meal's base recipe"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+              </svg>
+              {bulkRunning
+                ? `Creating sizes… ${bulkProgress?.done ?? 0}/${bulkProgress?.total ?? 0}`
+                : `Create missing sizes (${mealsNeedingVariants.length})`}
+            </button>
+          )}
+          <button
+            onClick={() => navigate('/coach/meals/new')}
+            className="btn-primary"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Meal
+          </button>
+        </div>
       </div>
 
       {/* Search + filter */}
@@ -175,6 +235,8 @@ export default function MealsList() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(meal => {
             const totals = calcTotals(meal.meal_ingredients)
+            const hasBase = (meal.meal_ingredients || []).length > 0
+            const missingSizes = hasBase ? missingSizesFor(meal) : null
             const photoUrl = meal.photo_url
               ? supabase.storage.from('meal-photos').getPublicUrl(meal.photo_url).data.publicUrl
               : null
@@ -218,6 +280,18 @@ export default function MealsList() {
                     <h3 className="font-semibold text-gray-900 dark:text-white leading-tight">{meal.name}</h3>
                     {meal.category && <CategoryBadge category={meal.category} />}
                   </div>
+
+                  {missingSizes && (
+                    missingSizes.length === 0 ? (
+                      <span className="inline-flex items-center self-start px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 mb-2">
+                        All {VARIANT_SIZE_FACTORS.length} sizes
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center self-start px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 mb-2">
+                        {VARIANT_SIZE_FACTORS.length - missingSizes.length}/{VARIANT_SIZE_FACTORS.length} sizes
+                      </span>
+                    )
+                  )}
 
                   {/* Macros */}
                   {(meal.meal_ingredients || []).length > 0 ? (
