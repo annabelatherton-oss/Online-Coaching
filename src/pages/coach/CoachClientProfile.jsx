@@ -379,11 +379,28 @@ function snapToConstraints(amount, libIng) {
   return val
 }
 
-// Apply per-client gram overrides to a meal's ingredient list, rescaling macros proportionally
+// Per-client override shape for a single meal slot: { qty: {id: grams}, removed: [id], added: [row] }.
+// Older saved data was a flat { id: grams } map — normalize that into the same shape.
+function normalizeOverrides(raw) {
+  if (!raw) return { qty: {}, removed: [], added: [] }
+  if (raw.qty || raw.removed || raw.added) {
+    return { qty: raw.qty || {}, removed: raw.removed || [], added: raw.added || [] }
+  }
+  return { qty: { ...raw }, removed: [], added: [] }
+}
+
+function hasAnyOverride(raw) {
+  const { qty, removed, added } = normalizeOverrides(raw)
+  return Object.keys(qty).length > 0 || removed.length > 0 || added.length > 0
+}
+
+// Apply per-client gram overrides, removals and additions to a meal's ingredient list.
+// Quantity overrides rescale that ingredient's macros proportionally.
 function applyIngredientOverrides(ingredients, overridesForSlot) {
-  if (!overridesForSlot || !Object.keys(overridesForSlot).length) return ingredients
-  return ingredients.map(ing => {
-    const override = overridesForSlot[ing.id]
+  const { qty, removed, added } = normalizeOverrides(overridesForSlot)
+  const visible = removed.length ? ingredients.filter(ing => !removed.includes(ing.id)) : ingredients
+  const withQty = visible.map(ing => {
+    const override = qty[ing.id]
     if (override == null) return ing
     const origQty = parseFloat(ing.quantity_g) || 0
     const ratio = origQty > 0 ? override / origQty : 1
@@ -396,6 +413,8 @@ function applyIngredientOverrides(ingredients, overridesForSlot) {
       fat_g:     round1((parseFloat(ing.fat_g)     || 0) * ratio),
     }
   })
+  if (!added.length) return withQty
+  return [...withQty, ...added.map(a => ({ ...a, _isAdded: true }))]
 }
 
 function sumIngredientMacros(ingredients) {
@@ -411,10 +430,10 @@ function sumIngredientMacros(ingredients) {
 }
 
 // Get macros for a meal at a given variant size, falling back to base ingredients.
-// overridesForSlot is a { [ingredientRowId]: grams } map of per-client gram tweaks.
+// overridesForSlot holds this client's gram tweaks / removed / added ingredients for the slot.
 function mealMacros(mealId, mealMap, variantName, overridesForSlot) {
   if (!mealId || !mealMap[mealId]) return { cal: 0, prot: 0, carb: 0, fat: 0 }
-  const hasOverrides = overridesForSlot && Object.keys(overridesForSlot).length > 0
+  const hasOverrides = hasAnyOverride(overridesForSlot)
   if (variantName) {
     const v = (mealMap[mealId].meal_variants || []).find(v => v.variant_name === variantName)
     if (v) {
@@ -423,6 +442,58 @@ function mealMacros(mealId, mealMap, variantName, overridesForSlot) {
     }
   }
   return sumIngredientMacros(applyIngredientOverrides(mealMap[mealId].meal_ingredients || [], overridesForSlot))
+}
+
+// Factory for the add/remove/quantity-change handlers shared by rotating slots and static meals —
+// `key` is the slot key (rotating) or static field name, scoped within whichever overrides state is passed in.
+function makeOverrideHandlers(setOverrides, setDirty) {
+  return {
+    changeQty(key, ingredientId, value) {
+      setOverrides(prev => {
+        const current = normalizeOverrides(prev[key])
+        const qty = { ...current.qty }
+        if (value === null || value === '') delete qty[ingredientId]
+        else {
+          const num = parseFloat(value)
+          if (isNaN(num)) return prev
+          qty[ingredientId] = num
+        }
+        return { ...prev, [key]: { ...current, qty } }
+      })
+      setDirty(true)
+    },
+    remove(key, ingredientId) {
+      setOverrides(prev => {
+        const current = normalizeOverrides(prev[key])
+        if (current.removed.includes(ingredientId)) return prev
+        const qty = { ...current.qty }
+        delete qty[ingredientId]
+        return { ...prev, [key]: { ...current, qty, removed: [...current.removed, ingredientId] } }
+      })
+      setDirty(true)
+    },
+    restore(key, ingredientId) {
+      setOverrides(prev => {
+        const current = normalizeOverrides(prev[key])
+        return { ...prev, [key]: { ...current, removed: current.removed.filter(id => id !== ingredientId) } }
+      })
+      setDirty(true)
+    },
+    add(key, newIngredient) {
+      setOverrides(prev => {
+        const current = normalizeOverrides(prev[key])
+        return { ...prev, [key]: { ...current, added: [...current.added, newIngredient] } }
+      })
+      setDirty(true)
+    },
+    removeAdded(key, addedId) {
+      setOverrides(prev => {
+        const current = normalizeOverrides(prev[key])
+        return { ...prev, [key]: { ...current, added: current.added.filter(a => a.id !== addedId) } }
+      })
+      setDirty(true)
+    },
+  }
 }
 
 function addMacros(a, b) {
@@ -448,10 +519,16 @@ function autoSelectVariant(mealIds, mealMap, calorieTarget) {
   return ranked[0]?.size || null
 }
 
-// Ingredient list for a variant or base meal. Gram quantities are editable per-client —
-// edits are stored as overrides keyed by ingredient row id and rescale that ingredient's
-// macros proportionally, without touching the shared master meal/variant data.
-function VariantIngredientList({ mealId, mealMap, variantName, overrides, libraryById, onQtyChange }) {
+// Ingredient list for a variant or base meal. Gram quantities are editable per-client, and
+// ingredients can be removed or added just for this client — none of it touches the shared
+// master meal/variant data. Quantity overrides rescale that ingredient's macros proportionally;
+// added ingredients are pulled from the coach's ingredient library so their macros are accurate.
+function VariantIngredientList({ mealId, mealMap, variantName, overrides, library, libraryById, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded }) {
+  const [addingOpen, setAddingOpen] = useState(false)
+  const [addSearch, setAddSearch] = useState('')
+  const [addSelected, setAddSelected] = useState(null)
+  const [addQty, setAddQty] = useState('')
+
   const meal = mealMap[mealId]
   if (!meal) return null
 
@@ -471,8 +548,7 @@ function VariantIngredientList({ mealId, mealMap, variantName, overrides, librar
     baseIngredients = meal.meal_ingredients || []
   }
 
-  if (!baseIngredients.length) return <p className="text-xs text-gray-400 italic px-1">No ingredients recorded</p>
-
+  const { qty: overrideQty, removed } = normalizeOverrides(overrides)
   const ingredients = applyIngredientOverrides(baseIngredients, overrides)
   const totCal  = ingredients.reduce((s, i) => s + (parseFloat(i.calories)  || 0), 0)
   const totCarb = ingredients.reduce((s, i) => s + (parseFloat(i.carbs_g)   || 0), 0)
@@ -486,48 +562,87 @@ function VariantIngredientList({ mealId, mealMap, variantName, overrides, librar
     if (!isNaN(snapped) && snapped !== parseFloat(ing.quantity_g)) onQtyChange(ing.id, snapped)
   }
 
+  function resetAddForm() {
+    setAddingOpen(false); setAddSearch(''); setAddSelected(null); setAddQty('')
+  }
+
+  function confirmAdd() {
+    if (!addSelected) return
+    const qty = parseFloat(addQty)
+    if (isNaN(qty) || qty <= 0) return
+    const f = addSelected.serving_size > 0 ? qty / addSelected.serving_size : 0
+    onAdd({
+      id: `added-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: addSelected.name,
+      quantity_g: qty,
+      unit: addSelected.serving_unit || 'g',
+      calories:  round1(f * addSelected.calories_per_serving),
+      protein_g: round1(f * addSelected.protein_per_serving),
+      carbs_g:   round1(f * addSelected.carbs_per_serving),
+      fat_g:     round1(f * addSelected.fat_per_serving),
+      ingredient_id: addSelected.id,
+    })
+    resetAddForm()
+  }
+
+  const filteredLibrary = addSearch
+    ? library.filter(l => l.name.toLowerCase().includes(addSearch.toLowerCase())).slice(0, 8)
+    : []
+
   return (
     <div className="space-y-1 pt-1">
       <p className="text-xs text-gray-400 dark:text-gray-500 italic mb-1.5">{label}</p>
-      <div className="flex items-center gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pb-1">
-        <span className="flex-1">Ingredient</span>
-        <span className="w-16 text-right">g</span>
-        <span className="w-16 text-right">kcal</span>
-        <span className="w-10 text-right">C</span>
-        <span className="w-10 text-right">P</span>
-        <span className="w-10 text-right">F</span>
-      </div>
-      {ingredients.map((ing, i) => {
-        const libIng = ing.ingredient_id ? libraryById[ing.ingredient_id] : null
-        const overridden = overrides && overrides[ing.id] != null
-        return (
-          <div key={ing.id || i} className="flex items-center gap-2 text-xs">
-            <span className="flex-1 truncate text-gray-600 dark:text-gray-400">{ing.name}</span>
-            <input
-              type="number"
-              min={libIng?.min_amount ?? 0}
-              step={libIng?.serving_step ?? 1}
-              className={`w-16 text-right text-xs py-0.5 px-1 rounded border tabular-nums focus:outline-none focus:ring-1 focus:ring-brand-400 ${
-                overridden
-                  ? 'border-orange-300 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/10'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400'
-              }`}
-              value={ing.quantity_g}
-              onChange={e => onQtyChange(ing.id, e.target.value)}
-              onBlur={() => handleBlur(ing)}
-            />
-            <span className="tabular-nums w-16 text-right text-gray-500 dark:text-gray-400">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
-            <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.carbs_g) || 0)}g</span>
-            <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.protein_g) || 0)}g</span>
-            <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.fat_g) || 0)}g</span>
-            {overridden && (
-              <button type="button" onClick={() => onQtyChange(ing.id, null)} className="text-orange-400 hover:text-orange-600 flex-shrink-0" title="Reset to default quantity">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-              </button>
-            )}
+
+      {ingredients.length > 0 && (
+        <>
+          <div className="flex items-center gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pb-1">
+            <span className="flex-1">Ingredient</span>
+            <span className="w-16 text-right">g</span>
+            <span className="w-16 text-right">kcal</span>
+            <span className="w-10 text-right">C</span>
+            <span className="w-10 text-right">P</span>
+            <span className="w-10 text-right">F</span>
+            <span className="w-4" />
           </div>
-        )
-      })}
+          {ingredients.map((ing, i) => {
+            const libIng = ing.ingredient_id ? libraryById[ing.ingredient_id] : null
+            const overridden = !ing._isAdded && overrideQty[ing.id] != null
+            return (
+              <div key={ing.id || i} className="flex items-center gap-2 text-xs">
+                <span className={`flex-1 truncate ${ing._isAdded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`}>{ing.name}</span>
+                <input
+                  type="number"
+                  min={libIng?.min_amount ?? 0}
+                  step={libIng?.serving_step ?? 1}
+                  className={`w-16 text-right text-xs py-0.5 px-1 rounded border tabular-nums focus:outline-none focus:ring-1 focus:ring-brand-400 ${
+                    overridden
+                      ? 'border-orange-300 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/10'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400'
+                  }`}
+                  value={ing.quantity_g}
+                  onChange={e => onQtyChange(ing.id, e.target.value)}
+                  onBlur={() => handleBlur(ing)}
+                />
+                <span className="tabular-nums w-16 text-right text-gray-500 dark:text-gray-400">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
+                <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.carbs_g) || 0)}g</span>
+                <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.protein_g) || 0)}g</span>
+                <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.fat_g) || 0)}g</span>
+                <button
+                  type="button"
+                  onClick={() => ing._isAdded ? onRemoveAdded(ing.id) : onRemove(ing.id)}
+                  className="w-4 text-center text-gray-300 hover:text-red-400 flex-shrink-0"
+                  title={ing._isAdded ? 'Remove this ingredient' : 'Remove for this client'}
+                >
+                  ×
+                </button>
+              </div>
+            )
+          })}
+        </>
+      )}
+
+      {ingredients.length === 0 && <p className="text-xs text-gray-400 italic">No ingredients recorded</p>}
+
       {totCal > 0 && (
         <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800 pt-1.5">
           <span className="flex-1">Meal total</span>
@@ -535,6 +650,69 @@ function VariantIngredientList({ mealId, mealMap, variantName, overrides, librar
           <span className="tabular-nums w-10 text-right">{Math.round(totCarb)}g</span>
           <span className="tabular-nums w-10 text-right">{Math.round(totProt)}g</span>
           <span className="tabular-nums w-10 text-right">{Math.round(totFat)}g</span>
+        </div>
+      )}
+
+      {removed.length > 0 && (
+        <div className="pt-1.5 space-y-1">
+          {removed.map(id => {
+            const orig = baseIngredients.find(i => i.id === id)
+            if (!orig) return null
+            return (
+              <div key={id} className="flex items-center gap-2 text-xs text-gray-400">
+                <span className="flex-1 truncate line-through">{orig.name}</span>
+                <button type="button" onClick={() => onRestore(id)} className="text-brand-500 hover:text-brand-700 font-medium flex-shrink-0">Restore</button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {!addingOpen ? (
+        <button type="button" onClick={() => setAddingOpen(true)} className="mt-1 text-xs text-brand-500 hover:text-brand-700 font-medium inline-flex items-center gap-1">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+          Add ingredient
+        </button>
+      ) : (
+        <div className="mt-1 p-2 rounded-lg border border-dashed border-gray-200 dark:border-gray-700 space-y-2">
+          <div className="relative">
+            <input
+              autoFocus
+              className="input py-1 text-xs"
+              placeholder="Search your ingredient library…"
+              value={addSearch}
+              onChange={e => { setAddSearch(e.target.value); setAddSelected(null) }}
+            />
+            {addSearch && !addSelected && (
+              <div className="absolute z-20 left-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg w-full max-h-40 overflow-y-auto">
+                {filteredLibrary.map(l => (
+                  <button key={l.id} type="button" onClick={() => { setAddSelected(l); setAddSearch(l.name) }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-pink-50 dark:hover:bg-pink-900/20 flex items-center justify-between gap-2">
+                    <span className="truncate">{l.name}</span>
+                    <span className="text-gray-400 flex-shrink-0">{l.calories_per_serving} kcal/{l.serving_size}{l.serving_unit}</span>
+                  </button>
+                ))}
+                {filteredLibrary.length === 0 && <p className="px-2 py-1.5 text-xs text-gray-400 italic">No matches in your ingredient library</p>}
+              </div>
+            )}
+          </div>
+          {addSelected ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                className="input py-1 text-xs w-20"
+                placeholder="grams"
+                min={addSelected.min_amount ?? 0}
+                step={addSelected.serving_step ?? 1}
+                value={addQty}
+                onChange={e => setAddQty(e.target.value)}
+              />
+              <span className="text-xs text-gray-400">{addSelected.serving_unit}</span>
+              <button type="button" onClick={confirmAdd} disabled={!addQty} className="btn-primary py-1 px-2 text-xs">Add</button>
+              <button type="button" onClick={resetAddForm} className="text-xs text-gray-400 hover:text-gray-700">Cancel</button>
+            </div>
+          ) : (
+            <button type="button" onClick={resetAddForm} className="text-xs text-gray-400 hover:text-gray-700">Cancel</button>
+          )}
         </div>
       )}
     </div>
@@ -626,33 +804,8 @@ function MealPlanTab({ client, coachId }) {
 
   const libraryById = Object.fromEntries(library.map(l => [l.id, l]))
 
-  function handleIngredientQtyChange(slotKey, ingredientId, value) {
-    setIngredientOverrides(prev => {
-      const slotOverrides = { ...(prev[slotKey] || {}) }
-      if (value === null || value === '') delete slotOverrides[ingredientId]
-      else {
-        const num = parseFloat(value)
-        if (isNaN(num)) return prev
-        slotOverrides[ingredientId] = num
-      }
-      return { ...prev, [slotKey]: slotOverrides }
-    })
-    setSlotsDirty(true)
-  }
-
-  function handleStaticIngredientQtyChange(staticKey, ingredientId, value) {
-    setStaticIngredientOverrides(prev => {
-      const keyOverrides = { ...(prev[staticKey] || {}) }
-      if (value === null || value === '') delete keyOverrides[ingredientId]
-      else {
-        const num = parseFloat(value)
-        if (isNaN(num)) return prev
-        keyOverrides[ingredientId] = num
-      }
-      return { ...prev, [staticKey]: keyOverrides }
-    })
-    setStaticDirty(true)
-  }
+  const slotHandlers = makeOverrideHandlers(setIngredientOverrides, setSlotsDirty)
+  const staticHandlers = makeOverrideHandlers(setStaticIngredientOverrides, setStaticDirty)
 
   useEffect(() => { load() }, [client.id])
 
@@ -914,7 +1067,7 @@ function MealPlanTab({ client, coachId }) {
                 const macros = mealMacros(currentId, mealMap, effectiveVariant, slotOverrides)
                 const options = mealsByCategory[slot.cat] || []
                 const isOverridden = templateSlots[slot.key] !== undefined && (editedSlots[slot.key] || null) !== (templateSlots[slot.key] || null)
-                const hasIngredientEdits = slotOverrides && Object.keys(slotOverrides).length > 0
+                const hasIngredientEdits = hasAnyOverride(slotOverrides)
                 return (
                   <div key={slot.key}>
                     <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
@@ -949,8 +1102,13 @@ function MealPlanTab({ client, coachId }) {
                           mealMap={mealMap}
                           variantName={effectiveVariant}
                           overrides={slotOverrides}
+                          library={library}
                           libraryById={libraryById}
-                          onQtyChange={(ingId, val) => handleIngredientQtyChange(slot.key, ingId, val)}
+                          onQtyChange={(ingId, val) => slotHandlers.changeQty(slot.key, ingId, val)}
+                          onRemove={ingId => slotHandlers.remove(slot.key, ingId)}
+                          onRestore={ingId => slotHandlers.restore(slot.key, ingId)}
+                          onAdd={newIng => slotHandlers.add(slot.key, newIng)}
+                          onRemoveAdded={addedId => slotHandlers.removeAdded(slot.key, addedId)}
                         />
                       </div>
                     )}
@@ -991,7 +1149,7 @@ function MealPlanTab({ client, coachId }) {
               const options = mealsByCategory[cat] || []
               const keyOverrides = staticIngredientOverrides[key]
               const macros = mealMacros(mealId, mealMap, effectiveVariant, keyOverrides)
-              const hasIngredientEdits = keyOverrides && Object.keys(keyOverrides).length > 0
+              const hasIngredientEdits = hasAnyOverride(keyOverrides)
               return (
                 <div key={key} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
                   <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
@@ -1022,8 +1180,13 @@ function MealPlanTab({ client, coachId }) {
                         mealMap={mealMap}
                         variantName={effectiveVariant}
                         overrides={keyOverrides}
+                        library={library}
                         libraryById={libraryById}
-                        onQtyChange={(ingId, val) => handleStaticIngredientQtyChange(key, ingId, val)}
+                        onQtyChange={(ingId, val) => staticHandlers.changeQty(key, ingId, val)}
+                        onRemove={ingId => staticHandlers.remove(key, ingId)}
+                        onRestore={ingId => staticHandlers.restore(key, ingId)}
+                        onAdd={newIng => staticHandlers.add(key, newIng)}
+                        onRemoveAdded={addedId => staticHandlers.removeAdded(key, addedId)}
                       />
                     </div>
                   )}
