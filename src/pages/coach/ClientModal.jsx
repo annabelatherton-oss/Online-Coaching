@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, supabaseAdmin } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
-import { calcStandardMacros } from '../../lib/macros'
+import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
 
 export default function ClientModal({ client, onClose, onSaved, duplicateData }) {
   const { profile } = useAuth()
@@ -24,8 +24,8 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
   const [showOptional, setShowOptional] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  // Once the coach manually edits a macro field, stop auto-deriving macros from calories.
-  const [macrosTouched, setMacrosTouched] = useState(false)
+  // The carbs/protein/fat split (% of calories) driving the gram fields below.
+  const [split, setSplit] = useState({ ...MACRO_SPLIT })
 
   useEffect(() => {
     if (client) {
@@ -44,7 +44,10 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           : new Date().toISOString().split('T')[0],
         tags: client.tags || [],
       })
-      setMacrosTouched(Boolean(client.current_protein || client.current_carbs || client.current_fat))
+      setSplit(splitPercentFromGrams(
+        { protein_g: client.current_protein, carbs_g: client.current_carbs, fat_g: client.current_fat },
+        client.current_calories
+      ))
     } else if (duplicateData) {
       setForm(f => ({
         ...f,
@@ -56,7 +59,10 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
         access_weeks: duplicateData.access_weeks || 4,
         tags: duplicateData.tags || [],
       }))
-      setMacrosTouched(Boolean(duplicateData.current_protein || duplicateData.current_carbs || duplicateData.current_fat))
+      setSplit(splitPercentFromGrams(
+        { protein_g: duplicateData.current_protein, carbs_g: duplicateData.current_carbs, fat_g: duplicateData.current_fat },
+        duplicateData.current_calories
+      ))
     }
   }, [client, duplicateData])
 
@@ -64,29 +70,34 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
     setForm(f => ({ ...f, [field]: value }))
   }
 
-  function setCalories(value) {
-    setForm(f => {
-      const next = { ...f, current_calories: value }
-      if (!macrosTouched) {
-        const { protein_g, carbs_g, fat_g } = calcStandardMacros(value)
-        next.current_protein = value ? String(protein_g) : ''
-        next.current_carbs = value ? String(carbs_g) : ''
-        next.current_fat = value ? String(fat_g) : ''
-      }
-      return next
-    })
+  function applySplit(calories, splitPct) {
+    const grams = calcMacrosFromSplit(calories, splitPct)
+    setForm(f => ({
+      ...f,
+      current_calories: calories,
+      current_protein: calories ? String(grams.protein_g) : '',
+      current_carbs: calories ? String(grams.carbs_g) : '',
+      current_fat: calories ? String(grams.fat_g) : '',
+    }))
   }
 
-  function setMacro(field, value) {
-    setMacrosTouched(true)
-    set(field, value)
+  function setCalories(value) {
+    applySplit(value, split)
+  }
+
+  function setSplitPct(field, value) {
+    const pct = value === '' ? '' : Number(value)
+    const nextSplit = { ...split, [field]: pct }
+    setSplit(nextSplit)
+    applySplit(form.current_calories, { carbs: nextSplit.carbs || 0, protein: nextSplit.protein || 0, fat: nextSplit.fat || 0 })
   }
 
   function resetToStandardSplit() {
-    const { protein_g, carbs_g, fat_g } = calcStandardMacros(form.current_calories)
-    setForm(f => ({ ...f, current_protein: String(protein_g), current_carbs: String(carbs_g), current_fat: String(fat_g) }))
-    setMacrosTouched(false)
+    setSplit({ ...MACRO_SPLIT })
+    applySplit(form.current_calories, MACRO_SPLIT)
   }
+
+  const splitTotal = (Number(split.carbs) || 0) + (Number(split.protein) || 0) + (Number(split.fat) || 0)
 
   function handleTagKeyDown(e) {
     if (e.key === 'Enter') {
@@ -317,51 +328,56 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           {showOptional && (
             <>
               <div className="flex items-center justify-between">
-                <label className="label !mb-0">Macros</label>
+                <label className="label !mb-0">Macro split (% of calories)</label>
                 <button
                   type="button"
                   onClick={resetToStandardSplit}
-                  disabled={!form.current_calories}
-                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
                 >
                   Use standard split (40/35/25)
                 </button>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="label">Protein (g)</label>
+                  <label className="label">Carbs %</label>
                   <input
                     className="input"
                     type="number"
                     min={0}
-                    value={form.current_protein}
-                    onChange={e => setMacro('current_protein', e.target.value)}
-                    placeholder="e.g. 150"
+                    max={100}
+                    value={split.carbs}
+                    onChange={e => setSplitPct('carbs', e.target.value)}
                   />
+                  <p className="text-xs text-gray-400 mt-1">{form.current_carbs || 0}g</p>
                 </div>
                 <div>
-                  <label className="label">Carbs (g)</label>
+                  <label className="label">Protein %</label>
                   <input
                     className="input"
                     type="number"
                     min={0}
-                    value={form.current_carbs}
-                    onChange={e => setMacro('current_carbs', e.target.value)}
-                    placeholder="e.g. 200"
+                    max={100}
+                    value={split.protein}
+                    onChange={e => setSplitPct('protein', e.target.value)}
                   />
+                  <p className="text-xs text-gray-400 mt-1">{form.current_protein || 0}g</p>
                 </div>
                 <div>
-                  <label className="label">Fat (g)</label>
+                  <label className="label">Fat %</label>
                   <input
                     className="input"
                     type="number"
                     min={0}
-                    value={form.current_fat}
-                    onChange={e => setMacro('current_fat', e.target.value)}
-                    placeholder="e.g. 70"
+                    max={100}
+                    value={split.fat}
+                    onChange={e => setSplitPct('fat', e.target.value)}
                   />
+                  <p className="text-xs text-gray-400 mt-1">{form.current_fat || 0}g</p>
                 </div>
               </div>
+              {splitTotal !== 100 && (
+                <p className="text-xs text-amber-500">Split totals {splitTotal}% — adjust so the three add up to 100%.</p>
+              )}
 
               <div>
                 <label className="label">Tags</label>

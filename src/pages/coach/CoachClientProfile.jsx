@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
-import { calcStandardMacros } from '../../lib/macros'
+import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
 
 const TABS = ['Overview', 'Meal Plan', 'Weight', 'Measurements', 'Photos', 'Notes']
 
@@ -35,36 +35,42 @@ function OverviewTab({ client, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
-  // Once the coach manually edits a macro field, stop auto-deriving macros from calories.
-  const [macrosTouched, setMacrosTouched] = useState(
-    Boolean(client.current_protein || client.current_carbs || client.current_fat)
-  )
+  // The carbs/protein/fat split (% of calories) driving the gram fields below.
+  const [split, setSplit] = useState(splitPercentFromGrams(
+    { protein_g: client.current_protein, carbs_g: client.current_carbs, fat_g: client.current_fat },
+    client.current_calories
+  ))
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
 
-  function setCalories(value) {
-    setForm(f => {
-      const next = { ...f, current_calories: value }
-      if (!macrosTouched) {
-        const { protein_g, carbs_g, fat_g } = calcStandardMacros(value)
-        next.current_protein = value ? String(protein_g) : ''
-        next.current_carbs = value ? String(carbs_g) : ''
-        next.current_fat = value ? String(fat_g) : ''
-      }
-      return next
-    })
+  function applySplit(calories, splitPct) {
+    const grams = calcMacrosFromSplit(calories, splitPct)
+    setForm(f => ({
+      ...f,
+      current_calories: calories,
+      current_protein: calories ? String(grams.protein_g) : '',
+      current_carbs: calories ? String(grams.carbs_g) : '',
+      current_fat: calories ? String(grams.fat_g) : '',
+    }))
   }
 
-  function setMacro(field, value) {
-    setMacrosTouched(true)
-    set(field, value)
+  function setCalories(value) {
+    applySplit(value, split)
+  }
+
+  function setSplitPct(field, value) {
+    const pct = value === '' ? '' : Number(value)
+    const nextSplit = { ...split, [field]: pct }
+    setSplit(nextSplit)
+    applySplit(form.current_calories, { carbs: nextSplit.carbs || 0, protein: nextSplit.protein || 0, fat: nextSplit.fat || 0 })
   }
 
   function resetToStandardSplit() {
-    const { protein_g, carbs_g, fat_g } = calcStandardMacros(form.current_calories)
-    setForm(f => ({ ...f, current_protein: String(protein_g), current_carbs: String(carbs_g), current_fat: String(fat_g) }))
-    setMacrosTouched(false)
+    setSplit({ ...MACRO_SPLIT })
+    applySplit(form.current_calories, MACRO_SPLIT)
   }
+
+  const splitTotal = (Number(split.carbs) || 0) + (Number(split.protein) || 0) + (Number(split.fat) || 0)
 
   async function handleSave(e) {
     e.preventDefault()
@@ -122,8 +128,7 @@ function OverviewTab({ client, onSaved }) {
           <button
             type="button"
             onClick={resetToStandardSplit}
-            disabled={!form.current_calories}
-            className="text-xs text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+            className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
           >
             Use standard split (40/35/25)
           </button>
@@ -132,10 +137,28 @@ function OverviewTab({ client, onSaved }) {
           <label className="label">Calories (kcal/day)</label>
           <input className="input" type="number" min={0} value={form.current_calories} onChange={e => setCalories(e.target.value)} placeholder="e.g. 1800" />
         </div>
-        <div className="grid grid-cols-3 gap-4">
-          <div><label className="label">Protein (g)</label><input className="input" type="number" min={0} value={form.current_protein} onChange={e => setMacro('current_protein', e.target.value)} placeholder="e.g. 150" /></div>
-          <div><label className="label">Carbs (g)</label><input className="input" type="number" min={0} value={form.current_carbs} onChange={e => setMacro('current_carbs', e.target.value)} placeholder="e.g. 200" /></div>
-          <div><label className="label">Fat (g)</label><input className="input" type="number" min={0} value={form.current_fat} onChange={e => setMacro('current_fat', e.target.value)} placeholder="e.g. 70" /></div>
+        <div>
+          <label className="label !mb-0">Macro split (% of calories)</label>
+          <div className="grid grid-cols-3 gap-4 mt-1">
+            <div>
+              <label className="label">Carbs %</label>
+              <input className="input" type="number" min={0} max={100} value={split.carbs} onChange={e => setSplitPct('carbs', e.target.value)} />
+              <p className="text-xs text-gray-400 mt-1">{form.current_carbs || 0}g</p>
+            </div>
+            <div>
+              <label className="label">Protein %</label>
+              <input className="input" type="number" min={0} max={100} value={split.protein} onChange={e => setSplitPct('protein', e.target.value)} />
+              <p className="text-xs text-gray-400 mt-1">{form.current_protein || 0}g</p>
+            </div>
+            <div>
+              <label className="label">Fat %</label>
+              <input className="input" type="number" min={0} max={100} value={split.fat} onChange={e => setSplitPct('fat', e.target.value)} />
+              <p className="text-xs text-gray-400 mt-1">{form.current_fat || 0}g</p>
+            </div>
+          </div>
+          {splitTotal !== 100 && (
+            <p className="text-xs text-amber-500 mt-2">Split totals {splitTotal}% — adjust so the three add up to 100%.</p>
+          )}
         </div>
       </div>
 
