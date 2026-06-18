@@ -501,6 +501,14 @@ function sumIngredientMacros(ingredients) {
   )
 }
 
+// Whether this meal actually has a saved variant for the given size — if not, mealMacros()
+// silently falls back to the base portion, so callers use this to warn the coach why a meal's
+// calories didn't change when they switched portion size.
+function variantExists(mealId, mealMap, variantName) {
+  if (!mealId || !variantName || !mealMap[mealId]) return true
+  return (mealMap[mealId].meal_variants || []).some(v => v.variant_name === variantName)
+}
+
 // Get macros for a meal at a given variant size, falling back to base ingredients.
 // overridesForSlot holds this client's gram tweaks / removed / added ingredients for the slot.
 function mealMacros(mealId, mealMap, variantName, overridesForSlot) {
@@ -1202,6 +1210,7 @@ function MealPlanTab({ client, coachId }) {
                 const options = mealsByCategory[slot.cat] || []
                 const isOverridden = templateSlots[slot.key] !== undefined && (editedSlots[slot.key] || null) !== (templateSlots[slot.key] || null)
                 const hasIngredientEdits = hasAnyOverride(slotOverrides)
+                const missingVariant = currentId && effectiveVariant && !variantExists(currentId, mealMap, effectiveVariant)
                 return (
                   <div key={slot.key}>
                     <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
@@ -1224,6 +1233,9 @@ function MealPlanTab({ client, coachId }) {
                       )}
                       {hasIngredientEdits && (
                         <span className="text-xs text-blue-500 flex-shrink-0" title="Ingredient quantities adjusted for this client">Adjusted</span>
+                      )}
+                      {missingVariant && (
+                        <span className="text-xs text-amber-500 flex-shrink-0" title={`This meal has no saved ${effectiveVariant} size — showing its base portion instead. Add a ${effectiveVariant} variant in the Meal Library to fix this.`}>No {effectiveVariant} size</span>
                       )}
                       {currentId && macros.cal > 0 && (
                         <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">{Math.round(macros.cal)} kcal</span>
@@ -1296,6 +1308,7 @@ function MealPlanTab({ client, coachId }) {
               const keyOverrides = staticIngredientOverrides[key]
               const macros = mealMacros(mealId, mealMap, effectiveVariant, keyOverrides)
               const hasIngredientEdits = hasAnyOverride(keyOverrides)
+              const missingVariant = mealId && effectiveVariant && !variantExists(mealId, mealMap, effectiveVariant)
               return (
                 <div key={key} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
                   <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
@@ -1316,6 +1329,9 @@ function MealPlanTab({ client, coachId }) {
                     {options.length === 0 && <span className="text-xs text-gray-400 italic">No {cat} meals yet</span>}
                     {hasIngredientEdits && (
                       <span className="text-xs text-blue-500 flex-shrink-0" title="Ingredient quantities adjusted for this client">Adjusted</span>
+                    )}
+                    {missingVariant && (
+                      <span className="text-xs text-amber-500 flex-shrink-0" title={`This meal has no saved ${effectiveVariant} size — showing its base portion instead. Add a ${effectiveVariant} variant in the Meal Library to fix this.`}>No {effectiveVariant} size</span>
                     )}
                     {mealId && macros.cal > 0 && <span className="text-xs text-gray-400 tabular-nums flex-shrink-0">{Math.round(macros.cal)} kcal</span>}
                   </div>
