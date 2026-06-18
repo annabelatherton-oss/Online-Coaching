@@ -15,6 +15,12 @@ const SLOT_TYPES = [
   { value: 'evening_snack', label: 'Evening Snack' },
 ]
 
+// The client eats one of each interchangeable pair per day, not both — Option 1 is the
+// primary day, Option 2 is the alternate day, both sharing the same pre-workout/evening snack.
+const OPTION_1_SLOTS = ['breakfast1', 'lunch1', 'dinner1', 'preworkout', 'evening_snack']
+const OPTION_2_SLOTS = ['breakfast2', 'lunch2', 'dinner2', 'preworkout', 'evening_snack']
+const OVER_TARGET_TOLERANCE = 50
+
 const MEAL_CATEGORY_ORDER = ['breakfast', 'lunch', 'dinner', 'pre_workout', 'snack', 'evening_snack']
 
 const EMPTY_SLOTS = Object.fromEntries(
@@ -98,9 +104,34 @@ export default function WeeklyTemplateEditor() {
 
   useEffect(() => { load() }, [templateId])
 
+  function slotCalories(slotKey) {
+    const { meal_id, scaled_version_id } = slots[slotKey]
+    if (!meal_id) return null
+    const meal = mealsById[meal_id]
+    if (!meal) return null
+    if (scaled_version_id) {
+      const ver = (meal.meal_scaled_versions || []).find(v => v.id === scaled_version_id)
+      return ver?.calorie_target ?? null
+    }
+    return meal._totalCals || null
+  }
+
+  function sumSlots(slotKeys) {
+    return slotKeys.reduce((sum, key) => sum + (slotCalories(key) || 0), 0)
+  }
+
+  const option1Total = sumSlots(OPTION_1_SLOTS)
+  const option2Total = sumSlots(OPTION_2_SLOTS)
+  const target = form.calorie_target !== '' ? parseInt(form.calorie_target) : null
+  const option2OverTarget = target != null && option2Total > target + OVER_TARGET_TOLERANCE
+
   async function handleSave(e) {
     e.preventDefault()
     if (!form.name.trim()) { setError('Template name is required.'); return }
+    if (option2OverTarget) {
+      setError(`Option 2 meals (Alt. Breakfast/Lunch/Dinner + Pre-Workout + Evening Snack) total ${option2Total} kcal — more than ${OVER_TARGET_TOLERANCE} kcal above the ${target} kcal target. Choose lighter alternates before saving.`)
+      return
+    }
     setSaving(true)
     setError('')
 
@@ -153,23 +184,6 @@ export default function WeeklyTemplateEditor() {
       setTimeout(() => setSavedMsg(false), 2500)
     }
   }
-
-  function slotCalories(slotKey) {
-    const { meal_id, scaled_version_id } = slots[slotKey]
-    if (!meal_id) return null
-    const meal = mealsById[meal_id]
-    if (!meal) return null
-    if (scaled_version_id) {
-      const ver = (meal.meal_scaled_versions || []).find(v => v.id === scaled_version_id)
-      return ver?.calorie_target ?? null
-    }
-    return meal._totalCals || null
-  }
-
-  const dailyTotal = SLOT_TYPES.reduce((sum, s) => {
-    const cal = slotCalories(s.value)
-    return sum + (cal || 0)
-  }, 0)
 
   const mealsByCategory = MEAL_CATEGORY_ORDER.reduce((acc, cat) => {
     const group = meals.filter(m => m.category === cat)
@@ -248,24 +262,39 @@ export default function WeeklyTemplateEditor() {
         <div className="card space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-gray-900 dark:text-white">Meal Plan</h2>
-            {dailyTotal > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-500 dark:text-gray-400">Total:</span>
-                <span className={`font-semibold text-sm ${
-                  form.calorie_target && Math.abs(dailyTotal - parseInt(form.calorie_target)) <= 50
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-gray-900 dark:text-white'
-                }`}>
-                  {dailyTotal} kcal
-                </span>
-                {form.calorie_target && (
-                  <span className="text-xs text-gray-400">
-                    / {form.calorie_target} target
+            {option1Total > 0 && (
+              <div className="text-right">
+                <div className="flex items-center gap-2 justify-end">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Option 1:</span>
+                  <span className={`font-semibold text-sm ${
+                    target != null && Math.abs(option1Total - target) <= OVER_TARGET_TOLERANCE
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-gray-900 dark:text-white'
+                  }`}>
+                    {option1Total} kcal
                   </span>
+                  {target != null && <span className="text-xs text-gray-400">/ {target} target</span>}
+                </div>
+                {option2Total > 0 && (
+                  <div className="flex items-center gap-2 justify-end mt-0.5">
+                    <span className="text-xs text-gray-400">Option 2:</span>
+                    <span className={`text-xs font-medium ${option2OverTarget ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                      {option2Total} kcal
+                    </span>
+                  </div>
                 )}
               </div>
             )}
           </div>
+
+          {option2OverTarget && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+              <p className="text-sm text-red-700 dark:text-red-400">
+                Option 2 meals total {option2Total} kcal — more than {OVER_TARGET_TOLERANCE} kcal above the {target} kcal target.
+                Choose lighter Alt. Breakfast/Lunch/Dinner meals so these can be paired interchangeably with Option 1.
+              </p>
+            </div>
+          )}
 
           {meals.length === 0 ? (
             <div className="text-center py-8">
