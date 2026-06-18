@@ -10,11 +10,6 @@ function classifyMeal(meal) {
   const n = meal.name.toLowerCase()
 
   if (meal.category === 'breakfast') {
-    const mealPrepKw = ['overnight', 'meal prep', 'mason jar', 'jar', 'batch', 'make-ahead', 'make ahead',
-      'freezer', 'egg muffin', 'egg bite', 'egg cup', 'baked oat', 'breakfast bar', 'energy bite',
-      'slice', 'pre-made', 'premade']
-    if (mealPrepKw.some(k => n.includes(k))) return 'meal_prep'
-
     const sweetKw = ['oat', 'porridge', 'waffle', 'pancake', 'chia', 'granola', 'smoothie',
       'yoghurt', 'yogurt', 'chocolate', 'french toast', 'acai', 'açaí', 'berry', 'berries', 'fruit',
       'honey', 'biscoff', 'muffin', 'banana', 'maple', 'jam', 'peanut butter', 'pb &', 'nutella', 'crepe',
@@ -47,10 +42,22 @@ function classifyMeal(meal) {
   return null
 }
 
+// Meal Prep is independent of sweet/savoury — a batch-cooked breakfast can be either.
+function detectMealPrep(meal) {
+  if (meal.category !== 'breakfast') return false
+  const n = meal.name.toLowerCase()
+  const kw = ['overnight', 'meal prep', 'mason jar', 'jar', 'batch', 'make-ahead', 'make ahead',
+    'freezer', 'egg muffin', 'egg bite', 'egg cup', 'baked oat', 'breakfast bar', 'energy bite',
+    'slice', 'pre-made', 'premade']
+  return kw.some(k => n.includes(k))
+}
+
+const MEAL_PREP_COLOUR = 'bg-emerald-100 text-emerald-700'
+const STANDARD_COLOUR = 'bg-gray-100 text-gray-600'
+
 const SUBTYPE_COLOURS = {
   sweet: 'bg-yellow-100 text-yellow-700',
   savoury: 'bg-orange-100 text-orange-700',
-  meal_prep: 'bg-emerald-100 text-emerald-700',
   wrap: 'bg-green-100 text-green-700',
   pasta: 'bg-amber-100 text-amber-700',
   'rice/bowl': 'bg-blue-100 text-blue-700',
@@ -97,13 +104,80 @@ class DeckPool {
 
 const WEEK_COUNT = 20
 
+// A cycler hands out every item in a pool once (in shuffled order) before any item repeats,
+// guaranteeing full coverage as long as it's asked for at least `pool.length` items overall.
+function buildCycler(pool) {
+  let deck = shuffle(pool)
+  let i = 0
+  return {
+    next() {
+      if (pool.length === 0) return null
+      if (i >= deck.length) { deck = shuffle(pool); i = 0 }
+      return deck[i++]
+    },
+    // Same as next(), but — without skipping or wasting any item — swaps an item with a
+    // different subtype to the front of the remaining deck if one is available this pass.
+    nextPreferring(avoidSubtype) {
+      if (pool.length === 0) return null
+      if (i >= deck.length) { deck = shuffle(pool); i = 0 }
+      if (avoidSubtype) {
+        for (let j = i; j < deck.length; j++) {
+          if (deck[j]._subtype !== avoidSubtype) {
+            ;[deck[i], deck[j]] = [deck[j], deck[i]]
+            break
+          }
+        }
+      }
+      return deck[i++]
+    },
+  }
+}
+
+// Breakfast scheduling has three rules: every week needs at least one meal-prep breakfast
+// (when the coach has tagged any), every included breakfast must appear at least once across
+// the 20 weeks, and — where it doesn't conflict with the above — pair a sweet with a savoury.
+function scheduleBreakfasts(breakfasts) {
+  const mp  = breakfasts.filter(m => m._mealPrep)
+  const std = breakfasts.filter(m => !m._mealPrep)
+  const totalSlots = WEEK_COUNT * 2
+
+  if (mp.length === 0) {
+    const cyclerA = buildCycler(std)
+    const cyclerB = buildCycler(std)
+    return Array.from({ length: WEEK_COUNT }, () => {
+      const b1 = cyclerA.next()
+      const b2 = cyclerB.nextPreferring(b1?._subtype)
+      return { b1, b2 }
+    })
+  }
+
+  // How many of the 40 total slots go to meal-prep meals: at least one per week, and at
+  // least enough to use every meal-prep meal once (whichever is bigger), capped at the total.
+  const desiredMp = std.length === 0 ? totalSlots : Math.max(WEEK_COUNT, mp.length)
+  const mpSlots = Math.min(totalSlots, desiredMp)
+
+  const mpCycler  = buildCycler(mp)
+  const stdCycler = buildCycler(std)
+  const extraMpWeeks = new Set(
+    shuffle(Array.from({ length: WEEK_COUNT }, (_, i) => i)).slice(0, Math.max(0, mpSlots - WEEK_COUNT))
+  )
+
+  return Array.from({ length: WEEK_COUNT }, (_, i) => {
+    if (extraMpWeeks.has(i)) {
+      const b2 = mpCycler.next()
+      const b1 = mpCycler.nextPreferring(b2?._subtype)
+      return { b1, b2 }
+    }
+    const b2 = mpCycler.next()
+    const b1 = std.length > 0 ? stdCycler.nextPreferring(b2?._subtype) : null
+    return { b1, b2 }
+  })
+}
+
 function generateWeeks(classifiedMeals, excluded) {
   const avail = classifiedMeals.filter(m => !excluded.has(m.id))
 
-  // Breakfast B is guaranteed to be meal-prep friendly whenever the coach has tagged any
-  // such meals — Breakfast A stays flexible (sweet or savoury) so the two aren't both meal-prep.
-  const mealPrepPool      = new DeckPool(avail.filter(m => m.category === 'breakfast' && m._subtype === 'meal_prep'))
-  const otherBreakfastPool = new DeckPool(avail.filter(m => m.category === 'breakfast' && m._subtype !== 'meal_prep'))
+  const breakfastSchedule = scheduleBreakfasts(avail.filter(m => m.category === 'breakfast'))
 
   const lunchPoolA = new DeckPool(avail.filter(m => m.category === 'lunch'))
   const lunchPoolB = new DeckPool(avail.filter(m => m.category === 'lunch'))
@@ -112,8 +186,7 @@ function generateWeeks(classifiedMeals, excluded) {
   const dinnerPoolB = new DeckPool(avail.filter(m => m.category === 'dinner'))
 
   return Array.from({ length: WEEK_COUNT }, (_, i) => {
-    const b2 = mealPrepPool.pick() || otherBreakfastPool.pick()
-    const b1 = otherBreakfastPool.pick(b2?.id)
+    const { b1, b2 } = breakfastSchedule[i]
     const l1 = lunchPoolA.pick()
     const l2 = lunchPoolB.pick(l1?.id, l1?._subtype)
     const d1 = dinnerPoolA.pick()
@@ -133,18 +206,17 @@ function generateWeeks(classifiedMeals, excluded) {
 // ── Slot config ────────────────────────────────────────────────────────────────
 
 const SLOTS = [
-  { key: 'breakfast1', label: 'Breakfast A',             cat: 'breakfast' },
-  { key: 'breakfast2', label: 'Breakfast B (Meal Prep)', cat: 'breakfast' },
-  { key: 'lunch1',     label: 'Lunch A',            cat: 'lunch' },
-  { key: 'lunch2',     label: 'Lunch B',             cat: 'lunch' },
-  { key: 'dinner1',    label: 'Dinner A',            cat: 'dinner' },
-  { key: 'dinner2',    label: 'Dinner B',            cat: 'dinner' },
+  { key: 'breakfast1', label: 'Breakfast A', cat: 'breakfast' },
+  { key: 'breakfast2', label: 'Breakfast B', cat: 'breakfast' },
+  { key: 'lunch1',     label: 'Lunch A',     cat: 'lunch' },
+  { key: 'lunch2',     label: 'Lunch B',     cat: 'lunch' },
+  { key: 'dinner1',    label: 'Dinner A',    cat: 'dinner' },
+  { key: 'dinner2',    label: 'Dinner B',    cat: 'dinner' },
 ]
 
 const BREAKFAST_SUBTYPES = [
   { value: 'sweet', label: 'Sweet' },
   { value: 'savoury', label: 'Savoury' },
-  { value: 'meal_prep', label: 'Meal Prep' },
 ]
 const LUNCH_SUBTYPES = [
   { value: 'wrap', label: 'Wrap' },
@@ -173,11 +245,9 @@ function subtypeOptions(cat) {
 // ── Setup sections ─────────────────────────────────────────────────────────────
 
 const SETUP_SECTIONS = [
-  { label: 'Breakfast — Meal Prep', cat: 'breakfast', sub: 'meal_prep' },
-  { label: 'Breakfast — Sweet',     cat: 'breakfast', sub: 'sweet'     },
-  { label: 'Breakfast — Savoury',   cat: 'breakfast', sub: 'savoury'   },
-  { label: 'Lunch',                 cat: 'lunch',     sub: null        },
-  { label: 'Dinner',                cat: 'dinner',    sub: null        },
+  { label: 'Breakfast', cat: 'breakfast', sub: null },
+  { label: 'Lunch',     cat: 'lunch',     sub: null },
+  { label: 'Dinner',    cat: 'dinner',    sub: null },
 ]
 
 // ── Main component ─────────────────────────────────────────────────────────────
@@ -190,6 +260,7 @@ export default function GenerateTemplates() {
   const [meals, setMeals] = useState([])
   const [excluded, setExcluded] = useState(new Set())
   const [subtypeOverrides, setSubtypeOverrides] = useState({})
+  const [mealPrepOverrides, setMealPrepOverrides] = useState({})
   const [dirty, setDirty] = useState(new Set()) // meal IDs with unsaved changes
   const [weeks, setWeeks] = useState([])
   const [expanded, setExpanded] = useState(new Set())
@@ -205,13 +276,14 @@ export default function GenerateTemplates() {
   useEffect(() => {
     supabase
       .from('meals')
-      .select('id, name, category, template_subtype, excluded_from_templates, meal_ingredients(calories)')
+      .select('id, name, category, template_subtype, meal_prep_friendly, excluded_from_templates, meal_ingredients(calories)')
       .eq('coach_id', profile.id)
       .order('name')
       .then(({ data }) => {
         const classified = (data || []).map(m => ({
           ...m,
           _subtype: classifyMeal(m),
+          _mealPrepAuto: detectMealPrep(m),
           _totalCals: Math.round((m.meal_ingredients || []).reduce((s, i) => s + (parseFloat(i.calories) || 0), 0)),
         }))
         setMeals(classified)
@@ -221,6 +293,11 @@ export default function GenerateTemplates() {
           if (m.template_subtype) overrides[m.id] = m.template_subtype
         }
         setSubtypeOverrides(overrides)
+        const mpOverrides = {}
+        for (const m of classified) {
+          if (m.meal_prep_friendly !== null && m.meal_prep_friendly !== undefined) mpOverrides[m.id] = m.meal_prep_friendly
+        }
+        setMealPrepOverrides(mpOverrides)
 
         // Restore any unsaved generated draft
         try {
@@ -249,8 +326,12 @@ export default function GenerateTemplates() {
     return subtypeOverrides[meal.id] ?? meal._subtype
   }
 
+  function getMealPrep(meal) {
+    return mealPrepOverrides[meal.id] ?? meal._mealPrepAuto
+  }
+
   function withOverrides() {
-    return meals.map(m => ({ ...m, _subtype: getSubtype(m) }))
+    return meals.map(m => ({ ...m, _subtype: getSubtype(m), _mealPrep: getMealPrep(m) }))
   }
 
   function toggleExclude(id) {
@@ -271,6 +352,7 @@ export default function GenerateTemplates() {
         supabase.from('meals').update({
           excluded_from_templates: excluded.has(m.id),
           template_subtype: subtypeOverrides[m.id] ?? null,
+          meal_prep_friendly: mealPrepOverrides[m.id] ?? null,
         }).eq('id', m.id)
       )
     )
@@ -396,10 +478,12 @@ export default function GenerateTemplates() {
 
         <div className="card bg-pink-50/60 dark:bg-pink-900/10 border-pink-100 dark:border-pink-900/30">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Meals are auto-classified below. Uncheck any you don't want included. Use the type badge to
-            correct any wrong classifications — e.g. move a savoury breakfast that was labelled sweet.
-            Breakfast B is always picked from your Meal Prep options when you have any tagged, so clients
-            get at least one make-ahead breakfast each week.
+            Meals are auto-classified below. Uncheck any you don't want included. Use the Sweet/Savoury
+            badge to correct any wrong classifications, and the Meal Prep badge to mark breakfasts that
+            can be batch-cooked ahead — the two are independent, so a meal-prepped breakfast can still be
+            either sweet or savoury. Every week is guaranteed at least one Meal Prep breakfast (when you've
+            tagged any), every included breakfast gets used at least once across the 20 weeks, and we'll
+            pair a sweet with a savoury each week where that doesn't conflict with the above.
           </p>
         </div>
 
@@ -447,6 +531,20 @@ export default function GenerateTemplates() {
                           }}
                         >
                           {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      )}
+                      {section.cat === 'breakfast' && (
+                        <select
+                          className={`text-xs py-0.5 px-2 rounded-full font-medium border-0 focus:ring-1 focus:ring-brand-300 cursor-pointer ${getMealPrep(m) ? MEAL_PREP_COLOUR : STANDARD_COLOUR}`}
+                          value={getMealPrep(m) ? 'meal_prep' : 'standard'}
+                          onChange={e => {
+                            setMealPrepOverrides(prev => ({ ...prev, [m.id]: e.target.value === 'meal_prep' }))
+                            setDirty(prev => { const s = new Set(prev); s.add(m.id); return s })
+                            setPrefsSaved(false)
+                          }}
+                        >
+                          <option value="standard">Standard</option>
+                          <option value="meal_prep">Meal Prep</option>
                         </select>
                       )}
                     </div>
