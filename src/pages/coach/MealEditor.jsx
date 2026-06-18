@@ -11,16 +11,16 @@ const CATEGORY_OPTIONS = [
   { value: 'breakfast', label: 'Breakfast' },
   { value: 'lunch', label: 'Lunch' },
   { value: 'dinner', label: 'Dinner' },
-  { value: 'preworkout', label: 'Pre-workout snack' },
-  { value: 'snack', label: 'Evening snack' },
+  { value: 'pre_workout', label: 'Pre-workout snack' },
+  { value: 'evening_snack', label: 'Evening snack' },
 ]
 
 const CATEGORY_BADGE_COLOURS = {
   breakfast: 'bg-yellow-100 text-yellow-700',
   lunch: 'bg-green-100 text-green-700',
   dinner: 'bg-blue-100 text-blue-700',
-  preworkout: 'bg-orange-100 text-orange-700',
-  snack: 'bg-indigo-100 text-indigo-700',
+  pre_workout: 'bg-orange-100 text-orange-700',
+  evening_snack: 'bg-indigo-100 text-indigo-700',
 }
 
 // XS→XL with the default scale factor applied to flexible ingredients

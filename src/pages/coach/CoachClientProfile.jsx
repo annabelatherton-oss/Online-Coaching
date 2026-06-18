@@ -835,8 +835,8 @@ function MealPlanTab({ client, coachId }) {
             </div>
 
             {[
-              { key: 'preworkout_meal_id', label: 'Pre-workout', cat: 'preworkout' },
-              { key: 'evening_snack_meal_id', label: 'Evening snack', cat: 'snack' },
+              { key: 'preworkout_meal_id', label: 'Pre-workout', cat: 'pre_workout' },
+              { key: 'evening_snack_meal_id', label: 'Evening snack', cat: 'evening_snack' },
             ].map(({ key, label, cat }) => {
               const mealId = staticEdits[key] || ''
               const isExpanded = expandedSlots.has(key)
