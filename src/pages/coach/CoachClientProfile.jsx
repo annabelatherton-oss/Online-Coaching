@@ -425,6 +425,7 @@ const MEAL_SLOTS = [
 // interchangeable combinations the daily totals are built from.
 const OPTION_1_KEYS = ['breakfast1', 'lunch1', 'dinner1']
 const OPTION_2_KEYS = ['breakfast2', 'lunch2', 'dinner2']
+const SLOT_CATEGORY = Object.fromEntries(MEAL_SLOTS.map(s => [s.key, s.cat]))
 
 const VARIANT_SIZES = ['XS', 'Small', 'Medium', 'Large', 'XL']
 
@@ -432,6 +433,14 @@ const VARIANT_SIZES = ['XS', 'Small', 'Medium', 'Large', 'XL']
 // more than 30 kcal above it.
 const UNDER_TARGET_TOLERANCE = 50
 const OVER_TARGET_TOLERANCE = 30
+
+// Categories that each get their own portion size in "Auto" mode — breakfast/lunch/dinner come
+// from the rotating slots, pre-workout/evening snack from the static meals.
+const MEAL_CATEGORIES = ['breakfast', 'lunch', 'dinner', 'preworkout', 'evening_snack']
+const MAIN_MEAL_CATEGORIES = ['breakfast', 'lunch', 'dinner']
+// Breakfast, lunch and dinner should never be sized down below this many calories.
+const MIN_MAIN_MEAL_CALORIES = 300
+const CATEGORY_LABELS = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', preworkout: 'Pre-workout', evening_snack: 'Evening snack' }
 
 function round1(n) {
   return Math.round(n * 10) / 10
@@ -588,30 +597,48 @@ function addMacros(a, b) {
   return { cal: a.cal + b.cal, prot: a.prot + b.prot, carb: a.carb + b.carb, fat: a.fat + b.fat }
 }
 
-function sumMealSlots(keys, editedSlots, mealMap, effectiveVariant, ingredientOverrides) {
+function sumMealSlots(keys, editedSlots, mealMap, variantForKey, ingredientOverrides) {
   return keys.reduce(
-    (acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, effectiveVariant, ingredientOverrides[key])),
+    (acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, variantForKey(key), ingredientOverrides[key])),
     { cal: 0, prot: 0, carb: 0, fat: 0 }
   )
 }
 
-// Auto-pick the variant size whose total is closest to the client's calorie target
-function autoSelectVariant(mealIds, mealMap, calorieTarget) {
+// "Auto" mode: pick a portion size per meal category (not one size for the whole day) so the
+// day's total lands as close as possible to the calorie target, while never sizing breakfast,
+// lunch or dinner below MIN_MAIN_MEAL_CALORIES. Brute-forces every size combination across the
+// categories that actually have a meal assigned — at most 5 categories x 5 sizes, so this is cheap.
+function autoSelectVariantMix(categoryMealIds, categoryOverrides, mealMap, calorieTarget) {
   if (!calorieTarget) return null
-  const activeMealIds = mealIds.filter(id => id && mealMap[id])
-  if (!activeMealIds.length) return null
+  const cats = MEAL_CATEGORIES.filter(cat => categoryMealIds[cat] && mealMap[categoryMealIds[cat]])
+  if (!cats.length) return null
 
-  const ranked = VARIANT_SIZES.map(size => {
-    let total = 0, coverage = 0
-    for (const id of activeMealIds) {
-      const v = (mealMap[id].meal_variants || []).find(v => v.variant_name === size)
-      if (v) { total += parseFloat(v.calories) || 0; coverage++ }
+  const options = cats.map(cat => ({
+    cat,
+    sizes: VARIANT_SIZES.map(size => ({
+      size,
+      cal: mealMacros(categoryMealIds[cat], mealMap, size, categoryOverrides[cat]).cal,
+    })),
+  }))
+
+  let best = null
+  let bestValid = null
+
+  function recurse(i, sizes, cals, total) {
+    if (i === options.length) {
+      const gap = Math.abs(total - calorieTarget)
+      const isValid = MAIN_MEAL_CATEGORIES.every(cat => !categoryMealIds[cat] || (cals[cat] ?? 0) >= MIN_MAIN_MEAL_CALORIES)
+      if (!best || gap < best.gap) best = { sizes, gap }
+      if (isValid && (!bestValid || gap < bestValid.gap)) bestValid = { sizes, gap }
+      return
     }
-    return { size, total, coverage }
-  }).filter(s => s.coverage >= Math.max(1, Math.ceil(activeMealIds.length * 0.5)))
-    .sort((a, b) => Math.abs(a.total - calorieTarget) - Math.abs(b.total - calorieTarget))
+    for (const { size, cal } of options[i].sizes) {
+      recurse(i + 1, { ...sizes, [options[i].cat]: size }, { ...cals, [options[i].cat]: cal }, total + cal)
+    }
+  }
+  recurse(0, {}, {}, 0)
 
-  return ranked[0]?.size || null
+  return (bestValid || best)?.sizes || null
 }
 
 // Ingredient list for a variant or base meal. Gram quantities are editable per-client, and
@@ -925,43 +952,61 @@ function MealPlanTab({ client, coachId }) {
   const effectiveWeek = assignment?.week_override ?? globalWeek
   const isOverridden = assignment?.week_override != null
 
-  // Determine which variant size to use for display — based on what's actually eaten in a day
-  // (one meal per category, not both interchangeable options), plus the static meals.
-  const activeMealIds = [
-    ...OPTION_1_KEYS.map(k => editedSlots[k]),
-    staticEdits.preworkout_meal_id,
-    staticEdits.evening_snack_meal_id,
-  ].filter(Boolean)
-  const autoVariant = autoSelectVariant(activeMealIds, mealMap, assignment?.calorie_target)
-  const effectiveVariant = assignedVariant === 'auto' ? autoVariant : assignedVariant
+  // Determine which portion size to use per meal category in Auto mode — based on what's
+  // actually eaten in a day (one meal per category, not both interchangeable options), plus the
+  // static meals. A manually-assigned size (not 'auto') applies uniformly to every category.
+  const categoryMealIds = {
+    breakfast: editedSlots.breakfast1,
+    lunch: editedSlots.lunch1,
+    dinner: editedSlots.dinner1,
+    preworkout: staticEdits.preworkout_meal_id,
+    evening_snack: staticEdits.evening_snack_meal_id,
+  }
+  const categoryOverrides = {
+    breakfast: ingredientOverrides.breakfast1,
+    lunch: ingredientOverrides.lunch1,
+    dinner: ingredientOverrides.dinner1,
+    preworkout: staticIngredientOverrides.preworkout_meal_id,
+    evening_snack: staticIngredientOverrides.evening_snack_meal_id,
+  }
+  const autoVariantMix = autoSelectVariantMix(categoryMealIds, categoryOverrides, mealMap, assignment?.calorie_target) || {}
+  function categorySize(cat) {
+    return assignedVariant === 'auto' ? (autoVariantMix[cat] || null) : assignedVariant
+  }
 
   // Daily macro totals — one of each option (not both) plus the static meals.
   // Option 2 should land close to Option 1 since they're meant to be interchangeable.
-  const option1Subtotal = sumMealSlots(OPTION_1_KEYS, editedSlots, mealMap, effectiveVariant, ingredientOverrides)
-  const option2Subtotal = sumMealSlots(OPTION_2_KEYS, editedSlots, mealMap, effectiveVariant, ingredientOverrides)
-  const preworkoutTotal = mealMacros(staticEdits.preworkout_meal_id, mealMap, effectiveVariant, staticIngredientOverrides.preworkout_meal_id)
-  const snackTotal = mealMacros(staticEdits.evening_snack_meal_id, mealMap, effectiveVariant, staticIngredientOverrides.evening_snack_meal_id)
+  const option1Subtotal = sumMealSlots(OPTION_1_KEYS, editedSlots, mealMap, key => categorySize(SLOT_CATEGORY[key]), ingredientOverrides)
+  const option2Subtotal = sumMealSlots(OPTION_2_KEYS, editedSlots, mealMap, key => categorySize(SLOT_CATEGORY[key]), ingredientOverrides)
+  const preworkoutTotal = mealMacros(staticEdits.preworkout_meal_id, mealMap, categorySize('preworkout'), staticIngredientOverrides.preworkout_meal_id)
+  const snackTotal = mealMacros(staticEdits.evening_snack_meal_id, mealMap, categorySize('evening_snack'), staticIngredientOverrides.evening_snack_meal_id)
   const option1Total = addMacros(addMacros(option1Subtotal, preworkoutTotal), snackTotal)
   const option2Total = addMacros(addMacros(option2Subtotal, preworkoutTotal), snackTotal)
   const grandTotal = option1Total
 
-  // Variant-level suggestion: if the day falls outside the -50/+30 kcal band, suggest going up/down a size.
-  // If there's no bigger/smaller size left to switch to, say so explicitly instead of showing nothing —
-  // that gap can only be closed by editing ingredients or the meal library, not the portion-size selector.
+  // Suggestion: if the day falls outside the -50/+30 kcal band, suggest a fix. In Auto mode every
+  // meal's size is already individually optimized, so if it's still out of range there's no single
+  // "go up/down a size" move left — the gap can only be closed by editing ingredients or the meal
+  // library. In manual mode (one size picked for the whole day) suggest moving that size up/down.
   function getVariantSuggestion() {
-    if (!assignment?.calorie_target || !effectiveVariant) return null
+    if (!assignment?.calorie_target) return null
     const gap = assignment.calorie_target - grandTotal.cal
     if (gap <= UNDER_TARGET_TOLERANCE && gap >= -OVER_TARGET_TOLERANCE) return null
-    const idx = VARIANT_SIZES.indexOf(effectiveVariant)
-    if (gap > UNDER_TARGET_TOLERANCE) {
-      if (idx < VARIANT_SIZES.length - 1) return { text: `Switch to ${VARIANT_SIZES[idx + 1]} portions`, detail: `May add ~${Math.round(gap)} kcal to get closer to target` }
-      return { text: `Already on the largest portion size (${effectiveVariant})`, detail: `Still ~${Math.round(gap)} kcal under target — add more food to a meal slot, or increase the ${effectiveVariant} variant's serving size in the meal library` }
-    }
-    if (gap < -OVER_TARGET_TOLERANCE) {
+
+    if (assignedVariant !== 'auto') {
+      const idx = VARIANT_SIZES.indexOf(assignedVariant)
+      if (gap > UNDER_TARGET_TOLERANCE) {
+        if (idx < VARIANT_SIZES.length - 1) return { text: `Switch to ${VARIANT_SIZES[idx + 1]} portions`, detail: `May add ~${Math.round(gap)} kcal to get closer to target` }
+        return { text: `Already on the largest portion size (${assignedVariant})`, detail: `Still ~${Math.round(gap)} kcal under target — add more food to a meal slot, or increase the ${assignedVariant} variant's serving size in the meal library` }
+      }
       if (idx > 0) return { text: `Switch to ${VARIANT_SIZES[idx - 1]} portions`, detail: `May save ~${Math.round(Math.abs(gap))} kcal to get closer to target` }
-      return { text: `Already on the smallest portion size (${effectiveVariant})`, detail: `Still ~${Math.round(Math.abs(gap))} kcal over target — remove some food from a meal slot, or reduce the ${effectiveVariant} variant's serving size in the meal library` }
+      return { text: `Already on the smallest portion size (${assignedVariant})`, detail: `Still ~${Math.round(Math.abs(gap))} kcal over target — remove some food from a meal slot, or reduce the ${assignedVariant} variant's serving size in the meal library` }
     }
-    return null
+
+    if (gap > UNDER_TARGET_TOLERANCE) {
+      return { text: `Already using the best mix of portion sizes`, detail: `Still ~${Math.round(gap)} kcal under target — add more food to a meal slot, or increase a meal's serving size in the meal library` }
+    }
+    return { text: `Already using the best mix of portion sizes`, detail: `Still ~${Math.round(Math.abs(gap))} kcal over target — remove some food from a meal slot, or reduce a meal's serving size in the meal library` }
   }
   const suggestion = getVariantSuggestion()
 
@@ -1160,7 +1205,7 @@ function MealPlanTab({ client, coachId }) {
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Portion Size</h3>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                  Auto selects the variant closest to the calorie target. Override per-client here.
+                  Auto mixes a size per meal to land closest to the calorie target (breakfast/lunch/dinner never go below {MIN_MAIN_MEAL_CALORIES} kcal). Override per-client here.
                 </p>
               </div>
               {variantDirty && (
@@ -1180,10 +1225,15 @@ function MealPlanTab({ client, coachId }) {
                       : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-brand-400'
                   }`}
                 >
-                  {size === 'auto' ? `Auto${autoVariant ? ` (${autoVariant})` : ''}` : size}
+                  {size === 'auto' ? 'Auto' : size}
                 </button>
               ))}
             </div>
+            {assignedVariant === 'auto' && Object.keys(autoVariantMix).length > 0 && (
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                {Object.entries(autoVariantMix).map(([cat, size]) => `${CATEGORY_LABELS[cat]}: ${size}`).join(' · ')}
+              </p>
+            )}
           </div>
 
           {/* Rotating meal slots */}
@@ -1192,7 +1242,6 @@ function MealPlanTab({ client, coachId }) {
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
                   Week {effectiveWeek} meals
-                  {effectiveVariant && <span className="ml-2 text-xs font-normal text-gray-400">· {effectiveVariant} portions</span>}
                 </h3>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Follows the master plan — change any meal for this client only</p>
               </div>
@@ -1206,11 +1255,12 @@ function MealPlanTab({ client, coachId }) {
                 const currentId = editedSlots[slot.key] || ''
                 const isExpanded = expandedSlots.has(slot.key)
                 const slotOverrides = ingredientOverrides[slot.key]
-                const macros = mealMacros(currentId, mealMap, effectiveVariant, slotOverrides)
+                const sizeForRow = categorySize(slot.cat)
+                const macros = mealMacros(currentId, mealMap, sizeForRow, slotOverrides)
                 const options = mealsByCategory[slot.cat] || []
                 const isOverridden = templateSlots[slot.key] !== undefined && (editedSlots[slot.key] || null) !== (templateSlots[slot.key] || null)
                 const hasIngredientEdits = hasAnyOverride(slotOverrides)
-                const missingVariant = currentId && effectiveVariant && !variantExists(currentId, mealMap, effectiveVariant)
+                const missingVariant = currentId && sizeForRow && !variantExists(currentId, mealMap, sizeForRow)
                 return (
                   <div key={slot.key}>
                     <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
@@ -1235,7 +1285,10 @@ function MealPlanTab({ client, coachId }) {
                         <span className="text-xs text-blue-500 flex-shrink-0" title="Ingredient quantities adjusted for this client">Adjusted</span>
                       )}
                       {missingVariant && (
-                        <span className="text-xs text-amber-500 flex-shrink-0" title={`This meal has no saved ${effectiveVariant} size — showing its base portion instead. Add a ${effectiveVariant} variant in the Meal Library to fix this.`}>No {effectiveVariant} size</span>
+                        <span className="text-xs text-amber-500 flex-shrink-0" title={`This meal has no saved ${sizeForRow} size — showing its base portion instead. Add a ${sizeForRow} variant in the Meal Library to fix this.`}>No {sizeForRow} size</span>
+                      )}
+                      {currentId && sizeForRow && (
+                        <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{sizeForRow}</span>
                       )}
                       {currentId && macros.cal > 0 && (
                         <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">{Math.round(macros.cal)} kcal</span>
@@ -1246,7 +1299,7 @@ function MealPlanTab({ client, coachId }) {
                         <VariantIngredientList
                           mealId={currentId}
                           mealMap={mealMap}
-                          variantName={effectiveVariant}
+                          variantName={sizeForRow}
                           overrides={slotOverrides}
                           library={library}
                           libraryById={libraryById}
@@ -1299,16 +1352,17 @@ function MealPlanTab({ client, coachId }) {
             </div>
 
             {[
-              { key: 'preworkout_meal_id', label: 'Pre-workout', cat: 'pre_workout' },
-              { key: 'evening_snack_meal_id', label: 'Evening snack', cat: 'evening_snack' },
-            ].map(({ key, label, cat }) => {
+              { key: 'preworkout_meal_id', label: 'Pre-workout', cat: 'pre_workout', sizeCat: 'preworkout' },
+              { key: 'evening_snack_meal_id', label: 'Evening snack', cat: 'evening_snack', sizeCat: 'evening_snack' },
+            ].map(({ key, label, cat, sizeCat }) => {
               const mealId = staticEdits[key] || ''
               const isExpanded = expandedSlots.has(key)
               const options = mealsByCategory[cat] || []
               const keyOverrides = staticIngredientOverrides[key]
-              const macros = mealMacros(mealId, mealMap, effectiveVariant, keyOverrides)
+              const sizeForRow = categorySize(sizeCat)
+              const macros = mealMacros(mealId, mealMap, sizeForRow, keyOverrides)
               const hasIngredientEdits = hasAnyOverride(keyOverrides)
-              const missingVariant = mealId && effectiveVariant && !variantExists(mealId, mealMap, effectiveVariant)
+              const missingVariant = mealId && sizeForRow && !variantExists(mealId, mealMap, sizeForRow)
               return (
                 <div key={key} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
                   <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
@@ -1331,7 +1385,10 @@ function MealPlanTab({ client, coachId }) {
                       <span className="text-xs text-blue-500 flex-shrink-0" title="Ingredient quantities adjusted for this client">Adjusted</span>
                     )}
                     {missingVariant && (
-                      <span className="text-xs text-amber-500 flex-shrink-0" title={`This meal has no saved ${effectiveVariant} size — showing its base portion instead. Add a ${effectiveVariant} variant in the Meal Library to fix this.`}>No {effectiveVariant} size</span>
+                      <span className="text-xs text-amber-500 flex-shrink-0" title={`This meal has no saved ${sizeForRow} size — showing its base portion instead. Add a ${sizeForRow} variant in the Meal Library to fix this.`}>No {sizeForRow} size</span>
+                    )}
+                    {mealId && sizeForRow && (
+                      <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{sizeForRow}</span>
                     )}
                     {mealId && macros.cal > 0 && <span className="text-xs text-gray-400 tabular-nums flex-shrink-0">{Math.round(macros.cal)} kcal</span>}
                   </div>
@@ -1340,7 +1397,7 @@ function MealPlanTab({ client, coachId }) {
                       <VariantIngredientList
                         mealId={mealId}
                         mealMap={mealMap}
-                        variantName={effectiveVariant}
+                        variantName={sizeForRow}
                         overrides={keyOverrides}
                         library={library}
                         libraryById={libraryById}
