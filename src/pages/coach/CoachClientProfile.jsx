@@ -433,10 +433,12 @@ const SLOT_OPTION = { breakfast1: 1, breakfast2: 2, lunch1: 1, lunch2: 2, dinner
 
 const VARIANT_SIZES = ['XS', 'Small', 'Medium', 'Large', 'XL']
 
-// The day's actual calories should never fall more than 50 kcal below target, or
-// more than 30 kcal above it.
+// The day's actual calories should never fall more than 50 kcal below target. In Auto mode this is
+// also a hard cap on every combination of Option A/B meals across breakfast/lunch/dinner — since the
+// two options are meant to be freely interchangeable day-to-day, none of them (e.g. Breakfast A +
+// Lunch B + Dinner B) may land more than 20 kcal above target. See autoSizeBothOptions.
 const UNDER_TARGET_TOLERANCE = 50
-const OVER_TARGET_TOLERANCE = 30
+const OVER_TARGET_TOLERANCE = 20
 
 // Pre-workout and evening snack keep one fixed, coach-set size each (see Static Meals) — only
 // breakfast/lunch/dinner get their own portion size from "Auto" mode's calorie-split sizing.
@@ -607,32 +609,39 @@ function sumMealSlots(keys, editedSlots, mealMap, variantForKey, ingredientOverr
   )
 }
 
-// Picks whichever of the 5 sizes lands closest to subTarget calories for this one meal, preferring
-// sizes that meet MIN_MAIN_MEAL_CALORIES if any do.
-function bestSizeForTarget(mealId, mealMap, overridesForSlot, subTarget) {
+// Picks whichever of the 5 sizes lands closest to budget calories for this one meal, without ever
+// picking a size over `cap` if a size at or under it exists — and otherwise preferring sizes that
+// meet MIN_MAIN_MEAL_CALORIES. Falls back to the smallest size if every size is over cap.
+function bestSizeUnderCap(mealId, mealMap, overridesForSlot, budget, cap) {
   if (!mealId || !mealMap[mealId]) return null
-  let best = null, bestValid = null
+  let best = null, bestValid = null, smallest = null
   for (const size of VARIANT_SIZES) {
     const cal = mealMacros(mealId, mealMap, size, overridesForSlot).cal
-    const gap = Math.abs(cal - subTarget)
+    if (!smallest || cal < smallest.cal) smallest = { size, cal }
+    if (cal > cap) continue
+    const gap = Math.abs(cal - budget)
     if (!best || gap < best.gap) best = { size, gap }
     if (cal >= MIN_MAIN_MEAL_CALORIES && (!bestValid || gap < bestValid.gap)) bestValid = { size, gap }
   }
-  return (bestValid || best)?.size || null
+  return (bestValid || best)?.size || smallest.size
 }
 
-// "Auto" mode: size breakfast/lunch/dinner independently (not jointly optimized for the day's
-// total) so each one lands closest to its own share of `remaining` — the calories left after
-// pre-workout & evening snack — per the coach's calorie-split percentages. This is what stops
-// auto-sizing from dumping most of the day's calories into the first couple of meals.
-function autoSizeOption(mealIds, overridesByCat, mealMap, remaining, split) {
-  const sizes = {}
+// "Auto" mode: sizes breakfast/lunch/dinner for BOTH options together, rather than independently,
+// because Option A and B are interchangeable — the client could pick either one for any category on
+// a given day. Each category gets its own slice of the day's total allowed overage (proportional to
+// its calorie-split %), and both of that category's options are capped at the same calories. Since
+// every category's cap sums to `remaining + OVER_TARGET_TOLERANCE`, no matter which option ends up
+// picked per category, the day's total can never exceed target by more than OVER_TARGET_TOLERANCE.
+function autoSizeBothOptions(option1MealIds, option2MealIds, option1Overrides, option2Overrides, mealMap, remaining, split) {
+  const option1 = {}, option2 = {}
   for (const cat of MAIN_MEAL_CATEGORIES) {
-    if (!mealIds[cat] || !mealMap[mealIds[cat]]) continue
-    const subTarget = remaining * (split[cat] || 0) / 100
-    sizes[cat] = bestSizeForTarget(mealIds[cat], mealMap, overridesByCat[cat], subTarget)
+    const pct = split[cat] || 0
+    const budget = remaining * pct / 100
+    const cap = budget + OVER_TARGET_TOLERANCE * pct / 100
+    option1[cat] = bestSizeUnderCap(option1MealIds[cat], mealMap, option1Overrides[cat], budget, cap)
+    option2[cat] = bestSizeUnderCap(option2MealIds[cat], mealMap, option2Overrides[cat], budget, cap)
   }
-  return sizes
+  return { option1, option2 }
 }
 
 // Ingredient list for a variant or base meal. Gram quantities are editable per-client, and
@@ -973,12 +982,9 @@ function MealPlanTab({ client, coachId }) {
   const option1MainOverrides = { breakfast: ingredientOverrides.breakfast1, lunch: ingredientOverrides.lunch1, dinner: ingredientOverrides.dinner1 }
   const option2MainOverrides = { breakfast: ingredientOverrides.breakfast2, lunch: ingredientOverrides.lunch2, dinner: ingredientOverrides.dinner2 }
 
-  const autoMix1 = assignedVariant === 'auto' && assignment?.calorie_target
-    ? autoSizeOption(option1MealIds, option1MainOverrides, mealMap, remainingForMainMeals, calorieSplit)
-    : {}
-  const autoMix2 = assignedVariant === 'auto' && assignment?.calorie_target
-    ? autoSizeOption(option2MealIds, option2MainOverrides, mealMap, remainingForMainMeals, calorieSplit)
-    : {}
+  const { option1: autoMix1, option2: autoMix2 } = assignedVariant === 'auto' && assignment?.calorie_target
+    ? autoSizeBothOptions(option1MealIds, option2MealIds, option1MainOverrides, option2MainOverrides, mealMap, remainingForMainMeals, calorieSplit)
+    : { option1: {}, option2: {} }
 
   // Size for one of breakfast/lunch/dinner — option-aware in Auto mode since the two options can
   // be different meals with different per-size calories; a manual size override applies to both.
@@ -994,7 +1000,7 @@ function MealPlanTab({ client, coachId }) {
   const option1Total = addMacros(addMacros(option1Subtotal, preworkoutTotal), snackTotal)
   const option2Total = addMacros(addMacros(option2Subtotal, preworkoutTotal), snackTotal)
 
-  // Suggestion: if an option's day total falls outside the -50/+30 kcal band, suggest a fix. In
+  // Suggestion: if an option's day total falls outside the -50/+20 kcal band, suggest a fix. In
   // Auto mode every meal is already sized to its own calorie-split share, so the gap (if any) can
   // only be closed by adjusting the split, swapping a meal, or editing ingredients — there's no
   // single "go up/down a size" move like there is in manual mode (one size for the whole day).
