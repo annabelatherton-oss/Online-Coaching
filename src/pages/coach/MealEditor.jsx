@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { regenerateAllVariantsForMeal } from '../../lib/mealVariants'
 
 const TABS = ['Details', 'Ingredients', 'Variants']
 
@@ -300,6 +301,28 @@ function IngredientsTab({ mealId, coachId, onDirtyChange }) {
         if (err) { setError(err.message); setSaving(false); return }
       }
     }
+
+    // Rebuild every size variant from the base recipe just saved, so ingredient changes
+    // always pull through into the variants without a separate manual step.
+    if (ingredients.length > 0) {
+      const baseIngs = ingredients.map(ing => ({
+        name: ing.name || '',
+        quantity_g: parseFloat(ing.quantity_g) || 0,
+        unit: ing.unit || 'g',
+        calories: parseFloat(ing.calories) || 0,
+        protein_g: parseFloat(ing.protein_g) || 0,
+        carbs_g: parseFloat(ing.carbs_g) || 0,
+        fat_g: parseFloat(ing.fat_g) || 0,
+        scaling_type: ing.scaling_type || 'flexible',
+        ingredient_id: ing.ingredient_id || null,
+      }))
+      try {
+        await regenerateAllVariantsForMeal(mealId, baseIngs, library)
+      } catch (err) {
+        console.error('Failed to auto-update size variants:', err)
+      }
+    }
+
     setSaving(false)
     setSavedMsg(true)
     setTimeout(() => setSavedMsg(false), 2500)
@@ -665,7 +688,7 @@ function VariantsTab({ mealId, coachId }) {
   if (baseIngredients.length === 0) {
     return (
       <div className="card text-center py-12">
-        <p className="text-gray-400 dark:text-gray-500 text-sm">Add base ingredients first, then come back to create size variants.</p>
+        <p className="text-gray-400 dark:text-gray-500 text-sm">Add and save base ingredients first — sizes are created automatically once you do.</p>
       </div>
     )
   }
@@ -676,7 +699,7 @@ function VariantsTab({ mealId, coachId }) {
         <div>
           <h3 className="font-semibold text-gray-900 dark:text-white">Meal Size Variants</h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            Base meal = {Math.round(baseTotals.calories)} kcal. Clients are auto-assigned the variant closest to their calorie target.
+            Base meal = {Math.round(baseTotals.calories)} kcal. Sizes are created and kept in sync automatically whenever you save ingredients — use the buttons below only to regenerate a size on its own.
           </p>
         </div>
         {!allCreated && (

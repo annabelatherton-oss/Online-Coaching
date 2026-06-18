@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { propagateIngredientRuleChange } from '../../lib/mealVariants'
 
 const UNIT_OPTIONS = ['g', 'ml', 'tbsp', 'tsp', 'cup', 'piece', 'square', 'scoop', 'slice', 'handful']
 
@@ -80,6 +81,15 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
     let err
     if (ingredient) {
       ({ error: err } = await supabase.from('ingredients').update(payload).eq('id', ingredient.id))
+      if (!err) {
+        // Pull the new macros/serving rules through into every meal and size variant that
+        // already uses this ingredient, so they never go stale.
+        try {
+          await propagateIngredientRuleChange(ingredient.id, payload)
+        } catch (propErr) {
+          console.error('Failed to propagate ingredient change to meals:', propErr)
+        }
+      }
     } else {
       ({ error: err } = await supabase.from('ingredients').insert({ ...payload, coach_id: coachId }))
     }

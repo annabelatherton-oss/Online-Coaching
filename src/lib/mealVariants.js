@@ -81,21 +81,75 @@ export function missingVariantNames(existingVariantNames) {
   return VARIANT_SIZE_FACTORS.map(v => v.name).filter(name => !existingVariantNames.has(name))
 }
 
+async function insertVariant(mealId, name, scaledIngs) {
+  const totals = calcTotals(scaledIngs)
+  const { data: variant, error } = await supabase
+    .from('meal_variants')
+    .insert({ meal_id: mealId, variant_name: name, ...totals })
+    .select('id')
+    .single()
+  if (error) throw error
+  if (scaledIngs.length > 0) {
+    await supabase.from('meal_variant_ingredients').insert(scaledIngs.map(ing => ({ ...ing, variant_id: variant.id })))
+  }
+}
+
 // Creates every size variant a meal doesn't already have yet, scaled from its base ingredients.
 // Leaves existing variants untouched, so it's safe to run repeatedly across the whole library.
 export async function createMissingVariantsForMeal(mealId, baseIngredients, library, existingVariantNames) {
   for (const { name, factor } of VARIANT_SIZE_FACTORS) {
     if (existingVariantNames.has(name)) continue
-    const scaledIngs = scaleIngredients(baseIngredients, factor, library)
-    const totals = calcTotals(scaledIngs)
-    const { data: variant, error } = await supabase
-      .from('meal_variants')
-      .insert({ meal_id: mealId, variant_name: name, ...totals })
-      .select('id')
-      .single()
-    if (error) throw error
-    if (scaledIngs.length > 0) {
-      await supabase.from('meal_variant_ingredients').insert(scaledIngs.map(ing => ({ ...ing, variant_id: variant.id })))
+    await insertVariant(mealId, name, scaleIngredients(baseIngredients, factor, library))
+  }
+}
+
+// Rebuilds every size variant from the current base ingredients, overwriting whatever was there
+// before (including any one-off manual tweaks) — used whenever a meal's base recipe is saved, so
+// the variants never drift out of sync with it.
+export async function regenerateAllVariantsForMeal(mealId, baseIngredients, library) {
+  const { data: existing } = await supabase.from('meal_variants').select('id').eq('meal_id', mealId)
+  if (existing?.length) {
+    await supabase.from('meal_variants').delete().in('id', existing.map(v => v.id))
+  }
+  for (const { name, factor } of VARIANT_SIZE_FACTORS) {
+    await insertVariant(mealId, name, scaleIngredients(baseIngredients, factor, library))
+  }
+}
+
+// When a library ingredient's macros or constraints (serving step / min amount) change, every
+// meal_ingredient and meal_variant_ingredient linked to it has stale numbers baked in at whatever
+// quantity was saved — re-snap each to the new constraints, recompute its macros, then roll the
+// updated variant ingredient totals back up into their meal_variants row.
+export async function propagateIngredientRuleChange(ingredientId, libIng) {
+  const [{ data: baseRows }, { data: variantRows }] = await Promise.all([
+    supabase.from('meal_ingredients').select('id, quantity_g').eq('ingredient_id', ingredientId),
+    supabase.from('meal_variant_ingredients').select('id, variant_id, quantity_g').eq('ingredient_id', ingredientId),
+  ])
+
+  function macrosAt(qty) {
+    const snapped = snapToConstraints(qty, libIng) || qty
+    const f = libIng.serving_size > 0 ? snapped / libIng.serving_size : 0
+    return {
+      quantity_g: snapped,
+      calories:  round1(f * libIng.calories_per_serving),
+      protein_g: round1(f * libIng.protein_per_serving),
+      carbs_g:   round1(f * libIng.carbs_per_serving),
+      fat_g:     round1(f * libIng.fat_per_serving),
     }
+  }
+
+  for (const row of (baseRows || [])) {
+    await supabase.from('meal_ingredients').update(macrosAt(row.quantity_g)).eq('id', row.id)
+  }
+
+  const touchedVariantIds = new Set()
+  for (const row of (variantRows || [])) {
+    await supabase.from('meal_variant_ingredients').update(macrosAt(row.quantity_g)).eq('id', row.id)
+    touchedVariantIds.add(row.variant_id)
+  }
+
+  for (const variantId of touchedVariantIds) {
+    const { data: ings } = await supabase.from('meal_variant_ingredients').select('calories, protein_g, carbs_g, fat_g').eq('variant_id', variantId)
+    await supabase.from('meal_variants').update(calcTotals(ings || [])).eq('id', variantId)
   }
 }
