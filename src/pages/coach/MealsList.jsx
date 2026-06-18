@@ -55,6 +55,8 @@ export default function MealsList() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('All')
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   async function loadMeals() {
     const { data, error } = await supabase
@@ -72,6 +74,19 @@ export default function MealsList() {
   }
 
   useEffect(() => { loadMeals() }, [profile.id])
+
+  async function handleDelete(id) {
+    setDeleting(true)
+    const { error } = await supabase.from('meals').delete().eq('id', id)
+    if (error) {
+      console.error(error)
+      alert('Could not delete this meal: ' + error.message)
+    } else {
+      setMeals(prev => prev.filter(m => m.id !== id))
+    }
+    setDeleting(false)
+    setConfirmDeleteId(null)
+  }
 
   function calcTotals(ingredients) {
     const totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
@@ -168,8 +183,18 @@ export default function MealsList() {
               <div
                 key={meal.id}
                 onClick={() => navigate(`/coach/meals/${meal.id}`)}
-                className="card cursor-pointer hover:shadow-md hover:border-pink-200 transition-all duration-150 p-0 overflow-hidden flex flex-col"
+                className="card relative cursor-pointer hover:shadow-md hover:border-pink-200 transition-all duration-150 p-0 overflow-hidden flex flex-col"
               >
+                <button
+                  onClick={e => { e.stopPropagation(); setConfirmDeleteId(meal.id) }}
+                  title="Delete meal"
+                  className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/90 dark:bg-gray-900/80 text-gray-400 hover:text-red-500 hover:bg-white shadow-sm transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+                  </svg>
+                </button>
+
                 {/* Photo or placeholder */}
                 <div className="h-40 bg-pink-50 flex items-center justify-center overflow-hidden">
                   {photoUrl ? (
@@ -221,6 +246,29 @@ export default function MealsList() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !deleting && setConfirmDeleteId(null)}>
+          <div className="card max-w-sm w-full" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Delete this meal?</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              This removes it from your library and from any meal plans or templates it's used in. This can't be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setConfirmDeleteId(null)} disabled={deleting} className="btn-secondary">
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDeleteId)}
+                disabled={deleting}
+                className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

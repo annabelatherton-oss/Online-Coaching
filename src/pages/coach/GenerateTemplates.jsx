@@ -42,6 +42,31 @@ function classifyMeal(meal) {
   return null
 }
 
+// Carb side is independent of the protein-based subtype above — a chicken dinner can be
+// served with rice, potato, pasta, etc.
+function classifyCarb(meal) {
+  if (meal.category !== 'dinner') return null
+  const n = meal.name.toLowerCase()
+  if (['rice', 'risotto', 'pilaf'].some(k => n.includes(k))) return 'rice'
+  if (['potato', 'mash', 'fries', 'wedges', 'sweet potato'].some(k => n.includes(k))) return 'potato'
+  if (['pasta', 'penne', 'spaghetti', 'linguine', 'fusilli', 'tagliatelle', 'rigatoni', 'lasagne', 'mac and cheese', 'macaroni'].some(k => n.includes(k))) return 'pasta'
+  if (['noodle', 'udon', 'soba', 'pad thai'].some(k => n.includes(k))) return 'noodle'
+  if (['bread', 'naan', 'pitta', 'pita', 'bun', 'bap', 'tortilla', 'wrap'].some(k => n.includes(k))) return 'bread'
+  return 'other'
+}
+
+// Cross-category "theme" words — e.g. a burger lunch and a burger dinner feel repetitive even
+// though they're different categories, so we keep these out of the same day-option pairing.
+const THEME_KEYWORDS = ['burger', 'bbq', 'barbecue', 'pizza', 'curry', 'burrito', 'taco', 'fajita',
+  'stir fry', 'stir-fry', 'kebab', 'chilli', 'chili', 'noodle', 'sushi', 'falafel']
+
+function sharedTheme(mealA, mealB) {
+  if (!mealA || !mealB) return false
+  const a = mealA.name.toLowerCase()
+  const b = mealB.name.toLowerCase()
+  return THEME_KEYWORDS.some(k => a.includes(k) && b.includes(k))
+}
+
 // Meal Prep is independent of sweet/savoury — a batch-cooked breakfast can be either.
 function detectMealPrep(meal) {
   if (meal.category !== 'breakfast') return false
@@ -71,6 +96,15 @@ const SUBTYPE_COLOURS = {
   veggie: 'bg-green-100 text-green-700',
 }
 
+const CARB_COLOURS = {
+  rice: 'bg-blue-100 text-blue-700',
+  potato: 'bg-amber-100 text-amber-700',
+  pasta: 'bg-orange-100 text-orange-700',
+  noodle: 'bg-lime-100 text-lime-700',
+  bread: 'bg-stone-100 text-stone-700',
+  other: 'bg-gray-100 text-gray-600',
+}
+
 // ── Pool helper ────────────────────────────────────────────────────────────────
 
 function shuffle(arr) {
@@ -85,18 +119,25 @@ function shuffle(arr) {
 class DeckPool {
   constructor(meals) { this.all = [...meals]; this.deck = shuffle([...meals]); this.i = 0 }
   empty() { return this.all.length === 0 }
-  // excludeSubtype: prefer a different subtype, fall back to it only if nothing else available
-  pick(excludeId, excludeSubtype) {
+  // Hands out the next item without wasting any candidate from this pass: scans the remaining
+  // deck slice for the lowest-scoring item per `score` (lower is better, 0 = no conflicts) and
+  // swaps it to the front instead of skipping past it. `excludeId` is a hard constraint (never
+  // repeat that exact meal) unless it's the only meal in the whole pool.
+  pick(excludeId, score) {
     if (this.empty()) return null
-    let fallback = null
-    for (let attempt = 0; attempt < this.all.length + 1; attempt++) {
-      if (this.i >= this.deck.length) { this.deck = shuffle([...this.all]); this.i = 0 }
-      const m = this.deck[this.i++]
-      if (m.id === excludeId) continue
-      if (excludeSubtype && m._subtype === excludeSubtype) { if (!fallback) fallback = m; continue }
-      return m
+    if (excludeId && this.all.length === 1 && this.all[0].id === excludeId) return null
+    if (this.i >= this.deck.length) { this.deck = shuffle([...this.all]); this.i = 0 }
+
+    const scoreOf = m => (m.id === excludeId ? Infinity : (score ? score(m) : 0))
+    let bestJ = this.i
+    let bestScore = scoreOf(this.deck[this.i])
+    for (let j = this.i + 1; j < this.deck.length; j++) {
+      const s = scoreOf(this.deck[j])
+      if (s < bestScore) { bestScore = s; bestJ = j; if (s === 0) break }
     }
-    return fallback
+
+    ;[this.deck[this.i], this.deck[bestJ]] = [this.deck[bestJ], this.deck[this.i]]
+    return this.deck[this.i++]
   }
 }
 
@@ -187,10 +228,21 @@ function generateWeeks(classifiedMeals, excluded) {
 
   return Array.from({ length: WEEK_COUNT }, (_, i) => {
     const { b1, b2 } = breakfastSchedule[i]
+
     const l1 = lunchPoolA.pick()
-    const l2 = lunchPoolB.pick(l1?.id, l1?._subtype)
-    const d1 = dinnerPoolA.pick()
-    const d2 = dinnerPoolB.pick(d1?.id, d1?._subtype)
+    const l2 = lunchPoolB.pick(l1?.id, l1 ? (m => (m._subtype === l1._subtype ? 1 : 0)) : null)
+
+    // Option 1 day = lunch1 + dinner1, Option 2 day = lunch2 + dinner2 — keep "themed" meals
+    // (burger, BBQ, curry…) from landing on the same day option.
+    const d1 = dinnerPoolA.pick(null, l1 ? (m => (sharedTheme(m, l1) ? 1 : 0)) : null)
+    const d2 = dinnerPoolB.pick(d1?.id, (d1 || l2) ? (m => {
+      let s = 0
+      if (d1 && m._subtype === d1._subtype) s += 1
+      if (d1 && m._carb && d1._carb && m._carb === d1._carb) s += 1
+      if (l2 && sharedTheme(m, l2)) s += 1
+      return s
+    }) : null)
+
     return {
       weekNum: i + 1,
       breakfast1: b1 || null,
@@ -234,6 +286,14 @@ const DINNER_SUBTYPES = [
   { value: 'veggie', label: 'Veggie' },
   { value: 'other', label: 'Other' },
 ]
+const CARB_TYPES = [
+  { value: 'rice', label: 'Rice' },
+  { value: 'potato', label: 'Potato' },
+  { value: 'pasta', label: 'Pasta' },
+  { value: 'noodle', label: 'Noodle' },
+  { value: 'bread', label: 'Bread' },
+  { value: 'other', label: 'Other' },
+]
 
 function subtypeOptions(cat) {
   if (cat === 'breakfast') return BREAKFAST_SUBTYPES
@@ -261,6 +321,7 @@ export default function GenerateTemplates() {
   const [excluded, setExcluded] = useState(new Set())
   const [subtypeOverrides, setSubtypeOverrides] = useState({})
   const [mealPrepOverrides, setMealPrepOverrides] = useState({})
+  const [carbOverrides, setCarbOverrides] = useState({})
   const [dirty, setDirty] = useState(new Set()) // meal IDs with unsaved changes
   const [weeks, setWeeks] = useState([])
   const [expanded, setExpanded] = useState(new Set())
@@ -276,7 +337,7 @@ export default function GenerateTemplates() {
   useEffect(() => {
     supabase
       .from('meals')
-      .select('id, name, category, template_subtype, meal_prep_friendly, excluded_from_templates, meal_ingredients(calories)')
+      .select('id, name, category, template_subtype, meal_prep_friendly, template_carb, excluded_from_templates, meal_ingredients(calories)')
       .eq('coach_id', profile.id)
       .order('name')
       .then(({ data }) => {
@@ -284,6 +345,7 @@ export default function GenerateTemplates() {
           ...m,
           _subtype: classifyMeal(m),
           _mealPrepAuto: detectMealPrep(m),
+          _carbAuto: classifyCarb(m),
           _totalCals: Math.round((m.meal_ingredients || []).reduce((s, i) => s + (parseFloat(i.calories) || 0), 0)),
         }))
         setMeals(classified)
@@ -298,6 +360,11 @@ export default function GenerateTemplates() {
           if (m.meal_prep_friendly !== null && m.meal_prep_friendly !== undefined) mpOverrides[m.id] = m.meal_prep_friendly
         }
         setMealPrepOverrides(mpOverrides)
+        const carbOv = {}
+        for (const m of classified) {
+          if (m.template_carb) carbOv[m.id] = m.template_carb
+        }
+        setCarbOverrides(carbOv)
 
         // Restore any unsaved generated draft
         try {
@@ -330,8 +397,12 @@ export default function GenerateTemplates() {
     return mealPrepOverrides[meal.id] ?? meal._mealPrepAuto
   }
 
+  function getCarb(meal) {
+    return carbOverrides[meal.id] ?? meal._carbAuto
+  }
+
   function withOverrides() {
-    return meals.map(m => ({ ...m, _subtype: getSubtype(m), _mealPrep: getMealPrep(m) }))
+    return meals.map(m => ({ ...m, _subtype: getSubtype(m), _mealPrep: getMealPrep(m), _carb: getCarb(m) }))
   }
 
   function toggleExclude(id) {
@@ -353,6 +424,7 @@ export default function GenerateTemplates() {
           excluded_from_templates: excluded.has(m.id),
           template_subtype: subtypeOverrides[m.id] ?? null,
           meal_prep_friendly: mealPrepOverrides[m.id] ?? null,
+          template_carb: carbOverrides[m.id] ?? null,
         }).eq('id', m.id)
       )
     )
@@ -478,12 +550,14 @@ export default function GenerateTemplates() {
 
         <div className="card bg-pink-50/60 dark:bg-pink-900/10 border-pink-100 dark:border-pink-900/30">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Meals are auto-classified below. Uncheck any you don't want included. Use the Sweet/Savoury
-            badge to correct any wrong classifications, and the Meal Prep badge to mark breakfasts that
-            can be batch-cooked ahead — the two are independent, so a meal-prepped breakfast can still be
-            either sweet or savoury. Every week is guaranteed at least one Meal Prep breakfast (when you've
-            tagged any), every included breakfast gets used at least once across the 20 weeks, and we'll
-            pair a sweet with a savoury each week where that doesn't conflict with the above.
+            Meals are auto-classified below. Uncheck any you don't want included. Use the badges to
+            correct any wrong classifications — for breakfast, Sweet/Savoury and Meal Prep are independent
+            tags; for dinner, the protein type and the Carb badge (rice/potato/pasta/noodle/bread) are
+            independent too. Every week is guaranteed at least one Meal Prep breakfast (when you've tagged
+            any), and every included breakfast gets used at least once across the 20 weeks. Where it doesn't
+            conflict with that, we'll also pair a sweet with a savoury, avoid pairing two dinners with the
+            same carb in one week, and avoid putting a similarly-themed lunch and dinner (e.g. both "burger"
+            or "BBQ") on the same day option.
           </p>
         </div>
 
@@ -545,6 +619,19 @@ export default function GenerateTemplates() {
                         >
                           <option value="standard">Standard</option>
                           <option value="meal_prep">Meal Prep</option>
+                        </select>
+                      )}
+                      {section.cat === 'dinner' && (
+                        <select
+                          className={`text-xs py-0.5 px-2 rounded-full font-medium border-0 focus:ring-1 focus:ring-brand-300 cursor-pointer ${CARB_COLOURS[getCarb(m)] || CARB_COLOURS.other}`}
+                          value={getCarb(m) || 'other'}
+                          onChange={e => {
+                            setCarbOverrides(prev => ({ ...prev, [m.id]: e.target.value }))
+                            setDirty(prev => { const s = new Set(prev); s.add(m.id); return s })
+                            setPrefsSaved(false)
+                          }}
+                        >
+                          {CARB_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                       )}
                     </div>
