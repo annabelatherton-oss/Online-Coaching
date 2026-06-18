@@ -19,7 +19,9 @@ const SLOT_TYPES = [
 // primary day, Option 2 is the alternate day, both sharing the same pre-workout/evening snack.
 const OPTION_1_SLOTS = ['breakfast1', 'lunch1', 'dinner1', 'preworkout', 'evening_snack']
 const OPTION_2_SLOTS = ['breakfast2', 'lunch2', 'dinner2', 'preworkout', 'evening_snack']
-const OVER_TARGET_TOLERANCE = 50
+// The day's total should never fall more than 50 kcal below target, or more than 30 kcal above it.
+const UNDER_TARGET_TOLERANCE = 50
+const OVER_TARGET_TOLERANCE = 30
 
 const MEAL_CATEGORY_ORDER = ['breakfast', 'lunch', 'dinner', 'pre_workout', 'snack', 'evening_snack']
 
@@ -123,13 +125,26 @@ export default function WeeklyTemplateEditor() {
   const option1Total = sumSlots(OPTION_1_SLOTS)
   const option2Total = sumSlots(OPTION_2_SLOTS)
   const target = form.calorie_target !== '' ? parseInt(form.calorie_target) : null
-  const option2OverTarget = target != null && option2Total > target + OVER_TARGET_TOLERANCE
+
+  function rangeError(label, total, target) {
+    if (target == null) return null
+    if (total < target - UNDER_TARGET_TOLERANCE) return `${label} total ${total} kcal — more than ${UNDER_TARGET_TOLERANCE} kcal below the ${target} kcal target.`
+    if (total > target + OVER_TARGET_TOLERANCE) return `${label} total ${total} kcal — more than ${OVER_TARGET_TOLERANCE} kcal above the ${target} kcal target.`
+    return null
+  }
+
+  const option1OutOfRange = option1Total > 0 && rangeError('Option 1 meals', option1Total, target) != null
+  const option2OutOfRange = option2Total > 0 && rangeError('Option 2 meals', option2Total, target) != null
 
   async function handleSave(e) {
     e.preventDefault()
     if (!form.name.trim()) { setError('Template name is required.'); return }
-    if (option2OverTarget) {
-      setError(`Option 2 meals (Alt. Breakfast/Lunch/Dinner + Pre-Workout + Evening Snack) total ${option2Total} kcal — more than ${OVER_TARGET_TOLERANCE} kcal above the ${target} kcal target. Choose lighter alternates before saving.`)
+    const errors = [
+      option1Total > 0 ? rangeError('Option 1 meals', option1Total, target) : null,
+      option2Total > 0 ? rangeError('Option 2 meals (Alt. Breakfast/Lunch/Dinner + Pre-Workout + Evening Snack)', option2Total, target) : null,
+    ].filter(Boolean)
+    if (errors.length > 0) {
+      setError(`${errors.join(' ')} Choose different meals so the day lands within range before saving.`)
       return
     }
     setSaving(true)
@@ -267,7 +282,7 @@ export default function WeeklyTemplateEditor() {
                 <div className="flex items-center gap-2 justify-end">
                   <span className="text-sm text-gray-500 dark:text-gray-400">Option 1:</span>
                   <span className={`font-semibold text-sm ${
-                    target != null && Math.abs(option1Total - target) <= OVER_TARGET_TOLERANCE
+                    target != null && !option1OutOfRange
                       ? 'text-green-600 dark:text-green-400'
                       : 'text-gray-900 dark:text-white'
                   }`}>
@@ -278,7 +293,7 @@ export default function WeeklyTemplateEditor() {
                 {option2Total > 0 && (
                   <div className="flex items-center gap-2 justify-end mt-0.5">
                     <span className="text-xs text-gray-400">Option 2:</span>
-                    <span className={`text-xs font-medium ${option2OverTarget ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                    <span className={`text-xs font-medium ${option2OutOfRange ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
                       {option2Total} kcal
                     </span>
                   </div>
@@ -287,11 +302,13 @@ export default function WeeklyTemplateEditor() {
             )}
           </div>
 
-          {option2OverTarget && (
+          {(option1OutOfRange || option2OutOfRange) && (
             <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
               <p className="text-sm text-red-700 dark:text-red-400">
-                Option 2 meals total {option2Total} kcal — more than {OVER_TARGET_TOLERANCE} kcal above the {target} kcal target.
-                Choose lighter Alt. Breakfast/Lunch/Dinner meals so these can be paired interchangeably with Option 1.
+                {[
+                  option1OutOfRange ? rangeError('Option 1 meals', option1Total, target) : null,
+                  option2OutOfRange ? rangeError('Option 2 meals', option2Total, target) : null,
+                ].filter(Boolean).join(' ')} Choose different meals so the day lands within {UNDER_TARGET_TOLERANCE} kcal below / {OVER_TARGET_TOLERANCE} kcal above target.
               </p>
             </div>
           )}

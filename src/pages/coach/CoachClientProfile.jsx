@@ -428,6 +428,11 @@ const OPTION_2_KEYS = ['breakfast2', 'lunch2', 'dinner2']
 
 const VARIANT_SIZES = ['XS', 'Small', 'Medium', 'Large', 'XL']
 
+// The day's actual calories should never fall more than 50 kcal below target, or
+// more than 30 kcal above it.
+const UNDER_TARGET_TOLERANCE = 50
+const OVER_TARGET_TOLERANCE = 30
+
 function round1(n) {
   return Math.round(n * 10) / 10
 }
@@ -932,14 +937,14 @@ function MealPlanTab({ client, coachId }) {
   const option2Total = addMacros(addMacros(option2Subtotal, preworkoutTotal), snackTotal)
   const grandTotal = option1Total
 
-  // Variant-level suggestion: if calorie gap ≥ 50, suggest going up/down a size
+  // Variant-level suggestion: if the day falls outside the -50/+30 kcal band, suggest going up/down a size
   function getVariantSuggestion() {
     if (!assignment?.calorie_target || !effectiveVariant) return null
     const gap = assignment.calorie_target - grandTotal.cal
-    if (Math.abs(gap) < 50) return null
+    if (gap <= UNDER_TARGET_TOLERANCE && gap >= -OVER_TARGET_TOLERANCE) return null
     const idx = VARIANT_SIZES.indexOf(effectiveVariant)
-    if (gap > 0 && idx < VARIANT_SIZES.length - 1) return { text: `Switch to ${VARIANT_SIZES[idx + 1]} portions`, detail: `May add ~${Math.round(gap)} kcal to get closer to target` }
-    if (gap < 0 && idx > 0) return { text: `Switch to ${VARIANT_SIZES[idx - 1]} portions`, detail: `May save ~${Math.round(Math.abs(gap))} kcal to get closer to target` }
+    if (gap > UNDER_TARGET_TOLERANCE && idx < VARIANT_SIZES.length - 1) return { text: `Switch to ${VARIANT_SIZES[idx + 1]} portions`, detail: `May add ~${Math.round(gap)} kcal to get closer to target` }
+    if (gap < -OVER_TARGET_TOLERANCE && idx > 0) return { text: `Switch to ${VARIANT_SIZES[idx - 1]} portions`, detail: `May save ~${Math.round(Math.abs(gap))} kcal to get closer to target` }
     return null
   }
   const suggestion = getVariantSuggestion()
@@ -1373,12 +1378,16 @@ function MealPlanTab({ client, coachId }) {
                 </div>
               )}
 
-              {assignment?.calorie_target && Math.abs(assignment.calorie_target - grandTotal.cal) >= 50 && (
-                <p className={`text-sm font-medium ${grandTotal.cal > assignment.calorie_target ? 'text-orange-500' : 'text-blue-500'}`}>
-                  {grandTotal.cal > assignment.calorie_target
-                    ? `${Math.round(grandTotal.cal - assignment.calorie_target)} kcal over target`
-                    : `${Math.round(assignment.calorie_target - grandTotal.cal)} kcal under target`}
-                </p>
+              {assignment?.calorie_target && (
+                grandTotal.cal > assignment.calorie_target + OVER_TARGET_TOLERANCE ? (
+                  <p className="text-sm font-medium text-orange-500">
+                    {Math.round(grandTotal.cal - assignment.calorie_target)} kcal over target (max {OVER_TARGET_TOLERANCE})
+                  </p>
+                ) : grandTotal.cal < assignment.calorie_target - UNDER_TARGET_TOLERANCE ? (
+                  <p className="text-sm font-medium text-blue-500">
+                    {Math.round(assignment.calorie_target - grandTotal.cal)} kcal under target (max {UNDER_TARGET_TOLERANCE})
+                  </p>
+                ) : null
               )}
 
               {suggestion && (
