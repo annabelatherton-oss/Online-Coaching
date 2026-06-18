@@ -493,6 +493,14 @@ function makeOverrideHandlers(setOverrides, setDirty) {
       })
       setDirty(true)
     },
+    revertAll(key) {
+      setOverrides(prev => {
+        if (!prev[key]) return prev
+        const { [key]: _omit, ...rest } = prev
+        return rest
+      })
+      setDirty(true)
+    },
   }
 }
 
@@ -523,7 +531,7 @@ function autoSelectVariant(mealIds, mealMap, calorieTarget) {
 // ingredients can be removed or added just for this client — none of it touches the shared
 // master meal/variant data. Quantity overrides rescale that ingredient's macros proportionally;
 // added ingredients are pulled from the coach's ingredient library so their macros are accurate.
-function VariantIngredientList({ mealId, mealMap, variantName, overrides, library, libraryById, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded }) {
+function VariantIngredientList({ mealId, mealMap, variantName, overrides, library, libraryById, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll }) {
   const [addingOpen, setAddingOpen] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addSelected, setAddSelected] = useState(null)
@@ -589,9 +597,26 @@ function VariantIngredientList({ mealId, mealMap, variantName, overrides, librar
     ? library.filter(l => l.name.toLowerCase().includes(addSearch.toLowerCase())).slice(0, 8)
     : []
 
+  const overridden = hasAnyOverride(overrides)
+
   return (
     <div className="space-y-1 pt-1">
-      <p className="text-xs text-gray-400 dark:text-gray-500 italic mb-1.5">{label}</p>
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <p className="text-xs text-gray-400 dark:text-gray-500 italic">{label}</p>
+        {overridden && (
+          <button
+            type="button"
+            onClick={onRevertAll}
+            className="text-xs text-gray-400 hover:text-red-500 inline-flex items-center gap-1 flex-shrink-0"
+            title="Undo all changes for this client's version of this meal"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a4 4 0 010 8H8m-5-8l4-4m-4 4l4 4" />
+            </svg>
+            Revert to original
+          </button>
+        )}
+      </div>
 
       {ingredients.length > 0 && (
         <>
@@ -1109,6 +1134,7 @@ function MealPlanTab({ client, coachId }) {
                           onRestore={ingId => slotHandlers.restore(slot.key, ingId)}
                           onAdd={newIng => slotHandlers.add(slot.key, newIng)}
                           onRemoveAdded={addedId => slotHandlers.removeAdded(slot.key, addedId)}
+                          onRevertAll={() => slotHandlers.revertAll(slot.key)}
                         />
                       </div>
                     )}
@@ -1187,6 +1213,7 @@ function MealPlanTab({ client, coachId }) {
                         onRestore={ingId => staticHandlers.restore(key, ingId)}
                         onAdd={newIng => staticHandlers.add(key, newIng)}
                         onRemoveAdded={addedId => staticHandlers.removeAdded(key, addedId)}
+                        onRevertAll={() => staticHandlers.revertAll(key)}
                       />
                     </div>
                   )}
