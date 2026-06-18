@@ -189,7 +189,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
 }
 
 // ─── Ingredients Tab ──────────────────────────────────────────────────────────
-function IngredientsTab({ mealId, coachId }) {
+function IngredientsTab({ mealId, coachId, onDirtyChange }) {
   const [ingredients, setIngredients] = useState([])
   const [library, setLibrary] = useState([])
   const [loading, setLoading] = useState(true)
@@ -198,6 +198,10 @@ function IngredientsTab({ mealId, coachId }) {
   const [error, setError] = useState('')
   const [openDropdown, setOpenDropdown] = useState(null)
   const [searchText, setSearchText] = useState({})
+  const [dirty, setDirty] = useState(false)
+
+  useEffect(() => { onDirtyChange?.(dirty) }, [dirty])
+  useEffect(() => () => onDirtyChange?.(false), [])
 
   async function load() {
     const [ingRes, libRes] = await Promise.all([
@@ -212,12 +216,14 @@ function IngredientsTab({ mealId, coachId }) {
     })))
     setLibrary(lib)
     setLoading(false)
+    setDirty(false)
   }
 
   useEffect(() => { load() }, [mealId])
 
   function updateRow(idx, updates) {
     setIngredients(prev => prev.map((ing, i) => i === idx ? { ...ing, ...updates } : ing))
+    setDirty(true)
   }
 
   function calcMacros(libIng, amount) {
@@ -261,6 +267,7 @@ function IngredientsTab({ mealId, coachId }) {
       calories: '', protein_g: '', carbs_g: '', fat_g: '',
       scaling_type: 'flexible',
     }])
+    setDirty(true)
   }
 
   async function deleteRow(idx) {
@@ -844,6 +851,15 @@ export default function MealEditor() {
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState('Details')
   const [currentId, setCurrentId] = useState(isNew ? null : mealId)
+  const [ingredientsDirty, setIngredientsDirty] = useState(false)
+
+  function changeTab(tab) {
+    if (tab === activeTab) return
+    if (activeTab === 'Ingredients' && ingredientsDirty) {
+      if (!window.confirm('You have unsaved ingredient changes that will be lost if you switch tabs. Continue anyway?')) return
+    }
+    setActiveTab(tab)
+  }
 
   async function loadMeal(id) {
     const { data, error: err } = await supabase.from('meals').select('*').eq('id', id).eq('coach_id', profile.id).single()
@@ -878,7 +894,13 @@ export default function MealEditor() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-        <button onClick={() => navigate('/coach/meals')} className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+        <button
+          onClick={() => {
+            if (ingredientsDirty && !window.confirm('You have unsaved ingredient changes that will be lost if you leave. Continue anyway?')) return
+            navigate('/coach/meals')
+          }}
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+        >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
@@ -903,7 +925,7 @@ export default function MealEditor() {
           return (
             <button
               key={tab}
-              onClick={() => !disabled && setActiveTab(tab)}
+              onClick={() => !disabled && changeTab(tab)}
               disabled={disabled}
               className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
                 disabled
@@ -921,7 +943,7 @@ export default function MealEditor() {
 
       <div>
         {activeTab === 'Details' && <DetailsTab meal={meal} mealId={currentId} isNew={isNew} onSaved={handleDetailsSaved} coachId={profile.id} />}
-        {activeTab === 'Ingredients' && currentId && <IngredientsTab mealId={currentId} coachId={profile.id} />}
+        {activeTab === 'Ingredients' && currentId && <IngredientsTab mealId={currentId} coachId={profile.id} onDirtyChange={setIngredientsDirty} />}
         {activeTab === 'Variants' && currentId && <VariantsTab mealId={currentId} coachId={profile.id} />}
       </div>
     </div>
