@@ -937,14 +937,22 @@ function MealPlanTab({ client, coachId }) {
   const option2Total = addMacros(addMacros(option2Subtotal, preworkoutTotal), snackTotal)
   const grandTotal = option1Total
 
-  // Variant-level suggestion: if the day falls outside the -50/+30 kcal band, suggest going up/down a size
+  // Variant-level suggestion: if the day falls outside the -50/+30 kcal band, suggest going up/down a size.
+  // If there's no bigger/smaller size left to switch to, say so explicitly instead of showing nothing —
+  // that gap can only be closed by editing ingredients or the meal library, not the portion-size selector.
   function getVariantSuggestion() {
     if (!assignment?.calorie_target || !effectiveVariant) return null
     const gap = assignment.calorie_target - grandTotal.cal
     if (gap <= UNDER_TARGET_TOLERANCE && gap >= -OVER_TARGET_TOLERANCE) return null
     const idx = VARIANT_SIZES.indexOf(effectiveVariant)
-    if (gap > UNDER_TARGET_TOLERANCE && idx < VARIANT_SIZES.length - 1) return { text: `Switch to ${VARIANT_SIZES[idx + 1]} portions`, detail: `May add ~${Math.round(gap)} kcal to get closer to target` }
-    if (gap < -OVER_TARGET_TOLERANCE && idx > 0) return { text: `Switch to ${VARIANT_SIZES[idx - 1]} portions`, detail: `May save ~${Math.round(Math.abs(gap))} kcal to get closer to target` }
+    if (gap > UNDER_TARGET_TOLERANCE) {
+      if (idx < VARIANT_SIZES.length - 1) return { text: `Switch to ${VARIANT_SIZES[idx + 1]} portions`, detail: `May add ~${Math.round(gap)} kcal to get closer to target` }
+      return { text: `Already on the largest portion size (${effectiveVariant})`, detail: `Still ~${Math.round(gap)} kcal under target — add more food to a meal slot, or increase the ${effectiveVariant} variant's serving size in the meal library` }
+    }
+    if (gap < -OVER_TARGET_TOLERANCE) {
+      if (idx > 0) return { text: `Switch to ${VARIANT_SIZES[idx - 1]} portions`, detail: `May save ~${Math.round(Math.abs(gap))} kcal to get closer to target` }
+      return { text: `Already on the smallest portion size (${effectiveVariant})`, detail: `Still ~${Math.round(Math.abs(gap))} kcal over target — remove some food from a meal slot, or reduce the ${effectiveVariant} variant's serving size in the meal library` }
+    }
     return null
   }
   const suggestion = getVariantSuggestion()
