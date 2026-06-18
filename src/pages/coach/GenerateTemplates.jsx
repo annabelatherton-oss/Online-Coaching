@@ -10,7 +10,12 @@ function classifyMeal(meal) {
   const n = meal.name.toLowerCase()
 
   if (meal.category === 'breakfast') {
-    const sweetKw = ['oat', 'porridge', 'waffle', 'pancake', 'overnight', 'chia', 'granola', 'smoothie',
+    const mealPrepKw = ['overnight', 'meal prep', 'mason jar', 'jar', 'batch', 'make-ahead', 'make ahead',
+      'freezer', 'egg muffin', 'egg bite', 'egg cup', 'baked oat', 'breakfast bar', 'energy bite',
+      'slice', 'pre-made', 'premade']
+    if (mealPrepKw.some(k => n.includes(k))) return 'meal_prep'
+
+    const sweetKw = ['oat', 'porridge', 'waffle', 'pancake', 'chia', 'granola', 'smoothie',
       'yoghurt', 'yogurt', 'chocolate', 'french toast', 'acai', 'açaí', 'berry', 'berries', 'fruit',
       'honey', 'biscoff', 'muffin', 'banana', 'maple', 'jam', 'peanut butter', 'pb &', 'nutella', 'crepe',
       'rice cake', 'sweet', 'cinnamon']
@@ -45,6 +50,7 @@ function classifyMeal(meal) {
 const SUBTYPE_COLOURS = {
   sweet: 'bg-yellow-100 text-yellow-700',
   savoury: 'bg-orange-100 text-orange-700',
+  meal_prep: 'bg-emerald-100 text-emerald-700',
   wrap: 'bg-green-100 text-green-700',
   pasta: 'bg-amber-100 text-amber-700',
   'rice/bowl': 'bg-blue-100 text-blue-700',
@@ -94,8 +100,10 @@ const WEEK_COUNT = 20
 function generateWeeks(classifiedMeals, excluded) {
   const avail = classifiedMeals.filter(m => !excluded.has(m.id))
 
-  const sweetPool   = new DeckPool(avail.filter(m => m.category === 'breakfast' && m._subtype === 'sweet'))
-  const savouryPool = new DeckPool(avail.filter(m => m.category === 'breakfast' && m._subtype === 'savoury'))
+  // Breakfast B is guaranteed to be meal-prep friendly whenever the coach has tagged any
+  // such meals — Breakfast A stays flexible (sweet or savoury) so the two aren't both meal-prep.
+  const mealPrepPool      = new DeckPool(avail.filter(m => m.category === 'breakfast' && m._subtype === 'meal_prep'))
+  const otherBreakfastPool = new DeckPool(avail.filter(m => m.category === 'breakfast' && m._subtype !== 'meal_prep'))
 
   const lunchPoolA = new DeckPool(avail.filter(m => m.category === 'lunch'))
   const lunchPoolB = new DeckPool(avail.filter(m => m.category === 'lunch'))
@@ -104,8 +112,8 @@ function generateWeeks(classifiedMeals, excluded) {
   const dinnerPoolB = new DeckPool(avail.filter(m => m.category === 'dinner'))
 
   return Array.from({ length: WEEK_COUNT }, (_, i) => {
-    const b1 = sweetPool.pick()
-    const b2 = savouryPool.pick()
+    const b2 = mealPrepPool.pick() || otherBreakfastPool.pick()
+    const b1 = otherBreakfastPool.pick(b2?.id)
     const l1 = lunchPoolA.pick()
     const l2 = lunchPoolB.pick(l1?.id, l1?._subtype)
     const d1 = dinnerPoolA.pick()
@@ -125,8 +133,8 @@ function generateWeeks(classifiedMeals, excluded) {
 // ── Slot config ────────────────────────────────────────────────────────────────
 
 const SLOTS = [
-  { key: 'breakfast1', label: 'Breakfast (Sweet)', cat: 'breakfast' },
-  { key: 'breakfast2', label: 'Breakfast (Savoury)', cat: 'breakfast' },
+  { key: 'breakfast1', label: 'Breakfast A',             cat: 'breakfast' },
+  { key: 'breakfast2', label: 'Breakfast B (Meal Prep)', cat: 'breakfast' },
   { key: 'lunch1',     label: 'Lunch A',            cat: 'lunch' },
   { key: 'lunch2',     label: 'Lunch B',             cat: 'lunch' },
   { key: 'dinner1',    label: 'Dinner A',            cat: 'dinner' },
@@ -136,6 +144,7 @@ const SLOTS = [
 const BREAKFAST_SUBTYPES = [
   { value: 'sweet', label: 'Sweet' },
   { value: 'savoury', label: 'Savoury' },
+  { value: 'meal_prep', label: 'Meal Prep' },
 ]
 const LUNCH_SUBTYPES = [
   { value: 'wrap', label: 'Wrap' },
@@ -164,10 +173,11 @@ function subtypeOptions(cat) {
 // ── Setup sections ─────────────────────────────────────────────────────────────
 
 const SETUP_SECTIONS = [
-  { label: 'Breakfast — Sweet',   cat: 'breakfast', sub: 'sweet'   },
-  { label: 'Breakfast — Savoury', cat: 'breakfast', sub: 'savoury' },
-  { label: 'Lunch',               cat: 'lunch',     sub: null      },
-  { label: 'Dinner',              cat: 'dinner',    sub: null      },
+  { label: 'Breakfast — Meal Prep', cat: 'breakfast', sub: 'meal_prep' },
+  { label: 'Breakfast — Sweet',     cat: 'breakfast', sub: 'sweet'     },
+  { label: 'Breakfast — Savoury',   cat: 'breakfast', sub: 'savoury'   },
+  { label: 'Lunch',                 cat: 'lunch',     sub: null        },
+  { label: 'Dinner',                cat: 'dinner',    sub: null        },
 ]
 
 // ── Main component ─────────────────────────────────────────────────────────────
@@ -388,6 +398,8 @@ export default function GenerateTemplates() {
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Meals are auto-classified below. Uncheck any you don't want included. Use the type badge to
             correct any wrong classifications — e.g. move a savoury breakfast that was labelled sweet.
+            Breakfast B is always picked from your Meal Prep options when you have any tagged, so clients
+            get at least one make-ahead breakfast each week.
           </p>
         </div>
 
