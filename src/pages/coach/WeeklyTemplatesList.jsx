@@ -53,6 +53,9 @@ export default function WeeklyTemplatesList() {
 
   async function handleDeleteGroup(groupId) {
     if (!confirm('Delete this 20-week plan? This cannot be undone.')) return
+    // Unassign any clients pointed at this plan so they don't end up with a dangling
+    // assignment (which renders as a blank Meal Plan tab on their profile).
+    await supabase.from('client_plan_assignments').update({ active: false }).eq('plan_group_id', groupId)
     await supabase.from('weekly_templates').delete().eq('plan_group_id', groupId)
     await supabase.from('plan_groups').delete().eq('id', groupId)
     load()

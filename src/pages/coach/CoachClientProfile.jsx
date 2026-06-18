@@ -1040,6 +1040,19 @@ function MealPlanTab({ client, coachId }) {
         </div>
       )}
 
+      {assignment && !planGroup && !showForm && (
+        <div className="card text-center py-12">
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">
+            This client was assigned to "{assignment.plan_group_name || 'a plan'}", but that plan no longer exists
+          </p>
+          <p className="text-xs text-gray-400 mb-4">It was probably deleted from the Templates page. Assign a different plan to fix this.</p>
+          <div className="flex items-center justify-center gap-3">
+            <button onClick={() => setShowForm(true)} className="btn-primary">Assign a Plan</button>
+            <button onClick={handleRemove} className="btn-secondary">Clear assignment</button>
+          </div>
+        </div>
+      )}
+
       {showForm && (
         <form onSubmit={handleAssign} className="card space-y-4">
           <h3 className="font-semibold text-gray-900 dark:text-white">{assignment ? 'Change Meal Plan' : 'Assign Meal Plan'}</h3>
