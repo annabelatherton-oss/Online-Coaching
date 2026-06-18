@@ -359,6 +359,11 @@ const MEAL_SLOTS = [
   { key: 'dinner2',    label: 'Dinner B',    cat: 'dinner' },
 ]
 
+// The client eats one option per category per day, not both — these are the two
+// interchangeable combinations the daily totals are built from.
+const OPTION_1_KEYS = ['breakfast1', 'lunch1', 'dinner1']
+const OPTION_2_KEYS = ['breakfast2', 'lunch2', 'dinner2']
+
 const VARIANT_SIZES = ['XS', 'Small', 'Medium', 'Large', 'XL']
 
 function round1(n) {
@@ -506,6 +511,13 @@ function makeOverrideHandlers(setOverrides, setDirty) {
 
 function addMacros(a, b) {
   return { cal: a.cal + b.cal, prot: a.prot + b.prot, carb: a.carb + b.carb, fat: a.fat + b.fat }
+}
+
+function sumMealSlots(keys, editedSlots, mealMap, effectiveVariant, ingredientOverrides) {
+  return keys.reduce(
+    (acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, effectiveVariant, ingredientOverrides[key])),
+    { cal: 0, prot: 0, carb: 0, fat: 0 }
+  )
 }
 
 // Auto-pick the variant size whose total is closest to the client's calorie target
@@ -838,20 +850,25 @@ function MealPlanTab({ client, coachId }) {
   const effectiveWeek = assignment?.week_override ?? globalWeek
   const isOverridden = assignment?.week_override != null
 
-  // Determine which variant size to use for display
+  // Determine which variant size to use for display — based on what's actually eaten in a day
+  // (one meal per category, not both interchangeable options), plus the static meals.
   const activeMealIds = [
-    ...MEAL_SLOTS.map(s => editedSlots[s.key]),
+    ...OPTION_1_KEYS.map(k => editedSlots[k]),
     staticEdits.preworkout_meal_id,
     staticEdits.evening_snack_meal_id,
   ].filter(Boolean)
   const autoVariant = autoSelectVariant(activeMealIds, mealMap, assignment?.calorie_target)
   const effectiveVariant = assignedVariant === 'auto' ? autoVariant : assignedVariant
 
-  // Daily macro totals
-  const rotatingTotal = MEAL_SLOTS.reduce((acc, s) => addMacros(acc, mealMacros(editedSlots[s.key], mealMap, effectiveVariant, ingredientOverrides[s.key])), { cal: 0, prot: 0, carb: 0, fat: 0 })
+  // Daily macro totals — one of each option (not both) plus the static meals.
+  // Option 2 should land close to Option 1 since they're meant to be interchangeable.
+  const option1Subtotal = sumMealSlots(OPTION_1_KEYS, editedSlots, mealMap, effectiveVariant, ingredientOverrides)
+  const option2Subtotal = sumMealSlots(OPTION_2_KEYS, editedSlots, mealMap, effectiveVariant, ingredientOverrides)
   const preworkoutTotal = mealMacros(staticEdits.preworkout_meal_id, mealMap, effectiveVariant, staticIngredientOverrides.preworkout_meal_id)
   const snackTotal = mealMacros(staticEdits.evening_snack_meal_id, mealMap, effectiveVariant, staticIngredientOverrides.evening_snack_meal_id)
-  const grandTotal = addMacros(addMacros(rotatingTotal, preworkoutTotal), snackTotal)
+  const option1Total = addMacros(addMacros(option1Subtotal, preworkoutTotal), snackTotal)
+  const option2Total = addMacros(addMacros(option2Subtotal, preworkoutTotal), snackTotal)
+  const grandTotal = option1Total
 
   // Variant-level suggestion: if calorie gap ≥ 50, suggest going up/down a size
   function getVariantSuggestion() {
@@ -1147,11 +1164,22 @@ function MealPlanTab({ client, coachId }) {
               })}
             </div>
 
-            {rotatingTotal.cal > 0 && (
-              <div className="px-4 py-2.5 bg-gray-50/60 dark:bg-gray-800/30 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2">
-                <span className="flex-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Subtotal (6 meals)</span>
-                <span className="tabular-nums text-sm font-semibold text-gray-700 dark:text-gray-200">{Math.round(rotatingTotal.cal)} kcal</span>
-                <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(rotatingTotal.carb)}g C &middot; {Math.round(rotatingTotal.prot)}g P &middot; {Math.round(rotatingTotal.fat)}g F</span>
+            {(option1Subtotal.cal > 0 || option2Subtotal.cal > 0) && (
+              <div className="px-4 py-2.5 bg-gray-50/60 dark:bg-gray-800/30 border-t border-gray-100 dark:border-gray-800 space-y-1">
+                {option1Subtotal.cal > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Option 1 subtotal (A meals)</span>
+                    <span className="tabular-nums text-sm font-semibold text-gray-700 dark:text-gray-200">{Math.round(option1Subtotal.cal)} kcal</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(option1Subtotal.carb)}g C &middot; {Math.round(option1Subtotal.prot)}g P &middot; {Math.round(option1Subtotal.fat)}g F</span>
+                  </div>
+                )}
+                {option2Subtotal.cal > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Option 2 subtotal (B meals)</span>
+                    <span className="tabular-nums text-sm font-medium text-gray-500 dark:text-gray-400">{Math.round(option2Subtotal.cal)} kcal</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(option2Subtotal.carb)}g C &middot; {Math.round(option2Subtotal.prot)}g P &middot; {Math.round(option2Subtotal.fat)}g F</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1237,12 +1265,26 @@ function MealPlanTab({ client, coachId }) {
           {(grandTotal.cal > 0 || assignment?.calorie_target) && (
             <div className="card space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Daily total</span>
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                  Daily total <span className="font-normal text-gray-400">(Option 1)</span>
+                </span>
                 <div className="text-right">
                   <p className="text-xl font-bold text-gray-900 dark:text-white">{Math.round(grandTotal.cal)} kcal</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500">{Math.round(grandTotal.carb)}g C &middot; {Math.round(grandTotal.prot)}g P &middot; {Math.round(grandTotal.fat)}g F</p>
                 </div>
               </div>
+
+              {option2Subtotal.cal > 0 && (
+                <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-100 dark:border-gray-800">
+                  <span className="text-gray-500 dark:text-gray-400">Option 2 total</span>
+                  <div className="text-right">
+                    <span className="font-medium text-gray-700 dark:text-gray-300">{Math.round(option2Total.cal)} kcal</span>
+                    <span className={`text-xs ml-1.5 ${Math.abs(option2Total.cal - grandTotal.cal) >= 50 ? 'text-orange-500' : 'text-gray-400 dark:text-gray-500'}`}>
+                      ({option2Total.cal >= grandTotal.cal ? '+' : '−'}{Math.round(Math.abs(option2Total.cal - grandTotal.cal))} kcal vs Option 1)
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {assignment?.calorie_target && (
                 <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-100 dark:border-gray-800">
