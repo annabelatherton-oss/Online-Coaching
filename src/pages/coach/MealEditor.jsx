@@ -337,8 +337,8 @@ function IngredientsTab({ mealId, coachId }) {
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-52">Ingredient</th>
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Kcal</th>
-                <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Protein (g)</th>
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Carbs (g)</th>
+                <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Protein (g)</th>
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Fat (g)</th>
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                 <th className="px-3 py-2.5" />
@@ -385,7 +385,7 @@ function IngredientsTab({ mealId, coachId }) {
                       {ing._library && <span className="text-xs text-gray-400 whitespace-nowrap">{ing._library.serving_unit}</span>}
                     </div>
                   </td>
-                  {['calories', 'protein_g', 'carbs_g', 'fat_g'].map(field => (
+                  {['calories', 'carbs_g', 'protein_g', 'fat_g'].map(field => (
                     <td key={field} className="px-3 py-2">
                       {ing.ingredient_id ? (
                         <span className="text-sm text-gray-500 dark:text-gray-400 px-1">{ing[field] || 0}</span>
@@ -423,8 +423,8 @@ function IngredientsTab({ mealId, coachId }) {
                 <td className="px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Totals</td>
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
                 <td className="px-3 py-2.5 text-gray-800 dark:text-white text-sm">{totals.calories}</td>
-                <td className="px-3 py-2.5 text-gray-800 dark:text-white text-sm">{totals.protein_g}</td>
                 <td className="px-3 py-2.5 text-gray-800 dark:text-white text-sm">{totals.carbs_g}</td>
+                <td className="px-3 py-2.5 text-gray-800 dark:text-white text-sm">{totals.protein_g}</td>
                 <td className="px-3 py-2.5 text-gray-800 dark:text-white text-sm">{totals.fat_g}</td>
                 <td /><td />
               </tr>
@@ -727,7 +727,7 @@ function VariantsTab({ mealId, coachId }) {
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="font-semibold text-gray-900 dark:text-white text-sm flex-shrink-0">{name}</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {Math.round(totals.calories)} kcal · {Math.round(totals.protein_g)}g P · {Math.round(totals.carbs_g)}g C · {Math.round(totals.fat_g)}g F
+                    {Math.round(totals.calories)} kcal · {Math.round(totals.carbs_g)}g C · {Math.round(totals.protein_g)}g P · {Math.round(totals.fat_g)}g F
                   </span>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-3">
@@ -752,8 +752,8 @@ function VariantsTab({ mealId, coachId }) {
                           <th className="text-left py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Ingredient</th>
                           <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">g</th>
                           <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">kcal</th>
-                          <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">P</th>
                           <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">C</th>
+                          <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">P</th>
                           <th className="text-left py-2 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">F</th>
                           <th className="py-2 px-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                         </tr>
@@ -774,8 +774,8 @@ function VariantsTab({ mealId, coachId }) {
                               />
                             </td>
                             <td className="py-2 px-3 text-gray-500 dark:text-gray-400 text-sm tabular-nums">{Math.round(parseFloat(ing.calories) || 0)}</td>
-                            <td className="py-2 px-3 text-gray-500 dark:text-gray-400 text-sm tabular-nums">{Math.round(parseFloat(ing.protein_g) || 0)}</td>
                             <td className="py-2 px-3 text-gray-500 dark:text-gray-400 text-sm tabular-nums">{Math.round(parseFloat(ing.carbs_g) || 0)}</td>
+                            <td className="py-2 px-3 text-gray-500 dark:text-gray-400 text-sm tabular-nums">{Math.round(parseFloat(ing.protein_g) || 0)}</td>
                             <td className="py-2 px-3 text-gray-500 dark:text-gray-400 text-sm tabular-nums">{Math.round(parseFloat(ing.fat_g) || 0)}</td>
                             <td className="py-2 px-3">
                               <span className={`text-xs px-1.5 py-0.5 rounded-full whitespace-nowrap ${
@@ -794,8 +794,8 @@ function VariantsTab({ mealId, coachId }) {
                           <td className="py-2 text-xs text-gray-500 uppercase tracking-wider">Total</td>
                           <td className="py-2 px-3 text-gray-400 text-xs">—</td>
                           <td className="py-2 px-3 text-gray-800 dark:text-white text-sm tabular-nums">{Math.round(totals.calories)}</td>
-                          <td className="py-2 px-3 text-gray-800 dark:text-white text-sm tabular-nums">{Math.round(totals.protein_g)}</td>
                           <td className="py-2 px-3 text-gray-800 dark:text-white text-sm tabular-nums">{Math.round(totals.carbs_g)}</td>
+                          <td className="py-2 px-3 text-gray-800 dark:text-white text-sm tabular-nums">{Math.round(totals.protein_g)}</td>
                           <td className="py-2 px-3 text-gray-800 dark:text-white text-sm tabular-nums">{Math.round(totals.fat_g)}</td>
                           <td />
                         </tr>

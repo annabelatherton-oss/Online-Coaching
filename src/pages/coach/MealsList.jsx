@@ -202,12 +202,12 @@ export default function MealsList() {
                         <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{totals.calories}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-gray-400">P</p>
-                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{totals.protein_g}g</p>
-                      </div>
-                      <div>
                         <p className="text-xs text-gray-400">C</p>
                         <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{totals.carbs_g}g</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">P</p>
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{totals.protein_g}g</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-400">F</p>

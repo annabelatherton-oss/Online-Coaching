@@ -425,8 +425,10 @@ function VariantIngredientList({ mealId, mealMap, variantName }) {
 
   if (!ingredients.length) return <p className="text-xs text-gray-400 italic px-1">No ingredients recorded</p>
 
-  const totCal = ingredients.reduce((s, i) => s + (parseFloat(i.calories) || 0), 0)
+  const totCal  = ingredients.reduce((s, i) => s + (parseFloat(i.calories)  || 0), 0)
+  const totCarb = ingredients.reduce((s, i) => s + (parseFloat(i.carbs_g)   || 0), 0)
   const totProt = ingredients.reduce((s, i) => s + (parseFloat(i.protein_g) || 0), 0)
+  const totFat  = ingredients.reduce((s, i) => s + (parseFloat(i.fat_g)     || 0), 0)
 
   return (
     <div className="space-y-1 pt-1">
@@ -435,21 +437,27 @@ function VariantIngredientList({ mealId, mealMap, variantName }) {
         <span className="flex-1">Ingredient</span>
         <span className="w-12 text-right">g</span>
         <span className="w-16 text-right">kcal</span>
-        <span className="w-12 text-right">P</span>
+        <span className="w-10 text-right">C</span>
+        <span className="w-10 text-right">P</span>
+        <span className="w-10 text-right">F</span>
       </div>
       {ingredients.map((ing, i) => (
         <div key={i} className="flex items-center gap-2 text-xs">
           <span className="flex-1 truncate text-gray-600 dark:text-gray-400">{ing.name}</span>
           <span className="tabular-nums w-12 text-right text-gray-500 dark:text-gray-500">{Math.round(parseFloat(ing.quantity_g) || 0)}</span>
           <span className="tabular-nums w-16 text-right text-gray-500 dark:text-gray-400">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
-          <span className="tabular-nums w-12 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.protein_g) || 0)}g</span>
+          <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.carbs_g) || 0)}g</span>
+          <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.protein_g) || 0)}g</span>
+          <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.fat_g) || 0)}g</span>
         </div>
       ))}
       {totCal > 0 && (
         <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800 pt-1.5">
           <span className="flex-1">Meal total</span>
           <span className="tabular-nums w-16 text-right">{Math.round(totCal)} kcal</span>
-          <span className="tabular-nums w-12 text-right">{Math.round(totProt)}g</span>
+          <span className="tabular-nums w-10 text-right">{Math.round(totCarb)}g</span>
+          <span className="tabular-nums w-10 text-right">{Math.round(totProt)}g</span>
+          <span className="tabular-nums w-10 text-right">{Math.round(totFat)}g</span>
         </div>
       )}
     </div>
@@ -828,7 +836,7 @@ function MealPlanTab({ client, coachId }) {
               <div className="px-4 py-2.5 bg-gray-50/60 dark:bg-gray-800/30 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2">
                 <span className="flex-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Subtotal (6 meals)</span>
                 <span className="tabular-nums text-sm font-semibold text-gray-700 dark:text-gray-200">{Math.round(rotatingTotal.cal)} kcal</span>
-                <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(rotatingTotal.prot)}g P &middot; {Math.round(rotatingTotal.carb)}g C &middot; {Math.round(rotatingTotal.fat)}g F</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(rotatingTotal.carb)}g C &middot; {Math.round(rotatingTotal.prot)}g P &middot; {Math.round(rotatingTotal.fat)}g F</span>
               </div>
             )}
 
@@ -899,7 +907,7 @@ function MealPlanTab({ client, coachId }) {
                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Daily total</span>
                 <div className="text-right">
                   <p className="text-xl font-bold text-gray-900 dark:text-white">{Math.round(grandTotal.cal)} kcal</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{Math.round(grandTotal.prot)}g P &middot; {Math.round(grandTotal.carb)}g C &middot; {Math.round(grandTotal.fat)}g F</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">{Math.round(grandTotal.carb)}g C &middot; {Math.round(grandTotal.prot)}g P &middot; {Math.round(grandTotal.fat)}g F</p>
                 </div>
               </div>
 
@@ -908,8 +916,8 @@ function MealPlanTab({ client, coachId }) {
                   <span className="text-gray-500 dark:text-gray-400">Target</span>
                   <span className="font-medium text-gray-900 dark:text-white">
                     {assignment.calorie_target} kcal
-                    {client.current_protein ? ` · ${client.current_protein}g P` : ''}
                     {client.current_carbs ? ` · ${client.current_carbs}g C` : ''}
+                    {client.current_protein ? ` · ${client.current_protein}g P` : ''}
                     {client.current_fat ? ` · ${client.current_fat}g F` : ''}
                   </span>
                 </div>
