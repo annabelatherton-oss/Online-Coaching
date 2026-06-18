@@ -771,11 +771,14 @@ function MealPlanTab({ client, coachId }) {
           {/* Rotating meal slots */}
           <div className="card space-y-0 p-0 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Week {effectiveWeek} meals
-                {effectiveVariant && <span className="ml-2 text-xs font-normal text-gray-400">· {effectiveVariant} portions</span>}
-              </h3>
-              <button onClick={handleRepeatLastWeek} disabled={repeating || effectiveWeek == null} className="btn-secondary text-xs py-1.5 px-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Week {effectiveWeek} meals
+                  {effectiveVariant && <span className="ml-2 text-xs font-normal text-gray-400">· {effectiveVariant} portions</span>}
+                </h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Follows the master plan — change any meal for this client only</p>
+              </div>
+              <button onClick={handleRepeatLastWeek} disabled={repeating || effectiveWeek == null} className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap">
                 {repeating ? 'Loading…' : `← Repeat Week ${effectiveWeek != null && effectiveWeek > 1 ? effectiveWeek - 1 : 20}`}
               </button>
             </div>
@@ -783,24 +786,34 @@ function MealPlanTab({ client, coachId }) {
             <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
               {MEAL_SLOTS.map(slot => {
                 const currentId = editedSlots[slot.key] || ''
-                const mealName = currentId ? (mealMap[currentId]?.name || '—') : '— None —'
                 const isExpanded = expandedSlots.has(slot.key)
                 const macros = mealMacros(currentId, mealMap, effectiveVariant)
+                const options = mealsByCategory[slot.cat] || []
+                const isOverridden = templateSlots[slot.key] !== undefined && (editedSlots[slot.key] || null) !== (templateSlots[slot.key] || null)
                 return (
                   <div key={slot.key}>
-                    <button
-                      className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5 text-left"
-                      onClick={() => currentId && toggleSlot(slot.key)}
-                    >
-                      <svg className={`w-3.5 h-3.5 flex-shrink-0 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''} ${!currentId ? 'opacity-0' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+                    <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
+                      <button onClick={() => currentId && toggleSlot(slot.key)} className="flex-shrink-0">
+                        <svg className={`w-3.5 h-3.5 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''} ${!currentId ? 'opacity-0' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
                       <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{slot.label}</span>
-                      <span className={`flex-1 text-sm ${currentId ? 'text-gray-800 dark:text-gray-200' : 'text-gray-400 italic'}`}>{mealName}</span>
+                      <select
+                        className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
+                        value={currentId}
+                        onChange={e => { setEditedSlots(prev => ({ ...prev, [slot.key]: e.target.value || null })); setSlotsDirty(true) }}
+                      >
+                        <option value="">— None —</option>
+                        {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                      {isOverridden && (
+                        <span className="text-xs text-orange-500 flex-shrink-0" title="Different from the master template">Custom</span>
+                      )}
                       {currentId && macros.cal > 0 && (
                         <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">{Math.round(macros.cal)} kcal</span>
                       )}
-                    </button>
+                    </div>
                     {isExpanded && currentId && (
                       <div className="ml-9 px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
                         <VariantIngredientList mealId={currentId} mealMap={mealMap} variantName={effectiveVariant} />
