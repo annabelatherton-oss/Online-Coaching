@@ -23,6 +23,7 @@ export default function WeeklyTemplatesList() {
         .from('weekly_templates')
         .select('id, plan_group_id, name, week_number, calorie_target, template_meal_slots(id)')
         .eq('coach_id', profile.id)
+        .is('calorie_tier', null)
         .order('created_at', { ascending: false }),
     ])
 

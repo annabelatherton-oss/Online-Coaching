@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { CALORIE_TIERS } from '../../lib/calorieTiers'
 
 const SLOTS = [
   { key: 'breakfast1', label: 'Breakfast A', cat: 'breakfast' },
@@ -19,21 +20,31 @@ export default function PlanGroupEditor() {
   const navigate = useNavigate()
 
   const [planGroup, setPlanGroup] = useState(null)
+  // The standard/master 20-week template (calorie_tier = null).
   const [weeks, setWeeks] = useState([])
+  // Per-tier forks of the above, keyed by calorie number — only populated once a tier has been
+  // forked (either previously saved, or forked just now by opening its tab for the first time).
+  const [tierWeeks, setTierWeeks] = useState({})
+  // Which calorie tiers actually have an active client on this plan group, and therefore need
+  // their own editable fork — a tier nobody is on stays hidden.
+  const [availableTiers, setAvailableTiers] = useState([])
+  // null = editing the standard template; otherwise one of CALORIE_TIERS.
+  const [activeTier, setActiveTier] = useState(null)
   const [mealsByCategory, setMealsByCategory] = useState({})
   const [expanded, setExpanded] = useState(new Set())
   const [dirty, setDirty] = useState(new Set())
   const [loading, setLoading] = useState(true)
+  const [forking, setForking] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
     async function load() {
-      const [{ data: group }, { data: templates }, { data: meals }] = await Promise.all([
+      const [{ data: group }, { data: templates }, { data: meals }, { data: assignments }] = await Promise.all([
         supabase.from('plan_groups').select('*').eq('id', groupId).single(),
         supabase
           .from('weekly_templates')
-          .select('id, week_number, template_meal_slots(slot_type, meal_id)')
+          .select('id, week_number, calorie_tier, template_meal_slots(slot_type, meal_id)')
           .eq('plan_group_id', groupId)
           .order('week_number'),
         supabase
@@ -41,6 +52,11 @@ export default function PlanGroupEditor() {
           .select('id, name, category')
           .eq('coach_id', profile.id)
           .order('name'),
+        supabase
+          .from('client_plan_assignments')
+          .select('calorie_target')
+          .eq('plan_group_id', groupId)
+          .eq('active', true),
       ])
 
       if (group) setPlanGroup(group)
@@ -51,18 +67,75 @@ export default function PlanGroupEditor() {
       }
       setMealsByCategory(byCategory)
 
-      const built = (templates || []).map(t => {
+      const usedTargets = new Set((assignments || []).map(a => a.calorie_target))
+      setAvailableTiers(CALORIE_TIERS.filter(t => usedTargets.has(t)))
+
+      const master = []
+      const byTier = {}
+      for (const t of (templates || [])) {
         const slots = {}
         for (const s of (t.template_meal_slots || [])) {
           slots[s.slot_type] = s.meal_id
         }
-        return { templateId: t.id, weekNum: t.week_number, slots }
-      })
-      setWeeks(built)
+        const week = { templateId: t.id, weekNum: t.week_number, slots }
+        if (t.calorie_tier == null) master.push(week)
+        else (byTier[t.calorie_tier] = byTier[t.calorie_tier] || []).push(week)
+      }
+      master.sort((a, b) => a.weekNum - b.weekNum)
+      for (const tier of Object.keys(byTier)) byTier[tier].sort((a, b) => a.weekNum - b.weekNum)
+      setWeeks(master)
+      setTierWeeks(byTier)
       setLoading(false)
     }
     load()
   }, [groupId, profile.id])
+
+  const currentWeeks = activeTier == null ? weeks : (tierWeeks[activeTier] || [])
+
+  async function selectTier(tier) {
+    setActiveTier(tier)
+    if (tier != null && !tierWeeks[tier]) await forkTier(tier)
+  }
+
+  // Copies the standard template's meals into a brand-new set of weekly_templates rows scoped to
+  // this calorie tier, so the coach starts from "the standard 20-week meal" and can then tweak just
+  // this tier without touching the standard template or any other tier.
+  async function forkTier(tier) {
+    setForking(true)
+    setSaveError('')
+
+    const templateRows = weeks.map(w => ({
+      coach_id: profile.id,
+      name: `${planGroup?.name || 'Plan'} — ${tier} kcal — Week ${w.weekNum}`,
+      week_number: w.weekNum,
+      plan_group_id: groupId,
+      plan_group_name: planGroup?.name || null,
+      calorie_tier: tier,
+    }))
+
+    const { data: inserted, error: insTmplErr } = await supabase.from('weekly_templates').insert(templateRows).select('id, week_number')
+    if (insTmplErr) { setSaveError(insTmplErr.message); setForking(false); return }
+
+    const slotRows = []
+    for (const ins of inserted) {
+      const masterWeek = weeks.find(w => w.weekNum === ins.week_number)
+      for (const slot of SLOTS) {
+        if (masterWeek?.slots[slot.key]) {
+          slotRows.push({ template_id: ins.id, slot_type: slot.key, meal_id: masterWeek.slots[slot.key], scaled_version_id: null })
+        }
+      }
+    }
+    if (slotRows.length) {
+      const { error: insSlotErr } = await supabase.from('template_meal_slots').insert(slotRows)
+      if (insSlotErr) { setSaveError(insSlotErr.message); setForking(false); return }
+    }
+
+    const newWeeks = inserted
+      .map(ins => ({ templateId: ins.id, weekNum: ins.week_number, slots: { ...(weeks.find(w => w.weekNum === ins.week_number)?.slots || {}) } }))
+      .sort((a, b) => a.weekNum - b.weekNum)
+    setTierWeeks(prev => ({ ...prev, [tier]: newWeeks }))
+    setForking(false)
+  }
 
   function toggleExpand(weekNum) {
     setExpanded(prev => {
@@ -73,13 +146,17 @@ export default function PlanGroupEditor() {
   }
 
   function changeSlot(weekIdx, slotKey, mealId) {
-    setWeeks(prev => prev.map((w, i) => {
+    const setActiveWeeks = activeTier == null
+      ? setWeeks
+      : updater => setTierWeeks(prev => ({ ...prev, [activeTier]: updater(prev[activeTier] || []) }))
+
+    setActiveWeeks(prev => prev.map((w, i) => {
       if (i !== weekIdx) return w
       return { ...w, slots: { ...w.slots, [slotKey]: mealId || null } }
     }))
     setDirty(prev => {
       const s = new Set(prev)
-      s.add(weeks[weekIdx].templateId)
+      s.add(currentWeeks[weekIdx].templateId)
       return s
     })
   }
@@ -93,7 +170,9 @@ export default function PlanGroupEditor() {
     setSaving(true)
     setSaveError('')
 
-    for (const week of weeks) {
+    const allWeeks = [...weeks, ...Object.values(tierWeeks).flat()]
+
+    for (const week of allWeeks) {
       if (!dirty.has(week.templateId)) continue
 
       const { error: delErr } = await supabase
@@ -193,7 +272,44 @@ export default function PlanGroupEditor() {
         </div>
       )}
 
-      {weeks.map((week, weekIdx) => {
+      {availableTiers.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => selectTier(null)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTier == null
+                ? 'bg-brand-500 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            Standard
+          </button>
+          {availableTiers.map(tier => (
+            <button
+              key={tier}
+              onClick={() => selectTier(tier)}
+              disabled={forking}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                activeTier === tier
+                  ? 'bg-brand-500 text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              {tier} kcal{!tierWeeks[tier] ? ' (not set up yet)' : ''}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeTier != null && (
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          Editing the {activeTier} kcal version of this plan — clients on other calorie targets aren't affected. Starts as a copy of the standard meals below until you change something.
+        </p>
+      )}
+
+      {forking ? (
+        <LoadingSpinner size="md" className="py-10" />
+      ) : currentWeeks.map((week, weekIdx) => {
         const isOpen = expanded.has(week.weekNum)
         const isCurrent = planGroup && week.weekNum === planGroup.current_week
         const isDirty = dirty.has(week.templateId)

@@ -6,6 +6,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
 import { DEFAULT_CALORIE_SPLIT } from '../../lib/calorieSplit'
+import { CALORIE_TIERS } from '../../lib/calorieTiers'
 
 const TABS = ['Overview', 'Meal Plan', 'Weight', 'Measurements', 'Photos', 'Notes']
 
@@ -898,10 +899,17 @@ function MealPlanTab({ client, coachId }) {
   const [overrideWeek, setOverrideWeek] = useState('')
 
   async function loadWeekSlots(asgn, weekNum, planGroupId) {
-    const [{ data: tmpl }, { data: cwm }] = await Promise.all([
-      supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).maybeSingle(),
+    // If a coach has forked this client's exact calorie target into its own version of the plan
+    // (see PlanGroupEditor), it takes priority over the standard template for this week.
+    const tier = CALORIE_TIERS.includes(asgn.calorie_target) ? asgn.calorie_target : null
+    const [{ data: tierTmpl }, { data: stdTmpl }, { data: cwm }] = await Promise.all([
+      tier
+        ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).eq('calorie_tier', tier).maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
       supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', asgn.id).eq('week_number', weekNum).maybeSingle(),
     ])
+    const tmpl = tierTmpl || stdTmpl
     const tSlots = {}
     for (const s of (tmpl?.template_meal_slots || [])) tSlots[s.slot_type] = s.meal_id
     setTemplateSlots(tSlots)
