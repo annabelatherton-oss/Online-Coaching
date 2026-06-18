@@ -839,7 +839,11 @@ function MealPlanTab({ client, coachId }) {
   const isOverridden = assignment?.week_override != null
 
   // Determine which variant size to use for display
-  const activeMealIds = MEAL_SLOTS.map(s => editedSlots[s.key]).filter(Boolean)
+  const activeMealIds = [
+    ...MEAL_SLOTS.map(s => editedSlots[s.key]),
+    staticEdits.preworkout_meal_id,
+    staticEdits.evening_snack_meal_id,
+  ].filter(Boolean)
   const autoVariant = autoSelectVariant(activeMealIds, mealMap, assignment?.calorie_target)
   const effectiveVariant = assignedVariant === 'auto' ? autoVariant : assignedVariant
 
