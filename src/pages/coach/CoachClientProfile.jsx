@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
+import { DEFAULT_CALORIE_SPLIT } from '../../lib/calorieSplit'
 
 const TABS = ['Overview', 'Meal Plan', 'Weight', 'Measurements', 'Photos', 'Notes']
 
@@ -426,6 +427,9 @@ const MEAL_SLOTS = [
 const OPTION_1_KEYS = ['breakfast1', 'lunch1', 'dinner1']
 const OPTION_2_KEYS = ['breakfast2', 'lunch2', 'dinner2']
 const SLOT_CATEGORY = Object.fromEntries(MEAL_SLOTS.map(s => [s.key, s.cat]))
+// Which option (1 or 2) each rotating slot belongs to — lets Auto mode size each option's
+// breakfast/lunch/dinner independently, since the two options can be entirely different meals.
+const SLOT_OPTION = { breakfast1: 1, breakfast2: 2, lunch1: 1, lunch2: 2, dinner1: 1, dinner2: 2 }
 
 const VARIANT_SIZES = ['XS', 'Small', 'Medium', 'Large', 'XL']
 
@@ -434,13 +438,12 @@ const VARIANT_SIZES = ['XS', 'Small', 'Medium', 'Large', 'XL']
 const UNDER_TARGET_TOLERANCE = 50
 const OVER_TARGET_TOLERANCE = 30
 
-// Categories that each get their own portion size in "Auto" mode — breakfast/lunch/dinner come
-// from the rotating slots, pre-workout/evening snack from the static meals.
-const MEAL_CATEGORIES = ['breakfast', 'lunch', 'dinner', 'preworkout', 'evening_snack']
+// Pre-workout and evening snack keep one fixed, coach-set size each (see Static Meals) — only
+// breakfast/lunch/dinner get their own portion size from "Auto" mode's calorie-split sizing.
 const MAIN_MEAL_CATEGORIES = ['breakfast', 'lunch', 'dinner']
 // Breakfast, lunch and dinner should never be sized down below this many calories.
 const MIN_MAIN_MEAL_CALORIES = 300
-const CATEGORY_LABELS = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', preworkout: 'Pre-workout', evening_snack: 'Evening snack' }
+const CATEGORY_LABELS = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner' }
 
 function round1(n) {
   return Math.round(n * 10) / 10
@@ -604,41 +607,32 @@ function sumMealSlots(keys, editedSlots, mealMap, variantForKey, ingredientOverr
   )
 }
 
-// "Auto" mode: pick a portion size per meal category (not one size for the whole day) so the
-// day's total lands as close as possible to the calorie target, while never sizing breakfast,
-// lunch or dinner below MIN_MAIN_MEAL_CALORIES. Brute-forces every size combination across the
-// categories that actually have a meal assigned — at most 5 categories x 5 sizes, so this is cheap.
-function autoSelectVariantMix(categoryMealIds, categoryOverrides, mealMap, calorieTarget) {
-  if (!calorieTarget) return null
-  const cats = MEAL_CATEGORIES.filter(cat => categoryMealIds[cat] && mealMap[categoryMealIds[cat]])
-  if (!cats.length) return null
-
-  const options = cats.map(cat => ({
-    cat,
-    sizes: VARIANT_SIZES.map(size => ({
-      size,
-      cal: mealMacros(categoryMealIds[cat], mealMap, size, categoryOverrides[cat]).cal,
-    })),
-  }))
-
-  let best = null
-  let bestValid = null
-
-  function recurse(i, sizes, cals, total) {
-    if (i === options.length) {
-      const gap = Math.abs(total - calorieTarget)
-      const isValid = MAIN_MEAL_CATEGORIES.every(cat => !categoryMealIds[cat] || (cals[cat] ?? 0) >= MIN_MAIN_MEAL_CALORIES)
-      if (!best || gap < best.gap) best = { sizes, gap }
-      if (isValid && (!bestValid || gap < bestValid.gap)) bestValid = { sizes, gap }
-      return
-    }
-    for (const { size, cal } of options[i].sizes) {
-      recurse(i + 1, { ...sizes, [options[i].cat]: size }, { ...cals, [options[i].cat]: cal }, total + cal)
-    }
+// Picks whichever of the 5 sizes lands closest to subTarget calories for this one meal, preferring
+// sizes that meet MIN_MAIN_MEAL_CALORIES if any do.
+function bestSizeForTarget(mealId, mealMap, overridesForSlot, subTarget) {
+  if (!mealId || !mealMap[mealId]) return null
+  let best = null, bestValid = null
+  for (const size of VARIANT_SIZES) {
+    const cal = mealMacros(mealId, mealMap, size, overridesForSlot).cal
+    const gap = Math.abs(cal - subTarget)
+    if (!best || gap < best.gap) best = { size, gap }
+    if (cal >= MIN_MAIN_MEAL_CALORIES && (!bestValid || gap < bestValid.gap)) bestValid = { size, gap }
   }
-  recurse(0, {}, {}, 0)
+  return (bestValid || best)?.size || null
+}
 
-  return (bestValid || best)?.sizes || null
+// "Auto" mode: size breakfast/lunch/dinner independently (not jointly optimized for the day's
+// total) so each one lands closest to its own share of `remaining` — the calories left after
+// pre-workout & evening snack — per the coach's calorie-split percentages. This is what stops
+// auto-sizing from dumping most of the day's calories into the first couple of meals.
+function autoSizeOption(mealIds, overridesByCat, mealMap, remaining, split) {
+  const sizes = {}
+  for (const cat of MAIN_MEAL_CATEGORIES) {
+    if (!mealIds[cat] || !mealMap[mealIds[cat]]) continue
+    const subTarget = remaining * (split[cat] || 0) / 100
+    sizes[cat] = bestSizeForTarget(mealIds[cat], mealMap, overridesByCat[cat], subTarget)
+  }
+  return sizes
 }
 
 // Ingredient list for a variant or base meal. Gram quantities are editable per-client, and
@@ -875,13 +869,17 @@ function MealPlanTab({ client, coachId }) {
   const [ingredientOverrides, setIngredientOverrides] = useState({})
   const [staticIngredientOverrides, setStaticIngredientOverrides] = useState({})
   const [expandedSlots, setExpandedSlots] = useState(new Set())
-  const [staticEdits, setStaticEdits] = useState({ preworkout_meal_id: null, evening_snack_meal_id: null })
+  const [staticEdits, setStaticEdits] = useState({ preworkout_meal_id: null, evening_snack_meal_id: null, preworkout_variant: null, evening_snack_variant: null })
   const [staticDirty, setStaticDirty] = useState(false)
   const [savingStatic, setSavingStatic] = useState(false)
   // 'auto' or a specific variant name — stored as null in DB means auto
   const [assignedVariant, setAssignedVariant] = useState('auto')
   const [variantDirty, setVariantDirty] = useState(false)
   const [savingVariant, setSavingVariant] = useState(false)
+  // % of calories remaining (after pre-workout & evening snack) given to breakfast/lunch/dinner in Auto mode
+  const [calorieSplit, setCalorieSplit] = useState({ ...DEFAULT_CALORIE_SPLIT })
+  const [splitDirty, setSplitDirty] = useState(false)
+  const [savingSplit, setSavingSplit] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ plan_group_id: '', calorie_target: client.current_calories || '', starting_week: '' })
@@ -933,9 +931,15 @@ function MealPlanTab({ client, coachId }) {
       const pg = allGroups.find(g => g.id === asgn.plan_group_id) || null
       setPlanGroup(pg)
       setOverrideWeek(asgn.week_override ?? '')
-      setStaticEdits({ preworkout_meal_id: asgn.preworkout_meal_id || null, evening_snack_meal_id: asgn.evening_snack_meal_id || null })
+      setStaticEdits({
+        preworkout_meal_id: asgn.preworkout_meal_id || null,
+        evening_snack_meal_id: asgn.evening_snack_meal_id || null,
+        preworkout_variant: asgn.preworkout_variant || null,
+        evening_snack_variant: asgn.evening_snack_variant || null,
+      })
       setStaticIngredientOverrides(asgn.static_ingredient_overrides || {})
       setAssignedVariant(asgn.assigned_variant || 'auto')
+      setCalorieSplit(asgn.calorie_split || { ...DEFAULT_CALORIE_SPLIT })
       if (pg) await loadWeekSlots(asgn, asgn.week_override ?? pg.current_week, pg.id)
     }
     setLoading(false)
@@ -952,63 +956,81 @@ function MealPlanTab({ client, coachId }) {
   const effectiveWeek = assignment?.week_override ?? globalWeek
   const isOverridden = assignment?.week_override != null
 
-  // Determine which portion size to use per meal category in Auto mode — based on what's
-  // actually eaten in a day (one meal per category, not both interchangeable options), plus the
-  // static meals. A manually-assigned size (not 'auto') applies uniformly to every category.
-  const categoryMealIds = {
-    breakfast: editedSlots.breakfast1,
-    lunch: editedSlots.lunch1,
-    dinner: editedSlots.dinner1,
-    preworkout: staticEdits.preworkout_meal_id,
-    evening_snack: staticEdits.evening_snack_meal_id,
-  }
-  const categoryOverrides = {
-    breakfast: ingredientOverrides.breakfast1,
-    lunch: ingredientOverrides.lunch1,
-    dinner: ingredientOverrides.dinner1,
-    preworkout: staticIngredientOverrides.preworkout_meal_id,
-    evening_snack: staticIngredientOverrides.evening_snack_meal_id,
-  }
-  const autoVariantMix = autoSelectVariantMix(categoryMealIds, categoryOverrides, mealMap, assignment?.calorie_target) || {}
-  function categorySize(cat) {
-    return assignedVariant === 'auto' ? (autoVariantMix[cat] || null) : assignedVariant
+  // Pre-workout & evening snack keep one fixed, coach-set size each — never resized by Auto.
+  // Falls back to 'Medium' until the coach explicitly sets one.
+  const preworkoutSize = staticEdits.preworkout_variant || 'Medium'
+  const snackSize = staticEdits.evening_snack_variant || 'Medium'
+  const preworkoutTotal = mealMacros(staticEdits.preworkout_meal_id, mealMap, preworkoutSize, staticIngredientOverrides.preworkout_meal_id)
+  const snackTotal = mealMacros(staticEdits.evening_snack_meal_id, mealMap, snackSize, staticIngredientOverrides.evening_snack_meal_id)
+
+  // What's left for breakfast/lunch/dinner once the static meals are accounted for — split between
+  // them using the coach's calorie-split percentages (global default unless overridden for this client).
+  const remainingForMainMeals = (assignment?.calorie_target || 0) - preworkoutTotal.cal - snackTotal.cal
+  const splitTotalPct = (Number(calorieSplit.breakfast) || 0) + (Number(calorieSplit.lunch) || 0) + (Number(calorieSplit.dinner) || 0)
+
+  const option1MealIds = { breakfast: editedSlots.breakfast1, lunch: editedSlots.lunch1, dinner: editedSlots.dinner1 }
+  const option2MealIds = { breakfast: editedSlots.breakfast2, lunch: editedSlots.lunch2, dinner: editedSlots.dinner2 }
+  const option1MainOverrides = { breakfast: ingredientOverrides.breakfast1, lunch: ingredientOverrides.lunch1, dinner: ingredientOverrides.dinner1 }
+  const option2MainOverrides = { breakfast: ingredientOverrides.breakfast2, lunch: ingredientOverrides.lunch2, dinner: ingredientOverrides.dinner2 }
+
+  const autoMix1 = assignedVariant === 'auto' && assignment?.calorie_target
+    ? autoSizeOption(option1MealIds, option1MainOverrides, mealMap, remainingForMainMeals, calorieSplit)
+    : {}
+  const autoMix2 = assignedVariant === 'auto' && assignment?.calorie_target
+    ? autoSizeOption(option2MealIds, option2MainOverrides, mealMap, remainingForMainMeals, calorieSplit)
+    : {}
+
+  // Size for one of breakfast/lunch/dinner — option-aware in Auto mode since the two options can
+  // be different meals with different per-size calories; a manual size override applies to both.
+  function mainMealSize(optionNum, cat) {
+    if (assignedVariant !== 'auto') return assignedVariant
+    return (optionNum === 1 ? autoMix1 : autoMix2)[cat] || null
   }
 
-  // Daily macro totals — one of each option (not both) plus the static meals.
-  // Option 2 should land close to Option 1 since they're meant to be interchangeable.
-  const option1Subtotal = sumMealSlots(OPTION_1_KEYS, editedSlots, mealMap, key => categorySize(SLOT_CATEGORY[key]), ingredientOverrides)
-  const option2Subtotal = sumMealSlots(OPTION_2_KEYS, editedSlots, mealMap, key => categorySize(SLOT_CATEGORY[key]), ingredientOverrides)
-  const preworkoutTotal = mealMacros(staticEdits.preworkout_meal_id, mealMap, categorySize('preworkout'), staticIngredientOverrides.preworkout_meal_id)
-  const snackTotal = mealMacros(staticEdits.evening_snack_meal_id, mealMap, categorySize('evening_snack'), staticIngredientOverrides.evening_snack_meal_id)
+  // Daily macro totals — one of each option (not both) plus the static meals. Each option is sized
+  // and compared against the calorie target independently, since the two can be different meals.
+  const option1Subtotal = sumMealSlots(OPTION_1_KEYS, editedSlots, mealMap, key => mainMealSize(SLOT_OPTION[key], SLOT_CATEGORY[key]), ingredientOverrides)
+  const option2Subtotal = sumMealSlots(OPTION_2_KEYS, editedSlots, mealMap, key => mainMealSize(SLOT_OPTION[key], SLOT_CATEGORY[key]), ingredientOverrides)
   const option1Total = addMacros(addMacros(option1Subtotal, preworkoutTotal), snackTotal)
   const option2Total = addMacros(addMacros(option2Subtotal, preworkoutTotal), snackTotal)
-  const grandTotal = option1Total
 
-  // Suggestion: if the day falls outside the -50/+30 kcal band, suggest a fix. In Auto mode every
-  // meal's size is already individually optimized, so if it's still out of range there's no single
-  // "go up/down a size" move left — the gap can only be closed by editing ingredients or the meal
-  // library. In manual mode (one size picked for the whole day) suggest moving that size up/down.
-  function getVariantSuggestion() {
+  // Suggestion: if an option's day total falls outside the -50/+30 kcal band, suggest a fix. In
+  // Auto mode every meal is already sized to its own calorie-split share, so the gap (if any) can
+  // only be closed by adjusting the split, swapping a meal, or editing ingredients — there's no
+  // single "go up/down a size" move like there is in manual mode (one size for the whole day).
+  function getVariantSuggestion(dayTotal, label) {
     if (!assignment?.calorie_target) return null
-    const gap = assignment.calorie_target - grandTotal.cal
+    const gap = assignment.calorie_target - dayTotal.cal
     if (gap <= UNDER_TARGET_TOLERANCE && gap >= -OVER_TARGET_TOLERANCE) return null
 
     if (assignedVariant !== 'auto') {
       const idx = VARIANT_SIZES.indexOf(assignedVariant)
       if (gap > UNDER_TARGET_TOLERANCE) {
-        if (idx < VARIANT_SIZES.length - 1) return { text: `Switch to ${VARIANT_SIZES[idx + 1]} portions`, detail: `May add ~${Math.round(gap)} kcal to get closer to target` }
-        return { text: `Already on the largest portion size (${assignedVariant})`, detail: `Still ~${Math.round(gap)} kcal under target — add more food to a meal slot, or increase the ${assignedVariant} variant's serving size in the meal library` }
+        if (idx < VARIANT_SIZES.length - 1) return { text: `Switch to ${VARIANT_SIZES[idx + 1]} portions`, detail: `May add ~${Math.round(gap)} kcal to get ${label} closer to target` }
+        return { text: `Already on the largest portion size (${assignedVariant})`, detail: `${label} still ~${Math.round(gap)} kcal under target — add more food to a meal slot, or increase the ${assignedVariant} variant's serving size in the meal library` }
       }
-      if (idx > 0) return { text: `Switch to ${VARIANT_SIZES[idx - 1]} portions`, detail: `May save ~${Math.round(Math.abs(gap))} kcal to get closer to target` }
-      return { text: `Already on the smallest portion size (${assignedVariant})`, detail: `Still ~${Math.round(Math.abs(gap))} kcal over target — remove some food from a meal slot, or reduce the ${assignedVariant} variant's serving size in the meal library` }
+      if (idx > 0) return { text: `Switch to ${VARIANT_SIZES[idx - 1]} portions`, detail: `May save ~${Math.round(Math.abs(gap))} kcal to get ${label} closer to target` }
+      return { text: `Already on the smallest portion size (${assignedVariant})`, detail: `${label} still ~${Math.round(Math.abs(gap))} kcal over target — remove some food from a meal slot, or reduce the ${assignedVariant} variant's serving size in the meal library` }
     }
 
     if (gap > UNDER_TARGET_TOLERANCE) {
-      return { text: `Already using the best mix of portion sizes`, detail: `Still ~${Math.round(gap)} kcal under target — add more food to a meal slot, or increase a meal's serving size in the meal library` }
+      return { text: `Adjust the calorie split or meals`, detail: `${label} still ~${Math.round(gap)} kcal under target — try raising a meal's % share, swap in a bigger meal, or edit ingredients` }
     }
-    return { text: `Already using the best mix of portion sizes`, detail: `Still ~${Math.round(Math.abs(gap))} kcal over target — remove some food from a meal slot, or reduce a meal's serving size in the meal library` }
+    return { text: `Adjust the calorie split or meals`, detail: `${label} still ~${Math.round(Math.abs(gap))} kcal over target — try lowering a meal's % share, swap in a smaller meal, or edit ingredients` }
   }
-  const suggestion = getVariantSuggestion()
+  const suggestion1 = getVariantSuggestion(option1Total, 'Option 1')
+  const suggestion2 = option2Subtotal.cal > 0 ? getVariantSuggestion(option2Total, 'Option 2') : null
+
+  function targetStatus(total) {
+    if (!assignment?.calorie_target) return null
+    if (total.cal > assignment.calorie_target + OVER_TARGET_TOLERANCE) {
+      return <p className="text-sm font-medium text-orange-500">{Math.round(total.cal - assignment.calorie_target)} kcal over target (max {OVER_TARGET_TOLERANCE})</p>
+    }
+    if (total.cal < assignment.calorie_target - UNDER_TARGET_TOLERANCE) {
+      return <p className="text-sm font-medium text-blue-500">{Math.round(assignment.calorie_target - total.cal)} kcal under target (max {UNDER_TARGET_TOLERANCE})</p>
+    }
+    return null
+  }
 
   function toggleSlot(key) {
     setExpandedSlots(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
@@ -1030,6 +1052,8 @@ function MealPlanTab({ client, coachId }) {
     await supabase.from('client_plan_assignments').update({
       preworkout_meal_id: staticEdits.preworkout_meal_id || null,
       evening_snack_meal_id: staticEdits.evening_snack_meal_id || null,
+      preworkout_variant: staticEdits.preworkout_variant || null,
+      evening_snack_variant: staticEdits.evening_snack_variant || null,
       static_ingredient_overrides: staticIngredientOverrides,
     }).eq('id', assignment.id)
     setSavingStatic(false); setStaticDirty(false)
@@ -1042,6 +1066,23 @@ function MealPlanTab({ client, coachId }) {
       assigned_variant: assignedVariant === 'auto' ? null : assignedVariant,
     }).eq('id', assignment.id)
     setSavingVariant(false); setVariantDirty(false)
+  }
+
+  async function handleSaveSplit() {
+    if (!assignment) return
+    setSavingSplit(true)
+    await supabase.from('client_plan_assignments').update({ calorie_split: calorieSplit }).eq('id', assignment.id)
+    setSavingSplit(false); setSplitDirty(false)
+  }
+
+  function resetSplitToDefault() {
+    setCalorieSplit({ ...DEFAULT_CALORIE_SPLIT })
+    setSplitDirty(true)
+  }
+
+  function setSplitPct(field, value) {
+    setCalorieSplit(prev => ({ ...prev, [field]: value === '' ? '' : Number(value) }))
+    setSplitDirty(true)
   }
 
   async function handleRepeatLastWeek() {
@@ -1205,7 +1246,7 @@ function MealPlanTab({ client, coachId }) {
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Portion Size</h3>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                  Auto mixes a size per meal to land closest to the calorie target (breakfast/lunch/dinner never go below {MIN_MAIN_MEAL_CALORIES} kcal). Override per-client here.
+                  Auto sizes breakfast/lunch/dinner independently using the calorie split below (never below {MIN_MAIN_MEAL_CALORIES} kcal each). Pre-workout &amp; evening snack keep their own fixed size — set in Static Meals. Override per-client here.
                 </p>
               </div>
               {variantDirty && (
@@ -1229,10 +1270,54 @@ function MealPlanTab({ client, coachId }) {
                 </button>
               ))}
             </div>
-            {assignedVariant === 'auto' && Object.keys(autoVariantMix).length > 0 && (
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                {Object.entries(autoVariantMix).map(([cat, size]) => `${CATEGORY_LABELS[cat]}: ${size}`).join(' · ')}
-              </p>
+            {assignedVariant === 'auto' && (Object.keys(autoMix1).length > 0 || Object.keys(autoMix2).length > 0) && (
+              <div className="text-xs text-gray-400 dark:text-gray-500 space-y-0.5">
+                {Object.keys(autoMix1).length > 0 && (
+                  <p>Option 1 — {Object.entries(autoMix1).map(([cat, size]) => `${CATEGORY_LABELS[cat]}: ${size}`).join(' · ')}</p>
+                )}
+                {Object.keys(autoMix2).length > 0 && (
+                  <p>Option 2 — {Object.entries(autoMix2).map(([cat, size]) => `${CATEGORY_LABELS[cat]}: ${size}`).join(' · ')}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Calorie split for Auto mode */}
+          <div className="card space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Calorie Split</h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  In Auto mode, the calories left after pre-workout &amp; evening snack are split across breakfast/lunch/dinner by these percentages.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <button type="button" onClick={resetSplitToDefault} className="text-xs text-brand-600 dark:text-brand-400 hover:underline whitespace-nowrap">
+                  Use standard ({DEFAULT_CALORIE_SPLIT.breakfast}/{DEFAULT_CALORIE_SPLIT.lunch}/{DEFAULT_CALORIE_SPLIT.dinner})
+                </button>
+                {splitDirty && (
+                  <button onClick={handleSaveSplit} disabled={savingSplit} className="text-xs text-brand-500 hover:text-brand-700 font-medium">
+                    {savingSplit ? 'Saving…' : 'Save'}
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="label">Breakfast %</label>
+                <input className="input" type="number" min={0} max={100} value={calorieSplit.breakfast} onChange={e => setSplitPct('breakfast', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Lunch %</label>
+                <input className="input" type="number" min={0} max={100} value={calorieSplit.lunch} onChange={e => setSplitPct('lunch', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Dinner %</label>
+                <input className="input" type="number" min={0} max={100} value={calorieSplit.dinner} onChange={e => setSplitPct('dinner', e.target.value)} />
+              </div>
+            </div>
+            {splitTotalPct !== 100 && (
+              <p className="text-xs text-amber-500">Split totals {splitTotalPct}% — adjust so the three add up to 100%.</p>
             )}
           </div>
 
@@ -1255,7 +1340,7 @@ function MealPlanTab({ client, coachId }) {
                 const currentId = editedSlots[slot.key] || ''
                 const isExpanded = expandedSlots.has(slot.key)
                 const slotOverrides = ingredientOverrides[slot.key]
-                const sizeForRow = categorySize(slot.cat)
+                const sizeForRow = mainMealSize(SLOT_OPTION[slot.key], slot.cat)
                 const macros = mealMacros(currentId, mealMap, sizeForRow, slotOverrides)
                 const options = mealsByCategory[slot.cat] || []
                 const isOverridden = templateSlots[slot.key] !== undefined && (editedSlots[slot.key] || null) !== (templateSlots[slot.key] || null)
@@ -1352,14 +1437,14 @@ function MealPlanTab({ client, coachId }) {
             </div>
 
             {[
-              { key: 'preworkout_meal_id', label: 'Pre-workout', cat: 'pre_workout', sizeCat: 'preworkout' },
-              { key: 'evening_snack_meal_id', label: 'Evening snack', cat: 'evening_snack', sizeCat: 'evening_snack' },
-            ].map(({ key, label, cat, sizeCat }) => {
+              { key: 'preworkout_meal_id', variantKey: 'preworkout_variant', label: 'Pre-workout', cat: 'pre_workout' },
+              { key: 'evening_snack_meal_id', variantKey: 'evening_snack_variant', label: 'Evening snack', cat: 'evening_snack' },
+            ].map(({ key, variantKey, label, cat }) => {
               const mealId = staticEdits[key] || ''
               const isExpanded = expandedSlots.has(key)
               const options = mealsByCategory[cat] || []
               const keyOverrides = staticIngredientOverrides[key]
-              const sizeForRow = categorySize(sizeCat)
+              const sizeForRow = staticEdits[variantKey] || 'Medium'
               const macros = mealMacros(mealId, mealMap, sizeForRow, keyOverrides)
               const hasIngredientEdits = hasAnyOverride(keyOverrides)
               const missingVariant = mealId && sizeForRow && !variantExists(mealId, mealMap, sizeForRow)
@@ -1387,8 +1472,15 @@ function MealPlanTab({ client, coachId }) {
                     {missingVariant && (
                       <span className="text-xs text-amber-500 flex-shrink-0" title={`This meal has no saved ${sizeForRow} size — showing its base portion instead. Add a ${sizeForRow} variant in the Meal Library to fix this.`}>No {sizeForRow} size</span>
                     )}
-                    {mealId && sizeForRow && (
-                      <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{sizeForRow}</span>
+                    {mealId && (
+                      <select
+                        className="text-xs text-gray-500 dark:text-gray-400 bg-transparent border border-gray-200 dark:border-gray-700 rounded px-1 py-0.5 flex-shrink-0 cursor-pointer"
+                        value={sizeForRow}
+                        title="Fixed portion size for this static meal — not affected by Auto mode"
+                        onChange={e => { setStaticEdits(prev => ({ ...prev, [variantKey]: e.target.value })); setStaticDirty(true) }}
+                      >
+                        {VARIANT_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
+                      </select>
                     )}
                     {mealId && macros.cal > 0 && <span className="text-xs text-gray-400 tabular-nums flex-shrink-0">{Math.round(macros.cal)} kcal</span>}
                   </div>
@@ -1417,34 +1509,38 @@ function MealPlanTab({ client, coachId }) {
             {staticDirty && (
               <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 bg-gray-50/50 dark:bg-gray-800/30">
                 <button onClick={handleSaveStaticMeals} disabled={savingStatic} className="btn-primary py-1.5 px-4 text-sm">{savingStatic ? 'Saving…' : 'Save static meals'}</button>
-                <button onClick={() => { setStaticEdits({ preworkout_meal_id: assignment?.preworkout_meal_id || null, evening_snack_meal_id: assignment?.evening_snack_meal_id || null }); setStaticIngredientOverrides(assignment?.static_ingredient_overrides || {}); setStaticDirty(false) }} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
+                <button onClick={() => { setStaticEdits({ preworkout_meal_id: assignment?.preworkout_meal_id || null, evening_snack_meal_id: assignment?.evening_snack_meal_id || null, preworkout_variant: assignment?.preworkout_variant || null, evening_snack_variant: assignment?.evening_snack_variant || null }); setStaticIngredientOverrides(assignment?.static_ingredient_overrides || {}); setStaticDirty(false) }} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
               </div>
             )}
           </div>
 
           {/* Daily totals */}
-          {(grandTotal.cal > 0 || assignment?.calorie_target) && (
+          {(option1Total.cal > 0 || option2Total.cal > 0 || assignment?.calorie_target) && (
             <div className="card space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                   Daily total <span className="font-normal text-gray-400">(Option 1)</span>
                 </span>
                 <div className="text-right">
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{Math.round(grandTotal.cal)} kcal</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{Math.round(grandTotal.carb)}g C &middot; {Math.round(grandTotal.prot)}g P &middot; {Math.round(grandTotal.fat)}g F</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{Math.round(option1Total.cal)} kcal</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">{Math.round(option1Total.carb)}g C &middot; {Math.round(option1Total.prot)}g P &middot; {Math.round(option1Total.fat)}g F</p>
                 </div>
               </div>
+              {targetStatus(option1Total)}
 
               {option2Subtotal.cal > 0 && (
-                <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-100 dark:border-gray-800">
-                  <span className="text-gray-500 dark:text-gray-400">Option 2 total</span>
-                  <div className="text-right">
-                    <span className="font-medium text-gray-700 dark:text-gray-300">{Math.round(option2Total.cal)} kcal</span>
-                    <span className={`text-xs ml-1.5 ${Math.abs(option2Total.cal - grandTotal.cal) >= 50 ? 'text-orange-500' : 'text-gray-400 dark:text-gray-500'}`}>
-                      ({option2Total.cal >= grandTotal.cal ? '+' : '−'}{Math.round(Math.abs(option2Total.cal - grandTotal.cal))} kcal vs Option 1)
+                <>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800">
+                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      Daily total <span className="font-normal text-gray-400">(Option 2)</span>
                     </span>
+                    <div className="text-right">
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{Math.round(option2Total.cal)} kcal</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">{Math.round(option2Total.carb)}g C &middot; {Math.round(option2Total.prot)}g P &middot; {Math.round(option2Total.fat)}g F</p>
+                    </div>
                   </div>
-                </div>
+                  {targetStatus(option2Total)}
+                </>
               )}
 
               {assignment?.calorie_target && (
@@ -1459,23 +1555,18 @@ function MealPlanTab({ client, coachId }) {
                 </div>
               )}
 
-              {assignment?.calorie_target && (
-                grandTotal.cal > assignment.calorie_target + OVER_TARGET_TOLERANCE ? (
-                  <p className="text-sm font-medium text-orange-500">
-                    {Math.round(grandTotal.cal - assignment.calorie_target)} kcal over target (max {OVER_TARGET_TOLERANCE})
-                  </p>
-                ) : grandTotal.cal < assignment.calorie_target - UNDER_TARGET_TOLERANCE ? (
-                  <p className="text-sm font-medium text-blue-500">
-                    {Math.round(assignment.calorie_target - grandTotal.cal)} kcal under target (max {UNDER_TARGET_TOLERANCE})
-                  </p>
-                ) : null
-              )}
-
-              {suggestion && (
+              {suggestion1 && (
                 <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/15 border border-amber-100 dark:border-amber-900/30">
-                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Suggestion</p>
-                  <p className="text-sm text-amber-800 dark:text-amber-300">{suggestion.text}</p>
-                  <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">{suggestion.detail}</p>
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Suggestion (Option 1)</p>
+                  <p className="text-sm text-amber-800 dark:text-amber-300">{suggestion1.text}</p>
+                  <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">{suggestion1.detail}</p>
+                </div>
+              )}
+              {suggestion2 && (
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/15 border border-amber-100 dark:border-amber-900/30">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Suggestion (Option 2)</p>
+                  <p className="text-sm text-amber-800 dark:text-amber-300">{suggestion2.text}</p>
+                  <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">{suggestion2.detail}</p>
                 </div>
               )}
             </div>
