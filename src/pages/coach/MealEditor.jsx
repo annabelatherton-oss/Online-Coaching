@@ -3,9 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
-import { regenerateAllVariantsForMeal } from '../../lib/mealVariants'
+import {
+  CALORIE_TIERS, regenerateAllTiersForMeal, generateTierIngredients,
+  tierTargetsForCategory, insertTierVersion, snapToConstraints, calcTotals,
+} from '../../lib/calorieTierScaling'
+import { normalizeMealSplit } from '../../lib/calorieSplit'
 
-const TABS = ['Details', 'Ingredients', 'Variants']
+const TABS = ['Details', 'Ingredients', 'Calorie Tiers']
 
 const CATEGORY_OPTIONS = [
   { value: '', label: '— Select category —' },
@@ -24,41 +28,8 @@ const CATEGORY_BADGE_COLOURS = {
   evening_snack: 'bg-indigo-100 text-indigo-700',
 }
 
-// XS→XL with the default scale factor applied to flexible ingredients
-const VARIANT_SIZES = [
-  { name: 'XS',     factor: 0.60 },
-  { name: 'Small',  factor: 0.80 },
-  { name: 'Medium', factor: 1.00 },
-  { name: 'Large',  factor: 1.25 },
-  { name: 'XL',     factor: 1.50 },
-]
-
 function round1(n) {
   return Math.round(parseFloat(n || 0) * 10) / 10
-}
-
-function snapToConstraints(amount, libIng) {
-  let val = parseFloat(amount)
-  if (isNaN(val) || val <= 0) return val
-  const step = libIng?.serving_step
-  const min = libIng?.min_amount
-  if (step && step > 0) {
-    val = Math.round(val / step) * step
-    val = Math.round(val * 10000) / 10000
-  }
-  if (min != null && val > 0 && val < min) val = min
-  return val
-}
-
-function calcTotals(ingredients) {
-  const t = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
-  for (const ing of ingredients) {
-    t.calories  += parseFloat(ing.calories)  || 0
-    t.protein_g += parseFloat(ing.protein_g) || 0
-    t.carbs_g   += parseFloat(ing.carbs_g)   || 0
-    t.fat_g     += parseFloat(ing.fat_g)     || 0
-  }
-  return { calories: round1(t.calories), protein_g: round1(t.protein_g), carbs_g: round1(t.carbs_g), fat_g: round1(t.fat_g) }
 }
 
 // ─── Details Tab ─────────────────────────────────────────────────────────────
@@ -190,7 +161,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
 }
 
 // ─── Ingredients Tab ──────────────────────────────────────────────────────────
-function IngredientsTab({ mealId, coachId, onDirtyChange }) {
+function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange }) {
   const [ingredients, setIngredients] = useState([])
   const [library, setLibrary] = useState([])
   const [loading, setLoading] = useState(true)
@@ -302,9 +273,9 @@ function IngredientsTab({ mealId, coachId, onDirtyChange }) {
       }
     }
 
-    // Rebuild every size variant from the base recipe just saved, so ingredient changes
-    // always pull through into the variants without a separate manual step.
-    if (ingredients.length > 0) {
+    // Rebuild every calorie-tier version from the base recipe just saved, so ingredient
+    // changes always pull through into the tiers without a separate manual step.
+    if (ingredients.length > 0 && category) {
       const baseIngs = ingredients.map(ing => ({
         name: ing.name || '',
         quantity_g: parseFloat(ing.quantity_g) || 0,
@@ -317,9 +288,9 @@ function IngredientsTab({ mealId, coachId, onDirtyChange }) {
         ingredient_id: ing.ingredient_id || null,
       }))
       try {
-        await regenerateAllVariantsForMeal(mealId, baseIngs, library)
+        await regenerateAllTiersForMeal(mealId, category, baseIngs, library, mealSplit)
       } catch (err) {
-        console.error('Failed to auto-update size variants:', err)
+        console.error('Failed to auto-update calorie tiers:', err)
       }
     }
 
@@ -338,8 +309,11 @@ function IngredientsTab({ mealId, coachId, onDirtyChange }) {
         <div>
           <h3 className="font-semibold text-gray-900 dark:text-white">Ingredients</h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            Mark each ingredient as <strong>Flex</strong> (scales between variants) or <strong>Fixed</strong> (stays the same — e.g. veggies, spices)
+            Mark each ingredient as <strong>Flex</strong> (scales between calorie tiers) or <strong>Fixed</strong> (stays the same — e.g. veggies, spices)
           </p>
+          {!category && (
+            <p className="text-xs text-amber-500 mt-1">Set a category in Details first — calorie tiers can't be generated without one.</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {library.length === 0 && (
@@ -428,7 +402,7 @@ function IngredientsTab({ mealId, coachId, onDirtyChange }) {
                     <button
                       type="button"
                       onClick={() => updateRow(idx, { scaling_type: ing.scaling_type === 'fixed' ? 'flexible' : 'fixed' })}
-                      title="Toggle: Flex scales with variant size, Fixed stays the same"
+                      title="Toggle: Flex scales with calorie tier, Fixed stays the same"
                       className={`text-xs px-2 py-1 rounded-full border transition-colors whitespace-nowrap ${
                         ing.scaling_type === 'fixed'
                           ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
@@ -481,22 +455,22 @@ function IngredientsTab({ mealId, coachId, onDirtyChange }) {
   )
 }
 
-// ─── Variants Tab ─────────────────────────────────────────────────────────────
-function VariantsTab({ mealId, coachId }) {
+// ─── Calorie Tiers Tab ────────────────────────────────────────────────────────
+function CalorieTiersTab({ mealId, coachId, category, mealSplit }) {
   const [baseIngredients, setBaseIngredients] = useState([])
-  const [variantMap, setVariantMap] = useState({}) // {variantName: {id, ingredients: []}}
+  const [tierMap, setTierMap] = useState({}) // {calorie_tier: {id, ingredients: []}}
   const [library, setLibrary] = useState([])
   const [loading, setLoading] = useState(true)
-  const [expandedVariant, setExpandedVariant] = useState(null)
+  const [expandedTier, setExpandedTier] = useState(null)
   const [creating, setCreating] = useState(null)
   const [saving, setSaving] = useState(null)
   const [error, setError] = useState('')
 
   async function load() {
-    const [ingRes, varRes, libRes] = await Promise.all([
+    const [ingRes, tierRes, libRes] = await Promise.all([
       supabase.from('meal_ingredients').select('*').eq('meal_id', mealId).order('id'),
-      supabase.from('meal_variants')
-        .select('id, variant_name, calories, protein_g, carbs_g, fat_g, meal_variant_ingredients(*)')
+      supabase.from('meal_tier_versions')
+        .select('id, calorie_tier, calories, protein_g, carbs_g, fat_g, meal_tier_ingredients(*)')
         .eq('meal_id', mealId),
       supabase.from('ingredients').select('*').eq('coach_id', coachId).order('name'),
     ])
@@ -504,10 +478,10 @@ function VariantsTab({ mealId, coachId }) {
     const lib = libRes.data || []
     setLibrary(lib)
     const map = {}
-    for (const v of (varRes.data || [])) {
-      map[v.variant_name] = {
+    for (const v of (tierRes.data || [])) {
+      map[v.calorie_tier] = {
         ...v,
-        ingredients: (v.meal_variant_ingredients || [])
+        ingredients: (v.meal_tier_ingredients || [])
           .sort((a, b) => a.id > b.id ? 1 : -1)
           .map(ing => {
             const libIng = ing.ingredient_id ? lib.find(l => l.id === ing.ingredient_id) || null : null
@@ -522,86 +496,48 @@ function VariantsTab({ mealId, coachId }) {
           }),
       }
     }
-    setVariantMap(map)
+    setTierMap(map)
     setLoading(false)
   }
 
   useEffect(() => { load() }, [mealId])
 
-  async function createFromBase(variantName, factor) {
-    setCreating(variantName)
+  async function createFromBase(tier) {
+    setCreating(tier)
     setError('')
 
     // Remove existing if regenerating
-    const existing = variantMap[variantName]
+    const existing = tierMap[tier]
     if (existing?.id) {
-      await supabase.from('meal_variants').delete().eq('id', existing.id)
+      await supabase.from('meal_tier_versions').delete().eq('id', existing.id)
     }
 
-    const scaledIngs = baseIngredients.map(ing => {
-      const isFixed = ing.scaling_type === 'fixed'
-      const scale = isFixed ? 1.0 : factor
-      const origQty = parseFloat(ing.quantity_g) || 0
-      const libIng = ing.ingredient_id ? library.find(l => l.id === ing.ingredient_id) || null : null
+    const targets = tierTargetsForCategory(tier, category, mealSplit)
+    const generated = generateTierIngredients(baseIngredients, library, targets)
 
-      let qty = round1(origQty * scale)
-      if (libIng) qty = snapToConstraints(qty, libIng) || qty
-
-      if (libIng && libIng.serving_size > 0) {
-        // Use library serving data for accurate macros at the snapped quantity
-        const f = qty / libIng.serving_size
-        return {
-          name: ing.name, quantity_g: qty, unit: ing.unit || 'g',
-          calories:  round1(f * libIng.calories_per_serving),
-          protein_g: round1(f * libIng.protein_per_serving),
-          carbs_g:   round1(f * libIng.carbs_per_serving),
-          fat_g:     round1(f * libIng.fat_per_serving),
-          scaling_type: ing.scaling_type || 'flexible',
-          ingredient_id: ing.ingredient_id || null,
-        }
-      }
-
-      // No library link — scale proportionally from base macros
-      const ratio = origQty > 0 ? qty / origQty : scale
-      return {
-        name: ing.name, quantity_g: qty, unit: ing.unit || 'g',
-        calories:  round1((parseFloat(ing.calories)  || 0) * ratio),
-        protein_g: round1((parseFloat(ing.protein_g) || 0) * ratio),
-        carbs_g:   round1((parseFloat(ing.carbs_g)   || 0) * ratio),
-        fat_g:     round1((parseFloat(ing.fat_g)     || 0) * ratio),
-        scaling_type: ing.scaling_type || 'flexible',
-        ingredient_id: ing.ingredient_id || null,
-      }
-    })
-
-    const totals = calcTotals(scaledIngs)
-    const { data: variant, error: vErr } = await supabase
-      .from('meal_variants')
-      .insert({ meal_id: mealId, variant_name: variantName, ...totals })
-      .select('id')
-      .single()
-
-    if (vErr) { setError(vErr.message); setCreating(null); return }
-
-    if (scaledIngs.length > 0) {
-      await supabase.from('meal_variant_ingredients').insert(scaledIngs.map(ing => ({ ...ing, variant_id: variant.id })))
+    try {
+      await insertTierVersion(mealId, tier, generated)
+    } catch (err) {
+      setError(err.message)
+      setCreating(null)
+      return
     }
 
     setCreating(null)
-    setExpandedVariant(variantName)
+    setExpandedTier(tier)
     load()
   }
 
   async function createAllFromBase() {
-    for (const { name, factor } of VARIANT_SIZES) {
-      await createFromBase(name, factor)
+    for (const tier of CALORIE_TIERS) {
+      await createFromBase(tier)
     }
   }
 
-  function updateIngQty(variantName, idx, newQty) {
+  function updateIngQty(tier, idx, newQty) {
     const qty = parseFloat(newQty) || 0
-    setVariantMap(prev => {
-      const v = prev[variantName]
+    setTierMap(prev => {
+      const v = prev[tier]
       const updated = v.ingredients.map((ing, i) => {
         if (i !== idx) return ing
         return {
@@ -614,13 +550,13 @@ function VariantsTab({ mealId, coachId }) {
         }
       })
       const totals = calcTotals(updated)
-      return { ...prev, [variantName]: { ...v, ingredients: updated, ...totals } }
+      return { ...prev, [tier]: { ...v, ingredients: updated, ...totals } }
     })
   }
 
-  function snapIngQty(variantName, idx) {
-    setVariantMap(prev => {
-      const v = prev[variantName]
+  function snapIngQty(tier, idx) {
+    setTierMap(prev => {
+      const v = prev[tier]
       const ing = v.ingredients[idx]
       if (!ing._library) return prev
       const snapped = snapToConstraints(ing.quantity_g, ing._library)
@@ -637,18 +573,18 @@ function VariantsTab({ mealId, coachId }) {
         }
       })
       const totals = calcTotals(updated)
-      return { ...prev, [variantName]: { ...v, ingredients: updated, ...totals } }
+      return { ...prev, [tier]: { ...v, ingredients: updated, ...totals } }
     })
   }
 
-  async function saveVariant(variantName) {
-    const v = variantMap[variantName]
+  async function saveTier(tier) {
+    const v = tierMap[tier]
     if (!v) return
-    setSaving(variantName)
+    setSaving(tier)
     setError('')
 
     const totals = calcTotals(v.ingredients)
-    await supabase.from('meal_variants').update({
+    await supabase.from('meal_tier_versions').update({
       calories: totals.calories,
       protein_g: totals.protein_g,
       carbs_g: totals.carbs_g,
@@ -657,7 +593,7 @@ function VariantsTab({ mealId, coachId }) {
 
     for (const ing of v.ingredients) {
       if (ing.id) {
-        await supabase.from('meal_variant_ingredients').update({
+        await supabase.from('meal_tier_ingredients').update({
           quantity_g: parseFloat(ing.quantity_g) || 0,
           calories: parseFloat(ing.calories) || 0,
           protein_g: parseFloat(ing.protein_g) || 0,
@@ -671,24 +607,32 @@ function VariantsTab({ mealId, coachId }) {
     load()
   }
 
-  async function deleteVariant(variantName) {
-    const v = variantMap[variantName]
+  async function deleteTier(tier) {
+    const v = tierMap[tier]
     if (!v?.id) return
-    await supabase.from('meal_variants').delete().eq('id', v.id)
-    if (expandedVariant === variantName) setExpandedVariant(null)
+    await supabase.from('meal_tier_versions').delete().eq('id', v.id)
+    if (expandedTier === tier) setExpandedTier(null)
     load()
   }
 
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
   const baseTotals = calcTotals(baseIngredients)
-  const createdCount = Object.keys(variantMap).length
-  const allCreated = VARIANT_SIZES.every(s => variantMap[s.name])
+  const createdCount = Object.keys(tierMap).length
+  const allCreated = CALORIE_TIERS.every(t => tierMap[t])
 
   if (baseIngredients.length === 0) {
     return (
       <div className="card text-center py-12">
-        <p className="text-gray-400 dark:text-gray-500 text-sm">Add and save base ingredients first — sizes are created automatically once you do.</p>
+        <p className="text-gray-400 dark:text-gray-500 text-sm">Add and save base ingredients first — calorie tiers are created automatically once you do.</p>
+      </div>
+    )
+  }
+
+  if (!category) {
+    return (
+      <div className="card text-center py-12">
+        <p className="text-gray-400 dark:text-gray-500 text-sm">Set a category in the Details tab first — calorie tiers are generated from your coach-wide meal split % for that category.</p>
       </div>
     )
   }
@@ -697,9 +641,9 @@ function VariantsTab({ mealId, coachId }) {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h3 className="font-semibold text-gray-900 dark:text-white">Meal Size Variants</h3>
+          <h3 className="font-semibold text-gray-900 dark:text-white">Calorie-Tier Versions</h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            Base meal = {Math.round(baseTotals.calories)} kcal. Sizes are created and kept in sync automatically whenever you save ingredients — use the buttons below only to regenerate a size on its own.
+            Base meal = {Math.round(baseTotals.calories)} kcal. Tiers are created and kept in sync automatically whenever you save ingredients — use the buttons below only to regenerate a tier on its own.
           </p>
         </div>
         {!allCreated && (
@@ -708,7 +652,7 @@ function VariantsTab({ mealId, coachId }) {
             disabled={!!creating}
             className="btn-primary whitespace-nowrap text-sm"
           >
-            {creating ? 'Creating…' : 'Create All 5 Variants'}
+            {creating ? 'Creating…' : `Create All ${CALORIE_TIERS.length} Tiers`}
           </button>
         )}
       </div>
@@ -720,23 +664,24 @@ function VariantsTab({ mealId, coachId }) {
       )}
 
       <div className="space-y-3">
-        {VARIANT_SIZES.map(({ name, factor }) => {
-          const variant = variantMap[name]
-          const isExpanded = expandedVariant === name
-          const isCreating = creating === name
-          const isSaving = saving === name
+        {CALORIE_TIERS.map(tier => {
+          const version = tierMap[tier]
+          const isExpanded = expandedTier === tier
+          const isCreating = creating === tier
+          const isSaving = saving === tier
+          const target = tierTargetsForCategory(tier, category, mealSplit)
 
-          if (!variant) {
+          if (!version) {
             return (
-              <div key={name} className="card flex items-center justify-between gap-4 py-3 border-dashed">
+              <div key={tier} className="card flex items-center justify-between gap-4 py-3 border-dashed">
                 <div>
-                  <span className="font-semibold text-gray-700 dark:text-gray-300 text-sm">{name}</span>
+                  <span className="font-semibold text-gray-700 dark:text-gray-300 text-sm">{tier} kcal</span>
                   <span className="text-xs text-gray-400 dark:text-gray-500 ml-2 tabular-nums">
-                    ~{Math.round(baseTotals.calories * factor)} kcal estimated
+                    target {Math.round(target.calories)} kcal · {Math.round(target.protein_g)}P / {Math.round(target.carbs_g)}C / {Math.round(target.fat_g)}F
                   </span>
                 </div>
                 <button
-                  onClick={() => createFromBase(name, factor)}
+                  onClick={() => createFromBase(tier)}
                   disabled={!!creating}
                   className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap"
                 >
@@ -746,23 +691,23 @@ function VariantsTab({ mealId, coachId }) {
             )
           }
 
-          const totals = calcTotals(variant.ingredients)
+          const totals = calcTotals(version.ingredients)
 
           return (
-            <div key={name} className="card p-0 overflow-hidden">
+            <div key={tier} className="card p-0 overflow-hidden">
               <button
                 className="w-full flex items-center justify-between px-4 py-3 bg-pink-50/60 dark:bg-pink-900/10 hover:bg-pink-100/50 dark:hover:bg-pink-900/20 transition-colors text-left"
-                onClick={() => setExpandedVariant(isExpanded ? null : name)}
+                onClick={() => setExpandedTier(isExpanded ? null : tier)}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="font-semibold text-gray-900 dark:text-white text-sm flex-shrink-0">{name}</span>
+                  <span className="font-semibold text-gray-900 dark:text-white text-sm flex-shrink-0">{tier} kcal</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
                     {Math.round(totals.calories)} kcal · {Math.round(totals.carbs_g)}g C · {Math.round(totals.protein_g)}g P · {Math.round(totals.fat_g)}g F
                   </span>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                   <button
-                    onClick={e => { e.stopPropagation(); deleteVariant(name) }}
+                    onClick={e => { e.stopPropagation(); deleteTier(tier) }}
                     className="text-xs text-red-400 hover:text-red-600 font-medium px-1"
                   >
                     Delete
@@ -789,7 +734,7 @@ function VariantsTab({ mealId, coachId }) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-pink-50 dark:divide-pink-900/10">
-                        {variant.ingredients.map((ing, idx) => (
+                        {version.ingredients.map((ing, idx) => (
                           <tr key={ing.id} className="hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
                             <td className="py-2 text-gray-800 dark:text-gray-200 text-sm font-medium pr-2">{ing.name}</td>
                             <td className="py-2 px-3">
@@ -799,8 +744,8 @@ function VariantsTab({ mealId, coachId }) {
                                 step={ing._library?.serving_step ?? 1}
                                 className="input py-1 text-sm w-16"
                                 value={ing.quantity_g}
-                                onChange={e => updateIngQty(name, idx, e.target.value)}
-                                onBlur={() => snapIngQty(name, idx)}
+                                onChange={e => updateIngQty(tier, idx, e.target.value)}
+                                onBlur={() => snapIngQty(tier, idx)}
                               />
                             </td>
                             <td className="py-2 px-3 text-gray-500 dark:text-gray-400 text-sm tabular-nums">{Math.round(parseFloat(ing.calories) || 0)}</td>
@@ -833,12 +778,16 @@ function VariantsTab({ mealId, coachId }) {
                     </table>
                   </div>
 
+                  <p className="text-xs text-gray-400">
+                    Target for this tier: {Math.round(target.calories)} kcal · {Math.round(target.protein_g)}g P · {Math.round(target.carbs_g)}g C · {Math.round(target.fat_g)}g F
+                  </p>
+
                   <div className="flex items-center gap-3 pt-1">
-                    <button onClick={() => saveVariant(name)} disabled={isSaving} className="btn-primary py-1.5 px-4 text-sm">
-                      {isSaving ? 'Saving…' : 'Save Variant'}
+                    <button onClick={() => saveTier(tier)} disabled={isSaving} className="btn-primary py-1.5 px-4 text-sm">
+                      {isSaving ? 'Saving…' : 'Save Tier'}
                     </button>
                     <button
-                      onClick={() => createFromBase(name, factor)}
+                      onClick={() => createFromBase(tier)}
                       disabled={!!creating}
                       className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                     >
@@ -855,7 +804,7 @@ function VariantsTab({ mealId, coachId }) {
       {createdCount > 0 && (
         <div className="card bg-pink-50/40 dark:bg-pink-900/10 py-3">
           <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-            {createdCount} of 5 variants created · Clients are auto-assigned the closest variant to their calorie target
+            {createdCount} of {CALORIE_TIERS.length} tiers created · Every client assigned this exact calorie tier sees this ingredient set
           </p>
         </div>
       )}
@@ -875,6 +824,8 @@ export default function MealEditor() {
   const [activeTab, setActiveTab] = useState('Details')
   const [currentId, setCurrentId] = useState(isNew ? null : mealId)
   const [ingredientsDirty, setIngredientsDirty] = useState(false)
+
+  const mealSplit = normalizeMealSplit(profile?.meal_split)
 
   function changeTab(tab) {
     if (tab === activeTab) return
@@ -966,8 +917,8 @@ export default function MealEditor() {
 
       <div>
         {activeTab === 'Details' && <DetailsTab meal={meal} mealId={currentId} isNew={isNew} onSaved={handleDetailsSaved} coachId={profile.id} />}
-        {activeTab === 'Ingredients' && currentId && <IngredientsTab mealId={currentId} coachId={profile.id} onDirtyChange={setIngredientsDirty} />}
-        {activeTab === 'Variants' && currentId && <VariantsTab mealId={currentId} coachId={profile.id} />}
+        {activeTab === 'Ingredients' && currentId && <IngredientsTab mealId={currentId} coachId={profile.id} category={meal?.category} mealSplit={mealSplit} onDirtyChange={setIngredientsDirty} />}
+        {activeTab === 'Calorie Tiers' && currentId && <CalorieTiersTab mealId={currentId} coachId={profile.id} category={meal?.category} mealSplit={mealSplit} />}
       </div>
     </div>
   )

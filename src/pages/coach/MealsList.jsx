@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
-import { VARIANT_SIZE_FACTORS, missingVariantNames, createMissingVariantsForMeal } from '../../lib/mealVariants'
+import { CALORIE_TIERS, missingTiers, createMissingTiersForMeal } from '../../lib/calorieTierScaling'
+import { normalizeMealSplit } from '../../lib/calorieSplit'
 
 const CATEGORIES = ['All', 'Breakfast', 'Lunch', 'Dinner', 'Snack', 'Pre-workout', 'Evening Snack']
 
@@ -49,10 +50,10 @@ function round1(n) {
   return Math.round(n * 10) / 10
 }
 
-// Which of the 5 sizes a meal is still missing, based on its saved meal_variants rows.
-function missingSizesFor(meal) {
-  const existing = new Set((meal.meal_variants || []).map(v => v.variant_name))
-  return missingVariantNames(existing)
+// Which calorie tiers a meal is still missing, based on its saved meal_tier_versions rows.
+function missingTiersFor(meal) {
+  const existing = new Set((meal.meal_tier_versions || []).map(v => v.calorie_tier))
+  return missingTiers(existing)
 }
 
 export default function MealsList() {
@@ -75,7 +76,7 @@ export default function MealsList() {
         .select(`
           id, name, category, photo_url, instructions,
           meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit),
-          meal_variants(variant_name)
+          meal_tier_versions(calorie_tier)
         `)
         .eq('coach_id', profile.id)
         .order('created_at', { ascending: false }),
@@ -90,22 +91,24 @@ export default function MealsList() {
 
   useEffect(() => { loadMeals() }, [profile.id])
 
-  const mealsNeedingVariants = meals.filter(
-    m => (m.meal_ingredients || []).length > 0 && missingSizesFor(m).length > 0
+  const mealSplit = normalizeMealSplit(profile.meal_split)
+
+  const mealsNeedingTiers = meals.filter(
+    m => (m.meal_ingredients || []).length > 0 && m.category && missingTiersFor(m).length > 0
   )
 
-  async function handleBulkCreateVariants() {
-    const targets = mealsNeedingVariants
+  async function handleBulkCreateTiers() {
+    const targets = mealsNeedingTiers
     if (targets.length === 0) return
     setBulkRunning(true)
     setBulkProgress({ done: 0, total: targets.length })
     const failed = []
     for (const meal of targets) {
-      const existing = new Set((meal.meal_variants || []).map(v => v.variant_name))
+      const existing = new Set((meal.meal_tier_versions || []).map(v => v.calorie_tier))
       try {
-        await createMissingVariantsForMeal(meal.id, meal.meal_ingredients, library, existing)
+        await createMissingTiersForMeal(meal.id, meal.category, meal.meal_ingredients, library, mealSplit, existing)
       } catch (err) {
-        console.error(`Failed to create sizes for "${meal.name}":`, err)
+        console.error(`Failed to create calorie tiers for "${meal.name}":`, err)
         failed.push(meal.name)
       }
       setBulkProgress(p => ({ done: p.done + 1, total: p.total }))
@@ -114,7 +117,7 @@ export default function MealsList() {
     setBulkProgress(null)
     await loadMeals()
     if (failed.length > 0) {
-      alert(`Created missing sizes for ${targets.length - failed.length} of ${targets.length} meals.\n\nFailed: ${failed.join(', ')}\n\nCheck the browser console for error details.`)
+      alert(`Created missing calorie tiers for ${targets.length - failed.length} of ${targets.length} meals.\n\nFailed: ${failed.join(', ')}\n\nCheck the browser console for error details.`)
     }
   }
 
@@ -165,19 +168,19 @@ export default function MealsList() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {mealsNeedingVariants.length > 0 && (
+          {mealsNeedingTiers.length > 0 && (
             <button
-              onClick={handleBulkCreateVariants}
+              onClick={handleBulkCreateTiers}
               disabled={bulkRunning}
               className="btn-secondary"
-              title="Generate any missing XS/Small/Medium/Large/XL sizes for every meal in your library, scaled from each meal's base recipe"
+              title="Generate any missing calorie-tier versions for every meal in your library, scaled from each meal's base recipe"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
               </svg>
               {bulkRunning
-                ? `Creating sizes… ${bulkProgress?.done ?? 0}/${bulkProgress?.total ?? 0}`
-                : `Create missing sizes (${mealsNeedingVariants.length})`}
+                ? `Creating tiers… ${bulkProgress?.done ?? 0}/${bulkProgress?.total ?? 0}`
+                : `Create missing tiers (${mealsNeedingTiers.length})`}
             </button>
           )}
           <button
@@ -236,7 +239,7 @@ export default function MealsList() {
           {filtered.map(meal => {
             const totals = calcTotals(meal.meal_ingredients)
             const hasBase = (meal.meal_ingredients || []).length > 0
-            const missingSizes = hasBase ? missingSizesFor(meal) : null
+            const missingTierList = hasBase && meal.category ? missingTiersFor(meal) : null
             const photoUrl = meal.photo_url
               ? supabase.storage.from('meal-photos').getPublicUrl(meal.photo_url).data.publicUrl
               : null
@@ -281,14 +284,14 @@ export default function MealsList() {
                     {meal.category && <CategoryBadge category={meal.category} />}
                   </div>
 
-                  {missingSizes && (
-                    missingSizes.length === 0 ? (
+                  {missingTierList && (
+                    missingTierList.length === 0 ? (
                       <span className="inline-flex items-center self-start px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 mb-2">
-                        All {VARIANT_SIZE_FACTORS.length} sizes
+                        All {CALORIE_TIERS.length} tiers
                       </span>
                     ) : (
                       <span className="inline-flex items-center self-start px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 mb-2">
-                        {VARIANT_SIZE_FACTORS.length - missingSizes.length}/{VARIANT_SIZE_FACTORS.length} sizes
+                        {CALORIE_TIERS.length - missingTierList.length}/{CALORIE_TIERS.length} tiers
                       </span>
                     )
                   )}

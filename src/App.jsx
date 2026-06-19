@@ -13,6 +13,7 @@ import WeeklyTemplatesList from './pages/coach/WeeklyTemplatesList'
 import WeeklyTemplateEditor from './pages/coach/WeeklyTemplateEditor'
 import GenerateTemplates from './pages/coach/GenerateTemplates'
 import PlanGroupEditor from './pages/coach/PlanGroupEditor'
+import CoachSettings from './pages/coach/CoachSettings'
 import ClientLayout from './pages/client/ClientLayout'
 import ClientDashboard from './pages/client/ClientDashboard'
 import ClientProfile from './pages/client/ClientProfile'
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="meal-templates/plans/:groupId" element={<PlanGroupEditor />} />
             <Route path="meal-templates/new" element={<WeeklyTemplateEditor />} />
             <Route path="meal-templates/:templateId" element={<WeeklyTemplateEditor />} />
+            <Route path="settings" element={<CoachSettings />} />
           </Route>
 
           {/* Client area */}
