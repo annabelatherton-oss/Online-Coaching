@@ -68,6 +68,7 @@ export default function MealsList() {
   const [deleting, setDeleting] = useState(false)
   const [bulkRunning, setBulkRunning] = useState(false)
   const [bulkProgress, setBulkProgress] = useState(null)
+  const [autoRunDone, setAutoRunDone] = useState(false)
 
   async function loadMeals() {
     const [{ data, error }, { data: libData }] = await Promise.all([
@@ -96,6 +97,15 @@ export default function MealsList() {
   const mealsNeedingTiers = meals.filter(
     m => (m.meal_ingredients || []).length > 0 && m.category && missingTiersFor(m).length > 0
   )
+
+  // Fill in any meals missing a calorie-tier version as soon as the library loads, so coaches
+  // never have to remember to click "Create missing tiers" themselves.
+  useEffect(() => {
+    if (!loading && !autoRunDone && !bulkRunning && mealsNeedingTiers.length > 0) {
+      setAutoRunDone(true)
+      handleBulkCreateTiers()
+    }
+  }, [loading, meals])
 
   async function handleBulkCreateTiers() {
     const targets = mealsNeedingTiers
