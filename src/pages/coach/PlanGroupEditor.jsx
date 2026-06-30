@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
+import { calcStandardMacros } from '../../lib/macros'
 import {
   generateTierIngredients, insertTierVersion, tierTargetsForCategory, calcTotals, snapToConstraints,
 } from '../../lib/calorieTierScaling'
@@ -61,6 +62,72 @@ function OptionTotal({ label, totals, target }) {
     <span className={`font-medium ${colour}`}>
       {label}: {totals.calories} kcal{diffText ? ` (${diffText})` : ''}
     </span>
+  )
+}
+
+// Each meal's tier version is generated to hit MACRO_SPLIT of its tier's calories (see
+// tierTargetsForCategory in calorieTierScaling.js), so a day's macro "target" is just that same
+// split applied to the full tier number — comparing against it tells a coach at a glance whether
+// the day's actual ingredient mix landed where the generator meant it to.
+const MACRO_TOLERANCE_PCT = 10
+
+function macroColour(actual, target) {
+  if (!target) return 'text-gray-400 dark:text-gray-500'
+  const diffPct = (actual - target) / target * 100
+  if (Math.abs(diffPct) <= MACRO_TOLERANCE_PCT) return 'text-green-600 dark:text-green-400'
+  return diffPct < 0 ? 'text-amber-500' : 'text-red-500'
+}
+
+// Small coloured dots for a quick glance at a collapsed day's macro match without expanding it.
+function MacroDots({ totals, tier }) {
+  if (!totals || totals.calories <= 0 || !totals.complete || tier == null) return null
+  const targets = calcStandardMacros(tier)
+  const dims = [
+    { key: 'P', actual: totals.protein_g, target: targets.protein_g },
+    { key: 'C', actual: totals.carbs_g, target: targets.carbs_g },
+    { key: 'F', actual: totals.fat_g, target: targets.fat_g },
+  ]
+  return (
+    <span className="inline-flex items-center gap-1" title={dims.map(d => `${d.key}: ${d.actual}g / ${d.target}g target`).join('  ·  ')}>
+      {dims.map(d => (
+        <span key={d.key} className={`w-1.5 h-1.5 rounded-full ${macroColour(d.actual, d.target).replace('text-', 'bg-')}`} />
+      ))}
+    </span>
+  )
+}
+
+// Full breakdown shown inside an expanded day — calories plus protein/carbs/fat each against
+// their MACRO_SPLIT target for this tier, colour-coded the same way as the calorie diff above.
+function MacroMatchRow({ label, totals, tier }) {
+  if (!totals || totals.calories <= 0) return null
+  if (tier == null) return null
+  if (!totals.complete) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+        <span className="font-semibold w-16">{label}</span>
+        <span>Missing a calorie-tier version for one or more meals — can't compute a macro match yet.</span>
+      </div>
+    )
+  }
+  const targets = calcStandardMacros(tier)
+  const calDiff = tier - totals.calories
+  const calColour = calDiff > UNDER_TARGET_TOLERANCE ? 'text-amber-500' : calDiff < -OVER_TARGET_TOLERANCE ? 'text-red-500' : 'text-green-600 dark:text-green-400'
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+      <span className="font-semibold text-gray-500 dark:text-gray-400 w-16">{label}</span>
+      <span className={calColour}>
+        <span className="font-medium">{totals.calories}</span> / {tier} kcal
+      </span>
+      <span className={macroColour(totals.protein_g, targets.protein_g)}>
+        <span className="font-medium">{totals.protein_g}g</span> / {targets.protein_g}g protein
+      </span>
+      <span className={macroColour(totals.carbs_g, targets.carbs_g)}>
+        <span className="font-medium">{totals.carbs_g}g</span> / {targets.carbs_g}g carbs
+      </span>
+      <span className={macroColour(totals.fat_g, targets.fat_g)}>
+        <span className="font-medium">{totals.fat_g}g</span> / {targets.fat_g}g fat
+      </span>
+    </div>
   )
 }
 
@@ -534,11 +601,15 @@ export default function PlanGroupEditor() {
         </div>
       )}
 
-      {activeTier != null && (
+      {activeTier != null ? (
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          Editing the {activeTier} kcal version of this plan — clients on other calorie targets aren't affected. Starts as a copy of the standard meals below until you change something.
+          Editing the {activeTier} kcal version of this plan — clients on other calorie targets aren't affected. Starts as a copy of the standard meals below until you change something. Expand a week to see how closely each day's macros match the target.
         </p>
-      )}
+      ) : availableTiers.length > 0 ? (
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          Select a calorie tier above to see how closely each day matches that tier's calorie and macro targets.
+        </p>
+      ) : null}
 
       {forking ? (
         <LoadingSpinner size="md" className="py-10" />
@@ -570,8 +641,14 @@ export default function PlanGroupEditor() {
               </div>
               <div className="flex items-center gap-4">
                 <div className="hidden sm:flex items-center gap-3 text-xs">
-                  <OptionTotal label="A" totals={opt1Totals} target={activeTier} />
-                  <OptionTotal label="B" totals={opt2Totals} target={activeTier} />
+                  <span className="inline-flex items-center gap-1.5">
+                    <OptionTotal label="A" totals={opt1Totals} target={activeTier} />
+                    <MacroDots totals={opt1Totals} tier={activeTier} />
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <OptionTotal label="B" totals={opt2Totals} target={activeTier} />
+                    <MacroDots totals={opt2Totals} tier={activeTier} />
+                  </span>
                 </div>
                 <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -581,6 +658,12 @@ export default function PlanGroupEditor() {
 
             {isOpen && (
               <div className="divide-y divide-pink-50 dark:divide-pink-900/10">
+                {activeTier != null && (opt1Totals.calories > 0 || opt2Totals.calories > 0) && (
+                  <div className="px-4 py-2.5 bg-gray-50/60 dark:bg-gray-800/20 space-y-1">
+                    <MacroMatchRow label="A" totals={opt1Totals} tier={activeTier} />
+                    <MacroMatchRow label="B" totals={opt2Totals} tier={activeTier} />
+                  </div>
+                )}
                 {SLOTS.map(slot => {
                   const options = mealsByCategory[slot.cat] || []
                   const mealId = week.slots[slot.key] || ''
