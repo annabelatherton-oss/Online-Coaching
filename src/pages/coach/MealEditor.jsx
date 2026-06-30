@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import {
   CALORIE_TIERS, regenerateAllTiersForMeal, generateTierIngredients,
-  tierTargetsForCategory, insertTierVersion, snapToConstraints, calcTotals,
+  tierTargetsForCategory, insertTierVersion, snapToConstraints, calcTotals, allIngredientsFixed,
 } from '../../lib/calorieTierScaling'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 
@@ -660,6 +660,14 @@ function CalorieTiersTab({ mealId, coachId, category, mealSplit }) {
       {error && (
         <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
           <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+        </div>
+      )}
+
+      {allIngredientsFixed(baseIngredients) && (
+        <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <p className="text-sm text-amber-700 dark:text-amber-400">
+            Every ingredient in this meal is marked Fixed, so it can't be scaled — every tier below will just be the base recipe's amount. Mark at least one ingredient Flexible above so tiers can adjust to match each target.
+          </p>
         </div>
       )}
 

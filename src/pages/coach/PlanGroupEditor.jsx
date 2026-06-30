@@ -7,7 +7,7 @@ import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { calcStandardMacros } from '../../lib/macros'
 import {
-  generateTierIngredients, insertTierVersion, tierTargetsForCategory, calcTotals, snapToConstraints,
+  generateTierIngredients, insertTierVersion, tierTargetsForCategory, calcTotals, snapToConstraints, allIngredientsFixed,
 } from '../../lib/calorieTierScaling'
 
 const MAIN_SLOTS = [
@@ -230,13 +230,22 @@ function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit }) {
 
   if (loading) return <p className="text-xs text-gray-400 py-2 px-2">Loading ingredients…</p>
 
+  const fixedWarning = allIngredientsFixed(baseIngredients) && (
+    <p className="text-xs text-amber-500 px-2 pt-2">
+      Every ingredient in this meal is marked Fixed, so it can't be scaled to this tier's target — mark at least one ingredient Flexible in the Meal Library to fix this.
+    </p>
+  )
+
   if (!version) {
     return (
-      <div className="py-3 px-2 flex items-center justify-between gap-3">
-        <p className="text-xs text-amber-500">No {tier} kcal version yet for this meal.</p>
-        <button onClick={handleGenerate} disabled={generating || baseIngredients.length === 0} className="text-xs btn-secondary py-1 px-2.5 whitespace-nowrap">
-          {generating ? 'Generating…' : 'Generate now'}
-        </button>
+      <div>
+        {fixedWarning}
+        <div className="py-3 px-2 flex items-center justify-between gap-3">
+          <p className="text-xs text-amber-500">No {tier} kcal version yet for this meal.</p>
+          <button onClick={handleGenerate} disabled={generating || baseIngredients.length === 0} className="text-xs btn-secondary py-1 px-2.5 whitespace-nowrap">
+            {generating ? 'Generating…' : 'Generate now'}
+          </button>
+        </div>
       </div>
     )
   }
@@ -247,6 +256,7 @@ function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit }) {
 
   return (
     <div className="space-y-1.5 py-2 px-2">
+      {fixedWarning}
       {error && <p className="text-xs text-red-500">{error}</p>}
       {version.ingredients.map((ing, idx) => (
         <div key={ing.id} className="flex items-center gap-2 text-xs">
