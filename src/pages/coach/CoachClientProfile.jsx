@@ -826,6 +826,7 @@ function MealPlanTab({ client, coachId }) {
   const [templateSlots, setTemplateSlots] = useState({})
   const [slotsDirty, setSlotsDirty] = useState(false)
   const [savingSlots, setSavingSlots] = useState(false)
+  const [slotsError, setSlotsError] = useState('')
   const [repeating, setRepeating] = useState(false)
   const [mealsByCategory, setMealsByCategory] = useState({})
   const [mealMap, setMealMap] = useState({})
@@ -836,6 +837,7 @@ function MealPlanTab({ client, coachId }) {
   const [staticEdits, setStaticEdits] = useState({ preworkout_meal_id: null, evening_snack_meal_id: null })
   const [staticDirty, setStaticDirty] = useState(false)
   const [savingStatic, setSavingStatic] = useState(false)
+  const [staticError, setStaticError] = useState('')
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ plan_group_id: '', calorie_target: CALORIE_TIERS.includes(client.current_calories) ? client.current_calories : '', starting_week: '' })
@@ -961,8 +963,21 @@ function MealPlanTab({ client, coachId }) {
     setExpandedSlots(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
   }
 
+  function dayTotalViolations() {
+    return [
+      option1Subtotal.cal > 0 ? suggestion1 : null,
+      option2Subtotal.cal > 0 ? suggestion2 : null,
+    ].filter(Boolean)
+  }
+
   async function handleSaveSlots() {
     if (!assignment || effectiveWeek == null) return
+    const violations = dayTotalViolations()
+    if (violations.length > 0) {
+      setSlotsError(`${violations.map(v => v.detail).join(' ')} Fix this before saving.`)
+      return
+    }
+    setSlotsError('')
     setSavingSlots(true)
     await supabase.from('client_week_meals').upsert(
       { client_id: client.id, coach_id: coachId, assignment_id: assignment.id, week_number: effectiveWeek, slots: editedSlots, ingredient_overrides: ingredientOverrides },
@@ -973,6 +988,12 @@ function MealPlanTab({ client, coachId }) {
 
   async function handleSaveStaticMeals() {
     if (!assignment) return
+    const violations = dayTotalViolations()
+    if (violations.length > 0) {
+      setStaticError(`${violations.map(v => v.detail).join(' ')} Fix this before saving.`)
+      return
+    }
+    setStaticError('')
     setSavingStatic(true)
     await supabase.from('client_plan_assignments').update({
       preworkout_meal_id: staticEdits.preworkout_meal_id || null,
@@ -1237,9 +1258,14 @@ function MealPlanTab({ client, coachId }) {
             )}
 
             {slotsDirty && (
-              <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 bg-gray-50/50 dark:bg-gray-800/30">
-                <button onClick={handleSaveSlots} disabled={savingSlots} className="btn-primary py-1.5 px-4 text-sm">{savingSlots ? 'Saving…' : 'Save meal changes'}</button>
-                <button onClick={() => { setEditedSlots({ ...templateSlots }); setIngredientOverrides({}); setSlotsDirty(false) }} className="text-sm text-gray-400 hover:text-gray-700">Reset to template</button>
+              <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 space-y-2 bg-gray-50/50 dark:bg-gray-800/30">
+                {slotsError && (
+                  <p className="text-sm font-medium text-red-500">{slotsError}</p>
+                )}
+                <div className="flex items-center gap-3">
+                  <button onClick={handleSaveSlots} disabled={savingSlots} className="btn-primary py-1.5 px-4 text-sm">{savingSlots ? 'Saving…' : 'Save meal changes'}</button>
+                  <button onClick={() => { setEditedSlots({ ...templateSlots }); setIngredientOverrides({}); setSlotsDirty(false); setSlotsError('') }} className="text-sm text-gray-400 hover:text-gray-700">Reset to template</button>
+                </div>
               </div>
             )}
           </div>
@@ -1311,9 +1337,14 @@ function MealPlanTab({ client, coachId }) {
             })}
 
             {staticDirty && (
-              <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 bg-gray-50/50 dark:bg-gray-800/30">
-                <button onClick={handleSaveStaticMeals} disabled={savingStatic} className="btn-primary py-1.5 px-4 text-sm">{savingStatic ? 'Saving…' : 'Save static meals'}</button>
-                <button onClick={() => { setStaticEdits({ preworkout_meal_id: assignment?.preworkout_meal_id || null, evening_snack_meal_id: assignment?.evening_snack_meal_id || null }); setStaticIngredientOverrides(assignment?.static_ingredient_overrides || {}); setStaticDirty(false) }} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
+              <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 space-y-2 bg-gray-50/50 dark:bg-gray-800/30">
+                {staticError && (
+                  <p className="text-sm font-medium text-red-500">{staticError}</p>
+                )}
+                <div className="flex items-center gap-3">
+                  <button onClick={handleSaveStaticMeals} disabled={savingStatic} className="btn-primary py-1.5 px-4 text-sm">{savingStatic ? 'Saving…' : 'Save static meals'}</button>
+                  <button onClick={() => { setStaticEdits({ preworkout_meal_id: assignment?.preworkout_meal_id || null, evening_snack_meal_id: assignment?.evening_snack_meal_id || null }); setStaticIngredientOverrides(assignment?.static_ingredient_overrides || {}); setStaticDirty(false); setStaticError('') }} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
+                </div>
               </div>
             )}
           </div>

@@ -141,7 +141,12 @@ function solveFactors(flexRows, fixedTotals, targets) {
 
 // Scales a meal's flexible ingredients (fixed ones stay put) to hit `targets` as closely as
 // possible, weighting calories hardest and macros softly, then snaps to each ingredient's serving
-// step/minimum and nudges the result back toward the -50/+20 kcal band if snapping drifted it out.
+// step/minimum and iterates to converge tightly on the target — a meal's category share of a
+// tier is only one of several that get added together into a client's day total, so drift here
+// compounds across meals; landing close on every individual meal is what keeps any combination of
+// a tier's meals close to that tier's actual daily number.
+const TIER_CONVERGENCE_KCAL = 5
+
 export function generateTierIngredients(baseIngredients, library, targets) {
   const rows = baseIngredients.map(ing => buildRow(ing, library))
   const flexRows = rows.filter(r => r.scaling_type !== 'fixed')
@@ -162,17 +167,22 @@ export function generateTierIngredients(baseIngredients, library, targets) {
     let flexIdx = 0
     qtyByRow = rows.map(r => r.scaling_type === 'fixed' ? r.origQty : r.origQty * factors[flexIdx++])
 
-    for (let iter = 0; iter < 4; iter++) {
+    let bestQty = qtyByRow
+    let bestAbsDiff = Infinity
+
+    for (let iter = 0; iter < 8; iter++) {
       const snapped = rows.map((r, i) => finalizeQty(r, qtyByRow[i]))
       const achievedCal = snapped.reduce((s, r) => s + r.calories, 0)
       const diff = targetVec.cal - achievedCal // > 0 = under target, < 0 = over target
-      if (diff <= 50 && diff >= -20) break
+      if (Math.abs(diff) < bestAbsDiff) { bestAbsDiff = Math.abs(diff); bestQty = qtyByRow }
+      if (Math.abs(diff) <= TIER_CONVERGENCE_KCAL) break
       const flexAchievedCal = snapped.reduce((s, r, i) => s + (rows[i].scaling_type === 'fixed' ? 0 : r.calories), 0)
       if (flexAchievedCal <= 0) break
       const desiredFlexCal = targetVec.cal - fixedTotals.cal
       const corr = Math.min(2, Math.max(0.3, desiredFlexCal / flexAchievedCal))
       qtyByRow = qtyByRow.map((q, i) => rows[i].scaling_type === 'fixed' ? q : q * corr)
     }
+    qtyByRow = bestQty
   }
 
   return rows.map((r, i) => finalizeRow(r, qtyByRow[i]))
