@@ -166,13 +166,19 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Step (increment)</label>
-              <input className="input" type="number" min="0.01" step="0.01" value={form.serving_step} onChange={e => set('serving_step', e.target.value)} placeholder="e.g. 5, 1, 0.5" />
-              <p className="mt-1 text-xs text-gray-400">Amount must be a multiple of this</p>
+              <div className="flex items-center gap-2">
+                <input className="input flex-1" type="number" min="0.01" step="0.01" value={form.serving_step} onChange={e => set('serving_step', e.target.value)} placeholder={form.serving_size || '100'} />
+                <span className="text-sm text-gray-400 whitespace-nowrap">{form.serving_unit || 'g'}</span>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">In {form.serving_unit || 'g'}, not servings — e.g. 100 for oats means amounts always round to a multiple of 100g</p>
             </div>
             <div>
               <label className="label">Min amount</label>
-              <input className="input" type="number" min="0.01" step="0.01" value={form.min_amount} onChange={e => set('min_amount', e.target.value)} placeholder="e.g. 40" />
-              <p className="mt-1 text-xs text-gray-400">Never use less than this</p>
+              <div className="flex items-center gap-2">
+                <input className="input flex-1" type="number" min="0.01" step="0.01" value={form.min_amount} onChange={e => set('min_amount', e.target.value)} placeholder={form.serving_size || '100'} />
+                <span className="text-sm text-gray-400 whitespace-nowrap">{form.serving_unit || 'g'}</span>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">In {form.serving_unit || 'g'} — e.g. 100 for oats means never less than 100g</p>
             </div>
           </div>
 
