@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
+import { normalizeMealSplit } from '../../lib/calorieSplit'
 
 const SLOTS = [
   { key: 'breakfast1', label: 'Breakfast A', cat: 'breakfast' },
@@ -13,6 +14,44 @@ const SLOTS = [
   { key: 'dinner1',    label: 'Dinner A',    cat: 'dinner' },
   { key: 'dinner2',    label: 'Dinner B',    cat: 'dinner' },
 ]
+
+// Breakfast/lunch/dinner are the only categories this editor controls — pre-workout and evening
+// snack are chosen per-client elsewhere, so "the day" here means just those 3 main meals' share
+// of the tier (per the coach's calorie split), not the full daily target.
+const UNDER_TARGET_TOLERANCE = 50
+const OVER_TARGET_TOLERANCE = 20
+
+function round1(n) {
+  return Math.round(n * 10) / 10
+}
+
+function sumMacros(ingredients) {
+  const t = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+  for (const i of (ingredients || [])) {
+    t.calories += parseFloat(i.calories) || 0
+    t.protein_g += parseFloat(i.protein_g) || 0
+    t.carbs_g += parseFloat(i.carbs_g) || 0
+    t.fat_g += parseFloat(i.fat_g) || 0
+  }
+  return { calories: round1(t.calories), protein_g: round1(t.protein_g), carbs_g: round1(t.carbs_g), fat_g: round1(t.fat_g) }
+}
+
+function OptionTotal({ label, totals, target }) {
+  if (!totals || totals.calories <= 0) return null
+  let diffText = null
+  let colour = 'text-gray-500 dark:text-gray-400'
+  if (target != null && totals.complete) {
+    const diff = target - totals.calories
+    if (diff > UNDER_TARGET_TOLERANCE) { diffText = `${Math.round(diff)} under`; colour = 'text-amber-500' }
+    else if (diff < -OVER_TARGET_TOLERANCE) { diffText = `${Math.round(-diff)} over`; colour = 'text-red-500' }
+    else { colour = 'text-green-600 dark:text-green-400' }
+  }
+  return (
+    <span className={`font-medium ${colour}`}>
+      {label}: {totals.calories} kcal{diffText ? ` (${diffText})` : ''}
+    </span>
+  )
+}
 
 export default function PlanGroupEditor() {
   const { groupId } = useParams()
@@ -31,6 +70,7 @@ export default function PlanGroupEditor() {
   // null = editing the standard template; otherwise one of CALORIE_TIERS.
   const [activeTier, setActiveTier] = useState(null)
   const [mealsByCategory, setMealsByCategory] = useState({})
+  const [mealsById, setMealsById] = useState({})
   const [expanded, setExpanded] = useState(new Set())
   const [dirty, setDirty] = useState(new Set())
   const [loading, setLoading] = useState(true)
@@ -49,7 +89,7 @@ export default function PlanGroupEditor() {
           .order('week_number'),
         supabase
           .from('meals')
-          .select('id, name, category')
+          .select('id, name, category, meal_ingredients(calories, protein_g, carbs_g, fat_g), meal_tier_versions(calorie_tier, calories, protein_g, carbs_g, fat_g)')
           .eq('coach_id', profile.id)
           .order('name'),
         supabase
@@ -62,10 +102,13 @@ export default function PlanGroupEditor() {
       if (group) setPlanGroup(group)
 
       const byCategory = {}
+      const byId = {}
       for (const m of (meals || [])) {
         ;(byCategory[m.category] = byCategory[m.category] || []).push(m)
+        byId[m.id] = m
       }
       setMealsByCategory(byCategory)
+      setMealsById(byId)
 
       const usedTargets = new Set((assignments || []).map(a => a.calorie_target))
       setAvailableTiers(CALORIE_TIERS.filter(t => usedTargets.has(t)))
@@ -91,6 +134,36 @@ export default function PlanGroupEditor() {
   }, [groupId, profile.id])
 
   const currentWeeks = activeTier == null ? weeks : (tierWeeks[activeTier] || [])
+  const mealSplit = normalizeMealSplit(profile.meal_split)
+  // The combined share of a tier that breakfast+lunch+dinner should add up to — the rest goes to
+  // pre-workout/evening snack, which are chosen per-client and aren't part of this template.
+  const mainMealsTarget = activeTier == null
+    ? null
+    : Math.round(activeTier * (mealSplit.breakfast + mealSplit.lunch + mealSplit.dinner) / 100)
+
+  // A meal's macros at the tier being edited — its tier version's numbers if one exists for this
+  // tier, or its base recipe's totals when editing the tier-agnostic Standard template.
+  function mealMacros(mealId, tier) {
+    const meal = mealId ? mealsById[mealId] : null
+    if (!meal) return null
+    if (tier == null) return sumMacros(meal.meal_ingredients)
+    const ver = (meal.meal_tier_versions || []).find(v => v.calorie_tier === tier)
+    return ver ? { calories: round1(ver.calories), protein_g: round1(ver.protein_g), carbs_g: round1(ver.carbs_g), fat_g: round1(ver.fat_g) } : null
+  }
+
+  function sumSlotMacros(week, keys, tier) {
+    const t = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+    let complete = true
+    for (const key of keys) {
+      const m = mealMacros(week.slots[key], tier)
+      if (!m) { complete = false; continue }
+      t.calories += m.calories
+      t.protein_g += m.protein_g
+      t.carbs_g += m.carbs_g
+      t.fat_g += m.fat_g
+    }
+    return { calories: round1(t.calories), protein_g: round1(t.protein_g), carbs_g: round1(t.carbs_g), fat_g: round1(t.fat_g), complete }
+  }
 
   async function selectTier(tier) {
     setActiveTier(tier)
@@ -313,6 +386,8 @@ export default function PlanGroupEditor() {
         const isOpen = expanded.has(week.weekNum)
         const isCurrent = planGroup && week.weekNum === planGroup.current_week
         const isDirty = dirty.has(week.templateId)
+        const opt1Totals = sumSlotMacros(week, ['breakfast1', 'lunch1', 'dinner1'], activeTier)
+        const opt2Totals = sumSlotMacros(week, ['breakfast2', 'lunch2', 'dinner2'], activeTier)
 
         return (
           <div key={week.templateId} className="card p-0 overflow-hidden">
@@ -333,15 +408,23 @@ export default function PlanGroupEditor() {
                   </span>
                 )}
               </div>
-              <svg className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+              <div className="flex items-center gap-4">
+                <div className="hidden sm:flex items-center gap-3 text-xs">
+                  <OptionTotal label="A" totals={opt1Totals} target={mainMealsTarget} />
+                  <OptionTotal label="B" totals={opt2Totals} target={mainMealsTarget} />
+                </div>
+                <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </button>
 
             {isOpen && (
               <div className="divide-y divide-pink-50 dark:divide-pink-900/10">
                 {SLOTS.map(slot => {
                   const options = mealsByCategory[slot.cat] || []
+                  const mealId = week.slots[slot.key] || ''
+                  const macros = mealMacros(mealId, activeTier)
                   return (
                     <div key={slot.key} className="flex items-center gap-3 px-4 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
                       <span className="w-40 flex-shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
@@ -349,7 +432,7 @@ export default function PlanGroupEditor() {
                       </span>
                       <select
                         className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
-                        value={week.slots[slot.key] || ''}
+                        value={mealId}
                         onChange={e => changeSlot(weekIdx, slot.key, e.target.value)}
                       >
                         <option value="">— None —</option>
@@ -357,6 +440,20 @@ export default function PlanGroupEditor() {
                           <option key={m.id} value={m.id}>{m.name}</option>
                         ))}
                       </select>
+                      <span className="w-48 flex-shrink-0 text-right text-xs">
+                        {!mealId ? (
+                          <span className="text-gray-300 dark:text-gray-600">—</span>
+                        ) : macros ? (
+                          <span className="text-gray-500 dark:text-gray-400">
+                            <span className="font-medium text-gray-700 dark:text-gray-300">{macros.calories} kcal</span>
+                            {' · '}{macros.protein_g}P {macros.carbs_g}C {macros.fat_g}F
+                          </span>
+                        ) : (
+                          <span className="text-amber-500" title="Generate this meal's calorie tiers in the Meal Library">
+                            No {activeTier} kcal version
+                          </span>
+                        )}
+                      </span>
                     </div>
                   )
                 })}
