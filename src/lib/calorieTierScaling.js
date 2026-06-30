@@ -121,26 +121,36 @@ function gaussianSolve(A, b) {
 
 const DIMS = ['cal', 'prot', 'carb', 'fat']
 // Calories are a hard requirement (the -50/+20 band); macros are taken into account but weighted
-// more softly, and a small ridge term (λ) keeps factors anchored near 1 so recipes stay realistic
-// and the system is always solvable even with very few flexible ingredients.
+// more softly, and a ridge term (λ) keeps factors anchored near 1 so a meal's ingredients stay in
+// roughly the same proportion to each other instead of the solver trading one off against another
+// (e.g. doubling the bagel while zeroing out the honey) to chase an exact macro fit.
 const WEIGHTS = { cal: 4, prot: 1, carb: 1, fat: 1 }
-const LAMBDA = 0.1
+// Scaled relative to each ingredient's own row magnitude rather than a flat constant — a flat λ is
+// negligible next to real calorie/macro values (hundreds, squared) and so provided no real anchor
+// in practice, which is what let factors drift to unrealistic, "random-looking" quantities.
+const LAMBDA_REL = 0.5
 
 function solveFactors(flexRows, fixedTotals, targets) {
   const n = flexRows.length
   if (n === 0) return []
   const A = Array.from({ length: n }, () => new Array(n).fill(0))
   const b = new Array(n).fill(0)
+  const rowMagnitude = flexRows.map(row => {
+    let sum = 0
+    for (const d of DIMS) sum += WEIGHTS[d] * row[d] * row[d]
+    return sum
+  })
   for (let j = 0; j < n; j++) {
+    const ridge = LAMBDA_REL * rowMagnitude[j]
     for (let k = 0; k < n; k++) {
       let sum = 0
       for (const d of DIMS) sum += WEIGHTS[d] * flexRows[j][d] * flexRows[k][d]
-      if (j === k) sum += LAMBDA
+      if (j === k) sum += ridge
       A[j][k] = sum
     }
     let bj = 0
     for (const d of DIMS) bj += WEIGHTS[d] * flexRows[j][d] * (targets[d] - fixedTotals[d])
-    bj += LAMBDA * 1
+    bj += ridge * 1
     b[j] = bj
   }
   return gaussianSolve(A, b)
