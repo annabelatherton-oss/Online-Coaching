@@ -835,6 +835,7 @@ function MealPlanTab({ client, coachId }) {
   const [staticIngredientOverrides, setStaticIngredientOverrides] = useState({})
   const [expandedSlots, setExpandedSlots] = useState(new Set())
   const [staticEdits, setStaticEdits] = useState({ preworkout_meal_id: null, evening_snack_meal_id: null })
+  const [staticFlags, setStaticFlags] = useState({ preworkout_static: false, evening_snack_static: false })
   const [staticDirty, setStaticDirty] = useState(false)
   const [savingStatic, setSavingStatic] = useState(false)
   const [staticError, setStaticError] = useState('')
@@ -900,6 +901,10 @@ function MealPlanTab({ client, coachId }) {
         preworkout_meal_id: asgn.preworkout_meal_id || null,
         evening_snack_meal_id: asgn.evening_snack_meal_id || null,
       })
+      setStaticFlags({
+        preworkout_static: !!asgn.preworkout_static,
+        evening_snack_static: !!asgn.evening_snack_static,
+      })
       setStaticIngredientOverrides(asgn.static_ingredient_overrides || {})
       if (pg) await loadWeekSlots(asgn, asgn.week_override ?? pg.current_week, pg.id)
     }
@@ -922,8 +927,13 @@ function MealPlanTab({ client, coachId }) {
   // -50/+20 kcal band, so there's no per-client sizing to compute here.
   const tier = assignment && CALORIE_TIERS.includes(assignment.calorie_target) ? assignment.calorie_target : null
 
-  const preworkoutTotal = mealMacros(staticEdits.preworkout_meal_id, mealMap, tier, staticIngredientOverrides.preworkout_meal_id)
-  const snackTotal = mealMacros(staticEdits.evening_snack_meal_id, mealMap, tier, staticIngredientOverrides.evening_snack_meal_id)
+  // Pre-workout/evening-snack default to whatever the plan template has set for this tier — a
+  // coach only needs staticEdits/staticFlags when a specific client needs something different
+  // (e.g. an allergy or dislike), via the "Make static" button below.
+  const effectivePreworkoutId = staticFlags.preworkout_static ? staticEdits.preworkout_meal_id : (templateSlots.preworkout || null)
+  const effectiveSnackId = staticFlags.evening_snack_static ? staticEdits.evening_snack_meal_id : (templateSlots.evening_snack || null)
+  const preworkoutTotal = mealMacros(effectivePreworkoutId, mealMap, tier, staticIngredientOverrides.preworkout_meal_id)
+  const snackTotal = mealMacros(effectiveSnackId, mealMap, tier, staticIngredientOverrides.evening_snack_meal_id)
 
   // Daily macro totals — one of each option (not both) plus the static meals. Each option is
   // compared against the calorie target independently, since the two can be different meals.
@@ -998,9 +1008,26 @@ function MealPlanTab({ client, coachId }) {
     await supabase.from('client_plan_assignments').update({
       preworkout_meal_id: staticEdits.preworkout_meal_id || null,
       evening_snack_meal_id: staticEdits.evening_snack_meal_id || null,
+      preworkout_static: staticFlags.preworkout_static,
+      evening_snack_static: staticFlags.evening_snack_static,
       static_ingredient_overrides: staticIngredientOverrides,
     }).eq('id', assignment.id)
     setSavingStatic(false); setStaticDirty(false)
+  }
+
+  function makeStatic(key, flagKey, templateMealId) {
+    setStaticEdits(prev => ({ ...prev, [key]: templateMealId || null }))
+    setStaticFlags(prev => ({ ...prev, [flagKey]: true }))
+    setStaticDirty(true)
+  }
+
+  function useTemplateDefault(key, flagKey) {
+    setStaticFlags(prev => ({ ...prev, [flagKey]: false }))
+    setStaticIngredientOverrides(prev => {
+      const { [key]: _omit, ...rest } = prev
+      return rest
+    })
+    setStaticDirty(true)
   }
 
   async function handleRepeatLastWeek() {
@@ -1273,39 +1300,49 @@ function MealPlanTab({ client, coachId }) {
           {/* Static meals */}
           <div className="card space-y-0 p-0 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Static Meals</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Same every week — not part of the rotation</p>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Pre-workout &amp; Evening Snack</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Same every week. Follows the plan template by default — use "Make static" to give this client something different.</p>
             </div>
 
             {[
-              { key: 'preworkout_meal_id', label: 'Pre-workout', cat: 'pre_workout' },
-              { key: 'evening_snack_meal_id', label: 'Evening snack', cat: 'evening_snack' },
-            ].map(({ key, label, cat }) => {
-              const mealId = staticEdits[key] || ''
+              { key: 'preworkout_meal_id', flagKey: 'preworkout_static', templateKey: 'preworkout', label: 'Pre-workout', cat: 'pre_workout' },
+              { key: 'evening_snack_meal_id', flagKey: 'evening_snack_static', templateKey: 'evening_snack', label: 'Evening snack', cat: 'evening_snack' },
+            ].map(({ key, flagKey, templateKey, label, cat }) => {
+              const isStatic = staticFlags[flagKey]
+              const templateMealId = templateSlots[templateKey] || ''
+              const mealId = isStatic ? (staticEdits[key] || '') : templateMealId
               const isExpanded = expandedSlots.has(key)
               const options = mealsByCategory[cat] || []
               const keyOverrides = staticIngredientOverrides[key]
               const macros = mealMacros(mealId, mealMap, tier, keyOverrides)
               const hasIngredientEdits = hasAnyOverride(keyOverrides)
               const missingTierVersion = mealId && tier && !tierVersionExists(mealId, mealMap, tier)
+              const templateMealName = templateMealId ? (mealMap[templateMealId]?.name || 'Unknown meal') : null
               return (
                 <div key={key} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
                   <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
-                    <button onClick={() => mealId && toggleSlot(key)} className="flex-shrink-0">
-                      <svg className={`w-3.5 h-3.5 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''} ${!mealId ? 'opacity-0' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button onClick={() => isStatic && mealId && toggleSlot(key)} className="flex-shrink-0">
+                      <svg className={`w-3.5 h-3.5 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''} ${!isStatic || !mealId ? 'opacity-0' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </button>
                     <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label}</span>
-                    <select
-                      className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
-                      value={mealId}
-                      onChange={e => { setStaticEdits(prev => ({ ...prev, [key]: e.target.value || null })); setStaticDirty(true) }}
-                    >
-                      <option value="">— None —</option>
-                      {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </select>
-                    {options.length === 0 && <span className="text-xs text-gray-400 italic">No {cat} meals yet</span>}
+                    {isStatic ? (
+                      <select
+                        className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
+                        value={mealId}
+                        onChange={e => { setStaticEdits(prev => ({ ...prev, [key]: e.target.value || null })); setStaticDirty(true) }}
+                      >
+                        <option value="">— None —</option>
+                        {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                    ) : (
+                      <span className="flex-1 text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {templateMealName || <span className="italic text-gray-300 dark:text-gray-600">Not set in plan template</span>}
+                        <span className="ml-1.5 text-xs text-gray-300 dark:text-gray-600">(from plan template)</span>
+                      </span>
+                    )}
+                    {options.length === 0 && isStatic && <span className="text-xs text-gray-400 italic">No {cat} meals yet</span>}
                     {hasIngredientEdits && (
                       <span className="text-xs text-blue-500 flex-shrink-0" title="Ingredient quantities adjusted for this client">Adjusted</span>
                     )}
@@ -1313,8 +1350,14 @@ function MealPlanTab({ client, coachId }) {
                       <span className="text-xs text-amber-500 flex-shrink-0" title={`This meal has no saved ${tier} kcal version — showing its base portion instead. Generate it in the Meal Library to fix this.`}>No {tier} kcal version</span>
                     )}
                     {mealId && macros.cal > 0 && <span className="text-xs text-gray-400 tabular-nums flex-shrink-0">{Math.round(macros.cal)} kcal</span>}
+                    <button
+                      onClick={() => isStatic ? useTemplateDefault(key, flagKey) : makeStatic(key, flagKey, templateMealId)}
+                      className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex-shrink-0 whitespace-nowrap"
+                    >
+                      {isStatic ? 'Use template default' : 'Make static'}
+                    </button>
                   </div>
-                  {isExpanded && mealId && (
+                  {isExpanded && isStatic && mealId && (
                     <div className="ml-9 px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
                       <TierIngredientList
                         mealId={mealId}
@@ -1343,7 +1386,7 @@ function MealPlanTab({ client, coachId }) {
                 )}
                 <div className="flex items-center gap-3">
                   <button onClick={handleSaveStaticMeals} disabled={savingStatic} className="btn-primary py-1.5 px-4 text-sm">{savingStatic ? 'Saving…' : 'Save static meals'}</button>
-                  <button onClick={() => { setStaticEdits({ preworkout_meal_id: assignment?.preworkout_meal_id || null, evening_snack_meal_id: assignment?.evening_snack_meal_id || null }); setStaticIngredientOverrides(assignment?.static_ingredient_overrides || {}); setStaticDirty(false); setStaticError('') }} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
+                  <button onClick={() => { setStaticEdits({ preworkout_meal_id: assignment?.preworkout_meal_id || null, evening_snack_meal_id: assignment?.evening_snack_meal_id || null }); setStaticIngredientOverrides(assignment?.static_ingredient_overrides || {}); setStaticFlags({ preworkout_static: !!assignment?.preworkout_static, evening_snack_static: !!assignment?.evening_snack_static }); setStaticDirty(false); setStaticError('') }} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
                 </div>
               </div>
             )}

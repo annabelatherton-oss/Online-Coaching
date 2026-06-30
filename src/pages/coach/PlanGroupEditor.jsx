@@ -5,8 +5,11 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
+import {
+  generateTierIngredients, insertTierVersion, tierTargetsForCategory, calcTotals, snapToConstraints,
+} from '../../lib/calorieTierScaling'
 
-const SLOTS = [
+const MAIN_SLOTS = [
   { key: 'breakfast1', label: 'Breakfast A', cat: 'breakfast' },
   { key: 'breakfast2', label: 'Breakfast B', cat: 'breakfast' },
   { key: 'lunch1',     label: 'Lunch A',     cat: 'lunch' },
@@ -15,9 +18,17 @@ const SLOTS = [
   { key: 'dinner2',    label: 'Dinner B',    cat: 'dinner' },
 ]
 
-// Breakfast/lunch/dinner are the only categories this editor controls — pre-workout and evening
-// snack are chosen per-client elsewhere, so "the day" here means just those 3 main meals' share
-// of the tier (per the coach's calorie split), not the full daily target.
+// Pre-workout/evening-snack are part of the template like any other slot, but they don't have an
+// A/B option and stay the same in every week — changing one propagates to all 20 weeks at once
+// instead of needing to be re-picked week by week.
+const STATIC_SLOTS = [
+  { key: 'preworkout',    label: 'Pre-workout',   cat: 'pre_workout' },
+  { key: 'evening_snack', label: 'Evening snack', cat: 'evening_snack' },
+]
+
+const SLOTS = [...MAIN_SLOTS, ...STATIC_SLOTS]
+const STATIC_SLOT_KEYS = new Set(STATIC_SLOTS.map(s => s.key))
+
 const UNDER_TARGET_TOLERANCE = 50
 const OVER_TARGET_TOLERANCE = 20
 
@@ -53,6 +64,154 @@ function OptionTotal({ label, totals, target }) {
   )
 }
 
+// Inline editor for a meal's calorie-tier ingredient set — the same shared meal_tier_versions /
+// meal_tier_ingredients rows the Meal Library edits, just reachable without leaving the template.
+function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit }) {
+  const [loading, setLoading] = useState(true)
+  const [library, setLibrary] = useState([])
+  const [baseIngredients, setBaseIngredients] = useState([])
+  const [version, setVersion] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [error, setError] = useState('')
+
+  async function load() {
+    setLoading(true)
+    const [{ data: lib }, { data: baseIng }, { data: tierVer }] = await Promise.all([
+      supabase.from('ingredients').select('*').eq('coach_id', coachId),
+      supabase.from('meal_ingredients').select('*').eq('meal_id', mealId).order('id'),
+      supabase.from('meal_tier_versions').select('id, meal_tier_ingredients(*)').eq('meal_id', mealId).eq('calorie_tier', tier).maybeSingle(),
+    ])
+    setLibrary(lib || [])
+    setBaseIngredients(baseIng || [])
+    if (tierVer) {
+      setVersion({
+        id: tierVer.id,
+        ingredients: (tierVer.meal_tier_ingredients || []).sort((a, b) => a.id > b.id ? 1 : -1).map(ing => {
+          const libIng = ing.ingredient_id ? (lib || []).find(l => l.id === ing.ingredient_id) || null : null
+          return {
+            ...ing,
+            _library: libIng,
+            _calPerG:  ing.quantity_g > 0 ? ing.calories  / ing.quantity_g : 0,
+            _proPerG:  ing.quantity_g > 0 ? ing.protein_g / ing.quantity_g : 0,
+            _carbPerG: ing.quantity_g > 0 ? ing.carbs_g   / ing.quantity_g : 0,
+            _fatPerG:  ing.quantity_g > 0 ? ing.fat_g     / ing.quantity_g : 0,
+          }
+        }),
+      })
+    } else {
+      setVersion(null)
+    }
+    setDirty(false)
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [mealId, tier])
+
+  function updateQty(idx, newQty) {
+    const qty = parseFloat(newQty) || 0
+    setVersion(prev => ({
+      ...prev,
+      ingredients: prev.ingredients.map((ing, i) => i !== idx ? ing : {
+        ...ing,
+        quantity_g: newQty,
+        calories:  round1(qty * (ing._calPerG  || 0)),
+        protein_g: round1(qty * (ing._proPerG  || 0)),
+        carbs_g:   round1(qty * (ing._carbPerG || 0)),
+        fat_g:     round1(qty * (ing._fatPerG  || 0)),
+      }),
+    }))
+    setDirty(true)
+  }
+
+  async function handleGenerate() {
+    setGenerating(true)
+    setError('')
+    const targets = tierTargetsForCategory(tier, category, mealSplit)
+    const generated = generateTierIngredients(baseIngredients, library, targets)
+    try {
+      await insertTierVersion(mealId, tier, generated)
+    } catch (err) {
+      setError(err.message)
+      setGenerating(false)
+      return
+    }
+    setGenerating(false)
+    load()
+  }
+
+  async function handleSave() {
+    if (!version) return
+    setSaving(true)
+    const totals = calcTotals(version.ingredients)
+    await supabase.from('meal_tier_versions').update(totals).eq('id', version.id)
+    for (const ing of version.ingredients) {
+      const rawQty = parseFloat(ing.quantity_g) || 0
+      const snapped = ing._library ? (snapToConstraints(rawQty, ing._library) ?? rawQty) : rawQty
+      await supabase.from('meal_tier_ingredients').update({
+        quantity_g: snapped,
+        calories:  round1(snapped * (ing._calPerG  || 0)),
+        protein_g: round1(snapped * (ing._proPerG  || 0)),
+        carbs_g:   round1(snapped * (ing._carbPerG || 0)),
+        fat_g:     round1(snapped * (ing._fatPerG  || 0)),
+      }).eq('id', ing.id)
+    }
+    setSaving(false)
+    load()
+  }
+
+  if (loading) return <p className="text-xs text-gray-400 py-2 px-2">Loading ingredients…</p>
+
+  if (!version) {
+    return (
+      <div className="py-3 px-2 flex items-center justify-between gap-3">
+        <p className="text-xs text-amber-500">No {tier} kcal version yet for this meal.</p>
+        <button onClick={handleGenerate} disabled={generating || baseIngredients.length === 0} className="text-xs btn-secondary py-1 px-2.5 whitespace-nowrap">
+          {generating ? 'Generating…' : 'Generate now'}
+        </button>
+      </div>
+    )
+  }
+
+  const totals = calcTotals(version.ingredients)
+  const target = tierTargetsForCategory(tier, category, mealSplit)
+  const diff = target.calories - totals.calories
+
+  return (
+    <div className="space-y-1.5 py-2 px-2">
+      {error && <p className="text-xs text-red-500">{error}</p>}
+      {version.ingredients.map((ing, idx) => (
+        <div key={ing.id} className="flex items-center gap-2 text-xs">
+          <span className="flex-1 text-gray-600 dark:text-gray-300 truncate">{ing.name}</span>
+          <input
+            type="number"
+            className="w-20 text-right bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5"
+            value={ing.quantity_g}
+            onChange={e => updateQty(idx, e.target.value)}
+          />
+          <span className="w-6 text-gray-400">{ing.unit || 'g'}</span>
+          <span className="w-16 text-right text-gray-400 tabular-nums">{ing.calories} kcal</span>
+        </div>
+      ))}
+      <div className="flex items-center justify-between pt-1.5 border-t border-gray-100 dark:border-gray-800">
+        <span className="text-xs text-gray-500 dark:text-gray-400">
+          <span className="font-medium text-gray-700 dark:text-gray-300">{totals.calories} kcal</span>
+          {' '}(target {target.calories}, {diff >= 0 ? `${Math.round(diff)} under` : `${Math.round(-diff)} over`})
+        </span>
+        <div className="flex items-center gap-3">
+          <button onClick={handleGenerate} disabled={generating} className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+            {generating ? 'Regenerating…' : 'Regenerate'}
+          </button>
+          {dirty && (
+            <button onClick={handleSave} disabled={saving} className="text-xs btn-primary py-1 px-2.5">{saving ? 'Saving…' : 'Save'}</button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function PlanGroupEditor() {
   const { groupId } = useParams()
   const { profile } = useAuth()
@@ -77,6 +236,8 @@ export default function PlanGroupEditor() {
   const [forking, setForking] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  // `${mealId}:${tier}` of the ingredient editor currently open, or null.
+  const [editingIngredients, setEditingIngredients] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -135,11 +296,6 @@ export default function PlanGroupEditor() {
 
   const currentWeeks = activeTier == null ? weeks : (tierWeeks[activeTier] || [])
   const mealSplit = normalizeMealSplit(profile.meal_split)
-  // The combined share of a tier that breakfast+lunch+dinner should add up to — the rest goes to
-  // pre-workout/evening snack, which are chosen per-client and aren't part of this template.
-  const mainMealsTarget = activeTier == null
-    ? null
-    : Math.round(activeTier * (mealSplit.breakfast + mealSplit.lunch + mealSplit.dinner) / 100)
 
   // A meal's macros at the tier being edited — its tier version's numbers if one exists for this
   // tier, or its base recipe's totals when editing the tier-agnostic Standard template.
@@ -218,18 +374,22 @@ export default function PlanGroupEditor() {
     })
   }
 
+  // Breakfast/lunch/dinner only change for the week being edited. Pre-workout/evening-snack are
+  // the same every week, so changing one writes the new meal into every week at once.
   function changeSlot(weekIdx, slotKey, mealId) {
+    const isStatic = STATIC_SLOT_KEYS.has(slotKey)
     const setActiveWeeks = activeTier == null
       ? setWeeks
       : updater => setTierWeeks(prev => ({ ...prev, [activeTier]: updater(prev[activeTier] || []) }))
 
     setActiveWeeks(prev => prev.map((w, i) => {
-      if (i !== weekIdx) return w
+      if (!isStatic && i !== weekIdx) return w
       return { ...w, slots: { ...w.slots, [slotKey]: mealId || null } }
     }))
     setDirty(prev => {
       const s = new Set(prev)
-      s.add(currentWeeks[weekIdx].templateId)
+      if (isStatic) currentWeeks.forEach(w => s.add(w.templateId))
+      else s.add(currentWeeks[weekIdx].templateId)
       return s
     })
   }
@@ -386,8 +546,8 @@ export default function PlanGroupEditor() {
         const isOpen = expanded.has(week.weekNum)
         const isCurrent = planGroup && week.weekNum === planGroup.current_week
         const isDirty = dirty.has(week.templateId)
-        const opt1Totals = sumSlotMacros(week, ['breakfast1', 'lunch1', 'dinner1'], activeTier)
-        const opt2Totals = sumSlotMacros(week, ['breakfast2', 'lunch2', 'dinner2'], activeTier)
+        const opt1Totals = sumSlotMacros(week, ['breakfast1', 'lunch1', 'dinner1', 'preworkout', 'evening_snack'], activeTier)
+        const opt2Totals = sumSlotMacros(week, ['breakfast2', 'lunch2', 'dinner2', 'preworkout', 'evening_snack'], activeTier)
 
         return (
           <div key={week.templateId} className="card p-0 overflow-hidden">
@@ -410,8 +570,8 @@ export default function PlanGroupEditor() {
               </div>
               <div className="flex items-center gap-4">
                 <div className="hidden sm:flex items-center gap-3 text-xs">
-                  <OptionTotal label="A" totals={opt1Totals} target={mainMealsTarget} />
-                  <OptionTotal label="B" totals={opt2Totals} target={mainMealsTarget} />
+                  <OptionTotal label="A" totals={opt1Totals} target={activeTier} />
+                  <OptionTotal label="B" totals={opt2Totals} target={activeTier} />
                 </div>
                 <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -425,35 +585,54 @@ export default function PlanGroupEditor() {
                   const options = mealsByCategory[slot.cat] || []
                   const mealId = week.slots[slot.key] || ''
                   const macros = mealMacros(mealId, activeTier)
+                  const isStatic = STATIC_SLOT_KEYS.has(slot.key)
+                  const editKey = mealId && activeTier != null ? `${mealId}:${activeTier}` : null
+                  const isEditingIngredients = editKey != null && editingIngredients === editKey
                   return (
-                    <div key={slot.key} className="flex items-center gap-3 px-4 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
-                      <span className="w-40 flex-shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                        {slot.label}
-                      </span>
-                      <select
-                        className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
-                        value={mealId}
-                        onChange={e => changeSlot(weekIdx, slot.key, e.target.value)}
-                      >
-                        <option value="">— None —</option>
-                        {options.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
-                      <span className="w-48 flex-shrink-0 text-right text-xs">
-                        {!mealId ? (
-                          <span className="text-gray-300 dark:text-gray-600">—</span>
-                        ) : macros ? (
-                          <span className="text-gray-500 dark:text-gray-400">
-                            <span className="font-medium text-gray-700 dark:text-gray-300">{macros.calories} kcal</span>
-                            {' · '}{macros.protein_g}P {macros.carbs_g}C {macros.fat_g}F
-                          </span>
-                        ) : (
-                          <span className="text-amber-500" title="Generate this meal's calorie tiers in the Meal Library">
-                            No {activeTier} kcal version
-                          </span>
+                    <div key={slot.key}>
+                      <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
+                        <span className="w-40 flex-shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                          {slot.label}
+                          {isStatic && <span className="block normal-case font-normal text-gray-300 dark:text-gray-600">same every week</span>}
+                        </span>
+                        <select
+                          className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
+                          value={mealId}
+                          onChange={e => changeSlot(weekIdx, slot.key, e.target.value)}
+                        >
+                          <option value="">— None —</option>
+                          {options.map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                        <span className="w-48 flex-shrink-0 text-right text-xs">
+                          {!mealId ? (
+                            <span className="text-gray-300 dark:text-gray-600">—</span>
+                          ) : macros ? (
+                            <span className="text-gray-500 dark:text-gray-400">
+                              <span className="font-medium text-gray-700 dark:text-gray-300">{macros.calories} kcal</span>
+                              {' · '}{macros.protein_g}P {macros.carbs_g}C {macros.fat_g}F
+                            </span>
+                          ) : (
+                            <span className="text-amber-500" title="Generate this meal's calorie tiers in the Meal Library">
+                              No {activeTier} kcal version
+                            </span>
+                          )}
+                        </span>
+                        {editKey != null && (
+                          <button
+                            onClick={() => setEditingIngredients(prev => prev === editKey ? null : editKey)}
+                            className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex-shrink-0 whitespace-nowrap"
+                          >
+                            {isEditingIngredients ? 'Hide' : 'Edit ingredients'}
+                          </button>
                         )}
-                      </span>
+                      </div>
+                      {isEditingIngredients && (
+                        <div className="mx-4 mb-2 bg-gray-50/60 dark:bg-gray-800/30 rounded-lg">
+                          <TierIngredientEditor mealId={mealId} tier={activeTier} category={slot.cat} coachId={profile.id} mealSplit={mealSplit} />
+                        </div>
+                      )}
                     </div>
                   )
                 })}
