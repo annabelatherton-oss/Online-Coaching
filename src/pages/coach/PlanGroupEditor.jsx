@@ -140,7 +140,7 @@ function MacroMatchRow({ label, totals, tier }) {
 
 // Inline editor for a meal's calorie-tier ingredient set — the same shared meal_tier_versions /
 // meal_tier_ingredients rows the Meal Library edits, just reachable without leaving the template.
-function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit }) {
+function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit, onSaved }) {
   const [loading, setLoading] = useState(true)
   const [library, setLibrary] = useState([])
   const [baseIngredients, setBaseIngredients] = useState([])
@@ -213,6 +213,7 @@ function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit }) {
     }
     setGenerating(false)
     load()
+    onSaved?.()
   }
 
   async function handleSave() {
@@ -233,6 +234,7 @@ function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit }) {
     }
     setSaving(false)
     load()
+    onSaved?.()
   }
 
   if (loading) return <p className="text-xs text-gray-400 py-2 px-2">Loading ingredients…</p>
@@ -404,6 +406,15 @@ export default function PlanGroupEditor() {
       t.fat_g += m.fat_g
     }
     return { calories: round1(t.calories), protein_g: round1(t.protein_g), carbs_g: round1(t.carbs_g), fat_g: round1(t.fat_g), complete }
+  }
+
+  async function refreshMeal(mealId) {
+    const { data: meal } = await supabase
+      .from('meals')
+      .select('id, name, category, meal_ingredients(calories, protein_g, carbs_g, fat_g), meal_tier_versions(calorie_tier, calories, protein_g, carbs_g, fat_g)')
+      .eq('id', mealId)
+      .single()
+    if (meal) setMealsById(prev => ({ ...prev, [mealId]: meal }))
   }
 
   async function selectTier(tier) {
@@ -852,7 +863,7 @@ export default function PlanGroupEditor() {
                       </div>
                       {isEditingIngredients && (
                         <div className="mx-4 mb-2 bg-gray-50/60 dark:bg-gray-800/30 rounded-lg">
-                          <TierIngredientEditor mealId={mealId} tier={activeTier} category={slot.cat} coachId={profile.id} mealSplit={mealSplit} />
+                          <TierIngredientEditor mealId={mealId} tier={activeTier} category={slot.cat} coachId={profile.id} mealSplit={mealSplit} onSaved={() => refreshMeal(mealId)} />
                         </div>
                       )}
                     </div>
