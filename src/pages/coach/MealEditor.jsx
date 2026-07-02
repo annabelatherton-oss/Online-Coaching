@@ -188,11 +188,12 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
     if (ings.length > 0) {
       const { data: alts } = await supabase
         .from('meal_ingredient_alternatives')
-        .select('meal_ingredient_id, ingredient_id, ingredients(name)')
+        .select('meal_ingredient_id, ingredient_id')
         .in('meal_ingredient_id', ings.map(i => i.id))
       for (const alt of (alts || [])) {
         if (!altsMap[alt.meal_ingredient_id]) altsMap[alt.meal_ingredient_id] = []
-        altsMap[alt.meal_ingredient_id].push({ ingredient_id: alt.ingredient_id, name: alt.ingredients?.name || '' })
+        const libIng = lib.find(l => l.id === alt.ingredient_id)
+        altsMap[alt.meal_ingredient_id].push({ ingredient_id: alt.ingredient_id, name: libIng?.name || '' })
       }
     }
     setIngredients(ings.map(ing => ({
