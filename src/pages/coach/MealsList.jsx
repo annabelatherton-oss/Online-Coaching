@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -59,19 +59,14 @@ function missingTiersFor(meal) {
 export default function MealsList() {
   const { profile } = useAuth()
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
   const [meals, setMeals] = useState([])
   const [library, setLibrary] = useState([])
   const [loading, setLoading] = useState(true)
-  const search = searchParams.get('q') || ''
-  const categoryFilter = searchParams.get('cat') || 'All'
+  const [search, setSearchRaw] = useState(() => sessionStorage.getItem('mealsSearch') || '')
+  const [categoryFilter, setCategoryFilterRaw] = useState(() => sessionStorage.getItem('mealsCategoryFilter') || 'All')
 
-  function setSearch(val) {
-    setSearchParams(prev => { const p = new URLSearchParams(prev); val ? p.set('q', val) : p.delete('q'); return p }, { replace: true })
-  }
-  function setCategoryFilter(val) {
-    setSearchParams(prev => { const p = new URLSearchParams(prev); val && val !== 'All' ? p.set('cat', val) : p.delete('cat'); return p }, { replace: true })
-  }
+  function setSearch(val) { setSearchRaw(val); sessionStorage.setItem('mealsSearch', val) }
+  function setCategoryFilter(val) { setCategoryFilterRaw(val); sessionStorage.setItem('mealsCategoryFilter', val) }
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [bulkRunning, setBulkRunning] = useState(false)
