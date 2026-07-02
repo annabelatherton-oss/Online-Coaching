@@ -76,7 +76,7 @@ export default function MealsList() {
         .from('meals')
         .select(`
           id, name, category, photo_url, instructions,
-          meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit),
+          meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, meal_ingredient_alternatives(ingredient_id)),
           meal_tier_versions(calorie_tier)
         `)
         .eq('coach_id', profile.id)
@@ -116,7 +116,11 @@ export default function MealsList() {
     for (const meal of targets) {
       const existing = new Set((meal.meal_tier_versions || []).map(v => v.calorie_tier))
       try {
-        await createMissingTiersForMeal(meal.id, meal.category, meal.meal_ingredients, library, mealSplit, existing)
+        const baseIngs = (meal.meal_ingredients || []).map(ing => ({
+          ...ing,
+          alternatives: (ing.meal_ingredient_alternatives || []).map(a => ({ ingredient_id: a.ingredient_id })),
+        }))
+        await createMissingTiersForMeal(meal.id, meal.category, baseIngs, library, mealSplit, existing)
       } catch (err) {
         console.error(`Failed to create calorie tiers for "${meal.name}":`, err)
         failed.push(meal.name)

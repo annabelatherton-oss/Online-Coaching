@@ -45,7 +45,7 @@ export default function CoachSettings() {
     const [{ data: meals, error }, { data: library }] = await Promise.all([
       supabase
         .from('meals')
-        .select('id, name, category, meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit)')
+        .select('id, name, category, meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, meal_ingredient_alternatives(ingredient_id))')
         .eq('coach_id', profile.id),
       supabase.from('ingredients').select('*').eq('coach_id', profile.id),
     ])
@@ -56,7 +56,11 @@ export default function CoachSettings() {
     const failed = []
     for (const meal of targets) {
       try {
-        await regenerateAllTiersForMeal(meal.id, meal.category, meal.meal_ingredients, library || [], savedSplit)
+        const baseIngs = (meal.meal_ingredients || []).map(ing => ({
+          ...ing,
+          alternatives: (ing.meal_ingredient_alternatives || []).map(a => ({ ingredient_id: a.ingredient_id })),
+        }))
+        await regenerateAllTiersForMeal(meal.id, meal.category, baseIngs, library || [], savedSplit)
       } catch (err) {
         console.error(`Failed to regenerate calorie tiers for "${meal.name}":`, err)
         failed.push(meal.name)

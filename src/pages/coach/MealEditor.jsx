@@ -171,6 +171,8 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
   const [openDropdown, setOpenDropdown] = useState(null)
   const [searchText, setSearchText] = useState({})
   const [dirty, setDirty] = useState(false)
+  const [altDropdownOpen, setAltDropdownOpen] = useState(null) // ingredient index
+  const [altSearchText, setAltSearchText] = useState('')
 
   useEffect(() => { onDirtyChange?.(dirty) }, [dirty])
   useEffect(() => () => onDirtyChange?.(false), [])
@@ -181,10 +183,23 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
       supabase.from('ingredients').select('*').eq('coach_id', coachId).order('name'),
     ])
     const lib = libRes.data || []
-    setIngredients((ingRes.data || []).map(ing => ({
+    const ings = ingRes.data || []
+    let altsMap = {}
+    if (ings.length > 0) {
+      const { data: alts } = await supabase
+        .from('meal_ingredient_alternatives')
+        .select('meal_ingredient_id, ingredient_id, ingredients(name)')
+        .in('meal_ingredient_id', ings.map(i => i.id))
+      for (const alt of (alts || [])) {
+        if (!altsMap[alt.meal_ingredient_id]) altsMap[alt.meal_ingredient_id] = []
+        altsMap[alt.meal_ingredient_id].push({ ingredient_id: alt.ingredient_id, name: alt.ingredients?.name || '' })
+      }
+    }
+    setIngredients(ings.map(ing => ({
       ...ing,
       scaling_type: ing.scaling_type || 'flexible',
       _library: ing.ingredient_id ? lib.find(l => l.id === ing.ingredient_id) || null : null,
+      _alternatives: altsMap[ing.id] || [],
     })))
     setLibrary(lib)
     setLoading(false)
@@ -237,7 +252,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
       ingredient_id: null, _library: null,
       name: '', quantity_g: '', unit: 'g',
       calories: '', protein_g: '', carbs_g: '', fat_g: '',
-      scaling_type: 'flexible',
+      scaling_type: 'flexible', _alternatives: [],
     }])
     setDirty(true)
   }
@@ -248,9 +263,22 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
     setIngredients(prev => prev.filter((_, i) => i !== idx))
   }
 
+  function addAlternative(ingIdx, libIng) {
+    const ing = ingredients[ingIdx]
+    if ((ing._alternatives || []).some(a => a.ingredient_id === libIng.id)) return
+    updateRow(ingIdx, { _alternatives: [...(ing._alternatives || []), { ingredient_id: libIng.id, name: libIng.name }] })
+    setAltDropdownOpen(null)
+    setAltSearchText('')
+  }
+
+  function removeAlternative(ingIdx, altIdx) {
+    updateRow(ingIdx, { _alternatives: (ingredients[ingIdx]._alternatives || []).filter((_, i) => i !== altIdx) })
+  }
+
   async function saveAll() {
     setSaving(true)
     setError('')
+    const saved = [] // { ing, savedId }
     for (const ing of ingredients) {
       const payload = {
         meal_id: mealId,
@@ -265,18 +293,30 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
         scaling_type: ing.scaling_type || 'flexible',
       }
       if (ing._isNew) {
-        const { error: err } = await supabase.from('meal_ingredients').insert(payload)
+        const { data: inserted, error: err } = await supabase.from('meal_ingredients').insert(payload).select('id').single()
         if (err) { setError(err.message); setSaving(false); return }
+        saved.push({ ing, savedId: inserted.id })
       } else {
         const { error: err } = await supabase.from('meal_ingredients').update(payload).eq('id', ing.id)
         if (err) { setError(err.message); setSaving(false); return }
+        saved.push({ ing, savedId: ing.id })
       }
+    }
+
+    // Persist alternatives: wipe and re-insert so additions/removals are always in sync.
+    const allIds = saved.map(s => s.savedId)
+    if (allIds.length > 0) {
+      await supabase.from('meal_ingredient_alternatives').delete().in('meal_ingredient_id', allIds)
+      const altRows = saved.flatMap(({ ing, savedId }) =>
+        (ing._alternatives || []).map(a => ({ meal_ingredient_id: savedId, ingredient_id: a.ingredient_id }))
+      )
+      if (altRows.length > 0) await supabase.from('meal_ingredient_alternatives').insert(altRows)
     }
 
     // Rebuild every calorie-tier version from the base recipe just saved, so ingredient
     // changes always pull through into the tiers without a separate manual step.
-    if (ingredients.length > 0 && category) {
-      const baseIngs = ingredients.map(ing => ({
+    if (saved.length > 0 && category) {
+      const baseIngs = saved.map(({ ing }) => ({
         name: ing.name || '',
         quantity_g: parseFloat(ing.quantity_g) || 0,
         unit: ing.unit || 'g',
@@ -286,6 +326,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
         fat_g: parseFloat(ing.fat_g) || 0,
         scaling_type: ing.scaling_type || 'flexible',
         ingredient_id: ing.ingredient_id || null,
+        alternatives: (ing._alternatives || []).map(a => ({ ingredient_id: a.ingredient_id })),
       }))
       try {
         await regenerateAllTiersForMeal(mealId, category, baseIngs, library, mealSplit)
@@ -425,6 +466,55 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
                     </button>
                   </td>
                 </tr>
+                {/* Alternatives sub-row — always shown so coaches can add swaps to any ingredient */}
+                {(
+                  <tr key={`${ing.id || ing._tempId}-alts`} className="bg-gray-50/50 dark:bg-gray-800/30">
+                    <td colSpan={8} className="px-4 pb-2 pt-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs text-gray-400 mr-0.5">↔ swap:</span>
+                        {(ing._alternatives || []).map((alt, ai) => (
+                          <span key={alt.ingredient_id} className="inline-flex items-center gap-1 text-xs bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 px-2 py-0.5 rounded-full border border-violet-200 dark:border-violet-800">
+                            {alt.name}
+                            <button type="button" onClick={() => removeAlternative(idx, ai)} className="text-violet-400 hover:text-violet-700 ml-0.5 leading-none">×</button>
+                          </span>
+                        ))}
+                        {altDropdownOpen === idx ? (
+                          <div className="relative">
+                            <input
+                              autoFocus
+                              className="input py-1 text-xs w-36"
+                              placeholder="Search…"
+                              value={altSearchText}
+                              onChange={e => setAltSearchText(e.target.value)}
+                              onBlur={() => setTimeout(() => { setAltDropdownOpen(null); setAltSearchText('') }, 150)}
+                            />
+                            {altSearchText && (
+                              <div className="absolute top-full left-0 mt-1 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-40 overflow-y-auto w-48">
+                                {library
+                                  .filter(l =>
+                                    l.name.toLowerCase().includes(altSearchText.toLowerCase()) &&
+                                    l.id !== ing.ingredient_id &&
+                                    !(ing._alternatives || []).some(a => a.ingredient_id === l.id)
+                                  )
+                                  .slice(0, 10)
+                                  .map(l => (
+                                    <button key={l.id} type="button" className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 truncate" onMouseDown={() => addAlternative(idx, l)}>
+                                      {l.name}
+                                    </button>
+                                  ))
+                                }
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => { setAltDropdownOpen(idx); setAltSearchText('') }} className="text-xs text-gray-400 hover:text-violet-600 transition-colors">
+                            + add swap
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
               ))}
             </tbody>
             <tfoot>

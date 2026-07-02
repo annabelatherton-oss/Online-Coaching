@@ -228,6 +228,54 @@ export async function insertTierVersion(mealId, tier, ingredients) {
   }
 }
 
+// When an ingredient has alternatives, try every combination of base vs alternative ingredients
+// and return whichever produces the result closest to the calorie target. Ingredients without
+// alternatives are treated as fixed-identity (only their quantity is scaled as usual).
+function bestIngredientsForTier(baseIngredients, library, targets) {
+  const hasSwaps = baseIngredients.some(ing => (ing.alternatives || []).length > 0)
+  if (!hasSwaps) return generateTierIngredients(baseIngredients, library, targets)
+
+  // Build choice lists per slot: [base, alt1, alt2, ...]
+  const slots = baseIngredients.map(ing => {
+    const base = { ...ing }
+    const alts = (ing.alternatives || []).map(alt => {
+      const libIng = library.find(l => l.id === alt.ingredient_id)
+      if (!libIng || libIng.serving_size <= 0) return null
+      const qty = parseFloat(ing.quantity_g) || 0
+      const perG = 1 / libIng.serving_size
+      return {
+        name: libIng.name,
+        quantity_g: qty,
+        unit: libIng.serving_unit || 'g',
+        calories:  round1(qty * libIng.calories_per_serving * perG),
+        protein_g: round1(qty * libIng.protein_per_serving * perG),
+        carbs_g:   round1(qty * libIng.carbs_per_serving   * perG),
+        fat_g:     round1(qty * libIng.fat_per_serving      * perG),
+        scaling_type: ing.scaling_type || 'flexible',
+        ingredient_id: alt.ingredient_id,
+      }
+    }).filter(Boolean)
+    return [base, ...alts]
+  })
+
+  let best = null
+  let bestDiff = Infinity
+
+  // Enumerate all combinations — each slot independently picks base or one of its alternatives.
+  // Meal recipes rarely have more than 1-2 swappable slots so the combination count stays small.
+  function tryCombo(idx, combo) {
+    if (idx === slots.length) {
+      const result = generateTierIngredients(combo, library, targets)
+      const diff = Math.abs(targets.calories - result.reduce((s, r) => s + (r.calories || 0), 0))
+      if (diff < bestDiff) { bestDiff = diff; best = result }
+      return
+    }
+    for (const choice of slots[idx]) tryCombo(idx + 1, [...combo, choice])
+  }
+  tryCombo(0, [])
+  return best || generateTierIngredients(baseIngredients, library, targets)
+}
+
 // Rebuilds every calorie-tier version from the current base ingredients, overwriting whatever was
 // there before — used whenever a meal's base recipe is saved, so tiers never drift out of sync.
 export async function regenerateAllTiersForMeal(mealId, category, baseIngredients, library, mealSplit) {
@@ -237,7 +285,7 @@ export async function regenerateAllTiersForMeal(mealId, category, baseIngredient
   }
   for (const tier of CALORIE_TIERS) {
     const targets = tierTargetsForCategory(tier, category, mealSplit)
-    await insertTierVersion(mealId, tier, generateTierIngredients(baseIngredients, library, targets))
+    await insertTierVersion(mealId, tier, bestIngredientsForTier(baseIngredients, library, targets))
   }
 }
 
@@ -247,7 +295,7 @@ export async function createMissingTiersForMeal(mealId, category, baseIngredient
   for (const tier of CALORIE_TIERS) {
     if (existingTiers.has(tier)) continue
     const targets = tierTargetsForCategory(tier, category, mealSplit)
-    await insertTierVersion(mealId, tier, generateTierIngredients(baseIngredients, library, targets))
+    await insertTierVersion(mealId, tier, bestIngredientsForTier(baseIngredients, library, targets))
   }
 }
 
