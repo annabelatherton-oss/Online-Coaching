@@ -309,7 +309,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
         <div>
           <h3 className="font-semibold text-gray-900 dark:text-white">Ingredients</h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            Mark each ingredient as <strong>Flex</strong> (scales between calorie tiers) or <strong>Fixed</strong> (stays the same — e.g. veggies, spices)
+            Mark each ingredient as <strong>Flex</strong> (scales with calorie tiers), <strong>Optional</strong> (scales but can be fully removed if needed), or <strong>Fixed</strong> (always stays the same)
           </p>
           {!category && (
             <p className="text-xs text-amber-500 mt-1">Set a category in Details first — calorie tiers can't be generated without one.</p>
@@ -401,15 +401,20 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
                   <td className="px-3 py-2">
                     <button
                       type="button"
-                      onClick={() => updateRow(idx, { scaling_type: ing.scaling_type === 'fixed' ? 'flexible' : 'fixed' })}
-                      title="Toggle: Flex scales with calorie tier, Fixed stays the same"
+                      onClick={() => {
+                        const next = ing.scaling_type === 'flexible' ? 'optional' : ing.scaling_type === 'optional' ? 'fixed' : 'flexible'
+                        updateRow(idx, { scaling_type: next })
+                      }}
+                      title="Flex: scales with tier  ·  Optional: scales but can be fully removed  ·  Fixed: always stays the same"
                       className={`text-xs px-2 py-1 rounded-full border transition-colors whitespace-nowrap ${
                         ing.scaling_type === 'fixed'
                           ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+                          : ing.scaling_type === 'optional'
+                          ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400'
                           : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400'
                       }`}
                     >
-                      {ing.scaling_type === 'fixed' ? 'Fixed' : 'Flex'}
+                      {ing.scaling_type === 'fixed' ? 'Fixed' : ing.scaling_type === 'optional' ? 'Optional' : 'Flex'}
                     </button>
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -764,9 +769,11 @@ function CalorieTiersTab({ mealId, coachId, category, mealSplit }) {
                               <span className={`text-xs px-1.5 py-0.5 rounded-full whitespace-nowrap ${
                                 ing.scaling_type === 'fixed'
                                   ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                                  : ing.scaling_type === 'optional'
+                                  ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
                                   : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
                               }`}>
-                                {ing.scaling_type === 'fixed' ? 'Fixed' : 'Flex'}
+                                {ing.scaling_type === 'fixed' ? 'Fixed' : ing.scaling_type === 'optional' ? 'Optional' : 'Flex'}
                               </span>
                             </td>
                           </tr>

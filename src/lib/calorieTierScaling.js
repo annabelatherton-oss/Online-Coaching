@@ -19,20 +19,20 @@ function round1(n) {
   return Math.round(parseFloat(n || 0) * 10) / 10
 }
 
-export function snapToConstraints(amount, libIng) {
+// isOptional: when true, the ingredient is allowed to snap all the way to 0 (fully removed).
+// When false (flex / fixed), a positive quantity is always kept at ≥ 1 step so the ingredient
+// never silently disappears from the meal.
+export function snapToConstraints(amount, libIng, isOptional = false) {
   let val = parseFloat(amount)
   if (isNaN(val) || val <= 0) return val
   const step = libIng?.serving_step
   const min = libIng?.min_amount
   if (step && step > 0) {
     val = Math.round(val / step) * step
-    // Never snap a positive quantity down to zero — keep at least one step's worth so the
-    // ingredient doesn't silently disappear from the meal (e.g. 20g carrot with a 50g step
-    // would round to 0; instead snap up to 50g).
-    if (val <= 0) val = step
+    if (val <= 0 && !isOptional) val = step  // keep non-optional at ≥ 1 step
     val = Math.round(val * 10000) / 10000
   }
-  if (min != null && val > 0 && val < min) val = min
+  if (min != null && val > 0 && val < min) val = isOptional ? 0 : min
   return val
 }
 
@@ -81,7 +81,7 @@ function buildRow(ing, library) {
 
 function finalizeQty(row, qty) {
   let snapped = round1(qty)
-  if (row.libIng) snapped = snapToConstraints(snapped, row.libIng) ?? snapped
+  if (row.libIng) snapped = snapToConstraints(snapped, row.libIng, row.scaling_type === 'optional') ?? snapped
   return {
     quantity_g: snapped,
     calories:  round1(snapped * row.calPerG),
@@ -193,6 +193,12 @@ export function generateTierIngredients(baseIngredients, library, targets) {
 
     for (let iter = 0; iter < 10; iter++) {
       const snapped = rows.map((r, i) => finalizeQty(r, qtyByRow[i]))
+      // Once an optional ingredient snaps to 0, lock it there — the solver will compensate
+      // by scaling the remaining flexible ingredients up to fill the calorie gap, rather than
+      // swinging the removed ingredient back in on the next correction pass.
+      qtyByRow = qtyByRow.map((q, i) =>
+        rows[i].scaling_type === 'optional' && snapped[i].quantity_g === 0 ? 0 : q
+      )
       const achievedCal = snapped.reduce((s, r) => s + r.calories, 0)
       const diff = targetVec.cal - achievedCal // > 0 = under target, < 0 = over target
       if (Math.abs(diff) < bestAbsDiff) { bestAbsDiff = Math.abs(diff); bestQty = qtyByRow }
