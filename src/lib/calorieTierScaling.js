@@ -77,7 +77,7 @@ function buildRow(ing, library) {
 
 function finalizeQty(row, qty) {
   let snapped = round1(qty)
-  if (row.libIng) snapped = snapToConstraints(snapped, row.libIng) || snapped
+  if (row.libIng) snapped = snapToConstraints(snapped, row.libIng) ?? snapped
   return {
     quantity_g: snapped,
     calories:  round1(snapped * row.calPerG),
@@ -258,7 +258,7 @@ export async function propagateIngredientRuleChange(ingredientId, libIng) {
   ])
 
   function macrosAt(qty) {
-    const snapped = snapToConstraints(qty, libIng) || qty
+    const snapped = snapToConstraints(qty, libIng) ?? qty
     const f = libIng.serving_size > 0 ? snapped / libIng.serving_size : 0
     return {
       quantity_g: snapped,
