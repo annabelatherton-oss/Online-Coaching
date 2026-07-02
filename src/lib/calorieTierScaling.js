@@ -190,18 +190,12 @@ export function generateTierIngredients(baseIngredients, library, targets) {
 
     let bestQty = qtyByRow
     let bestAbsDiff = Infinity
-    // Landing a few kcal under target is fine; landing over never is unless physically forced
-    // (e.g. an ingredient's serving minimum alone exceeds the target) — track the closest
-    // at-or-under result separately so it's always preferred over a closer-but-over one.
-    let bestUnderQty = null
-    let bestUnderDiff = Infinity
 
     for (let iter = 0; iter < 10; iter++) {
       const snapped = rows.map((r, i) => finalizeQty(r, qtyByRow[i]))
       const achievedCal = snapped.reduce((s, r) => s + r.calories, 0)
       const diff = targetVec.cal - achievedCal // > 0 = under target, < 0 = over target
       if (Math.abs(diff) < bestAbsDiff) { bestAbsDiff = Math.abs(diff); bestQty = qtyByRow }
-      if (diff >= 0 && diff < bestUnderDiff) { bestUnderDiff = diff; bestUnderQty = qtyByRow }
       if (Math.abs(diff) <= TIER_CONVERGENCE_KCAL) break
       const flexAchievedCal = snapped.reduce((s, r, i) => s + (rows[i].scaling_type === 'fixed' ? 0 : r.calories), 0)
       if (flexAchievedCal <= 0) break
@@ -209,7 +203,7 @@ export function generateTierIngredients(baseIngredients, library, targets) {
       const corr = Math.min(2, Math.max(0.3, desiredFlexCal / flexAchievedCal))
       qtyByRow = qtyByRow.map((q, i) => rows[i].scaling_type === 'fixed' ? q : q * corr)
     }
-    qtyByRow = bestUnderQty || bestQty
+    qtyByRow = bestQty
   }
 
   return rows.map((r, i) => finalizeRow(r, qtyByRow[i]))
