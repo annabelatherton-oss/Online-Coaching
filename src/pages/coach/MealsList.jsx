@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
@@ -95,15 +95,23 @@ export default function MealsList() {
 
   useEffect(() => { loadMeals() }, [profile.id])
 
-  // After data loads and the list is in the DOM, restore any saved scroll position.
-  useEffect(() => {
+  // Save scroll position when leaving this page. useLayoutEffect cleanup fires before React
+  // removes the DOM nodes, so main.scrollTop is still the real position at this point.
+  useLayoutEffect(() => {
+    const key = `scroll:${window.location.pathname}`
+    return () => {
+      const main = document.querySelector('main')
+      if (main) sessionStorage.setItem(key, String(main.scrollTop))
+    }
+  }, [])
+
+  // Restore scroll before the browser paints the loaded list so the user never sees position 0.
+  useLayoutEffect(() => {
     if (loading) return
     const saved = parseInt(sessionStorage.getItem(`scroll:${window.location.pathname}`) || '0', 10)
     if (!saved) return
-    requestAnimationFrame(() => {
-      const main = document.querySelector('main')
-      if (main) main.scrollTop = saved
-    })
+    const main = document.querySelector('main')
+    if (main) main.scrollTop = saved
   }, [loading])
 
   const mealSplit = normalizeMealSplit(profile.meal_split)
