@@ -512,82 +512,108 @@ export default function PlanGroupEditor() {
     setSaving(false)
   }
 
-  // For each week, tries every combination of (breakfast × lunch × dinner) for both option A and
-  // option B and picks whichever pairing gets the full day total closest to the tier's calorie and
-  // macro targets. Runs entirely in-memory (all meal macros are already loaded) so it's instant
-  // even across all 20 weeks. Marks every week dirty so the coach can review the selections and
-  // macro match before deciding to save.
+  // Rotates every meal the coach has already placed in the template across the 20 weeks in the
+  // arrangement that gets each day as close as possible to the calorie and macro target, without
+  // ever using the same meal more than once per cycle and without changing WHICH meals are in the
+  // rotation — only WHEN each one appears.
+  //
+  // Algorithm:
+  //   1. Collect the unique meals currently in each slot (breakfast1, lunch1, etc.) across all
+  //      20 weeks — that IS the pool; no meals are added or removed.
+  //   2. Build a round-robin 20-week schedule for each slot by cycling through its pool so every
+  //      meal gets equal airtime and no meal repeats until all others have appeared.
+  //   3. Run pairwise swap-improvement for each slot independently (holding the other 5 fixed):
+  //      swap week i's meal with week j's in this slot if it lowers the sum of those two weeks'
+  //      day-total scores. This converges in a few passes and runs entirely in-memory.
   function handleOptimize() {
     if (activeTier == null) return
     setOptimizing(true)
 
     const tgtMacros = calcStandardMacros(activeTier)
+    const N = currentWeeks.length
 
-    // Meals that actually have a calorie-tier version — ones without can't contribute accurate
-    // macros so are excluded from the search.
-    const pool = {}
-    for (const cat of ['breakfast', 'lunch', 'dinner']) {
-      pool[cat] = (mealsByCategory[cat] || []).filter(m =>
-        (m.meal_tier_versions || []).some(v => v.calorie_tier === activeTier)
-      )
-    }
-
-    function macrosFor(id) {
-      return id ? mealMacros(id, activeTier) : null
-    }
-
-    // How far a day total (main meals + static meals) falls from the calorie and macro targets.
-    // Calories are weighted 4× as in the solver; lower score = better match.
-    function scoreCombo(mainIds, staticIds) {
-      let cal = 0, prot = 0, carbs = 0, fat = 0
-      for (const id of [...mainIds, ...staticIds]) {
-        const m = macrosFor(id)
-        if (!m) continue
-        cal += m.calories; prot += m.protein_g; carbs += m.carbs_g; fat += m.fat_g
+    // Unique meals currently placed in each slot, in first-seen order.
+    // Falls back to all meals that have a tier version if a slot is completely empty.
+    function buildPool(slotKey) {
+      const seen = new Set()
+      const order = []
+      for (const w of currentWeeks) {
+        const id = w.slots[slotKey]
+        if (id && !seen.has(id)) { seen.add(id); order.push(id) }
       }
-      return 4 * Math.abs(cal - activeTier)
-        + Math.abs(prot - tgtMacros.protein_g)
-        + Math.abs(carbs - tgtMacros.carbs_g)
-        + Math.abs(fat - tgtMacros.fat_g)
+      if (order.length === 0) {
+        const cat = MAIN_SLOTS.find(s => s.key === slotKey)?.cat
+        ;(mealsByCategory[cat] || [])
+          .filter(m => (m.meal_tier_versions || []).some(v => v.calorie_tier === activeTier))
+          .forEach(m => { if (!seen.has(m.id)) { seen.add(m.id); order.push(m.id) } })
+      }
+      return order
     }
 
-    // Best breakfast+lunch+dinner combo for one day option. `exclude` keeps B from duplicating A.
-    function bestTriple(staticIds, excludeIds = new Set()) {
-      const bPool = pool['breakfast'].filter(m => !excludeIds.has(m.id))
-      const lPool = pool['lunch'].filter(m => !excludeIds.has(m.id))
-      const dPool = pool['dinner'].filter(m => !excludeIds.has(m.id))
-      const bs = bPool.length ? bPool : pool['breakfast']
-      const ls = lPool.length ? lPool : pool['lunch']
-      const ds = dPool.length ? dPool : pool['dinner']
-      if (!bs.length && !ls.length && !ds.length) return { b: null, l: null, d: null }
-      let best = Infinity, bRes = null, lRes = null, dRes = null
-      for (const bm of (bs.length ? bs : [{ id: null }])) {
-        for (const lm of (ls.length ? ls : [{ id: null }])) {
-          for (const dm of (ds.length ? ds : [{ id: null }])) {
-            const s = scoreCombo([bm.id, lm.id, dm.id].filter(Boolean), staticIds)
-            if (s < best) { best = s; bRes = bm.id; lRes = lm.id; dRes = dm.id }
+    const pools = {}
+    for (const s of MAIN_SLOTS) pools[s.key] = buildPool(s.key)
+
+    // Round-robin 20-week schedule: cycle through the pool evenly.
+    function makeRoundRobin(pool) {
+      if (!pool.length) return Array(N).fill(null)
+      return Array.from({ length: N }, (_, i) => pool[i % pool.length])
+    }
+
+    // Current schedules — one array of meal IDs per slot, indexed by week position 0..19.
+    const scheds = {}
+    for (const s of MAIN_SLOTS) scheds[s.key] = makeRoundRobin(pools[s.key])
+
+    // How far a full day total deviates from the tier target — same 4:1:1:1 weighting as the
+    // tier solver so the same quality bar applies here.
+    function dayScore(weekIdx) {
+      const staticIds = ['preworkout', 'evening_snack'].map(k => currentWeeks[weekIdx].slots[k]).filter(Boolean)
+      let scoreA = 0, scoreB = 0
+      for (const opt of [['breakfast1','lunch1','dinner1'], ['breakfast2','lunch2','dinner2']]) {
+        let cal = 0, prot = 0, carbs = 0, fat = 0
+        for (const id of [...opt.map(k => scheds[k][weekIdx]), ...staticIds]) {
+          const m = id ? mealMacros(id, activeTier) : null
+          if (!m) continue
+          cal += m.calories; prot += m.protein_g; carbs += m.carbs_g; fat += m.fat_g
+        }
+        const s = 4*Math.abs(cal-activeTier) + Math.abs(prot-tgtMacros.protein_g) + Math.abs(carbs-tgtMacros.carbs_g) + Math.abs(fat-tgtMacros.fat_g)
+        if (opt[0] === 'breakfast1') scoreA = s; else scoreB = s
+      }
+      return scoreA + scoreB
+    }
+
+    // Swap-improve one slot's schedule: try every pair of weeks; keep the swap if it lowers the
+    // combined score of those two weeks. Repeat until no improvement.
+    function improveSlot(key) {
+      let improved = true
+      while (improved) {
+        improved = false
+        for (let i = 0; i < N; i++) {
+          for (let j = i + 1; j < N; j++) {
+            if (scheds[key][i] === scheds[key][j]) continue
+            const before = dayScore(i) + dayScore(j)
+            ;[scheds[key][i], scheds[key][j]] = [scheds[key][j], scheds[key][i]]
+            const after = dayScore(i) + dayScore(j)
+            if (after < before - 0.01) { improved = true }
+            else { ;[scheds[key][i], scheds[key][j]] = [scheds[key][j], scheds[key][i]] }
           }
         }
       }
-      return { b: bRes, l: lRes, d: dRes }
     }
 
-    const optimized = currentWeeks.map(week => {
-      const staticIds = ['preworkout', 'evening_snack'].map(k => week.slots[k]).filter(Boolean)
-      const { b: b1, l: l1, d: d1 } = bestTriple(staticIds)
-      // Option B: exclude option A's picks where alternatives exist, to add variety
-      const { b: b2, l: l2, d: d2 } = bestTriple(staticIds, new Set([b1, l1, d1].filter(Boolean)))
-      return {
-        ...week,
-        slots: { ...week.slots, breakfast1: b1, lunch1: l1, dinner1: d1, breakfast2: b2, lunch2: l2, dinner2: d2 },
-      }
-    })
-
-    if (activeTier == null) {
-      setWeeks(optimized)
-    } else {
-      setTierWeeks(prev => ({ ...prev, [activeTier]: optimized }))
+    // Coordinate descent: improve each slot holding the others fixed, repeat until stable.
+    for (let pass = 0; pass < 4; pass++) {
+      for (const s of MAIN_SLOTS) improveSlot(s.key)
     }
+
+    const optimized = currentWeeks.map((week, i) => ({
+      ...week,
+      slots: {
+        ...week.slots,
+        ...Object.fromEntries(MAIN_SLOTS.map(s => [s.key, scheds[s.key][i]])),
+      },
+    }))
+
+    setTierWeeks(prev => ({ ...prev, [activeTier]: optimized }))
     setDirty(new Set(optimized.map(w => w.templateId)))
     setExpanded(new Set(optimized.map(w => w.weekNum)))
     setOptimizing(false)
