@@ -26,6 +26,10 @@ export function snapToConstraints(amount, libIng) {
   const min = libIng?.min_amount
   if (step && step > 0) {
     val = Math.round(val / step) * step
+    // Never snap a positive quantity down to zero — keep at least one step's worth so the
+    // ingredient doesn't silently disappear from the meal (e.g. 20g carrot with a 50g step
+    // would round to 0; instead snap up to 50g).
+    if (val <= 0) val = step
     val = Math.round(val * 10000) / 10000
   }
   if (min != null && val > 0 && val < min) val = min
