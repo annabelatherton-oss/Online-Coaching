@@ -50,9 +50,16 @@ function sumMacros(ingredients) {
 
 function OptionTotal({ label, totals, target }) {
   if (!totals || totals.calories <= 0) return null
+  if (!totals.complete) {
+    return (
+      <span className="font-medium text-amber-500" title="One or more meals in this day has no calorie-tier version — regenerate tiers in Coach Settings to fix this.">
+        {label}: {totals.calories} kcal ⚠ missing tier
+      </span>
+    )
+  }
   let diffText = null
   let colour = 'text-gray-500 dark:text-gray-400'
-  if (target != null && totals.complete) {
+  if (target != null) {
     const diff = target - totals.calories
     if (diff > UNDER_TARGET_TOLERANCE) { diffText = `${Math.round(diff)} under`; colour = 'text-amber-500' }
     else if (diff < -OVER_TARGET_TOLERANCE) { diffText = `${Math.round(-diff)} over`; colour = 'text-red-500' }
@@ -103,9 +110,9 @@ function MacroMatchRow({ label, totals, tier }) {
   if (tier == null) return null
   if (!totals.complete) {
     return (
-      <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+      <div className="flex items-center gap-2 text-xs text-amber-500">
         <span className="font-semibold w-16">{label}</span>
-        <span>Missing a calorie-tier version for one or more meals — can't compute a macro match yet.</span>
+        <span>{totals.calories} kcal — one or more slots has no tier version for {tier} kcal. Go to Coach Settings → Recalculate all calorie tiers, then re-open this plan.</span>
       </div>
     )
   }
@@ -532,14 +539,16 @@ export default function PlanGroupEditor() {
     const tgtMacros = calcStandardMacros(activeTier)
     const N = currentWeeks.length
 
-    // Unique meals currently placed in each slot, in first-seen order.
+    // Unique meals currently placed in each slot that have a tier version for the active tier,
+    // in first-seen order. Meals without a tier version are excluded — they'd contribute 0 kcal
+    // to the day total and make every week they land in look 100-200 kcal under.
     // Falls back to all meals that have a tier version if a slot is completely empty.
     function buildPool(slotKey) {
       const seen = new Set()
       const order = []
       for (const w of currentWeeks) {
         const id = w.slots[slotKey]
-        if (id && !seen.has(id)) { seen.add(id); order.push(id) }
+        if (id && !seen.has(id) && mealMacros(id, activeTier) != null) { seen.add(id); order.push(id) }
       }
       if (order.length === 0) {
         const cat = MAIN_SLOTS.find(s => s.key === slotKey)?.cat
