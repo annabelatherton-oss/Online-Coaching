@@ -140,7 +140,7 @@ function MacroMatchRow({ label, totals, tier }) {
 
 // Inline editor for a meal's calorie-tier ingredient set — the same shared meal_tier_versions /
 // meal_tier_ingredients rows the Meal Library edits, just reachable without leaving the template.
-function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit, onSaved }) {
+function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit, onSaved, onLiveUpdate }) {
   const [loading, setLoading] = useState(true)
   const [library, setLibrary] = useState([])
   const [baseIngredients, setBaseIngredients] = useState([])
@@ -185,18 +185,17 @@ function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit, onSa
 
   function updateQty(idx, newQty) {
     const qty = parseFloat(newQty) || 0
-    setVersion(prev => ({
-      ...prev,
-      ingredients: prev.ingredients.map((ing, i) => i !== idx ? ing : {
-        ...ing,
-        quantity_g: newQty,
-        calories:  round1(qty * (ing._calPerG  || 0)),
-        protein_g: round1(qty * (ing._proPerG  || 0)),
-        carbs_g:   round1(qty * (ing._carbPerG || 0)),
-        fat_g:     round1(qty * (ing._fatPerG  || 0)),
-      }),
-    }))
+    const newIngredients = (version?.ingredients || []).map((ing, i) => i !== idx ? ing : {
+      ...ing,
+      quantity_g: newQty,
+      calories:  round1(qty * (ing._calPerG  || 0)),
+      protein_g: round1(qty * (ing._proPerG  || 0)),
+      carbs_g:   round1(qty * (ing._carbPerG || 0)),
+      fat_g:     round1(qty * (ing._fatPerG  || 0)),
+    })
+    setVersion(prev => ({ ...prev, ingredients: newIngredients }))
     setDirty(true)
+    onLiveUpdate?.(calcTotals(newIngredients))
   }
 
   async function handleGenerate() {
@@ -406,6 +405,18 @@ export default function PlanGroupEditor() {
       t.fat_g += m.fat_g
     }
     return { calories: round1(t.calories), protein_g: round1(t.protein_g), carbs_g: round1(t.carbs_g), fat_g: round1(t.fat_g), complete }
+  }
+
+  function applyMealTierTotals(mealId, tier, newTotals) {
+    setMealsById(prev => {
+      const meal = prev[mealId]
+      if (!meal) return prev
+      const existing = meal.meal_tier_versions || []
+      const updated = existing.some(v => Number(v.calorie_tier) === Number(tier))
+        ? existing.map(v => Number(v.calorie_tier) === Number(tier) ? { ...v, ...newTotals } : v)
+        : [...existing, { calorie_tier: tier, ...newTotals }]
+      return { ...prev, [mealId]: { ...meal, meal_tier_versions: updated } }
+    })
   }
 
   async function refreshMeal(mealId) {
@@ -869,20 +880,9 @@ export default function PlanGroupEditor() {
                             category={slot.cat}
                             coachId={profile.id}
                             mealSplit={mealSplit}
+                            onLiveUpdate={(newTotals) => applyMealTierTotals(mealId, activeTier, newTotals)}
                             onSaved={(newTotals) => {
-                              if (newTotals) {
-                                // Optimistic update — reflect the new totals immediately.
-                                setMealsById(prev => {
-                                  const meal = prev[mealId]
-                                  if (!meal) return prev
-                                  const existing = meal.meal_tier_versions || []
-                                  const updated = existing.some(v => Number(v.calorie_tier) === Number(activeTier))
-                                    ? existing.map(v => Number(v.calorie_tier) === Number(activeTier) ? { ...v, ...newTotals } : v)
-                                    : [...existing, { calorie_tier: activeTier, ...newTotals }]
-                                  return { ...prev, [mealId]: { ...meal, meal_tier_versions: updated } }
-                                })
-                              }
-                              // Always re-fetch from DB so the display confirms the exact saved values.
+                              if (newTotals) applyMealTierTotals(mealId, activeTier, newTotals)
                               refreshMeal(mealId)
                             }}
                           />
