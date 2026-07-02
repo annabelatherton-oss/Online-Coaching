@@ -45,7 +45,7 @@ export default function CoachSettings() {
     const [{ data: meals, error }, { data: library }] = await Promise.all([
       supabase
         .from('meals')
-        .select('id, name, category, meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, meal_ingredient_alternatives(ingredient_id))')
+        .select('id, name, category, meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, alternative_ingredient_ids)')
         .eq('coach_id', profile.id),
       supabase.from('ingredients').select('*').eq('coach_id', profile.id),
     ])
@@ -58,7 +58,7 @@ export default function CoachSettings() {
       try {
         const baseIngs = (meal.meal_ingredients || []).map(ing => ({
           ...ing,
-          alternatives: (ing.meal_ingredient_alternatives || []).map(a => ({ ingredient_id: a.ingredient_id })),
+          alternatives: (ing.alternative_ingredient_ids || []).map(id => ({ ingredient_id: id })),
         }))
         await regenerateAllTiersForMeal(meal.id, meal.category, baseIngs, library || [], savedSplit)
       } catch (err) {

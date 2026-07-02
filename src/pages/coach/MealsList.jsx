@@ -76,7 +76,7 @@ export default function MealsList() {
         .from('meals')
         .select(`
           id, name, category, photo_url, instructions,
-          meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, meal_ingredient_alternatives(ingredient_id)),
+          meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, alternative_ingredient_ids),
           meal_tier_versions(calorie_tier)
         `)
         .eq('coach_id', profile.id)
@@ -118,7 +118,7 @@ export default function MealsList() {
       try {
         const baseIngs = (meal.meal_ingredients || []).map(ing => ({
           ...ing,
-          alternatives: (ing.meal_ingredient_alternatives || []).map(a => ({ ingredient_id: a.ingredient_id })),
+          alternatives: (ing.alternative_ingredient_ids || []).map(id => ({ ingredient_id: id })),
         }))
         await createMissingTiersForMeal(meal.id, meal.category, baseIngs, library, mealSplit, existing)
       } catch (err) {

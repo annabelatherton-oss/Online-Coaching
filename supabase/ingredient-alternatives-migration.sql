@@ -1,13 +1,6 @@
--- Each meal ingredient can have one or more interchangeable alternatives from the library.
--- When generating calorie-tier versions the solver tries every combination and picks whichever
--- swap gets the meal closest to that tier's calorie sub-target.
+-- Store alternative ingredient IDs directly on meal_ingredients as a simple array.
+-- This avoids a separate join table and loads with the ingredient in one query.
+-- The meal_ingredient_alternatives table approach is replaced by this simpler column.
 
-CREATE TABLE IF NOT EXISTS meal_ingredient_alternatives (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  meal_ingredient_id uuid NOT NULL REFERENCES meal_ingredients(id) ON DELETE CASCADE,
-  ingredient_id uuid NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
-  created_at timestamptz DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_meal_ingredient_alternatives_meal_ingredient_id
-  ON meal_ingredient_alternatives(meal_ingredient_id);
+ALTER TABLE meal_ingredients
+  ADD COLUMN IF NOT EXISTS alternative_ingredient_ids uuid[] DEFAULT '{}';

@@ -184,23 +184,14 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
     ])
     const lib = libRes.data || []
     const ings = ingRes.data || []
-    let altsMap = {}
-    if (ings.length > 0) {
-      const { data: alts } = await supabase
-        .from('meal_ingredient_alternatives')
-        .select('meal_ingredient_id, ingredient_id')
-        .in('meal_ingredient_id', ings.map(i => i.id))
-      for (const alt of (alts || [])) {
-        if (!altsMap[alt.meal_ingredient_id]) altsMap[alt.meal_ingredient_id] = []
-        const libIng = lib.find(l => l.id === alt.ingredient_id)
-        altsMap[alt.meal_ingredient_id].push({ ingredient_id: alt.ingredient_id, name: libIng?.name || '' })
-      }
-    }
     setIngredients(ings.map(ing => ({
       ...ing,
       scaling_type: ing.scaling_type || 'flexible',
       _library: ing.ingredient_id ? lib.find(l => l.id === ing.ingredient_id) || null : null,
-      _alternatives: altsMap[ing.id] || [],
+      _alternatives: (ing.alternative_ingredient_ids || []).map(id => {
+        const libIng = lib.find(l => l.id === id)
+        return { ingredient_id: id, name: libIng?.name || '' }
+      }),
     })))
     setLibrary(lib)
     setLoading(false)
@@ -292,6 +283,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
         carbs_g: parseFloat(ing.carbs_g) || 0,
         fat_g: parseFloat(ing.fat_g) || 0,
         scaling_type: ing.scaling_type || 'flexible',
+        alternative_ingredient_ids: (ing._alternatives || []).map(a => a.ingredient_id),
       }
       if (ing._isNew) {
         const { data: inserted, error: err } = await supabase.from('meal_ingredients').insert(payload).select('id').single()
@@ -302,16 +294,6 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
         if (err) { setError(err.message); setSaving(false); return }
         saved.push({ ing, savedId: ing.id })
       }
-    }
-
-    // Persist alternatives: wipe and re-insert so additions/removals are always in sync.
-    const allIds = saved.map(s => s.savedId)
-    if (allIds.length > 0) {
-      await supabase.from('meal_ingredient_alternatives').delete().in('meal_ingredient_id', allIds)
-      const altRows = saved.flatMap(({ ing, savedId }) =>
-        (ing._alternatives || []).map(a => ({ meal_ingredient_id: savedId, ingredient_id: a.ingredient_id }))
-      )
-      if (altRows.length > 0) await supabase.from('meal_ingredient_alternatives').insert(altRows)
     }
 
     // Rebuild every calorie-tier version from the base recipe just saved, so ingredient
@@ -328,6 +310,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
         scaling_type: ing.scaling_type || 'flexible',
         ingredient_id: ing.ingredient_id || null,
         alternatives: (ing._alternatives || []).map(a => ({ ingredient_id: a.ingredient_id })),
+        alternative_ingredient_ids: (ing._alternatives || []).map(a => a.ingredient_id),
       }))
       try {
         await regenerateAllTiersForMeal(mealId, category, baseIngs, library, mealSplit)
