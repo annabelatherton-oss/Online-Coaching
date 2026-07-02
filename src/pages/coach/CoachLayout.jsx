@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import DarkModeToggle from '../../components/DarkModeToggle'
 
@@ -107,7 +107,19 @@ const navItems = [
 export default function CoachLayout() {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const mainRef = useRef(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Save scroll position when leaving a route, restore it when returning.
+  useEffect(() => {
+    const main = mainRef.current
+    if (!main) return
+    const key = `scroll:${location.pathname}`
+    const saved = sessionStorage.getItem(key)
+    if (saved) main.scrollTop = parseInt(saved, 10)
+    return () => { if (main) sessionStorage.setItem(key, String(main.scrollTop)) }
+  }, [location.pathname])
 
   async function handleLogout() {
     await signOut()
@@ -115,7 +127,7 @@ export default function CoachLayout() {
   }
 
   const Sidebar = () => (
-    <aside className="flex flex-col w-64 min-h-screen bg-white border-r border-pink-100 text-gray-700">
+    <aside className="flex flex-col w-64 h-full bg-white border-r border-pink-100 text-gray-700">
       {/* Logo */}
       <div className="flex items-center gap-3 px-6 py-5 border-b border-pink-100">
         <div className="w-8 h-8 rounded-lg bg-brand-400 flex items-center justify-center flex-shrink-0">
@@ -191,9 +203,9 @@ export default function CoachLayout() {
   )
 
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:flex">
+    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">
+      {/* Desktop sidebar — fixed height so it doesn't scroll with the page */}
+      <div className="hidden lg:flex flex-col flex-shrink-0">
         <Sidebar />
       </div>
 
@@ -210,8 +222,8 @@ export default function CoachLayout() {
         </div>
       )}
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Main content — scrolls independently of the sidebar */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
         <header className="flex items-center justify-between px-4 lg:px-6 py-4 bg-white border-b border-pink-100 sticky top-0 z-30">
           <button
@@ -231,8 +243,8 @@ export default function CoachLayout() {
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 p-4 lg:p-6">
+        {/* Page content — only this area scrolls */}
+        <main ref={mainRef} className="flex-1 overflow-y-auto p-4 lg:p-6">
           <Outlet />
         </main>
       </div>
