@@ -871,22 +871,19 @@ export default function PlanGroupEditor() {
                             mealSplit={mealSplit}
                             onSaved={(newTotals) => {
                               if (newTotals) {
+                                // Optimistic update — reflect the new totals immediately.
                                 setMealsById(prev => {
                                   const meal = prev[mealId]
                                   if (!meal) return prev
-                                  return {
-                                    ...prev,
-                                    [mealId]: {
-                                      ...meal,
-                                      meal_tier_versions: (meal.meal_tier_versions || []).map(v =>
-                                        v.calorie_tier === activeTier ? { ...v, ...newTotals } : v
-                                      ),
-                                    },
-                                  }
+                                  const existing = meal.meal_tier_versions || []
+                                  const updated = existing.some(v => Number(v.calorie_tier) === Number(activeTier))
+                                    ? existing.map(v => Number(v.calorie_tier) === Number(activeTier) ? { ...v, ...newTotals } : v)
+                                    : [...existing, { calorie_tier: activeTier, ...newTotals }]
+                                  return { ...prev, [mealId]: { ...meal, meal_tier_versions: updated } }
                                 })
-                              } else {
-                                refreshMeal(mealId)
                               }
+                              // Always re-fetch from DB so the display confirms the exact saved values.
+                              refreshMeal(mealId)
                             }}
                           />
                         </div>
