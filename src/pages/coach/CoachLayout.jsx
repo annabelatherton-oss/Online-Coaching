@@ -112,17 +112,13 @@ export default function CoachLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Save scroll position continuously so it's always up to date.
-  // Also save on cleanup (when navigating away) as a fallback in case no scroll event fired.
   useEffect(() => {
     const main = mainRef.current
     if (!main) return
     const key = `scroll:${location.pathname}`
     const save = () => sessionStorage.setItem(key, String(main.scrollTop))
     main.addEventListener('scroll', save, { passive: true })
-    return () => {
-      main.removeEventListener('scroll', save)
-      sessionStorage.setItem(key, String(main.scrollTop))
-    }
+    return () => main.removeEventListener('scroll', save)
   }, [location.pathname])
 
   // Restore scroll position after navigating back. Content loads async so poll
