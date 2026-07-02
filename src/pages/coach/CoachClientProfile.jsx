@@ -932,8 +932,8 @@ function MealPlanTab({ client, coachId }) {
   // (e.g. an allergy or dislike), via the "Make static" button below.
   const effectivePreworkoutId = staticFlags.preworkout_static ? staticEdits.preworkout_meal_id : (templateSlots.preworkout || null)
   const effectiveSnackId = staticFlags.evening_snack_static ? staticEdits.evening_snack_meal_id : (templateSlots.evening_snack || null)
-  const preworkoutTotal = mealMacros(effectivePreworkoutId, mealMap, tier, staticIngredientOverrides.preworkout_meal_id)
-  const snackTotal = mealMacros(effectiveSnackId, mealMap, tier, staticIngredientOverrides.evening_snack_meal_id)
+  const preworkoutTotal = mealMacros(effectivePreworkoutId, mealMap, tier, ingredientOverrides.preworkout)
+  const snackTotal = mealMacros(effectiveSnackId, mealMap, tier, ingredientOverrides.evening_snack)
 
   // Daily macro totals — one of each option (not both) plus the static meals. Each option is
   // compared against the calorie target independently, since the two can be different meals.
@@ -1313,7 +1313,7 @@ function MealPlanTab({ client, coachId }) {
               const mealId = isStatic ? (staticEdits[key] || '') : templateMealId
               const isExpanded = expandedSlots.has(key)
               const options = mealsByCategory[cat] || []
-              const keyOverrides = staticIngredientOverrides[key]
+              const keyOverrides = ingredientOverrides[templateKey]
               const macros = mealMacros(mealId, mealMap, tier, keyOverrides)
               const hasIngredientEdits = hasAnyOverride(keyOverrides)
               const missingTierVersion = mealId && tier && !tierVersionExists(mealId, mealMap, tier)
@@ -1367,12 +1367,12 @@ function MealPlanTab({ client, coachId }) {
                           overrides={keyOverrides}
                           library={library}
                           libraryById={libraryById}
-                          onQtyChange={(ingId, val) => staticHandlers.changeQty(key, ingId, val)}
-                          onRemove={ingId => staticHandlers.remove(key, ingId)}
-                          onRestore={ingId => staticHandlers.restore(key, ingId)}
-                          onAdd={newIng => staticHandlers.add(key, newIng)}
-                          onRemoveAdded={addedId => staticHandlers.removeAdded(key, addedId)}
-                          onRevertAll={() => staticHandlers.revertAll(key)}
+                          onQtyChange={(ingId, val) => slotHandlers.changeQty(templateKey, ingId, val)}
+                          onRemove={ingId => slotHandlers.remove(templateKey, ingId)}
+                          onRestore={ingId => slotHandlers.restore(templateKey, ingId)}
+                          onAdd={newIng => slotHandlers.add(templateKey, newIng)}
+                          onRemoveAdded={addedId => slotHandlers.removeAdded(templateKey, addedId)}
+                          onRevertAll={() => slotHandlers.revertAll(templateKey)}
                         />
                       ) : (
                         <p className="text-xs text-gray-400 dark:text-gray-500 py-2">No meal set in the plan template for this slot.</p>
