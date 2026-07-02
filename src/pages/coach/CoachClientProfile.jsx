@@ -1321,8 +1321,12 @@ function MealPlanTab({ client, coachId }) {
               return (
                 <div key={key} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
                   <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
-                    <button onClick={() => isStatic && mealId && toggleSlot(key)} className="flex-shrink-0">
-                      <svg className={`w-3.5 h-3.5 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''} ${!isStatic || !mealId ? 'opacity-0' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button onClick={() => {
+                      if (!mealId) return
+                      if (!isStatic) makeStatic(key, flagKey, templateMealId)
+                      toggleSlot(key)
+                    }} className="flex-shrink-0">
+                      <svg className={`w-3.5 h-3.5 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''} ${!mealId ? 'opacity-0' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </button>
