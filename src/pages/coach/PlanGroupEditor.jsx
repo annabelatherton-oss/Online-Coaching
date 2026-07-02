@@ -234,7 +234,7 @@ function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit, onSa
     }
     setSaving(false)
     load()
-    onSaved?.()
+    onSaved?.(totals)
   }
 
   if (loading) return <p className="text-xs text-gray-400 py-2 px-2">Loading ingredients…</p>
@@ -863,7 +863,32 @@ export default function PlanGroupEditor() {
                       </div>
                       {isEditingIngredients && (
                         <div className="mx-4 mb-2 bg-gray-50/60 dark:bg-gray-800/30 rounded-lg">
-                          <TierIngredientEditor mealId={mealId} tier={activeTier} category={slot.cat} coachId={profile.id} mealSplit={mealSplit} onSaved={() => refreshMeal(mealId)} />
+                          <TierIngredientEditor
+                            mealId={mealId}
+                            tier={activeTier}
+                            category={slot.cat}
+                            coachId={profile.id}
+                            mealSplit={mealSplit}
+                            onSaved={(newTotals) => {
+                              if (newTotals) {
+                                setMealsById(prev => {
+                                  const meal = prev[mealId]
+                                  if (!meal) return prev
+                                  return {
+                                    ...prev,
+                                    [mealId]: {
+                                      ...meal,
+                                      meal_tier_versions: (meal.meal_tier_versions || []).map(v =>
+                                        v.calorie_tier === activeTier ? { ...v, ...newTotals } : v
+                                      ),
+                                    },
+                                  }
+                                })
+                              } else {
+                                refreshMeal(mealId)
+                              }
+                            }}
+                          />
                         </div>
                       )}
                     </div>
