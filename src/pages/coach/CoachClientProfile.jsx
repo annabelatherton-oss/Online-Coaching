@@ -1322,11 +1322,10 @@ function MealPlanTab({ client, coachId }) {
                 <div key={key} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
                   <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
                     <button onClick={() => {
-                      if (!mealId) return
                       if (!isStatic) makeStatic(key, flagKey, templateMealId)
                       toggleSlot(key)
                     }} className="flex-shrink-0">
-                      <svg className={`w-3.5 h-3.5 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''} ${!mealId ? 'opacity-0' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className={`w-3.5 h-3.5 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </button>
@@ -1361,22 +1360,26 @@ function MealPlanTab({ client, coachId }) {
                       {isStatic ? 'Use template default' : 'Make static'}
                     </button>
                   </div>
-                  {isExpanded && isStatic && mealId && (
+                  {isExpanded && isStatic && (
                     <div className="ml-9 px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
-                      <TierIngredientList
-                        mealId={mealId}
-                        mealMap={mealMap}
-                        tier={tier}
-                        overrides={keyOverrides}
-                        library={library}
-                        libraryById={libraryById}
-                        onQtyChange={(ingId, val) => staticHandlers.changeQty(key, ingId, val)}
-                        onRemove={ingId => staticHandlers.remove(key, ingId)}
-                        onRestore={ingId => staticHandlers.restore(key, ingId)}
-                        onAdd={newIng => staticHandlers.add(key, newIng)}
-                        onRemoveAdded={addedId => staticHandlers.removeAdded(key, addedId)}
-                        onRevertAll={() => staticHandlers.revertAll(key)}
-                      />
+                      {mealId ? (
+                        <TierIngredientList
+                          mealId={mealId}
+                          mealMap={mealMap}
+                          tier={tier}
+                          overrides={keyOverrides}
+                          library={library}
+                          libraryById={libraryById}
+                          onQtyChange={(ingId, val) => staticHandlers.changeQty(key, ingId, val)}
+                          onRemove={ingId => staticHandlers.remove(key, ingId)}
+                          onRestore={ingId => staticHandlers.restore(key, ingId)}
+                          onAdd={newIng => staticHandlers.add(key, newIng)}
+                          onRemoveAdded={addedId => staticHandlers.removeAdded(key, addedId)}
+                          onRevertAll={() => staticHandlers.revertAll(key)}
+                        />
+                      ) : (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 py-2">Select a meal above to edit its ingredients.</p>
+                      )}
                     </div>
                   )}
                 </div>
