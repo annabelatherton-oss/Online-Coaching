@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
@@ -391,7 +391,8 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
             </thead>
             <tbody className="divide-y divide-pink-50 dark:divide-pink-900/10">
               {ingredients.map((ing, idx) => (
-                <tr key={ing.id || ing._tempId} className="hover:bg-pink-50/50 dark:hover:bg-pink-900/5 transition-colors">
+                <Fragment key={ing.id || ing._tempId}>
+                <tr className="hover:bg-pink-50/50 dark:hover:bg-pink-900/5 transition-colors">
                   <td className="px-3 py-2">
                     {ing.ingredient_id ? (
                       <div className="flex items-center gap-1.5">
@@ -466,9 +467,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
                     </button>
                   </td>
                 </tr>
-                {/* Alternatives sub-row — always shown so coaches can add swaps to any ingredient */}
-                {(
-                  <tr key={`${ing.id || ing._tempId}-alts`} className="bg-gray-50/50 dark:bg-gray-800/30">
+                <tr className="bg-gray-50/50 dark:bg-gray-800/30">
                     <td colSpan={8} className="px-4 pb-2 pt-0">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-xs text-gray-400 mr-0.5">↔ swap:</span>
@@ -514,7 +513,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
                       </div>
                     </td>
                   </tr>
-                )}
+                </Fragment>
               ))}
             </tbody>
             <tfoot>
