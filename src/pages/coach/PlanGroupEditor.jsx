@@ -313,6 +313,7 @@ export default function PlanGroupEditor() {
   const [forking, setForking] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [optimizing, setOptimizing] = useState(false)
   // `${mealId}:${tier}` of the ingredient editor currently open, or null.
   const [editingIngredients, setEditingIngredients] = useState(null)
 
@@ -511,6 +512,87 @@ export default function PlanGroupEditor() {
     setSaving(false)
   }
 
+  // For each week, tries every combination of (breakfast × lunch × dinner) for both option A and
+  // option B and picks whichever pairing gets the full day total closest to the tier's calorie and
+  // macro targets. Runs entirely in-memory (all meal macros are already loaded) so it's instant
+  // even across all 20 weeks. Marks every week dirty so the coach can review the selections and
+  // macro match before deciding to save.
+  function handleOptimize() {
+    if (activeTier == null) return
+    setOptimizing(true)
+
+    const tgtMacros = calcStandardMacros(activeTier)
+
+    // Meals that actually have a calorie-tier version — ones without can't contribute accurate
+    // macros so are excluded from the search.
+    const pool = {}
+    for (const cat of ['breakfast', 'lunch', 'dinner']) {
+      pool[cat] = (mealsByCategory[cat] || []).filter(m =>
+        (m.meal_tier_versions || []).some(v => v.calorie_tier === activeTier)
+      )
+    }
+
+    function macrosFor(id) {
+      return id ? mealMacros(id, activeTier) : null
+    }
+
+    // How far a day total (main meals + static meals) falls from the calorie and macro targets.
+    // Calories are weighted 4× as in the solver; lower score = better match.
+    function scoreCombo(mainIds, staticIds) {
+      let cal = 0, prot = 0, carbs = 0, fat = 0
+      for (const id of [...mainIds, ...staticIds]) {
+        const m = macrosFor(id)
+        if (!m) continue
+        cal += m.calories; prot += m.protein_g; carbs += m.carbs_g; fat += m.fat_g
+      }
+      return 4 * Math.abs(cal - activeTier)
+        + Math.abs(prot - tgtMacros.protein_g)
+        + Math.abs(carbs - tgtMacros.carbs_g)
+        + Math.abs(fat - tgtMacros.fat_g)
+    }
+
+    // Best breakfast+lunch+dinner combo for one day option. `exclude` keeps B from duplicating A.
+    function bestTriple(staticIds, excludeIds = new Set()) {
+      const bPool = pool['breakfast'].filter(m => !excludeIds.has(m.id))
+      const lPool = pool['lunch'].filter(m => !excludeIds.has(m.id))
+      const dPool = pool['dinner'].filter(m => !excludeIds.has(m.id))
+      const bs = bPool.length ? bPool : pool['breakfast']
+      const ls = lPool.length ? lPool : pool['lunch']
+      const ds = dPool.length ? dPool : pool['dinner']
+      if (!bs.length && !ls.length && !ds.length) return { b: null, l: null, d: null }
+      let best = Infinity, bRes = null, lRes = null, dRes = null
+      for (const bm of (bs.length ? bs : [{ id: null }])) {
+        for (const lm of (ls.length ? ls : [{ id: null }])) {
+          for (const dm of (ds.length ? ds : [{ id: null }])) {
+            const s = scoreCombo([bm.id, lm.id, dm.id].filter(Boolean), staticIds)
+            if (s < best) { best = s; bRes = bm.id; lRes = lm.id; dRes = dm.id }
+          }
+        }
+      }
+      return { b: bRes, l: lRes, d: dRes }
+    }
+
+    const optimized = currentWeeks.map(week => {
+      const staticIds = ['preworkout', 'evening_snack'].map(k => week.slots[k]).filter(Boolean)
+      const { b: b1, l: l1, d: d1 } = bestTriple(staticIds)
+      // Option B: exclude option A's picks where alternatives exist, to add variety
+      const { b: b2, l: l2, d: d2 } = bestTriple(staticIds, new Set([b1, l1, d1].filter(Boolean)))
+      return {
+        ...week,
+        slots: { ...week.slots, breakfast1: b1, lunch1: l1, dinner1: d1, breakfast2: b2, lunch2: l2, dinner2: d2 },
+      }
+    })
+
+    if (activeTier == null) {
+      setWeeks(optimized)
+    } else {
+      setTierWeeks(prev => ({ ...prev, [activeTier]: optimized }))
+    }
+    setDirty(new Set(optimized.map(w => w.templateId)))
+    setExpanded(new Set(optimized.map(w => w.weekNum)))
+    setOptimizing(false)
+  }
+
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
   return (
@@ -533,13 +615,25 @@ export default function PlanGroupEditor() {
             </span>
           )}
         </div>
-        <button
-          onClick={handleSaveDirty}
-          disabled={saving || dirty.size === 0}
-          className="btn-primary"
-        >
-          {saving ? 'Saving…' : `Save ${dirty.size} Week${dirty.size !== 1 ? 's' : ''}`}
-        </button>
+        <div className="flex items-center gap-2">
+          {activeTier != null && (
+            <button
+              onClick={handleOptimize}
+              disabled={optimizing || forking}
+              className="btn-secondary"
+              title="Try every combination of breakfast, lunch, and dinner meals and select whichever pairing gets each day closest to the calorie and macro targets."
+            >
+              {optimizing ? 'Optimising…' : 'Optimise combinations'}
+            </button>
+          )}
+          <button
+            onClick={handleSaveDirty}
+            disabled={saving || dirty.size === 0}
+            className="btn-primary"
+          >
+            {saving ? 'Saving…' : `Save ${dirty.size} Week${dirty.size !== 1 ? 's' : ''}`}
+          </button>
+        </div>
       </div>
 
       {saveError && (
