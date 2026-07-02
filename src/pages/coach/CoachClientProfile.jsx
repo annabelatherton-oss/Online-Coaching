@@ -861,6 +861,9 @@ function MealPlanTab({ client, coachId }) {
     const tmpl = tierTmpl || stdTmpl
     const tSlots = {}
     for (const s of (tmpl?.template_meal_slots || [])) tSlots[s.slot_type] = s.meal_id
+    // Static meals override the template default so the pinned meal auto-fills each week
+    if (asgn.preworkout_static && asgn.preworkout_meal_id) tSlots.preworkout = asgn.preworkout_meal_id
+    if (asgn.evening_snack_static && asgn.evening_snack_meal_id) tSlots.evening_snack = asgn.evening_snack_meal_id
     setTemplateSlots(tSlots)
     setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
     setIngredientOverrides(cwm?.ingredient_overrides || {})
@@ -1307,7 +1310,8 @@ function MealPlanTab({ client, coachId }) {
             {[
               { key: 'preworkout_meal_id', flagKey: 'preworkout_static', templateKey: 'preworkout', label: 'Pre-workout', cat: 'pre_workout' },
               { key: 'evening_snack_meal_id', flagKey: 'evening_snack_static', templateKey: 'evening_snack', label: 'Evening snack', cat: 'evening_snack' },
-            ].map(({ key, templateKey, label, cat }) => {
+            ].map(({ key, flagKey, templateKey, label, cat }) => {
+              const isStatic = staticFlags[flagKey]
               const mealId = editedSlots[templateKey] || ''
               const isExpanded = expandedSlots.has(key)
               const options = mealsByCategory[cat] || []
@@ -1339,6 +1343,13 @@ function MealPlanTab({ client, coachId }) {
                       <span className="text-xs text-amber-500 flex-shrink-0" title={`This meal has no saved ${tier} kcal version — showing its base portion instead. Generate it in the Meal Library to fix this.`}>No {tier} kcal version</span>
                     )}
                     {mealId && macros.cal > 0 && <span className="text-xs text-gray-400 tabular-nums flex-shrink-0">{Math.round(macros.cal)} kcal</span>}
+                    <button
+                      onClick={() => isStatic ? useTemplateDefault(key, flagKey) : makeStatic(key, flagKey, mealId)}
+                      className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex-shrink-0 whitespace-nowrap"
+                      title={isStatic ? 'Stop pinning — revert to the plan template each week' : 'Pin this meal so it carries forward every week automatically'}
+                    >
+                      {isStatic ? 'Unpin' : 'Pin'}
+                    </button>
                   </div>
                   {isExpanded && (
                     <div className="ml-9 px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
@@ -1366,6 +1377,15 @@ function MealPlanTab({ client, coachId }) {
               )
             })}
 
+            {staticDirty && (
+              <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 space-y-2 bg-gray-50/50 dark:bg-gray-800/30">
+                {staticError && <p className="text-sm font-medium text-red-500">{staticError}</p>}
+                <div className="flex items-center gap-3">
+                  <button onClick={handleSaveStaticMeals} disabled={savingStatic} className="btn-primary py-1.5 px-4 text-sm">{savingStatic ? 'Saving…' : 'Save pin'}</button>
+                  <button onClick={() => { setStaticFlags({ preworkout_static: !!assignment?.preworkout_static, evening_snack_static: !!assignment?.evening_snack_static }); setStaticDirty(false); setStaticError('') }} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Daily totals */}
