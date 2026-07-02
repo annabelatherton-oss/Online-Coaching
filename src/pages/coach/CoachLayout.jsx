@@ -111,14 +111,38 @@ export default function CoachLayout() {
   const mainRef = useRef(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  // Save scroll position when leaving a route, restore it when returning.
+  // Save scroll position continuously so it's always up to date.
+  // Also save on cleanup (when navigating away) as a fallback in case no scroll event fired.
   useEffect(() => {
     const main = mainRef.current
     if (!main) return
     const key = `scroll:${location.pathname}`
-    const saved = sessionStorage.getItem(key)
-    if (saved) main.scrollTop = parseInt(saved, 10)
-    return () => { if (main) sessionStorage.setItem(key, String(main.scrollTop)) }
+    const save = () => sessionStorage.setItem(key, String(main.scrollTop))
+    main.addEventListener('scroll', save, { passive: true })
+    return () => {
+      main.removeEventListener('scroll', save)
+      sessionStorage.setItem(key, String(main.scrollTop))
+    }
+  }, [location.pathname])
+
+  // Restore scroll position after navigating back. Content loads async so poll
+  // until scrollTop actually reaches the target (the page is tall enough).
+  useEffect(() => {
+    const main = mainRef.current
+    if (!main) return
+    const target = parseInt(sessionStorage.getItem(`scroll:${location.pathname}`) || '0', 10)
+    if (!target) return
+    let attempts = 0
+    const try_ = () => {
+      if (!mainRef.current) return
+      mainRef.current.scrollTop = target
+      if (mainRef.current.scrollTop < target - 5 && attempts < 30) {
+        attempts++
+        setTimeout(try_, 100)
+      }
+    }
+    const t = setTimeout(try_, 50)
+    return () => clearTimeout(t)
   }, [location.pathname])
 
   async function handleLogout() {

@@ -95,6 +95,17 @@ export default function MealsList() {
 
   useEffect(() => { loadMeals() }, [profile.id])
 
+  // After data loads and the list is in the DOM, restore any saved scroll position.
+  useEffect(() => {
+    if (loading) return
+    const saved = parseInt(sessionStorage.getItem(`scroll:${window.location.pathname}`) || '0', 10)
+    if (!saved) return
+    requestAnimationFrame(() => {
+      const main = document.querySelector('main')
+      if (main) main.scrollTop = saved
+    })
+  }, [loading])
+
   const mealSplit = normalizeMealSplit(profile.meal_split)
 
   const mealsNeedingTiers = meals.filter(
