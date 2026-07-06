@@ -90,6 +90,16 @@ function mealMacros(mealId, mealMap, tier, overridesForSlot) {
   return sumIngredientMacros(applyIngredientOverrides(meal.meal_ingredients || [], overridesForSlot))
 }
 
+function getIngredients(meal, tier, overrides) {
+  if (!meal) return []
+  let base = meal.meal_ingredients || []
+  if (tier) {
+    const v = (meal.meal_tier_versions || []).find(v => v.calorie_tier === tier)
+    if (v) base = v.meal_tier_ingredients || []
+  }
+  return applyIngredientOverrides(base, overrides)
+}
+
 function addMacros(a, b) {
   const az = a || { cal: 0, prot: 0, carb: 0, fat: 0 }
   const bz = b || { cal: 0, prot: 0, carb: 0, fat: 0 }
@@ -172,63 +182,150 @@ function SwapModal({ slotKey, label, cat, currentMealId, mealMap, mealsByCategor
 // ─── Meal slot card ───────────────────────────────────────────────────────────
 
 function MealSlotCard({ slotKey, label, mealId, templateMealId, mealMap, mealsByCategory, cat, tier, overrides, onSwap, onRevert }) {
+  const [expanded, setExpanded] = useState(false)
+
   const meal = mealId ? mealMap[mealId] : null
   const macros = mealMacros(mealId, mealMap, tier, overrides)
+  const ingredients = meal ? getIngredients(meal, tier, overrides) : []
   const isCustom = (mealId || null) !== (templateMealId || null)
-  const hasAlternatives = (mealsByCategory[cat] || []).filter(m => m.id !== mealId).length > 0
   const hasIngredientEdits = hasAnyOverride(overrides)
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 dark:border-gray-800/60 last:border-0">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider shrink-0">{label}</span>
-          {isCustom && (
-            <span className="text-xs text-brand-600 dark:text-brand-400 font-medium">Swapped</span>
-          )}
-          {hasIngredientEdits && !isCustom && (
-            <span className="text-xs text-blue-500">Adjusted</span>
+    <div className="border-b border-gray-100 dark:border-gray-800/60 last:border-0">
+      {/* Header */}
+      <div className="px-4 pt-3 pb-2">
+        <div className="flex items-start gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-0.5">
+              <span className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{label}</span>
+              {isCustom && <span className="text-xs text-brand-600 dark:text-brand-400 font-medium">Swapped</span>}
+              {hasIngredientEdits && <span className="text-xs text-blue-500">Adjusted</span>}
+            </div>
+
+            {meal ? (
+              <>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{meal.name}</p>
+                {macros && (
+                  <div className="flex items-center gap-2.5 text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
+                    <span className="font-semibold text-gray-600 dark:text-gray-300">{Math.round(macros.cal)} kcal</span>
+                    <span>{Math.round(macros.carb)}g C</span>
+                    <span>{Math.round(macros.prot)}g P</span>
+                    <span>{Math.round(macros.fat)}g F</span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-gray-400 dark:text-gray-500 italic">No meal set</p>
+            )}
+          </div>
+
+          {/* Swap / revert buttons */}
+          {mealId && (
+            <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+              {isCustom && (
+                <button onClick={() => onRevert(slotKey)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                  Revert
+                </button>
+              )}
+              <button
+                onClick={() => onSwap(slotKey, label, cat)}
+                className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700 flex items-center gap-1"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+                Swap
+              </button>
+            </div>
           )}
         </div>
-        {meal ? (
-          <>
-            <p className="text-sm font-medium text-gray-900 dark:text-white mt-0.5 truncate">{meal.name}</p>
-            {macros && (
-              <div className="flex items-center gap-2.5 text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
-                <span className="font-semibold text-gray-600 dark:text-gray-300">{Math.round(macros.cal)} kcal</span>
-                <span>{Math.round(macros.carb)}g C</span>
-                <span>{Math.round(macros.prot)}g P</span>
-                <span>{Math.round(macros.fat)}g F</span>
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 italic">No meal set</p>
+
+        {/* Ingredient summary — always visible */}
+        {ingredients.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5">
+            {ingredients.map((ing, i) => (
+              <span key={ing.id || i} className="text-xs text-gray-500 dark:text-gray-400">
+                {Math.round(parseFloat(ing.quantity_g))}g {ing.name}{i < ingredients.length - 1 ? ' ·' : ''}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Expand toggle */}
+        {meal && (
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="mt-2 text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium flex items-center gap-1"
+          >
+            <svg
+              className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            {expanded ? 'Hide details' : 'View recipe'}
+          </button>
         )}
       </div>
 
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {isCustom && (
-          <button
-            onClick={() => onRevert(slotKey)}
-            className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-          >
-            Revert
-          </button>
-        )}
-        {mealId && (
-          <button
-            onClick={() => onSwap(slotKey, label, cat)}
-            className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 flex items-center gap-1"
-            title="Swap this meal"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-            </svg>
-            Swap
-          </button>
-        )}
-      </div>
+      {/* Expanded recipe details */}
+      {expanded && meal && (
+        <div className="mx-4 mb-3 rounded-xl bg-gray-50 dark:bg-gray-800/40 overflow-hidden">
+
+          {/* Photo */}
+          {meal.photo_url && (
+            <img
+              src={meal.photo_url}
+              alt={meal.name}
+              className="w-full max-h-52 object-cover"
+            />
+          )}
+
+          <div className="p-3 space-y-4">
+            {/* Ingredient table with macros */}
+            {ingredients.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Ingredients</p>
+                <div className="space-y-1.5">
+                  {ingredients.map((ing, i) => (
+                    <div key={ing.id || i} className="flex items-center gap-2 text-xs">
+                      <span className="flex-1 text-gray-700 dark:text-gray-300 truncate">{ing.name}</span>
+                      <span className="tabular-nums text-gray-500 dark:text-gray-400 w-10 text-right">{Math.round(parseFloat(ing.quantity_g))}g</span>
+                      <span className="tabular-nums text-gray-400 dark:text-gray-500 w-14 text-right">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
+                      <span className="tabular-nums text-gray-400 dark:text-gray-500 w-8 text-right">{Math.round(parseFloat(ing.carbs_g) || 0)}c</span>
+                      <span className="tabular-nums text-gray-400 dark:text-gray-500 w-8 text-right">{Math.round(parseFloat(ing.protein_g) || 0)}p</span>
+                      <span className="tabular-nums text-gray-400 dark:text-gray-500 w-8 text-right">{Math.round(parseFloat(ing.fat_g) || 0)}f</span>
+                    </div>
+                  ))}
+                  {/* Totals row */}
+                  {macros && (
+                    <div className="flex items-center gap-2 text-xs font-semibold border-t border-gray-200 dark:border-gray-700 pt-1.5 mt-1">
+                      <span className="flex-1 text-gray-700 dark:text-gray-300">Total</span>
+                      <span className="tabular-nums text-gray-500 dark:text-gray-400 w-10 text-right" />
+                      <span className="tabular-nums text-gray-700 dark:text-gray-200 w-14 text-right">{Math.round(macros.cal)} kcal</span>
+                      <span className="tabular-nums text-gray-500 dark:text-gray-400 w-8 text-right">{Math.round(macros.carb)}c</span>
+                      <span className="tabular-nums text-gray-500 dark:text-gray-400 w-8 text-right">{Math.round(macros.prot)}p</span>
+                      <span className="tabular-nums text-gray-500 dark:text-gray-400 w-8 text-right">{Math.round(macros.fat)}f</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Cooking instructions */}
+            {meal.instructions && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">How to make it</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{meal.instructions}</p>
+              </div>
+            )}
+
+            {!meal.instructions && ingredients.length === 0 && (
+              <p className="text-xs text-gray-400 italic">No recipe details added yet.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -250,7 +347,7 @@ export default function ClientMealPlan() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [saved, setSaved] = useState(false)
-  const [swapModal, setSwapModal] = useState(null) // { slotKey, label, cat }
+  const [swapModal, setSwapModal] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -282,7 +379,7 @@ export default function ClientMealPlan() {
       setWeekNumber(effectiveWeek)
 
       const { data: mealsData } = await supabase.from('meals').select(`
-        id, name, category,
+        id, name, category, instructions, photo_url,
         meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id),
         meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
           meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id))
@@ -353,22 +450,14 @@ export default function ClientMealPlan() {
 
   function handleSwapSelect(slotKey, newMealId) {
     setEditedSlots(prev => ({ ...prev, [slotKey]: newMealId }))
-    setIngredientOverrides(prev => {
-      const next = { ...prev }
-      delete next[slotKey]
-      return next
-    })
+    setIngredientOverrides(prev => { const n = { ...prev }; delete n[slotKey]; return n })
     setSlotsDirty(true)
     setSwapModal(null)
   }
 
   function handleRevert(slotKey) {
     setEditedSlots(prev => ({ ...prev, [slotKey]: templateSlots[slotKey] || null }))
-    setIngredientOverrides(prev => {
-      const next = { ...prev }
-      delete next[slotKey]
-      return next
-    })
+    setIngredientOverrides(prev => { const n = { ...prev }; delete n[slotKey]; return n })
     setSlotsDirty(true)
   }
 
@@ -417,7 +506,6 @@ export default function ClientMealPlan() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Meal Plan</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Your weekly meals and daily targets.</p>
@@ -441,11 +529,8 @@ export default function ClientMealPlan() {
       <div className="card p-0 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">This week's meals</h2>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-            You have two options per meal — choose whichever you fancy each day.
-          </p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Two options per meal — pick whichever you fancy each day.</p>
         </div>
-
         {MEAL_SLOTS.map(slot => (
           <MealSlotCard
             key={slot.key}
@@ -470,7 +555,7 @@ export default function ClientMealPlan() {
           <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Pre-workout &amp; Evening snack</h2>
           </div>
-          {EXTRA_SLOTS.map(slot => (
+          {EXTRA_SLOTS.map(slot =>
             editedSlots[slot.key] ? (
               <MealSlotCard
                 key={slot.key}
@@ -487,7 +572,7 @@ export default function ClientMealPlan() {
                 onRevert={handleRevert}
               />
             ) : null
-          ))}
+          )}
         </div>
       )}
 
@@ -495,7 +580,6 @@ export default function ClientMealPlan() {
       {(opt1Total.cal > 0 || opt2Total.cal > 0) && (
         <div className="card space-y-3">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Daily totals</h2>
-
           {opt1Total.cal > 0 && (
             <div className="flex items-center justify-between">
               <div>
@@ -510,7 +594,6 @@ export default function ClientMealPlan() {
               </div>
             </div>
           )}
-
           {opt2Sub.cal > 0 && (
             <>
               <div className="border-t border-gray-100 dark:border-gray-800" />
@@ -528,7 +611,6 @@ export default function ClientMealPlan() {
               </div>
             </>
           )}
-
           {assignment.calorie_target && (
             <>
               <div className="border-t border-gray-100 dark:border-gray-800" />
@@ -550,20 +632,12 @@ export default function ClientMealPlan() {
               {saveError && <p className="text-xs text-red-500 mt-0.5">{saveError}</p>}
             </div>
             <button
-              onClick={() => {
-                setEditedSlots({ ...templateSlots })
-                setIngredientOverrides({})
-                setSlotsDirty(false)
-              }}
+              onClick={() => { setEditedSlots({ ...templateSlots }); setIngredientOverrides({}); setSlotsDirty(false) }}
               className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 flex-shrink-0"
             >
               Reset
             </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="btn-primary py-1.5 px-4 text-sm flex-shrink-0"
-            >
+            <button onClick={handleSave} disabled={saving} className="btn-primary py-1.5 px-4 text-sm flex-shrink-0">
               {saving ? 'Saving…' : 'Save changes'}
             </button>
           </div>
@@ -576,7 +650,6 @@ export default function ClientMealPlan() {
         </div>
       )}
 
-      {/* Swap modal */}
       {swapModal && (
         <SwapModal
           slotKey={swapModal.slotKey}
