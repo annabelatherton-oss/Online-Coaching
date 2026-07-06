@@ -203,17 +203,7 @@ function MealSlotCard({ slotKey, label, mealId, templateMealId, mealMap, mealsBy
             </div>
 
             {meal ? (
-              <>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{meal.name}</p>
-                {macros && (
-                  <div className="flex items-center gap-2.5 text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
-                    <span className="font-semibold text-gray-600 dark:text-gray-300">{Math.round(macros.cal)} kcal</span>
-                    <span>{Math.round(macros.carb)}g C</span>
-                    <span>{Math.round(macros.prot)}g P</span>
-                    <span>{Math.round(macros.fat)}g F</span>
-                  </div>
-                )}
-              </>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{meal.name}</p>
             ) : (
               <p className="text-sm text-gray-400 dark:text-gray-500 italic">No meal set</p>
             )}
@@ -240,13 +230,16 @@ function MealSlotCard({ slotKey, label, mealId, templateMealId, mealMap, mealsBy
           )}
         </div>
 
-        {/* Ingredient summary — always visible */}
+        {/* Ingredient list — always visible */}
         {ingredients.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5">
+          <div className="mt-2 space-y-1">
             {ingredients.map((ing, i) => (
-              <span key={ing.id || i} className="text-xs text-gray-500 dark:text-gray-400">
-                {Math.round(parseFloat(ing.quantity_g))}g {ing.name}{i < ingredients.length - 1 ? ' ·' : ''}
-              </span>
+              <div key={ing.id || i} className="flex items-baseline gap-2">
+                <span className="text-xs font-medium text-gray-400 dark:text-gray-500 w-10 flex-shrink-0 tabular-nums text-right">
+                  {Math.round(parseFloat(ing.quantity_g))}g
+                </span>
+                <span className="text-sm text-gray-700 dark:text-gray-300">{ing.name}</span>
+              </div>
             ))}
           </div>
         )}
