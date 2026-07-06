@@ -498,7 +498,7 @@ export default function ClientMealPlan() {
   }
 
   return (
-    <div className="space-y-8 max-w-2xl">
+    <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Meal Plan</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Your weekly meals and daily targets.</p>
@@ -526,7 +526,7 @@ export default function ClientMealPlan() {
         return (
           <section key={group.label}>
             <h2 className="text-base font-bold text-gray-900 dark:text-white mb-3">{group.label}</h2>
-            <div className={visibleSlots.length > 1 ? 'grid grid-cols-2 gap-3' : ''}>
+            <div className="grid grid-cols-2 gap-3">
               {visibleSlots.map(slot => (
                 <MealCard
                   key={slot.key}
