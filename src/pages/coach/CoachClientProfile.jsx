@@ -39,6 +39,11 @@ function OverviewTab({ client, onSaved }) {
     access_weeks: client.access_weeks || 4,
     is_paused: client.is_paused || false,
     collect_measurements: client.collect_measurements || false,
+    top_lifts: [
+      client.top_lifts?.[0]?.name || '',
+      client.top_lifts?.[1]?.name || '',
+      client.top_lifts?.[2]?.name || '',
+    ],
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -93,6 +98,7 @@ function OverviewTab({ client, onSaved }) {
       access_weeks: parseInt(form.access_weeks),
       is_paused: form.is_paused,
       collect_measurements: form.collect_measurements,
+      top_lifts: form.top_lifts.filter(n => n.trim()).map(name => ({ name: name.trim() })),
     }).eq('id', client.id)
     setSaving(false)
     if (err) { setError(err.message); return }
@@ -133,6 +139,25 @@ function OverviewTab({ client, onSaved }) {
           <input id="collect_measurements" type="checkbox" checked={form.collect_measurements} onChange={e => set('collect_measurements', e.target.checked)} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
           <label htmlFor="collect_measurements" className="text-sm text-gray-700 dark:text-gray-300">Collect measurements in check-ins (waist, hips)</label>
         </div>
+      </div>
+
+      <div className="card space-y-4">
+        <div>
+          <h3 className="font-semibold text-gray-900 dark:text-white">Top 3 Lifts</h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Client will log weight and reps for these in their weekly check-in.</p>
+        </div>
+        {[0, 1, 2].map(i => (
+          <div key={i}>
+            <label className="label">Lift {i + 1}</label>
+            <input
+              className="input"
+              type="text"
+              value={form.top_lifts[i]}
+              onChange={e => set('top_lifts', form.top_lifts.map((v, j) => j === i ? e.target.value : v))}
+              placeholder={['e.g. Squat', 'e.g. Bench Press', 'e.g. Deadlift'][i]}
+            />
+          </div>
+        ))}
       </div>
 
       <div className="card space-y-4">
@@ -1532,6 +1557,23 @@ function CheckinsTab({ clientId, collectMeasurements }) {
             )}
           </div>
 
+          {c.lift_results?.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Lifts</p>
+              <div className="grid grid-cols-3 gap-3">
+                {c.lift_results.map((l, i) => l?.name && (
+                  <div key={i} className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{l.name}</p>
+                    <p className="text-base font-semibold text-gray-900 dark:text-white">
+                      {l.weight_kg ? `${l.weight_kg} kg` : '—'}
+                      {l.reps ? <span className="text-xs font-normal text-gray-500 dark:text-gray-400 ml-1">× {l.reps}</span> : null}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {c.notes && (
             <div>
               <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">Notes</p>
@@ -1557,7 +1599,7 @@ export default function CoachClientProfile() {
     const { data, error: err } = await supabase.from('clients').select(`
       id, coach_id, profile_id, goal, current_calories, current_protein,
       current_carbs, current_fat, start_date, access_weeks, access_expires_at,
-      is_active, is_paused, notes, created_at, tags, collect_measurements,
+      is_active, is_paused, notes, created_at, tags, collect_measurements, top_lifts,
       profiles!clients_profile_id_fkey(full_name, email)
     `).eq('id', clientId).eq('coach_id', profile.id).single()
     if (err || !data) setError('Client not found or you do not have access.')

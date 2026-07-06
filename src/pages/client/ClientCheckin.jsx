@@ -38,6 +38,7 @@ export default function ClientCheckin() {
   const [clientData, setClientData] = useState(null)
   const [weekNumber, setWeekNumber] = useState(null)
   const [collectMeasurements, setCollectMeasurements] = useState(false)
+  const [topLifts, setTopLifts] = useState([])
   const [existing, setExisting] = useState(null)
   const [form, setForm] = useState({
     weight_kg: '',
@@ -47,6 +48,7 @@ export default function ClientCheckin() {
     sleep_quality: null,
     adherence: null,
     notes: '',
+    lift_results: [],
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -56,12 +58,14 @@ export default function ClientCheckin() {
     async function load() {
       const { data: clientRow } = await supabase
         .from('clients')
-        .select('id, coach_id, collect_measurements')
+        .select('id, coach_id, collect_measurements, top_lifts')
         .eq('profile_id', session.user.id)
         .single()
       if (!clientRow) { setLoading(false); return }
       setClientData(clientRow)
       setCollectMeasurements(!!clientRow.collect_measurements)
+      const lifts = (clientRow.top_lifts || []).filter(l => l?.name)
+      setTopLifts(lifts)
 
       const { data: asgn } = await supabase
         .from('client_plan_assignments')
@@ -96,7 +100,8 @@ export default function ClientCheckin() {
 
       if (checkin) {
         setExisting(checkin)
-        setForm({
+        setForm(f => ({
+          ...f,
           weight_kg:     checkin.weight_kg    ?? '',
           waist_cm:      checkin.waist_cm     ?? '',
           hips_cm:       checkin.hips_cm      ?? '',
@@ -104,7 +109,8 @@ export default function ClientCheckin() {
           sleep_quality: checkin.sleep_quality ?? null,
           adherence:     checkin.adherence    ?? null,
           notes:         checkin.notes        ?? '',
-        })
+          lift_results:  checkin.lift_results ?? [],
+        }))
       }
       setLoading(false)
     }
@@ -112,6 +118,14 @@ export default function ClientCheckin() {
   }, [session.user.id])
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
+
+  function setLift(index, key, value) {
+    setForm(f => {
+      const results = [...(f.lift_results || [])]
+      results[index] = { ...results[index], name: topLifts[index]?.name, [key]: value }
+      return { ...f, lift_results: results }
+    })
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -130,6 +144,7 @@ export default function ClientCheckin() {
       sleep_quality: form.sleep_quality,
       adherence:     form.adherence,
       notes:         form.notes || null,
+      lift_results:  form.lift_results?.length ? form.lift_results : null,
     }
 
     const { error: err } = existing
@@ -209,6 +224,46 @@ export default function ClientCheckin() {
             {form.adherence && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 text-center">{RATING_LABELS.adherence[form.adherence]}</p>}
           </div>
         </div>
+
+        {/* Top lifts */}
+        {topLifts.length > 0 && (
+          <div className="card space-y-4">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">This week's lifts</h2>
+            {topLifts.map((lift, i) => {
+              const result = form.lift_results?.[i] || {}
+              return (
+                <div key={i}>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{lift.name}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label">Weight (kg)</label>
+                      <input
+                        className="input"
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={result.weight_kg ?? ''}
+                        onChange={e => setLift(i, 'weight_kg', e.target.value)}
+                        placeholder="e.g. 80"
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Reps</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="1"
+                        value={result.reps ?? ''}
+                        onChange={e => setLift(i, 'reps', e.target.value)}
+                        placeholder="e.g. 5"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Notes */}
         <div className="card space-y-3">

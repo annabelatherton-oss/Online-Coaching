@@ -1,6 +1,9 @@
 -- Add per-client measurement collection flag
 alter table clients add column if not exists collect_measurements boolean default false not null;
 
+-- Coach-assigned top 3 lifts for this client's check-in (array of {name})
+alter table clients add column if not exists top_lifts jsonb default '[]'::jsonb not null;
+
 -- Weekly check-in submissions
 create table if not exists client_checkins (
   id              uuid        primary key default gen_random_uuid(),
@@ -16,6 +19,7 @@ create table if not exists client_checkins (
   sleep_quality   int         check (sleep_quality between 1 and 5),
   adherence       int         check (adherence between 1 and 5),
   notes           text,
+  lift_results    jsonb,
   unique(client_id, week_number)
 );
 
