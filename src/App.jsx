@@ -17,6 +17,7 @@ import CoachSettings from './pages/coach/CoachSettings'
 import ClientLayout from './pages/client/ClientLayout'
 import ClientDashboard from './pages/client/ClientDashboard'
 import ClientProfile from './pages/client/ClientProfile'
+import ClientMealPlan from './pages/client/ClientMealPlan'
 
 export default function App() {
   return (
@@ -60,6 +61,7 @@ export default function App() {
           >
             <Route index element={<ClientDashboard />} />
             <Route path="profile" element={<ClientProfile />} />
+            <Route path="meals" element={<ClientMealPlan />} />
           </Route>
 
           {/* Default redirect */}
