@@ -1341,7 +1341,7 @@ function MealPlanTab({ client, coachId }) {
                       className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex-shrink-0 whitespace-nowrap"
                       title={isStatic ? 'Stop pinning — revert to the plan template each week' : 'Pin this meal so it carries forward every week automatically'}
                     >
-                      {isStatic ? 'Unpin' : 'Pin'}
+                      {isStatic ? 'Use template default' : 'Make static'}
                     </button>
                   </div>
                   {isExpanded && (
@@ -1374,7 +1374,7 @@ function MealPlanTab({ client, coachId }) {
               <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 space-y-2 bg-gray-50/50 dark:bg-gray-800/30">
                 {staticError && <p className="text-sm font-medium text-red-500">{staticError}</p>}
                 <div className="flex items-center gap-3">
-                  <button onClick={handleSaveStaticMeals} disabled={savingStatic} className="btn-primary py-1.5 px-4 text-sm">{savingStatic ? 'Saving…' : 'Save pin'}</button>
+                  <button onClick={handleSaveStaticMeals} disabled={savingStatic} className="btn-primary py-1.5 px-4 text-sm">{savingStatic ? 'Saving…' : 'Save static meals'}</button>
                   <button onClick={() => { setStaticFlags({ preworkout_static: !!assignment?.preworkout_static, evening_snack_static: !!assignment?.evening_snack_static }); setStaticDirty(false); setStaticError('') }} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
                 </div>
               </div>
