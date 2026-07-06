@@ -397,7 +397,9 @@ export default function PlanGroupEditor() {
     const t = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
     let complete = true
     for (const key of keys) {
-      const m = mealMacros(week.slots[key], tier)
+      const slotId = week.slots[key]
+      if (!slotId) continue  // empty slot — don't flag as incomplete
+      const m = mealMacros(slotId, tier)
       if (!m) { complete = false; continue }
       t.calories += m.calories
       t.protein_g += m.protein_g
