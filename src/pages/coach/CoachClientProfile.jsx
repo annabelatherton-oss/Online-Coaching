@@ -832,7 +832,6 @@ function MealPlanTab({ client, coachId }) {
   const [mealMap, setMealMap] = useState({})
   const [library, setLibrary] = useState([])
   const [ingredientOverrides, setIngredientOverrides] = useState({})
-  const [staticIngredientOverrides, setStaticIngredientOverrides] = useState({})
   const [expandedSlots, setExpandedSlots] = useState(new Set())
   const [staticEdits, setStaticEdits] = useState({ preworkout_meal_id: null, evening_snack_meal_id: null })
   const [staticFlags, setStaticFlags] = useState({ preworkout_static: false, evening_snack_static: false })
@@ -908,7 +907,6 @@ function MealPlanTab({ client, coachId }) {
         preworkout_static: !!asgn.preworkout_static,
         evening_snack_static: !!asgn.evening_snack_static,
       })
-      setStaticIngredientOverrides(asgn.static_ingredient_overrides || {})
       if (pg) await loadWeekSlots(asgn, asgn.week_override ?? pg.current_week, pg.id)
     }
     setLoading(false)
@@ -917,7 +915,7 @@ function MealPlanTab({ client, coachId }) {
   const libraryById = Object.fromEntries(library.map(l => [l.id, l]))
 
   const slotHandlers = makeOverrideHandlers(setIngredientOverrides, setSlotsDirty)
-  const staticHandlers = makeOverrideHandlers(setStaticIngredientOverrides, setStaticDirty)
+
 
   useEffect(() => { load() }, [client.id])
 
@@ -1013,7 +1011,6 @@ function MealPlanTab({ client, coachId }) {
       evening_snack_meal_id: staticEdits.evening_snack_meal_id || null,
       preworkout_static: staticFlags.preworkout_static,
       evening_snack_static: staticFlags.evening_snack_static,
-      static_ingredient_overrides: staticIngredientOverrides,
     }).eq('id', assignment.id)
     setSavingStatic(false); setStaticDirty(false)
   }
@@ -1026,10 +1023,6 @@ function MealPlanTab({ client, coachId }) {
 
   function useTemplateDefault(key, flagKey) {
     setStaticFlags(prev => ({ ...prev, [flagKey]: false }))
-    setStaticIngredientOverrides(prev => {
-      const { [key]: _omit, ...rest } = prev
-      return rest
-    })
     setStaticDirty(true)
   }
 
