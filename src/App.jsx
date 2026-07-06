@@ -18,6 +18,7 @@ import ClientLayout from './pages/client/ClientLayout'
 import ClientDashboard from './pages/client/ClientDashboard'
 import ClientProfile from './pages/client/ClientProfile'
 import ClientMealPlan from './pages/client/ClientMealPlan'
+import ClientCheckin from './pages/client/ClientCheckin'
 
 export default function App() {
   return (
@@ -62,6 +63,7 @@ export default function App() {
             <Route index element={<ClientDashboard />} />
             <Route path="profile" element={<ClientProfile />} />
             <Route path="meals" element={<ClientMealPlan />} />
+            <Route path="checkin" element={<ClientCheckin />} />
           </Route>
 
           {/* Default redirect */}

@@ -7,7 +7,13 @@ import WeightChart from '../../components/WeightChart'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 
-const TABS = ['Overview', 'Meal Plan', 'Weight', 'Measurements', 'Photos', 'Notes']
+const TABS = ['Overview', 'Meal Plan', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
+
+const CHECKIN_RATING_LABELS = {
+  energy_level:  ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
+  sleep_quality: ['', 'Very poor', 'Poor', 'OK', 'Good', 'Excellent'],
+  adherence:     ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
+}
 
 function StatusBadge({ client }) {
   const now = new Date()
@@ -32,6 +38,7 @@ function OverviewTab({ client, onSaved }) {
     start_date: client.start_date ? client.start_date.split('T')[0] : '',
     access_weeks: client.access_weeks || 4,
     is_paused: client.is_paused || false,
+    collect_measurements: client.collect_measurements || false,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -85,6 +92,7 @@ function OverviewTab({ client, onSaved }) {
       start_date: form.start_date,
       access_weeks: parseInt(form.access_weeks),
       is_paused: form.is_paused,
+      collect_measurements: form.collect_measurements,
     }).eq('id', client.id)
     setSaving(false)
     if (err) { setError(err.message); return }
@@ -120,6 +128,10 @@ function OverviewTab({ client, onSaved }) {
         <div className="flex items-center gap-2">
           <input id="is_paused" type="checkbox" checked={form.is_paused} onChange={e => set('is_paused', e.target.checked)} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
           <label htmlFor="is_paused" className="text-sm text-gray-700 dark:text-gray-300">Pause client access</label>
+        </div>
+        <div className="flex items-center gap-2">
+          <input id="collect_measurements" type="checkbox" checked={form.collect_measurements} onChange={e => set('collect_measurements', e.target.checked)} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
+          <label htmlFor="collect_measurements" className="text-sm text-gray-700 dark:text-gray-300">Collect measurements in check-ins (waist, hips)</label>
         </div>
       </div>
 
@@ -1444,6 +1456,94 @@ function MealPlanTab({ client, coachId }) {
   )
 }
 
+function CheckinsTab({ clientId, collectMeasurements }) {
+  const [checkins, setCheckins] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase.from('client_checkins').select('*').eq('client_id', clientId).order('week_number', { ascending: false })
+      setCheckins(data || [])
+      setLoading(false)
+    }
+    load()
+  }, [clientId])
+
+  function fmtDate(d) { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) }
+
+  if (loading) return <LoadingSpinner size="lg" className="py-12" />
+
+  if (checkins.length === 0) {
+    return (
+      <div className="card text-center py-10">
+        <p className="text-gray-400 dark:text-gray-500 text-sm">No check-ins submitted yet.</p>
+        <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Check-ins appear here once the client submits their weekly form.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      {checkins.map(c => (
+        <div key={c.id} className="card space-y-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Week {c.week_number}</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500">{fmtDate(c.updated_at || c.submitted_at)}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {c.weight_kg != null && (
+              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Weight</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.weight_kg} <span className="text-sm font-normal text-gray-500">kg</span></p>
+              </div>
+            )}
+            {collectMeasurements && c.waist_cm != null && (
+              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Waist</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.waist_cm} <span className="text-sm font-normal text-gray-500">cm</span></p>
+              </div>
+            )}
+            {collectMeasurements && c.hips_cm != null && (
+              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hips</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.hips_cm} <span className="text-sm font-normal text-gray-500">cm</span></p>
+              </div>
+            )}
+            {c.energy_level != null && (
+              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Energy</p>
+                <p className="text-base font-semibold text-gray-900 dark:text-white">{c.energy_level}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.energy_level[c.energy_level]}</span></p>
+              </div>
+            )}
+            {c.sleep_quality != null && (
+              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Sleep</p>
+                <p className="text-base font-semibold text-gray-900 dark:text-white">{c.sleep_quality}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.sleep_quality[c.sleep_quality]}</span></p>
+              </div>
+            )}
+            {c.adherence != null && (
+              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Adherence</p>
+                <p className="text-base font-semibold text-gray-900 dark:text-white">{c.adherence}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.adherence[c.adherence]}</span></p>
+              </div>
+            )}
+          </div>
+
+          {c.notes && (
+            <div>
+              <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">Notes</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{c.notes}</p>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function CoachClientProfile() {
   const { clientId } = useParams()
   const navigate = useNavigate()
@@ -1457,7 +1557,7 @@ export default function CoachClientProfile() {
     const { data, error: err } = await supabase.from('clients').select(`
       id, coach_id, profile_id, goal, current_calories, current_protein,
       current_carbs, current_fat, start_date, access_weeks, access_expires_at,
-      is_active, is_paused, notes, created_at, tags,
+      is_active, is_paused, notes, created_at, tags, collect_measurements,
       profiles!clients_profile_id_fkey(full_name, email)
     `).eq('id', clientId).eq('coach_id', profile.id).single()
     if (err || !data) setError('Client not found or you do not have access.')
@@ -1506,12 +1606,13 @@ export default function CoachClientProfile() {
       </div>
 
       <div>
-        {activeTab === 'Overview' && <OverviewTab client={client} onSaved={loadClient} />}
-        {activeTab === 'Meal Plan' && <MealPlanTab client={client} coachId={profile.id} />}
-        {activeTab === 'Weight' && <WeightTab clientId={client.id} />}
+        {activeTab === 'Overview'    && <OverviewTab client={client} onSaved={loadClient} />}
+        {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} />}
+        {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} />}
+        {activeTab === 'Weight'     && <WeightTab clientId={client.id} />}
         {activeTab === 'Measurements' && <MeasurementsTab clientId={client.id} />}
-        {activeTab === 'Photos' && <PhotosTab clientId={client.id} />}
-        {activeTab === 'Notes' && <NotesTab client={client} />}
+        {activeTab === 'Photos'     && <PhotosTab clientId={client.id} />}
+        {activeTab === 'Notes'      && <NotesTab client={client} />}
       </div>
     </div>
   )
