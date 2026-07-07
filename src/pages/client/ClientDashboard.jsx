@@ -99,18 +99,19 @@ export default function ClientDashboard() {
           />
         </Link>
 
-        <PlaceholderCard
-          title="This Week's Meal Plan"
-          subtitle="Your personalised nutrition for the week"
-          color="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
-          comingSoon
-          icon={
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          }
-        />
+        <Link to="/client/meals">
+          <PlaceholderCard
+            title="This Week's Meal Plan"
+            subtitle="Your personalised nutrition for the week"
+            color="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            }
+          />
+        </Link>
 
         <PlaceholderCard
           title="This Week's Training"
@@ -125,18 +126,19 @@ export default function ClientDashboard() {
           }
         />
 
-        <PlaceholderCard
-          title="Weekly Check-in"
-          subtitle="Log your progress for your coach"
-          color="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
-          comingSoon
-          icon={
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          }
-        />
+        <Link to="/client/checkin">
+          <PlaceholderCard
+            title="Weekly Check-in"
+            subtitle="Log your progress for your coach"
+            color="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+          />
+        </Link>
 
         <PlaceholderCard
           title="My Progress"
