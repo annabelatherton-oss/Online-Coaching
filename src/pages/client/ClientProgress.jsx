@@ -53,8 +53,15 @@ export default function ClientProgress() {
     ? (parseFloat(currentWeight) - parseFloat(startWeight)).toFixed(1)
     : null
 
-  const latestPhotos = latestCheckin?.progress_photos
-    ? PHOTO_ANGLES.filter(a => latestCheckin.progress_photos[a])
+  const checkinsWithPhotos = checkins.filter(c => c.progress_photos && Object.values(c.progress_photos).some(Boolean))
+  const latestWithPhotos = checkinsWithPhotos[0]
+  const firstWithPhotos = checkinsWithPhotos[checkinsWithPhotos.length - 1]
+  const showComparison = checkinsWithPhotos.length >= 2 && latestWithPhotos?.id !== firstWithPhotos?.id
+  const comparisonAngles = showComparison
+    ? PHOTO_ANGLES.filter(a => firstWithPhotos.progress_photos?.[a] && latestWithPhotos.progress_photos?.[a])
+    : []
+  const latestOnlyAngles = !showComparison && latestWithPhotos
+    ? PHOTO_ANGLES.filter(a => latestWithPhotos.progress_photos?.[a])
     : []
 
   return (
@@ -138,22 +145,62 @@ export default function ClientProgress() {
         </div>
       )}
 
-      {/* Latest progress photos */}
-      {latestPhotos.length > 0 && (
+      {/* Progress photos — comparison if ≥2 check-ins with photos, otherwise latest only */}
+      {showComparison && comparisonAngles.length > 0 && (
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-gray-900 dark:text-white">Progress Comparison</h2>
+            <span className="text-xs text-gray-400">Week {firstWithPhotos.week_number} → Week {latestWithPhotos.week_number}</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">
+              Start — Week {firstWithPhotos.week_number}
+            </p>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">
+              Now — Week {latestWithPhotos.week_number}
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {comparisonAngles.map(angle => (
+              <div key={angle}>
+                <p className="text-xs text-gray-400 capitalize mb-2">{angle}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setLightbox(firstWithPhotos.progress_photos[angle])}
+                    className="aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity"
+                  >
+                    <img src={firstWithPhotos.progress_photos[angle]} alt={`${angle} start`} className="w-full h-full object-cover" />
+                  </button>
+                  <button
+                    onClick={() => setLightbox(latestWithPhotos.progress_photos[angle])}
+                    className="aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity"
+                  >
+                    <img src={latestWithPhotos.progress_photos[angle]} alt={`${angle} now`} className="w-full h-full object-cover" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!showComparison && latestOnlyAngles.length > 0 && (
         <div className="card">
           <h2 className="font-semibold text-gray-900 dark:text-white mb-4">
-            Latest Photos
-            <span className="ml-2 text-sm font-normal text-gray-400">Week {latestCheckin.week_number}</span>
+            Progress Photos
+            <span className="ml-2 text-sm font-normal text-gray-400">Week {latestWithPhotos.week_number}</span>
           </h2>
           <div className="grid grid-cols-4 gap-3">
-            {latestPhotos.map(angle => (
+            {latestOnlyAngles.map(angle => (
               <button
                 key={angle}
-                onClick={() => setLightbox(latestCheckin.progress_photos[angle])}
+                onClick={() => setLightbox(latestWithPhotos.progress_photos[angle])}
                 className="flex flex-col gap-1 text-left"
               >
                 <div className="aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity">
-                  <img src={latestCheckin.progress_photos[angle]} alt={angle} className="w-full h-full object-cover" />
+                  <img src={latestWithPhotos.progress_photos[angle]} alt={angle} className="w-full h-full object-cover" />
                 </div>
                 <p className="text-xs text-gray-400 capitalize text-center">{angle}</p>
               </button>
