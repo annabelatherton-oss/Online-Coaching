@@ -192,6 +192,15 @@ function SessionCard({ session, onDelete }) {
   )
 }
 
+const DAY_RANK = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4, Saturday: 5, Sunday: 6 }
+
+function sessionDayRank(name) {
+  for (const [day, rank] of Object.entries(DAY_RANK)) {
+    if (name?.startsWith(day)) return rank
+  }
+  return 999
+}
+
 export default function CoachTrainingEditor() {
   const { programId } = useParams()
   const navigate = useNavigate()
@@ -259,7 +268,7 @@ export default function CoachTrainingEditor() {
     setSessions((data || []).map(s => ({
       ...s,
       exercises: (s.session_exercises || []).sort((a, b) => a.order_index - b.order_index),
-    })))
+    })).sort((a, b) => sessionDayRank(a.name) - sessionDayRank(b.name)))
     setLoadingSessions(false)
   }
 
