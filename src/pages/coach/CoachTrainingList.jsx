@@ -87,8 +87,6 @@ export default function CoachTrainingList() {
     }
   })
 
-  const hasBlocks = BLOCKS.some(b => Object.keys(blockMap[b.key]).length > 0)
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -136,13 +134,7 @@ export default function CoachTrainingList() {
         </form>
       )}
 
-      {!hasBlocks && !creating && custom.length === 0 ? (
-        <div className="card text-center py-16">
-          <p className="text-gray-400 dark:text-gray-500 mb-4">No training programmes yet.</p>
-          <button onClick={() => setCreating(true)} className="btn-primary">Create your first programme</button>
-        </div>
-      ) : (
-        <div className="space-y-4">
+      <div className="space-y-4">
           {BLOCKS.map((block, bi) => {
             const variants = blockMap[block.key]
             const hasAny = Object.keys(variants).length > 0
@@ -158,39 +150,33 @@ export default function CoachTrainingList() {
                   </div>
                 </div>
 
-                {hasAny ? (
-                  <div className="grid grid-cols-3 gap-3">
-                    {DAY_ORDER.map(day => {
-                      const prog = variants[day]
-                      if (!prog) return (
-                        <div key={day} className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-4 text-center text-sm text-gray-400 dark:text-gray-600">
-                          {day}<br /><span className="text-xs">not set up</span>
-                        </div>
-                      )
-                      return (
-                        <button
-                          key={day}
-                          onClick={() => navigate(`/coach/training/${prog.id}`)}
-                          className="rounded-xl border border-gray-200 dark:border-gray-700 hover:border-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 dark:hover:border-brand-500 transition-colors p-4 text-left group"
-                        >
-                          <p className="font-semibold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400">
-                            {day}
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                            {prog.weeks_total} weeks
-                          </p>
-                          <p className="text-xs text-brand-500 dark:text-brand-400 mt-2 font-medium">
-                            Edit →
-                          </p>
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-400 dark:text-gray-500 italic">
-                    No programmes seeded for this block yet.
-                  </p>
-                )}
+                <div className="grid grid-cols-3 gap-3">
+                  {DAY_ORDER.map(day => {
+                    const prog = variants[day]
+                    if (!prog) return (
+                      <div key={day} className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-4 text-center text-sm text-gray-400 dark:text-gray-600">
+                        {day}<br /><span className="text-xs">not set up</span>
+                      </div>
+                    )
+                    return (
+                      <button
+                        key={day}
+                        onClick={() => navigate(`/coach/training/${prog.id}`)}
+                        className="rounded-xl border border-gray-200 dark:border-gray-700 hover:border-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 dark:hover:border-brand-500 transition-colors p-4 text-left group"
+                      >
+                        <p className="font-semibold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400">
+                          {day}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          {prog.weeks_total} weeks
+                        </p>
+                        <p className="text-xs text-brand-500 dark:text-brand-400 mt-2 font-medium">
+                          Edit →
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             )
           })}
@@ -215,7 +201,6 @@ export default function CoachTrainingList() {
             </div>
           )}
         </div>
-      )}
     </div>
   )
 }
