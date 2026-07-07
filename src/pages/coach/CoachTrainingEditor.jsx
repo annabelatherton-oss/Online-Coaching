@@ -208,6 +208,7 @@ export default function CoachTrainingEditor() {
   const [savingLifts, setSavingLifts] = useState(false)
   const [liftsSaved, setLiftsSaved] = useState(false)
   const [exerciseNames, setExerciseNames] = useState([])
+  const [exerciseRepsMap, setExerciseRepsMap] = useState({})
 
   async function loadProgram() {
     const { data } = await supabase
@@ -228,15 +229,23 @@ export default function CoachTrainingEditor() {
   async function loadExerciseNames() {
     const { data } = await supabase
       .from('training_sessions')
-      .select('session_exercises(name)')
+      .select('session_exercises(name, reps)')
       .eq('program_id', programId)
-    const names = [...new Set(
-      (data || [])
-        .flatMap(s => s.session_exercises || [])
-        .map(e => e.name)
-        .filter(Boolean)
-    )].sort()
+    const all = (data || []).flatMap(s => s.session_exercises || []).filter(e => e.name)
+    const names = [...new Set(all.map(e => e.name))].sort()
+    const repsMap = {}
+    all.forEach(e => { if (e.name && e.reps && !repsMap[e.name]) repsMap[e.name] = e.reps })
     setExerciseNames(names)
+    setExerciseRepsMap(repsMap)
+  }
+
+  function parseRepRange(repsStr) {
+    if (!repsStr) return { reps_min: '', reps_max: '' }
+    const range = repsStr.match(/(\d+)\s*[-–]\s*(\d+)/)
+    if (range) return { reps_min: parseInt(range[1]), reps_max: parseInt(range[2]) }
+    const single = repsStr.match(/(\d+)/)
+    if (single) return { reps_min: parseInt(single[1]), reps_max: parseInt(single[1]) }
+    return { reps_min: '', reps_max: '' }
   }
 
   async function loadSessions(week) {
@@ -445,7 +454,11 @@ export default function CoachTrainingEditor() {
                 <select
                   className="flex-1 input py-1.5 text-sm"
                   value={lift.name ?? ''}
-                  onChange={e => updateLift(i, 'name', e.target.value)}
+                  onChange={e => {
+                    const name = e.target.value
+                    const parsed = parseRepRange(exerciseRepsMap[name])
+                    setTopLifts(prev => prev.map((l, idx) => idx === i ? { ...l, name, ...parsed } : l))
+                  }}
                 >
                   <option value="">Select exercise</option>
                   {exerciseNames.map(name => (
