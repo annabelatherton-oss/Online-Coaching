@@ -97,6 +97,54 @@ UPDATE meals SET instructions = $body$
 5. Drizzle honey over the contents of the bowl.
 $body$ WHERE name = 'Yogurt';
 
+UPDATE meals SET instructions = $body$
+1. Put the yogurt into a bowl.
+2. Sprinkle granola over the top.
+3. Add berries.
+4. Break up the dark chocolate into small pieces and place on top.
+5. Drizzle honey over the contents of the bowl.
+$body$ WHERE name = 'Yogurt Bowl';
+
+UPDATE meals SET instructions = $body$
+1. Mix oats and protein powder in a small container.
+2. Add Greek yogurt and milk and mix until fully combined.
+3. Add frozen raspberries on top, or melt in the microwave and drizzle over.
+4. Store in the fridge overnight.
+
+Notes: Vanilla protein powder works well, but you can use any. Frozen berries works well for a cheaper option.
+$body$ WHERE name = 'Raspberry Overnight Oats';
+
+UPDATE meals SET instructions = $body$
+1. Mix oats and protein powder in a small container.
+2. Add Greek yogurt and milk and mix until fully combined.
+3. Mix Biscoff spread with a little warm milk to loosen it, then drizzle over the top.
+4. Store in the fridge overnight.
+$body$ WHERE name = 'Biscoff Overnight Oats';
+
+UPDATE meals SET instructions = $body$
+1. Mix oats and protein powder in a small container.
+2. Add Greek yogurt and milk and mix until fully combined.
+3. Add frozen strawberries on top, or melt in the microwave and drizzle over.
+4. Sprinkle crushed digestives or graham crackers on top for the cheesecake effect.
+5. Store in the fridge overnight.
+$body$ WHERE name = 'Strawberry Cheesecake Overnight Oats';
+
+UPDATE meals SET instructions = $body$
+1. Crush the Weetabix in a container or jar and dampen with a splash of milk.
+2. Pour the yogurt and protein on top.
+3. Add frozen raspberries on top, or melt and drizzle over.
+4. Store in the fridge overnight.
+$body$ WHERE name = 'Raspberry Overnight Weetabix';
+
+UPDATE meals SET instructions = $body$
+1. Mix oats with milk in a bowl.
+2. Microwave for 2 minutes.
+3. Remove, stir, then return and microwave in 30-second increments until your desired consistency is achieved.
+4. Allow to cool for 1-2 minutes, then stir in honey.
+
+Notes: You can stir in protein powder after cooling, or drink it as a shake on the side.
+$body$ WHERE name = 'Porridge and Honey';
+
 -- ── LUNCH ────────────────────────────────────────────────────────────────────
 
 UPDATE meals SET instructions = $body$
@@ -267,6 +315,18 @@ UPDATE meals SET instructions = $body$
 
 Notes: You must allow the oats to cool before adding protein powder to prevent it from being denatured. Chocolate protein powder works well with this.
 $body$ WHERE name = 'Oats';
+
+UPDATE meals SET instructions = $body$
+1. Pour water into the oats until fully covered.
+2. Microwave for 2 minutes.
+3. Take out and stir for 1 minute.
+4. Place back in the microwave for 30-second increments until your desired consistency is achieved.
+5. Take out and let cool for 2 minutes.
+6. Stir in protein powder.
+7. Add berries on top.
+
+Notes: You must allow the oats to cool before adding protein powder to prevent it from being denatured. Chocolate protein powder works well with this.
+$body$ WHERE name = 'Protein Oats';
 
 -- ── DINNER ───────────────────────────────────────────────────────────────────
 
