@@ -12,15 +12,17 @@ export default function CoachTrainingList() {
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState({ name: '', weeks_total: 12 })
   const [saving, setSaving] = useState(false)
+  const [createError, setCreateError] = useState('')
 
   async function load() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('training_programs')
       .select('*')
       .eq('coach_id', profile.id)
       .order('created_at', { ascending: false })
     setPrograms(data || [])
     setLoading(false)
+    if (error) console.error('load error:', error)
   }
 
   useEffect(() => { load() }, [])
@@ -28,12 +30,14 @@ export default function CoachTrainingList() {
   async function handleCreate(e) {
     e.preventDefault()
     setSaving(true)
-    const { data } = await supabase
+    setCreateError('')
+    const { data, error } = await supabase
       .from('training_programs')
       .insert({ coach_id: profile.id, name: form.name.trim(), weeks_total: parseInt(form.weeks_total) })
       .select('id')
       .single()
     setSaving(false)
+    if (error) { setCreateError(error.message); return }
     if (data) navigate(`/coach/training/${data.id}`)
   }
 
@@ -82,6 +86,7 @@ export default function CoachTrainingList() {
               onChange={e => setForm(f => ({ ...f, weeks_total: e.target.value }))}
             />
           </div>
+          {createError && <p className="text-sm text-red-600 dark:text-red-400">{createError}</p>}
           <div className="flex gap-3">
             <button type="submit" disabled={saving || !form.name.trim()} className="btn-primary">
               {saving ? 'Creating…' : 'Create & edit'}
