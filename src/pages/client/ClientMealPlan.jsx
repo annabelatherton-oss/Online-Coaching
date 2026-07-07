@@ -113,9 +113,11 @@ function addMacros(a, b) {
   return { cal: az.cal + bz.cal, prot: az.prot + bz.prot, carb: az.carb + bz.carb, fat: az.fat + bz.fat }
 }
 
-function formatAmount(ing) {
+function formatAmount(ing, ingredientLib) {
   const qty = parseFloat(ing.quantity_g)
-  const unit = ing.unit
+  // Prefer the explicit unit on the record; fall back to the library's serving_unit
+  const libUnit = ing.ingredient_id && ingredientLib ? ingredientLib[ing.ingredient_id]?.serving_unit : null
+  const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libUnit && libUnit !== 'g') ? libUnit : ing.unit
   if (unit && unit !== 'g') {
     const n = Number.isInteger(qty) ? qty : Math.round(qty * 10) / 10
     return `${n} ${unit}`
@@ -125,7 +127,7 @@ function formatAmount(ing) {
 
 // ─── Meal card (photo block) ──────────────────────────────────────────────────
 
-function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, mealMap, mealsByCategory, tier, overrides, onSwap, onViewRecipe }) {
+function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, mealMap, mealsByCategory, tier, overrides, onSwap, onViewRecipe, ingredientLib }) {
   const meal = mealId ? mealMap[mealId] : null
   const ingredients = meal ? getIngredients(meal, tier, overrides) : []
   const isCustom = (mealId || null) !== (templateMealId || null)
@@ -170,7 +172,7 @@ function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, me
               {ingredients.slice(0, 6).map((ing, i) => (
                 <div key={ing.id || i} className="flex items-baseline gap-1.5">
                   <span className="text-xs font-medium text-gray-400 dark:text-gray-500 flex-shrink-0 tabular-nums">
-                    {formatAmount(ing)}
+                    {formatAmount(ing, ingredientLib)}
                   </span>
                   <span className="text-xs text-gray-600 dark:text-gray-400 leading-tight">{ing.name}</span>
                 </div>
@@ -376,6 +378,7 @@ export default function ClientMealPlan() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [saved, setSaved] = useState(false)
+  const [ingredientLib, setIngredientLib] = useState({})
   const [swapModal, setSwapModal] = useState(null)   // { slotKey, label, cat }
   const [recipeModal, setRecipeModal] = useState(null) // slotKey
 
@@ -393,12 +396,19 @@ export default function ClientMealPlan() {
       const effectiveWeek = asgn.week_override ?? pg?.current_week ?? 1
       setWeekNumber(effectiveWeek)
 
-      const { data: mealsData } = await supabase.from('meals').select(`
-        id, name, category, instructions, photo_url,
-        meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id),
-        meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
-          meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id))
-      `).eq('coach_id', clientRow.coach_id).order('name')
+      const [{ data: mealsData }, { data: libData }] = await Promise.all([
+        supabase.from('meals').select(`
+          id, name, category, instructions, photo_url,
+          meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id),
+          meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
+            meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id))
+        `).eq('coach_id', clientRow.coach_id).order('name'),
+        supabase.from('ingredients').select('id, serving_unit').eq('coach_id', clientRow.coach_id),
+      ])
+
+      const lib = {}
+      for (const ing of (libData || [])) lib[ing.id] = ing
+      setIngredientLib(lib)
 
       const map = {}, byCat = {}
       for (const m of (mealsData || [])) {
@@ -537,6 +547,7 @@ export default function ClientMealPlan() {
                   overrides={ingredientOverrides[slot.key]}
                   onSwap={handleSwapOpen}
                   onViewRecipe={setRecipeModal}
+                  ingredientLib={ingredientLib}
                 />
               ))}
             </div>
