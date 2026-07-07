@@ -24,7 +24,9 @@ import CoachReports from './pages/coach/CoachReports'
 import CoachTrainingList from './pages/coach/CoachTrainingList'
 import CoachTrainingEditor from './pages/coach/CoachTrainingEditor'
 import CoachCheckins from './pages/coach/CoachCheckins'
+import CoachMessages from './pages/coach/CoachMessages'
 import ClientTraining from './pages/client/ClientTraining'
+import ClientMessages from './pages/client/ClientMessages'
 
 export default function App() {
   return (
@@ -59,6 +61,7 @@ export default function App() {
             <Route path="training" element={<CoachTrainingList />} />
             <Route path="training/:programId" element={<CoachTrainingEditor />} />
             <Route path="checkins" element={<CoachCheckins />} />
+            <Route path="messages" element={<CoachMessages />} />
           </Route>
 
           {/* Client area */}
@@ -76,6 +79,7 @@ export default function App() {
             <Route path="checkin" element={<ClientCheckin />} />
             <Route path="progress" element={<ClientProgress />} />
             <Route path="training" element={<ClientTraining />} />
+            <Route path="messages" element={<ClientMessages />} />
           </Route>
 
           {/* Default redirect */}

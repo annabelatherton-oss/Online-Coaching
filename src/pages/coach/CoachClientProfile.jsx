@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -1963,11 +1963,15 @@ function CheckinsTab({ clientId, collectMeasurements }) {
 export default function CoachClientProfile() {
   const { clientId } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { profile } = useAuth()
   const [client, setClient] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState('Overview')
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get('tab')
+    return tab && TABS.includes(tab) ? tab : 'Overview'
+  })
 
   async function loadClient() {
     const { data, error: err } = await supabase.from('clients').select(`
