@@ -207,7 +207,7 @@ export default function CoachCheckins() {
 
   async function load() {
     const [{ data: clientData }, { data: checkinData }] = await Promise.all([
-      supabase.from('clients').select('id, full_name, email').eq('coach_id', profile.id),
+      supabase.from('clients').select('id, profiles!clients_profile_id_fkey(full_name, email)').eq('coach_id', profile.id),
       supabase
         .from('client_checkins')
         .select('*')
@@ -230,7 +230,7 @@ export default function CoachCheckins() {
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
-  const clientMap = Object.fromEntries(clients.map(c => [c.id, c]))
+  const clientMap = Object.fromEntries(clients.map(c => [c.id, { ...c, full_name: c.profiles?.full_name }]))
 
   // Latest check-in per client (for "missing" detection)
   const latestByClient = {}
