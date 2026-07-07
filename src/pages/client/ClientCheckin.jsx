@@ -417,6 +417,14 @@ export default function ClientCheckin() {
         </div>
       </form>
 
+      {/* Coach response */}
+      {existing?.coach_response && (
+        <div className="card space-y-2 border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/10">
+          <p className="text-sm font-semibold text-brand-700 dark:text-brand-400">Message from your coach</p>
+          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{existing.coach_response}</p>
+        </div>
+      )}
+
       {/* Next week's targets — shown after saving */}
       {saved && topLifts.length > 0 && (
         <div className="card space-y-3 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10">

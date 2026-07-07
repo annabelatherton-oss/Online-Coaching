@@ -23,6 +23,7 @@ import ClientProgress from './pages/client/ClientProgress'
 import CoachReports from './pages/coach/CoachReports'
 import CoachTrainingList from './pages/coach/CoachTrainingList'
 import CoachTrainingEditor from './pages/coach/CoachTrainingEditor'
+import CoachCheckins from './pages/coach/CoachCheckins'
 import ClientTraining from './pages/client/ClientTraining'
 
 export default function App() {
@@ -57,6 +58,7 @@ export default function App() {
             <Route path="reports" element={<CoachReports />} />
             <Route path="training" element={<CoachTrainingList />} />
             <Route path="training/:programId" element={<CoachTrainingEditor />} />
+            <Route path="checkins" element={<CoachCheckins />} />
           </Route>
 
           {/* Client area */}

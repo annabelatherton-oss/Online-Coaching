@@ -117,27 +117,39 @@ export default function ClientProgress() {
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
                 {checkins.slice(0, 12).map(ci => (
-                  <tr key={ci.id}>
-                    <td className="py-2.5 pr-4 font-medium text-gray-900 dark:text-white">Week {ci.week_number}</td>
-                    <td className="py-2.5 pr-4 text-gray-600 dark:text-gray-400 tabular-nums">
-                      {ci.weight_kg != null ? `${ci.weight_kg} kg` : '—'}
-                    </td>
-                    <td className="py-2.5 pr-4">
-                      {ci.energy_level != null
-                        ? <span className="inline-flex items-center gap-1.5"><RatingDot value={ci.energy_level} /><span className="text-gray-600 dark:text-gray-400">{ci.energy_level}/5</span></span>
-                        : <span className="text-gray-300 dark:text-gray-600">—</span>}
-                    </td>
-                    <td className="py-2.5 pr-4">
-                      {ci.sleep_quality != null
-                        ? <span className="inline-flex items-center gap-1.5"><RatingDot value={ci.sleep_quality} /><span className="text-gray-600 dark:text-gray-400">{ci.sleep_quality}/5</span></span>
-                        : <span className="text-gray-300 dark:text-gray-600">—</span>}
-                    </td>
-                    <td className="py-2.5">
-                      {ci.adherence != null
-                        ? <span className="inline-flex items-center gap-1.5"><RatingDot value={ci.adherence} /><span className="text-gray-600 dark:text-gray-400">{ci.adherence}/5</span></span>
-                        : <span className="text-gray-300 dark:text-gray-600">—</span>}
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={ci.id}>
+                      <td className="py-2.5 pr-4 font-medium text-gray-900 dark:text-white">Week {ci.week_number}</td>
+                      <td className="py-2.5 pr-4 text-gray-600 dark:text-gray-400 tabular-nums">
+                        {ci.weight_kg != null ? `${ci.weight_kg} kg` : '—'}
+                      </td>
+                      <td className="py-2.5 pr-4">
+                        {ci.energy_level != null
+                          ? <span className="inline-flex items-center gap-1.5"><RatingDot value={ci.energy_level} /><span className="text-gray-600 dark:text-gray-400">{ci.energy_level}/5</span></span>
+                          : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                      </td>
+                      <td className="py-2.5 pr-4">
+                        {ci.sleep_quality != null
+                          ? <span className="inline-flex items-center gap-1.5"><RatingDot value={ci.sleep_quality} /><span className="text-gray-600 dark:text-gray-400">{ci.sleep_quality}/5</span></span>
+                          : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                      </td>
+                      <td className="py-2.5">
+                        {ci.adherence != null
+                          ? <span className="inline-flex items-center gap-1.5"><RatingDot value={ci.adherence} /><span className="text-gray-600 dark:text-gray-400">{ci.adherence}/5</span></span>
+                          : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                      </td>
+                    </tr>
+                    {ci.coach_response && (
+                      <tr key={`${ci.id}-response`}>
+                        <td colSpan={5} className="pb-3 pt-0">
+                          <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
+                            <span className="font-semibold text-brand-700 dark:text-brand-400 mr-2">Coach:</span>
+                            {ci.coach_response}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>
