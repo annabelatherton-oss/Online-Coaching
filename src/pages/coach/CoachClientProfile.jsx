@@ -1481,9 +1481,17 @@ function MealPlanTab({ client, coachId }) {
   )
 }
 
+const CHECKIN_PHOTO_ANGLES = [
+  { key: 'front', label: 'Front' },
+  { key: 'back',  label: 'Back' },
+  { key: 'left',  label: 'Left side' },
+  { key: 'right', label: 'Right side' },
+]
+
 function CheckinsTab({ clientId, collectMeasurements }) {
   const [checkins, setCheckins] = useState([])
   const [loading, setLoading] = useState(true)
+  const [lightbox, setLightbox] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -1509,6 +1517,17 @@ function CheckinsTab({ clientId, collectMeasurements }) {
 
   return (
     <div className="space-y-4 max-w-2xl">
+      {lightbox && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightbox(null)}>
+          <div className="relative max-w-lg w-full" onClick={e => e.stopPropagation()}>
+            <img src={lightbox} alt="" className="w-full max-h-[85vh] object-contain rounded-xl" />
+            <button onClick={() => setLightbox(null)} className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {checkins.map(c => (
         <div key={c.id} className="card space-y-4">
           <div className="flex items-start justify-between gap-2">
@@ -1556,6 +1575,25 @@ function CheckinsTab({ clientId, collectMeasurements }) {
               </div>
             )}
           </div>
+
+          {c.progress_photos && Object.values(c.progress_photos).some(Boolean) && (
+            <div>
+              <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Progress photos</p>
+              <div className="grid grid-cols-4 gap-2">
+                {CHECKIN_PHOTO_ANGLES.map(angle => c.progress_photos[angle.key] && (
+                  <div key={angle.key} className="flex flex-col gap-1">
+                    <button
+                      onClick={() => setLightbox(c.progress_photos[angle.key])}
+                      className="aspect-[3/4] rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity"
+                    >
+                      <img src={c.progress_photos[angle.key]} alt={angle.label} className="w-full h-full object-cover" />
+                    </button>
+                    <p className="text-xs text-center text-gray-400 dark:text-gray-500">{angle.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {c.lift_results?.length > 0 && (
             <div>

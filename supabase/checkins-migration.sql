@@ -19,7 +19,8 @@ create table if not exists client_checkins (
   sleep_quality   int         check (sleep_quality between 1 and 5),
   adherence       int         check (adherence between 1 and 5),
   notes           text,
-  lift_results    jsonb,
+  lift_results      jsonb,
+  progress_photos   jsonb,
   unique(client_id, week_number)
 );
 
