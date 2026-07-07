@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import DarkModeToggle from '../../components/DarkModeToggle'
 
@@ -80,137 +80,159 @@ const navItems = [
 export default function ClientLayout() {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
-  const [menuOpen, setMenuOpen] = useState(false)
+  const location = useLocation()
+  const mainRef = useRef(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    const main = mainRef.current
+    if (!main) return
+    const key = `scroll:${location.pathname}`
+    const save = () => sessionStorage.setItem(key, String(main.scrollTop))
+    main.addEventListener('scroll', save, { passive: true })
+    return () => main.removeEventListener('scroll', save)
+  }, [location.pathname])
+
+  useEffect(() => {
+    const main = mainRef.current
+    if (!main) return
+    const target = parseInt(sessionStorage.getItem(`scroll:${location.pathname}`) || '0', 10)
+    if (!target) return
+    let attempts = 0
+    const try_ = () => {
+      if (!mainRef.current) return
+      mainRef.current.scrollTop = target
+      if (mainRef.current.scrollTop < target - 5 && attempts < 30) {
+        attempts++
+        setTimeout(try_, 100)
+      }
+    }
+    const t = setTimeout(try_, 50)
+    return () => clearTimeout(t)
+  }, [location.pathname])
 
   async function handleLogout() {
     await signOut()
     navigate('/login')
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Top nav */}
-      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-30">
-        <div className="max-w-5xl mx-auto px-4 flex items-center justify-between h-16">
-          {/* Logo */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center">
-              <span className="text-sm font-bold text-white">C</span>
-            </div>
-            <span className="font-semibold text-gray-900 dark:text-white">CoachHub</span>
-          </div>
+  const Sidebar = () => (
+    <aside className="flex flex-col w-64 h-full bg-white border-r border-pink-100 text-gray-700">
+      {/* Logo */}
+      <div className="flex items-center gap-3 px-6 py-5 border-b border-pink-100">
+        <div className="w-8 h-8 rounded-lg bg-brand-400 flex items-center justify-center flex-shrink-0">
+          <span className="text-sm font-bold text-white">C</span>
+        </div>
+        <span className="font-semibold text-gray-800">CoachHub</span>
+      </div>
 
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1">
-            {navItems.map(item =>
-              item.disabled ? (
-                <span
-                  key={item.label}
-                  className="px-3 py-1.5 rounded-lg text-sm text-gray-400 cursor-not-allowed select-none"
-                  title="Coming soon"
-                >
-                  {item.label}
-                </span>
-              ) : (
-                <NavLink
-                  key={item.label}
-                  to={item.to}
-                  end={item.end}
-                  className={({ isActive }) =>
-                    `px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                      isActive
-                        ? 'bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400 font-medium'
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                    }`
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              )
-            )}
-          </nav>
-
-          {/* Right side */}
-          <div className="flex items-center gap-2">
-            <DarkModeToggle />
-            <div className="hidden md:flex items-center gap-2 pl-2 border-l border-gray-200 dark:border-gray-700 ml-1">
-              <div className="w-7 h-7 rounded-full bg-brand-500 flex items-center justify-center">
-                <span className="text-xs font-semibold text-white">
-                  {profile?.full_name?.charAt(0)?.toUpperCase() || 'C'}
-                </span>
-              </div>
-              <span className="text-sm text-gray-700 dark:text-gray-300">
-                {profile?.full_name?.split(' ')[0] || 'Client'}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="ml-1 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-              >
-                Sign out
-              </button>
-            </div>
-
-            {/* Mobile menu button */}
-            <button
-              onClick={() => setMenuOpen(o => !o)}
-              className="md:hidden p-2 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+      {/* Nav */}
+      <nav className="flex-1 px-3 py-4 space-y-1">
+        {navItems.map(item => (
+          item.disabled ? (
+            <div
+              key={item.label}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 cursor-not-allowed select-none"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
+              {item.icon}
+              <span className="text-sm">{item.label}</span>
+            </div>
+          ) : (
+            <NavLink
+              key={item.label}
+              to={item.to}
+              end={item.end}
+              onClick={() => setSidebarOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive
+                    ? 'bg-pink-100 text-brand-600 font-medium'
+                    : 'text-gray-500 hover:bg-pink-50 hover:text-gray-800'
+                }`
+              }
+            >
+              {item.icon}
+              {item.label}
+            </NavLink>
+          )
+        ))}
+      </nav>
+
+      {/* User footer */}
+      <div className="px-3 py-4 border-t border-pink-100">
+        <div className="flex items-center gap-3 px-3 py-2">
+          <div className="w-8 h-8 rounded-full bg-brand-200 flex items-center justify-center flex-shrink-0">
+            <span className="text-sm font-semibold text-brand-700">
+              {profile?.full_name?.charAt(0)?.toUpperCase() || 'C'}
+            </span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-800 truncate">
+              {profile?.full_name || 'Client'}
+            </p>
+            <p className="text-xs text-gray-400 truncate">{profile?.email}</p>
           </div>
         </div>
+        <button
+          onClick={handleLogout}
+          className="mt-2 w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-pink-50 hover:text-gray-700 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Sign out
+        </button>
+      </div>
+    </aside>
+  )
 
-        {/* Mobile dropdown */}
-        {menuOpen && (
-          <div className="md:hidden border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 space-y-1">
-            {navItems.map(item =>
-              item.disabled ? (
-                <span
-                  key={item.label}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 cursor-not-allowed"
-                >
-                  {item.icon} {item.label}
-                  <span className="ml-auto text-xs bg-gray-100 dark:bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded">Soon</span>
-                </span>
-              ) : (
-                <NavLink
-                  key={item.label}
-                  to={item.to}
-                  end={item.end}
-                  onClick={() => setMenuOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                      isActive
-                        ? 'bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400 font-medium'
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                    }`
-                  }
-                >
-                  {item.icon} {item.label}
-                </NavLink>
-              )
-            )}
-            <div className="pt-2 border-t border-gray-100 dark:border-gray-800 mt-2">
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 w-full"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                Sign out
-              </button>
+  return (
+    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">
+      {/* Desktop sidebar */}
+      <div className="hidden lg:flex flex-col flex-shrink-0">
+        <Sidebar />
+      </div>
+
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <div className="absolute left-0 top-0 bottom-0 w-64">
+            <Sidebar />
+          </div>
+        </div>
+      )}
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top bar */}
+        <header className="flex items-center justify-between px-4 lg:px-6 py-4 bg-white border-b border-pink-100 sticky top-0 z-30">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden p-2 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <div className="hidden lg:block" />
+          <div className="flex items-center gap-2">
+            <DarkModeToggle />
+            <div className="text-sm text-gray-600 dark:text-gray-400 pl-2 border-l border-gray-200 dark:border-gray-700 ml-1">
+              {profile?.full_name?.split(' ')[0] || 'Client'}
             </div>
           </div>
-        )}
-      </header>
+        </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6">
-        <Outlet />
-      </main>
+        {/* Page content */}
+        <main ref={mainRef} className="flex-1 overflow-y-auto p-4 lg:p-6">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }
