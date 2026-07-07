@@ -471,3 +471,22 @@ UPDATE meals SET instructions = $body$
 4. Place the broccoli in boiling water and boil for 3-4 minutes until slightly softened. Season if desired.
 5. Remove the salmon from the oven and serve with the potatoes and broccoli.
 $body$ WHERE name = 'Salmon and Potatoes';
+
+UPDATE meals SET instructions = $body$
+1. Chop the pepper and onion and fry in a pan with Fry-Light until softened.
+2. Add the cooked chicken and season to taste.
+3. Add the BBQ sauce and cottage cheese to the pan and stir until combined and heated through.
+4. Toast or warm the pita bread.
+5. Open the pita and line with lettuce.
+6. Stuff the chicken mixture inside and serve.
+$body$ WHERE name = 'BBQ Chicken Pita';
+
+UPDATE meals SET instructions = $body$
+1. Chop the potato into chunks, coat in olive oil and season with onion powder, paprika, mixed herbs, chilli flakes and salt.
+2. Roast in the oven at 200°C or air-fry for 20-25 minutes until golden.
+3. Meanwhile, season the chicken with the same seasonings and cook in a pan with Fry-Light over a medium-high heat until golden all over.
+4. Add the garlic to the pan and fry for 1 minute.
+5. Reduce the heat and add the light cream cheese and milk. Stir until a smooth sauce forms.
+6. Add the parmesan and lighter cheese, stir until melted and the sauce has thickened.
+7. Serve the chicken and sauce over the roasted potatoes.
+$body$ WHERE name = 'Creamy Garlic Cheesy Chicken & Potatos';
