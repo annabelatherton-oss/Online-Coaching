@@ -46,6 +46,7 @@ export default function ClientDashboard() {
   const now = new Date()
   const expiry = clientData?.access_expires_at ? new Date(clientData.access_expires_at) : null
   const daysLeft = expiry ? Math.max(0, Math.ceil((expiry - now) / (1000 * 60 * 60 * 24))) : null
+  const weeksLeft = daysLeft !== null ? Math.ceil(daysLeft / 7) : null
 
   return (
     <div className="space-y-6">
@@ -71,7 +72,7 @@ export default function ClientDashboard() {
           </div>
           <div>
             <p className="font-medium text-gray-900 dark:text-white">
-              {daysLeft === 0 ? 'Access expired' : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} of access remaining`}
+              {daysLeft === 0 ? 'Plan expired' : `${weeksLeft} week${weeksLeft !== 1 ? 's' : ''} remaining on current plan`}
             </p>
             {expiry && (
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
