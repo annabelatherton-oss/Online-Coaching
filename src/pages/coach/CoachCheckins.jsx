@@ -210,6 +210,23 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             </div>
           )}
 
+          {/* Current week photos */}
+          {current.progress_photos && Object.values(current.progress_photos).some(Boolean) && (
+            <div>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">This week's photos</p>
+              <div className="grid grid-cols-4 gap-2">
+                {PHOTO_ANGLES.filter(a => current.progress_photos[a]).map(angle => (
+                  <div key={angle} className="space-y-1">
+                    <button onClick={() => setLightbox(current.progress_photos[angle])} className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity block">
+                      <img src={current.progress_photos[angle]} alt={angle} className="w-full h-full object-cover" />
+                    </button>
+                    <p className="text-xs text-center text-gray-400 capitalize">{angle}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {current.notes && (
             <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3">
               <p className="text-xs font-medium text-gray-400 mb-1">Client note</p>
@@ -237,6 +254,44 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               {current.coach_response ? 'Edit response' : 'Respond →'}
             </button>
           )}
+        </div>
+      )}
+
+      {/* Photo comparison: start / last week / now */}
+      {showComparison && (
+        <div className="card space-y-5">
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-white">Photo Comparison</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Start (Wk {firstP.week_number})
+              {prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && ` · Last week (Wk ${prevP.week_number})`}
+              {` · Now (Wk ${newestP.week_number})`}
+            </p>
+          </div>
+          {compAngles.map(angle => {
+            const cols = [
+              { label: `Start · Wk ${firstP.week_number}`, url: firstP.progress_photos[angle] },
+              prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && prevP.progress_photos?.[angle]
+                ? { label: `Last week · Wk ${prevP.week_number}`, url: prevP.progress_photos[angle] }
+                : null,
+              { label: `Now · Wk ${newestP.week_number}`, url: newestP.progress_photos[angle] },
+            ].filter(Boolean)
+            return (
+              <div key={angle}>
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2 capitalize">{angle}</p>
+                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols.length}, 1fr)` }}>
+                  {cols.map(col => (
+                    <div key={col.label} className="space-y-1">
+                      <button onClick={() => setLightbox(col.url)} className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity block">
+                        <img src={col.url} alt={col.label} className="w-full h-full object-cover" />
+                      </button>
+                      <p className="text-xs text-center text-gray-400">{col.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -276,44 +331,6 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* Photo comparison: first / previous / current */}
-      {showComparison && (
-        <div className="card space-y-5">
-          <div>
-            <h3 className="font-semibold text-gray-900 dark:text-white">Photo Comparison</h3>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Start (Wk {firstP.week_number})
-              {prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && ` · Previous (Wk ${prevP.week_number})`}
-              {` · Now (Wk ${newestP.week_number})`}
-            </p>
-          </div>
-          {compAngles.map(angle => {
-            const cols = [
-              { label: `Start · Wk ${firstP.week_number}`, url: firstP.progress_photos[angle] },
-              prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && prevP.progress_photos?.[angle]
-                ? { label: `Prev · Wk ${prevP.week_number}`, url: prevP.progress_photos[angle] }
-                : null,
-              { label: `Now · Wk ${newestP.week_number}`, url: newestP.progress_photos[angle] },
-            ].filter(Boolean)
-            return (
-              <div key={angle}>
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2 capitalize">{angle}</p>
-                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols.length}, 1fr)` }}>
-                  {cols.map(col => (
-                    <div key={col.label} className="space-y-1">
-                      <button onClick={() => setLightbox(col.url)} className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity block">
-                        <img src={col.url} alt={col.label} className="w-full h-full object-cover" />
-                      </button>
-                      <p className="text-xs text-center text-gray-400">{col.label}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
         </div>
       )}
 
