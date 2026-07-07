@@ -36,61 +36,60 @@ if (!SUPABASE_URL || !SUPABASE_KEY || !COACH_ID) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-// Map of meal name patterns (ILIKE) to image file paths
+// Exact meal names as they exist in the database
 const RECIPES = [
   // ── BREAKFAST ─────────────────────────────────────────────────────────────
-  { namePattern: 'overnight oats',                   file: 'Overnight Oats.jpg' },
-  { namePattern: '%weetabix%',                       file: 'Overnight Weetabix.jpg' },
-  { namePattern: '%chia pudding%',                   file: '5.jpg' },
-  { namePattern: 'porridge',                         file: '6.jpg' },
-  { namePattern: '%protein pancake%',                file: '7.jpg' },
-  { namePattern: 'breakfast wrap',                   file: '8.jpg' },
-  { namePattern: 'breakfast bagel',                  file: '9.jpg' },
-  { namePattern: 'chicken sausage bagel',            file: '10.jpg' },
-  { namePattern: 'scrambled egg bagel',              file: '11.jpg' },
-  { namePattern: 'jam%egg bagel',                    file: '12.jpg' },
-  { namePattern: 'avocado bagel',                    file: '13.jpg' },
-  { namePattern: 'pb%j bagel',                       file: '14.jpg' },
-  { namePattern: 'yogurt bowl',                      file: 'Yogurt Bowl (2).jpg' },
+  { name: 'Overnight Oats',                          file: 'Overnight Oats.jpg' },
+  { name: 'Overnight Weetabix',                      file: 'Overnight Weetabix.jpg' },
+  { name: 'Chia Pudding',                            file: '5.jpg' },
+  { name: 'Porridge',                                file: '6.jpg' },
+  { name: 'Protein Pancakes',                        file: '7.jpg' },
+  { name: 'Breafkast Wrap',                          file: '8.jpg' },
+  { name: 'Breakfast Bagel',                         file: '9.jpg' },
+  { name: 'Chicken Sausage Bagel',                   file: '10.jpg' },
+  { name: 'Scrambled Egg Bagel',                     file: '11.jpg' },
+  { name: 'Avacado Bagel',                           file: '13.jpg' },
+  { name: 'PB&J Bagel',                              file: '14.jpg' },
+  { name: 'Yogurt',                                  file: 'Yogurt Bowl (2).jpg' },
 
   // ── LUNCH ─────────────────────────────────────────────────────────────────
-  { namePattern: 'avocado%egg%sourdough',            file: '16.jpg' },
-  { namePattern: 'sweet chilli chicken wrap',        file: '17.jpg' },
-  { namePattern: 'bbq chicken wrap',                 file: '18.jpg' },
-  { namePattern: 'jerk chicken%burger',              file: '19.jpg' },
-  { namePattern: 'tuna%cheese bagel',                file: '20.jpg' },
-  { namePattern: 'club sandwich',                    file: '21.jpg' },
-  { namePattern: 'beans%cheese%toast',               file: '22.jpg' },
-  { namePattern: 'cheesy chicken%chorizo wrap',      file: '23.jpg' },
-  { namePattern: 'cheeseburger wrap',                file: '24.jpg' },
-  { namePattern: 'tuna bun%rice cake%',              file: '25.jpg' },
-  { namePattern: 'chicken pasta salad',              file: '26.jpg' },
-  { namePattern: 'tuna pasta',                       file: '27.jpg' },
-  { namePattern: 'chicken%rice%broccoli',            file: '28.jpg' },
-  { namePattern: 'chicken%egg fried rice',           file: '29.jpg' },
-  { namePattern: '%tomato%feta%soup%',               file: '30.jpg' },
+  { name: 'Avacado and Egg on Sourdough',            file: '16.jpg' },
+  { name: 'Sweet Chilli Chicken Wrap',               file: '17.jpg' },
+  { name: 'BBQ Chicken Wrap',                        file: '18.jpg' },
+  { name: 'Jerk Chicken Cheese Burger',              file: '19.jpg' },
+  { name: 'Tuna and Cheese Bagel',                   file: '20.jpg' },
+  { name: 'Club Sandwich',                           file: '21.jpg' },
+  { name: 'Beans on Toast',                          file: '22.jpg' },
+  { name: 'Cheesy Chicken and Chorizo Wrap',         file: '23.jpg' },
+  { name: 'Cheese Burger Wrap',                      file: '24.jpg' },
+  { name: 'Tuna Bun',                                file: '25.jpg' },
+  { name: 'Chicken Salad',                           file: '26.jpg' },
+  { name: 'Tuna Pasta',                              file: '27.jpg' },
+  { name: 'Chicken and Rice',                        file: '28.jpg' },
+  { name: 'Chicken and Egg Fried Rice',              file: '29.jpg' },
+  { name: 'Roasted Tomato Pepper and Feta Soup',     file: '30.jpg' },
 
   // ── PRE-WORKOUT ───────────────────────────────────────────────────────────
-  { namePattern: 'rice cakes%banana',                file: '32.jpg' },
-  { namePattern: 'cereal%protein%',                  file: '33.jpg' },
-  { namePattern: 'protein oats',                     file: '34.jpg' },
+  { name: 'Rice Cakes',                              file: '32.jpg' },
+  { name: 'Cereal',                                  file: '33.jpg' },
+  { name: 'Oats',                                    file: '34.jpg' },
 
   // ── DINNER ────────────────────────────────────────────────────────────────
-  { namePattern: 'sweet chilli%chicken%fried rice',  file: '36.jpg' },
-  { namePattern: 'sticky honey chicken%rice',        file: '37.jpg' },
-  { namePattern: 'chicken%chorizo rice',             file: '38.jpg' },
-  { namePattern: 'chicken stir%fry',                 file: '39.jpg' },
-  { namePattern: 'cheesy beef pasta',                file: '40.jpg' },
-  { namePattern: 'creamy chicken pasta',             file: '41.jpg' },
-  { namePattern: 'chicken%halloumi%chorizo pasta',   file: '42.jpg' },
-  { namePattern: 'creamy cajun chicken pasta',       file: '43.jpg' },
-  { namePattern: 'nandos%chicken pasta',             file: '44.jpg' },
-  { namePattern: 'chicken sausage%mascarpone pasta', file: '45.jpg' },
-  { namePattern: 'lasagne',                          file: '46.jpg' },
-  { namePattern: 'spaghetti bol%',                   file: '47.jpg' },
-  { namePattern: '%peri%orzo%',                      file: '48.jpg' },
-  { namePattern: 'steak%potat%',                     file: '49.jpg' },
-  { namePattern: 'salmon%potat%',                    file: '50.jpg' },
+  { name: 'Sweet Chilli Chicken Egg Fried Rice',     file: '36.jpg' },
+  { name: 'Sticky Honey Chicken and Rice',           file: '37.jpg' },
+  { name: 'Chicken and Chorizo Rice',                file: '38.jpg' },
+  { name: 'Stir Fry',                                file: '39.jpg' },
+  { name: 'Cheesy Beef Pasta',                       file: '40.jpg' },
+  { name: 'Creamy Chicken Pasta',                    file: '41.jpg' },
+  { name: 'Chicken, Hallouimi and Chorizo Pasta',    file: '42.jpg' },
+  { name: 'Creamy Cajun Chicken Pasta',              file: '43.jpg' },
+  { name: 'Creamy Nandos Chicken Pasta',             file: '44.jpg' },
+  { name: 'Chicken Sausage and Mascarpone',          file: '45.jpg' },
+  { name: 'Reduced Lasange',                         file: '46.jpg' },
+  { name: 'Spaghetti Bolognase',                     file: '47.jpg' },
+  { name: 'Nandos Orzo',                             file: '48.jpg' },
+  { name: 'Steak and Poatoes',                       file: '49.jpg' },
+  { name: 'Salmon and Potatoes',                     file: '50.jpg' },
 ]
 
 async function uploadPhoto(filePath, storagePath) {
@@ -102,13 +101,13 @@ async function uploadPhoto(filePath, storagePath) {
   return storagePath
 }
 
-async function findMeal(pattern) {
+async function findMeal(exactName) {
   const { data, error } = await supabase
     .from('meals')
     .select('id, name, photo_url')
     .eq('coach_id', COACH_ID)
-    .ilike('name', pattern)
-    .limit(5)
+    .eq('name', exactName)
+    .limit(2)
   if (error) throw error
   return data || []
 }
@@ -129,14 +128,11 @@ async function main() {
     const imagePath = join(IMAGES_DIR, recipe.file)
 
     // Find matching meals
-    const meals = await findMeal(recipe.namePattern)
+    const meals = await findMeal(recipe.name)
     if (meals.length === 0) {
-      console.log(`  SKIP (no match): pattern="${recipe.namePattern}"`)
+      console.log(`  SKIP (no match): "${recipe.name}"`)
       skipped++
       continue
-    }
-    if (meals.length > 1) {
-      console.log(`  WARN: ${meals.length} matches for "${recipe.namePattern}": ${meals.map(m => m.name).join(', ')}`)
     }
 
     const meal = meals[0]
