@@ -7,11 +7,16 @@
  *   SUPABASE_URL=https://xxx.supabase.co \
  *   SUPABASE_SERVICE_KEY=your-service-role-key \
  *   COACH_ID=your-coach-uuid \
+ *   IMAGES_DIR=/path/to/extracted/recipe-images \
  *   node scripts/upload-recipe-photos.mjs
  *
- * The service role key bypasses RLS and is needed for bulk uploads.
- * Find it in Supabase Dashboard → Settings → API → service_role key.
- * Your coach UUID is in the profiles table (your user's id).
+ * SUPABASE_URL      – your project URL (VITE_SUPABASE_URL from .env)
+ * SUPABASE_SERVICE_KEY – service_role key from Supabase Dashboard →
+ *                        Settings → API → Project API keys
+ * COACH_ID          – your user UUID from Supabase Dashboard →
+ *                        Authentication → Users → your email
+ * IMAGES_DIR        – folder containing the extracted recipe JPEGs
+ *                     (extract the Low_Calorie_Recipe_Book zip here)
  */
 
 import { createClient } from '@supabase/supabase-js'
@@ -21,11 +26,11 @@ import { join } from 'path'
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY
 const COACH_ID = process.env.COACH_ID
-
-const SCRATCHPAD = '/tmp/claude-0/-home-user-Online-Coaching/56c61e03-f432-5ef6-8e99-bf77fe9fc806/scratchpad'
+const IMAGES_DIR = process.env.IMAGES_DIR || '.'
 
 if (!SUPABASE_URL || !SUPABASE_KEY || !COACH_ID) {
   console.error('Missing required environment variables: SUPABASE_URL, SUPABASE_SERVICE_KEY, COACH_ID')
+  console.error('Also set IMAGES_DIR to the folder containing the extracted recipe JPEGs.')
   process.exit(1)
 }
 
@@ -121,7 +126,7 @@ async function main() {
   let succeeded = 0, skipped = 0, failed = 0
 
   for (const recipe of RECIPES) {
-    const imagePath = join(SCRATCHPAD, recipe.file)
+    const imagePath = join(IMAGES_DIR, recipe.file)
 
     // Find matching meals
     const meals = await findMeal(recipe.namePattern)
