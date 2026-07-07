@@ -6,7 +6,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 
 function PlaceholderCard({ title, subtitle, icon, color, comingSoon }) {
   return (
-    <div className={`card flex flex-col gap-3 ${comingSoon ? 'opacity-60' : ''}`}>
+    <div className={`card flex flex-col gap-3 h-full ${comingSoon ? 'opacity-60' : ''}`}>
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
         {icon}
       </div>
