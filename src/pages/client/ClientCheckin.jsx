@@ -39,64 +39,76 @@ function RatingInput({ field, value, onChange }) {
   )
 }
 
-// Pose silhouettes — front/back: arms straight down; sides: one arm extended forward
+// Filled human body silhouettes for each photo angle
 const POSE_ICON = {
   front: (
-    <svg viewBox="0 0 50 90" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-2/3 h-2/3">
-      <circle cx="25" cy="9" r="7"/>
-      {/* torso */}
-      <path d="M16 17 C19 16 22 16 25 16 C28 16 31 16 34 17 L33 44 L17 44 Z"/>
-      {/* left arm down */}
-      <path d="M17 20 L12 23 L10 44 L11 49"/>
-      {/* right arm down */}
-      <path d="M33 20 L38 23 L40 44 L39 49"/>
+    <svg viewBox="0 0 100 200" fill="currentColor" className="w-full h-full">
+      {/* head */}
+      <ellipse cx="50" cy="15" rx="13" ry="14"/>
+      {/* neck */}
+      <path d="M44 28 L44 38 C46 41 50 43 54 42 C57 41 57 38 56 28Z"/>
+      {/* torso: wide at shoulders, slight waist, flared hips */}
+      <path d="M20 40 C13 42 11 47 11 53 L11 76 C11 82 14 86 20 88 C18 91 20 96 22 99 L28 103 L36 105 L64 105 L72 103 L78 99 C80 96 82 91 80 88 C86 86 89 82 89 76 L89 53 C89 47 87 42 80 40 C71 36 61 34 50 34 C39 34 29 36 20 40Z"/>
+      {/* left arm — hangs straight at side */}
+      <path d="M11 55 C5 57 3 62 3 68 L3 100 C3 106 7 110 13 110 L20 110 C26 110 26 106 25 100 L25 68 C24 62 19 57 13 55Z"/>
+      {/* right arm */}
+      <path d="M89 55 C95 57 97 62 97 68 L97 100 C97 106 93 110 87 110 L80 110 C74 110 74 106 75 100 L75 68 C76 62 81 57 87 55Z"/>
       {/* left leg */}
-      <path d="M20 44 L17 48 L15 72 L14 77"/>
+      <path d="M27 105 L22 110 L18 148 L16 174 C16 181 20 185 28 185 L37 185 C43 183 43 178 41 174 L39 148 L39 110Z"/>
       {/* right leg */}
-      <path d="M30 44 L33 48 L35 72 L36 77"/>
+      <path d="M73 105 L78 110 L82 148 L84 174 C84 181 80 185 72 185 L63 185 C57 183 57 178 59 174 L61 148 L61 110Z"/>
+      {/* left foot */}
+      <path d="M16 177 L12 182 L10 188 C11 194 20 197 32 195 L41 191 L41 183Z"/>
+      {/* right foot */}
+      <path d="M84 177 L88 182 L90 188 C89 194 80 197 68 195 L59 191 L59 183Z"/>
     </svg>
   ),
   back: (
-    <svg viewBox="0 0 50 90" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-2/3 h-2/3">
-      <circle cx="25" cy="9" r="7"/>
-      {/* torso */}
-      <path d="M16 17 C19 16 22 16 25 16 C28 16 31 16 34 17 L33 44 L17 44 Z"/>
-      {/* left arm down */}
-      <path d="M17 20 L12 23 L10 44 L11 49"/>
-      {/* right arm down */}
-      <path d="M33 20 L38 23 L40 44 L39 49"/>
-      {/* left leg */}
-      <path d="M20 44 L17 48 L15 72 L14 77"/>
-      {/* right leg */}
-      <path d="M30 44 L33 48 L35 72 L36 77"/>
+    // Same silhouette as front — outlines look identical
+    <svg viewBox="0 0 100 200" fill="currentColor" className="w-full h-full">
+      <ellipse cx="50" cy="15" rx="13" ry="14"/>
+      <path d="M44 28 L44 38 C46 41 50 43 54 42 C57 41 57 38 56 28Z"/>
+      <path d="M20 40 C13 42 11 47 11 53 L11 76 C11 82 14 86 20 88 C18 91 20 96 22 99 L28 103 L36 105 L64 105 L72 103 L78 99 C80 96 82 91 80 88 C86 86 89 82 89 76 L89 53 C89 47 87 42 80 40 C71 36 61 34 50 34 C39 34 29 36 20 40Z"/>
+      <path d="M11 55 C5 57 3 62 3 68 L3 100 C3 106 7 110 13 110 L20 110 C26 110 26 106 25 100 L25 68 C24 62 19 57 13 55Z"/>
+      <path d="M89 55 C95 57 97 62 97 68 L97 100 C97 106 93 110 87 110 L80 110 C74 110 74 106 75 100 L75 68 C76 62 81 57 87 55Z"/>
+      <path d="M27 105 L22 110 L18 148 L16 174 C16 181 20 185 28 185 L37 185 C43 183 43 178 41 174 L39 148 L39 110Z"/>
+      <path d="M73 105 L78 110 L82 148 L84 174 C84 181 80 185 72 185 L63 185 C57 183 57 178 59 174 L61 148 L61 110Z"/>
+      <path d="M16 177 L12 182 L10 188 C11 194 20 197 32 195 L41 191 L41 183Z"/>
+      <path d="M84 177 L88 182 L90 188 C89 194 80 197 68 195 L59 191 L59 183Z"/>
     </svg>
   ),
   left: (
-    // Profile facing left, arm extends left (forward)
-    <svg viewBox="0 0 50 90" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-2/3 h-2/3">
-      {/* head offset right to suggest facing left */}
-      <circle cx="28" cy="9" r="7"/>
-      {/* narrow torso (side view) */}
-      <path d="M22 17 C24 16 27 16 30 17 L29 44 L21 44 Z"/>
-      {/* arm extended forward (to the left) */}
-      <path d="M22 23 L4 26 L3 31"/>
-      <path d="M22 27 L5 30"/>
-      {/* legs */}
-      <path d="M21 44 L19 48 L17 72 L16 77"/>
-      <path d="M29 44 L31 48 L33 72 L34 77"/>
+    // Side profile facing left, arm extended forward (to the left)
+    <svg viewBox="0 0 100 200" fill="currentColor" className="w-full h-full">
+      {/* head — offset right to suggest facing left */}
+      <ellipse cx="56" cy="15" rx="12" ry="14"/>
+      {/* neck */}
+      <path d="M50 28 L50 38 C52 41 57 43 61 41 L61 28Z"/>
+      {/* torso — narrow side profile, slight chest/butt curve */}
+      <path d="M42 40 C36 42 34 47 34 53 L34 78 C34 84 36 88 42 90 L42 105 L66 105 L66 90 C70 88 68 84 68 78 L68 53 C68 47 66 42 60 40 C56 36 46 36 42 40Z"/>
+      {/* arm extended forward (leftward) */}
+      <path d="M36 54 C30 52 22 52 14 54 L4 58 C0 60 0 65 2 68 L5 72 C8 74 14 74 20 72 L36 66 C40 64 42 60 40 56Z"/>
+      {/* front leg */}
+      <path d="M40 105 L36 112 L31 150 L29 175 C29 182 33 186 41 186 L50 186 C56 184 56 179 54 175 L52 150 L52 112Z"/>
+      {/* back leg (slightly behind) */}
+      <path d="M54 105 L58 112 L63 150 L65 175 C65 182 61 186 54 186 L50 186 L52 150 L56 112Z"/>
+      {/* front foot */}
+      <path d="M29 178 L24 183 L22 190 C23 196 34 199 48 196 L54 190 L54 184Z"/>
+      {/* back foot */}
+      <path d="M65 178 L68 183 L66 192 L54 190 L54 184 L62 181Z"/>
     </svg>
   ),
   right: (
-    // Profile facing right, arm extends right (forward) — mirror of left
-    <svg viewBox="0 0 50 90" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-2/3 h-2/3">
-      <circle cx="22" cy="9" r="7"/>
-      <path d="M20 17 C23 16 26 16 28 17 L29 44 L21 44 Z"/>
-      {/* arm extended forward (to the right) */}
-      <path d="M28 23 L46 26 L47 31"/>
-      <path d="M28 27 L45 30"/>
-      {/* legs */}
-      <path d="M21 44 L19 48 L17 72 L16 77"/>
-      <path d="M29 44 L31 48 L33 72 L34 77"/>
+    // Mirror of left — person faces right, arm extends right
+    <svg viewBox="0 0 100 200" fill="currentColor" className="w-full h-full" style={{transform:'scaleX(-1)'}}>
+      <ellipse cx="56" cy="15" rx="12" ry="14"/>
+      <path d="M50 28 L50 38 C52 41 57 43 61 41 L61 28Z"/>
+      <path d="M42 40 C36 42 34 47 34 53 L34 78 C34 84 36 88 42 90 L42 105 L66 105 L66 90 C70 88 68 84 68 78 L68 53 C68 47 66 42 60 40 C56 36 46 36 42 40Z"/>
+      <path d="M36 54 C30 52 22 52 14 54 L4 58 C0 60 0 65 2 68 L5 72 C8 74 14 74 20 72 L36 66 C40 64 42 60 40 56Z"/>
+      <path d="M40 105 L36 112 L31 150 L29 175 C29 182 33 186 41 186 L50 186 C56 184 56 179 54 175 L52 150 L52 112Z"/>
+      <path d="M54 105 L58 112 L63 150 L65 175 C65 182 61 186 54 186 L50 186 L52 150 L56 112Z"/>
+      <path d="M29 178 L24 183 L22 190 C23 196 34 199 48 196 L54 190 L54 184Z"/>
+      <path d="M65 178 L68 183 L66 192 L54 190 L54 184 L62 181Z"/>
     </svg>
   ),
 }
