@@ -106,6 +106,7 @@ export default function ClientCheckin() {
   })
   const [photos, setPhotos] = useState({ front: null, back: null, left: null, right: null })
   const [uploading, setUploading] = useState({})
+  const [uploadError, setUploadError] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -218,7 +219,7 @@ export default function ClientCheckin() {
       : await supabase.from('client_checkins').insert(payload)
 
     setSaving(false)
-    if (err) { setError('Could not save. Please try again.'); return }
+    if (err) { setError(err.message || 'Could not save. Please try again.'); return }
     setSaved(true)
     if (!existing) {
       const { data } = await supabase.from('client_checkins').select('*').eq('client_id', clientData.id).eq('week_number', weekNumber).maybeSingle()
