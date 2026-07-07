@@ -15,6 +15,13 @@ const CHECKIN_RATING_LABELS = {
   adherence:     ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
 }
 
+function checkinRatingColor(v) {
+  if (!v) return 'text-gray-400'
+  if (v >= 4) return 'text-green-600 dark:text-green-400'
+  if (v >= 3) return 'text-yellow-500 dark:text-yellow-400'
+  return 'text-red-500 dark:text-red-400'
+}
+
 function StatusBadge({ client }) {
   const now = new Date()
   const exp = client.access_expires_at ? new Date(client.access_expires_at) : null
@@ -1650,14 +1657,38 @@ function CheckinsTab({ clientId, collectMeasurements }) {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from('client_checkins').select('*').eq('client_id', clientId).order('week_number', { ascending: false })
+      const { data } = await supabase
+        .from('client_checkins')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('week_number', { ascending: false })
       setCheckins(data || [])
       setLoading(false)
     }
     load()
   }, [clientId])
 
-  function fmtDate(d) { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) }
+  function fmtDate(d) {
+    if (!d) return '—'
+    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  // checkins[0] = most recent, checkins[last] = oldest
+  function prevCheckin(i) { return checkins[i + 1] || null }
+
+  function weightDelta(c, p) {
+    if (c.weight_kg == null || p?.weight_kg == null) return null
+    return Math.round((parseFloat(c.weight_kg) - parseFloat(p.weight_kg)) * 10) / 10
+  }
+
+  function liftDelta(lift, p) {
+    const prev = p?.lift_results?.find(l => l?.name === lift?.name)
+    if (!prev || lift?.weight_kg == null || prev?.weight_kg == null) return null
+    return {
+      kg: Math.round((parseFloat(lift.weight_kg) - parseFloat(prev.weight_kg)) * 10) / 10,
+      reps: (parseInt(lift.reps) || 0) - (parseInt(prev.reps) || 0),
+    }
+  }
 
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
@@ -1670,8 +1701,19 @@ function CheckinsTab({ clientId, collectMeasurements }) {
     )
   }
 
+  // Photo comparison: newest, previous, first (all distinct)
+  const withPhotos = checkins.filter(c => c.progress_photos && Object.values(c.progress_photos).some(Boolean))
+  const newestP = withPhotos[0]
+  const prevP = withPhotos[1]
+  const firstP = withPhotos[withPhotos.length - 1]
+  const compAngles = ['front', 'back', 'left', 'right'].filter(a => newestP?.progress_photos?.[a])
+  const showComparison = newestP && firstP && newestP.id !== firstP.id && compAngles.length > 0
+
+  // Ascending for the history table
+  const ascending = [...checkins].reverse()
+
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-6 max-w-3xl">
       {lightbox && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightbox(null)}>
           <div className="relative max-w-lg w-full" onClick={e => e.stopPropagation()}>
@@ -1683,98 +1725,237 @@ function CheckinsTab({ clientId, collectMeasurements }) {
         </div>
       )}
 
-      {checkins.map(c => (
-        <div key={c.id} className="card space-y-4">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">Week {c.week_number}</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500">{fmtDate(c.updated_at || c.submitted_at)}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {c.weight_kg != null && (
-              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Weight</p>
-                <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.weight_kg} <span className="text-sm font-normal text-gray-500">kg</span></p>
-              </div>
-            )}
-            {collectMeasurements && c.waist_cm != null && (
-              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Waist</p>
-                <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.waist_cm} <span className="text-sm font-normal text-gray-500">cm</span></p>
-              </div>
-            )}
-            {collectMeasurements && c.hips_cm != null && (
-              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hips</p>
-                <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.hips_cm} <span className="text-sm font-normal text-gray-500">cm</span></p>
-              </div>
-            )}
-            {c.energy_level != null && (
-              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Energy</p>
-                <p className="text-base font-semibold text-gray-900 dark:text-white">{c.energy_level}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.energy_level[c.energy_level]}</span></p>
-              </div>
-            )}
-            {c.sleep_quality != null && (
-              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Sleep</p>
-                <p className="text-base font-semibold text-gray-900 dark:text-white">{c.sleep_quality}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.sleep_quality[c.sleep_quality]}</span></p>
-              </div>
-            )}
-            {c.adherence != null && (
-              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Adherence</p>
-                <p className="text-base font-semibold text-gray-900 dark:text-white">{c.adherence}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.adherence[c.adherence]}</span></p>
-              </div>
-            )}
-          </div>
-
-          {c.progress_photos && Object.values(c.progress_photos).some(Boolean) && (
-            <div>
-              <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Progress photos</p>
-              <div className="grid grid-cols-4 gap-2">
-                {CHECKIN_PHOTO_ANGLES.map(angle => c.progress_photos[angle.key] && (
-                  <div key={angle.key} className="flex flex-col gap-1">
-                    <button
-                      onClick={() => setLightbox(c.progress_photos[angle.key])}
-                      className="aspect-[3/4] rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity"
-                    >
-                      <img src={c.progress_photos[angle.key]} alt={angle.label} className="w-full h-full object-cover" />
-                    </button>
-                    <p className="text-xs text-center text-gray-400 dark:text-gray-500">{angle.label}</p>
-                  </div>
+      {/* ── Weight / progress history table ── */}
+      <div className="card overflow-hidden">
+        <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Progress History</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 dark:border-gray-800">
+                {['Week', 'Date', 'Weight', 'Change', 'Energy', 'Sleep', 'Adherence'].map(h => (
+                  <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
                 ))}
-              </div>
-            </div>
-          )}
-
-          {c.lift_results?.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Lifts</p>
-              <div className="grid grid-cols-3 gap-3">
-                {c.lift_results.map((l, i) => l?.name && (
-                  <div key={i} className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{l.name}</p>
-                    <p className="text-base font-semibold text-gray-900 dark:text-white">
-                      {l.weight_kg ? `${l.weight_kg} kg` : '—'}
-                      {l.reps ? <span className="text-xs font-normal text-gray-500 dark:text-gray-400 ml-1">× {l.reps}</span> : null}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {c.notes && (
-            <div>
-              <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">Notes</p>
-              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{c.notes}</p>
-            </div>
-          )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
+              {ascending.map((c, i) => {
+                const p = ascending[i - 1] || null
+                const delta = weightDelta(c, p)
+                return (
+                  <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                    <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">Wk {c.week_number}</td>
+                    <td className="py-2.5 pr-4 text-xs text-gray-400 whitespace-nowrap">{fmtDate(c.updated_at || c.submitted_at)}</td>
+                    <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">
+                      {c.weight_kg != null ? `${c.weight_kg} kg` : '—'}
+                    </td>
+                    <td className="py-2.5 pr-4 tabular-nums whitespace-nowrap">
+                      {delta !== null ? (
+                        <span className={`font-semibold text-xs ${delta < 0 ? 'text-green-600 dark:text-green-400' : delta > 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-400'}`}>
+                          {delta > 0 ? '+' : ''}{delta} kg
+                        </span>
+                      ) : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                    </td>
+                    <td className="py-2.5 pr-4">
+                      {c.energy_level != null
+                        ? <span className={`font-semibold text-xs ${checkinRatingColor(c.energy_level)}`}>{c.energy_level}/5</span>
+                        : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                    </td>
+                    <td className="py-2.5 pr-4">
+                      {c.sleep_quality != null
+                        ? <span className={`font-semibold text-xs ${checkinRatingColor(c.sleep_quality)}`}>{c.sleep_quality}/5</span>
+                        : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                    </td>
+                    <td className="py-2.5">
+                      {c.adherence != null
+                        ? <span className={`font-semibold text-xs ${checkinRatingColor(c.adherence)}`}>{c.adherence}/5</span>
+                        : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
-      ))}
+      </div>
+
+      {/* ── Photo comparison: first / previous / current ── */}
+      {showComparison && (
+        <div className="card space-y-5">
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-white">Photo Comparison</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              First (Wk {firstP.week_number})
+              {prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && ` · Previous (Wk ${prevP.week_number})`}
+              {` · Current (Wk ${newestP.week_number})`}
+            </p>
+          </div>
+          {compAngles.map(angle => {
+            const cols = [
+              { label: `First · Wk ${firstP.week_number}`, url: firstP.progress_photos[angle] },
+              prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && prevP.progress_photos?.[angle]
+                ? { label: `Prev · Wk ${prevP.week_number}`, url: prevP.progress_photos[angle] }
+                : null,
+              { label: `Now · Wk ${newestP.week_number}`, url: newestP.progress_photos[angle] },
+            ].filter(Boolean)
+            return (
+              <div key={angle}>
+                <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2 capitalize">{angle}</p>
+                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols.length}, 1fr)` }}>
+                  {cols.map(col => (
+                    <div key={col.label} className="space-y-1">
+                      <button
+                        onClick={() => setLightbox(col.url)}
+                        className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity block"
+                      >
+                        <img src={col.url} alt={col.label} className="w-full h-full object-cover" />
+                      </button>
+                      <p className="text-xs text-center text-gray-400 dark:text-gray-500">{col.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Individual check-in cards ── */}
+      {checkins.map((c, i) => {
+        const p = prevCheckin(i)
+        const wDelta = weightDelta(c, p)
+        return (
+          <div key={c.id} className="card space-y-4">
+            {/* Header + weight delta */}
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h3 className="font-semibold text-gray-900 dark:text-white">Week {c.week_number}</h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500">{fmtDate(c.updated_at || c.submitted_at)}</p>
+              </div>
+              {wDelta !== null && (
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                  wDelta < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  : wDelta > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                  : 'bg-gray-100 text-gray-500 dark:bg-gray-800'
+                }`}>
+                  {wDelta > 0 ? '↑ +' : wDelta < 0 ? '↓ ' : ''}{wDelta} kg vs last week
+                </span>
+              )}
+            </div>
+
+            {/* Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {c.weight_kg != null && (
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Weight</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.weight_kg} <span className="text-sm font-normal text-gray-500">kg</span></p>
+                </div>
+              )}
+              {collectMeasurements && c.waist_cm != null && (
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Waist</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.waist_cm} <span className="text-sm font-normal text-gray-500">cm</span></p>
+                </div>
+              )}
+              {collectMeasurements && c.hips_cm != null && (
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hips</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.hips_cm} <span className="text-sm font-normal text-gray-500">cm</span></p>
+                </div>
+              )}
+              {c.energy_level != null && (
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Energy</p>
+                  <p className="text-base font-semibold text-gray-900 dark:text-white">{c.energy_level}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.energy_level[c.energy_level]}</span></p>
+                </div>
+              )}
+              {c.sleep_quality != null && (
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Sleep</p>
+                  <p className="text-base font-semibold text-gray-900 dark:text-white">{c.sleep_quality}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.sleep_quality[c.sleep_quality]}</span></p>
+                </div>
+              )}
+              {c.adherence != null && (
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Adherence</p>
+                  <p className="text-base font-semibold text-gray-900 dark:text-white">{c.adherence}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.adherence[c.adherence]}</span></p>
+                </div>
+              )}
+            </div>
+
+            {/* Lifts with week-on-week deltas */}
+            {c.lift_results?.filter(l => l?.name).length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Lifts</p>
+                <div className="grid grid-cols-3 gap-3">
+                  {c.lift_results.filter(l => l?.name).map((lift, li) => {
+                    const d = liftDelta(lift, p)
+                    return (
+                      <div key={li} className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 truncate">{lift.name}</p>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {lift.weight_kg ? `${lift.weight_kg} kg` : '—'}
+                          {lift.reps ? <span className="text-xs font-normal text-gray-500 dark:text-gray-400 ml-1">× {lift.reps}</span> : null}
+                        </p>
+                        {d !== null && (
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {d.kg !== 0 && (
+                              <span className={`text-xs font-semibold ${d.kg > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                                {d.kg > 0 ? '↑ +' : '↓ '}{d.kg} kg
+                              </span>
+                            )}
+                            {d.reps !== 0 && (
+                              <span className={`text-xs font-semibold ${d.reps > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                                {d.reps > 0 ? '↑ +' : '↓ '}{d.reps} reps
+                              </span>
+                            )}
+                            {d.kg === 0 && d.reps === 0 && (
+                              <span className="text-xs text-gray-400">same</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Photos */}
+            {c.progress_photos && Object.values(c.progress_photos).some(Boolean) && (
+              <div>
+                <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Photos</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {CHECKIN_PHOTO_ANGLES.map(angle => c.progress_photos[angle.key] && (
+                    <div key={angle.key} className="flex flex-col gap-1">
+                      <button
+                        onClick={() => setLightbox(c.progress_photos[angle.key])}
+                        className="aspect-[3/4] rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity"
+                      >
+                        <img src={c.progress_photos[angle.key]} alt={angle.label} className="w-full h-full object-cover" />
+                      </button>
+                      <p className="text-xs text-center text-gray-400 dark:text-gray-500">{angle.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {c.notes && (
+              <div>
+                <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">Notes</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{c.notes}</p>
+              </div>
+            )}
+
+            {c.coach_response && (
+              <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl p-3">
+                <p className="text-xs font-semibold text-brand-700 dark:text-brand-400 mb-1">Your response</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{c.coach_response}</p>
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
