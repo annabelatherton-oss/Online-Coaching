@@ -136,7 +136,7 @@ function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, me
       onClick={() => meal && onViewRecipe(slotKey)}
     >
       {/* Photo */}
-      <div className="relative h-28 bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+      <div className="relative h-36 bg-gray-100 dark:bg-gray-800 flex-shrink-0">
         {meal?.photo_url ? (
           <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" />
         ) : (
@@ -395,7 +395,7 @@ export default function ClientMealPlan() {
 
       const { data: mealsData } = await supabase.from('meals').select(`
         id, name, category, instructions, photo_url,
-        meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id),
+        meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id),
         meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
           meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id))
       `).eq('coach_id', clientRow.coach_id).order('name')
