@@ -38,9 +38,15 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 const RECIPES = [
   // ── BREAKFAST ───────────────────────────────────────────────────────────
   { name: 'Overnight Oats',                         file: 'Overnight Oats.jpg' },
+  // Renamed overnight oats variants — share the same base image
+  { name: 'Raspberry Overnight Oats',               file: 'Overnight Oats.jpg' },
+  { name: 'Biscoff Overnight Oats',                 file: 'Overnight Oats.jpg' },
+  { name: 'Strawberry Cheesecake Overnight Oats',   file: 'Overnight Oats.jpg' },
   { name: 'Overnight Weetabix',                     file: 'Overnight Weetabix.jpg' },
+  { name: 'Raspberry Overnight Weetabix',           file: 'Overnight Weetabix.jpg' },
   { name: 'Chia Pudding',                           file: '5.jpg' },
   { name: 'Porridge',                               file: '6.jpg' },
+  { name: 'Porridge and Honey',                     file: '6.jpg' },
   { name: 'Protein Pancakes',                       file: '7.jpg' },
   { name: 'Breafkast Wrap',                         file: '8.jpg' },
   { name: 'Breakfast Bagel',                        file: '9.jpg' },
@@ -49,6 +55,7 @@ const RECIPES = [
   { name: 'Avacado Bagel',                          file: '13.jpg' },
   { name: 'PB&J Bagel',                             file: '14.jpg' },
   { name: 'Yogurt',                                 file: 'Yogurt Bowl (2).jpg' },
+  { name: 'Yogurt Bowl',                            file: 'Yogurt Bowl (2).jpg' },
 
   // ── LUNCH ───────────────────────────────────────────────────────────────
   { name: 'Avacado and Egg on Sourdough',           file: '16.jpg' },
@@ -71,6 +78,7 @@ const RECIPES = [
   { name: 'Rice Cakes',                             file: '32.jpg' },
   { name: 'Cereal',                                 file: '33.jpg' },
   { name: 'Oats',                                   file: '34.jpg' },
+  { name: 'Protein Oats',                           file: '34.jpg' },
 
   // ── DINNER ──────────────────────────────────────────────────────────────
   { name: 'Sweet Chilli Chicken Egg Fried Rice',    file: '36.jpg' },
