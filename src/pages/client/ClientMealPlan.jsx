@@ -240,7 +240,7 @@ function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides,
         </div>
 
         {/* Scrollable content */}
-        <div className="overflow-y-auto flex-1 p-5 space-y-5">
+        <div className="overflow-y-auto flex-1 min-h-0 p-5 space-y-5">
           {/* Title + macros */}
           <div>
             {slotDef?.optionLabel && (
