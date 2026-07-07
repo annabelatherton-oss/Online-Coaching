@@ -90,6 +90,28 @@ const RECIPES = [
   { name: 'Salmon and Potatoes',                    file: '50.jpg' },
 ]
 
+async function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms))
+}
+
+async function uploadWithRetry(storagePath, buffer, retries = 4) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const { error } = await supabase.storage
+        .from('meal-photos')
+        .upload(storagePath, buffer, { contentType: 'image/jpeg', upsert: true })
+      if (!error) return null
+      // Non-network Supabase error — don't retry
+      return error
+    } catch (err) {
+      if (attempt === retries - 1) throw err
+      const delay = 2000 * Math.pow(2, attempt)
+      console.log(`    retry ${attempt + 1} in ${delay / 1000}s...`)
+      await sleep(delay)
+    }
+  }
+}
+
 async function main() {
   // Sign in
   console.log(`Signing in as ${EMAIL}...`)
@@ -128,9 +150,7 @@ async function main() {
 
     try {
       const buffer = readFileSync(imagePath)
-      const { error: uploadErr } = await supabase.storage
-        .from('meal-photos')
-        .upload(storagePath, buffer, { contentType: 'image/jpeg', upsert: true })
+      const uploadErr = await uploadWithRetry(storagePath, buffer)
       if (uploadErr) throw uploadErr
 
       const { error: updateErr } = await supabase
@@ -148,6 +168,23 @@ async function main() {
   }
 
   console.log(`\nDone: ${succeeded} uploaded, ${skipped} skipped, ${failed} failed.`)
+
+  // Show all meals still missing a photo so renamed meals can be identified
+  console.log('\nFetching meals still without a photo...')
+  const { data: missing } = await supabase
+    .from('meals')
+    .select('name, category')
+    .eq('coach_id', coachId)
+    .or('photo_url.is.null,photo_url.eq.')
+    .order('category')
+  if (missing && missing.length > 0) {
+    console.log('\nMeals with no photo yet (check for renamed ones):')
+    for (const m of missing) {
+      console.log(`  [${m.category}] "${m.name}"`)
+    }
+  } else {
+    console.log('All meals have photos!')
+  }
 }
 
 main().catch(console.error)
