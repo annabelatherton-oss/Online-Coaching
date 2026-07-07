@@ -421,6 +421,9 @@ export default function ClientMealPlan() {
 
       const map = {}, byCat = {}
       for (const m of (mealsData || [])) {
+        if (m.photo_url) {
+          m.photo_url = supabase.storage.from('meal-photos').getPublicUrl(m.photo_url).data.publicUrl
+        }
         map[m.id] = m
         ;(byCat[m.category] = byCat[m.category] || []).push(m)
       }
