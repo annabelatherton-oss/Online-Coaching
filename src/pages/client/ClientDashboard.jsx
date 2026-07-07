@@ -113,18 +113,19 @@ export default function ClientDashboard() {
           />
         </Link>
 
-        <PlaceholderCard
-          title="This Week's Training"
-          subtitle="Your exercise programme for the week"
-          color="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-          comingSoon
-          icon={
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          }
-        />
+        <Link to="/client/training">
+          <PlaceholderCard
+            title="This Week's Training"
+            subtitle="Your exercise programme for the week"
+            color="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            }
+          />
+        </Link>
 
         <Link to="/client/checkin">
           <PlaceholderCard

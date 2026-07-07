@@ -7,7 +7,7 @@ import WeightChart from '../../components/WeightChart'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 
-const TABS = ['Overview', 'Meal Plan', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
+const TABS = ['Overview', 'Meal Plan', 'Training', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
 
 const CHECKIN_RATING_LABELS = {
   energy_level:  ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
@@ -1481,6 +1481,161 @@ function MealPlanTab({ client, coachId }) {
   )
 }
 
+function TrainingTab({ client, coachId }) {
+  const [programs, setPrograms] = useState([])
+  const [assignment, setAssignment] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ program_id: '', week_override: '' })
+  const [saving, setSaving] = useState(false)
+  const [showOverride, setShowOverride] = useState(false)
+  const [overrideWeek, setOverrideWeek] = useState('')
+
+  async function load() {
+    const [{ data: progs }, { data: asgn }] = await Promise.all([
+      supabase.from('training_programs').select('*').eq('coach_id', coachId).order('name'),
+      supabase.from('client_training_assignments')
+        .select('*, training_programs(name, current_week, weeks_total)')
+        .eq('client_id', client.id)
+        .eq('active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+    setPrograms(progs || [])
+    setAssignment(asgn || null)
+    setOverrideWeek(asgn?.week_override ?? '')
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [client.id])
+
+  async function handleAssign(e) {
+    e.preventDefault()
+    setSaving(true)
+    await supabase.from('client_training_assignments').update({ active: false }).eq('client_id', client.id)
+    const prog = programs.find(p => p.id === form.program_id)
+    await supabase.from('client_training_assignments').insert({
+      client_id: client.id,
+      coach_id: coachId,
+      program_id: form.program_id,
+      program_name: prog?.name || '',
+      week_override: form.week_override ? parseInt(form.week_override) : null,
+      active: true,
+    })
+    setSaving(false)
+    setShowForm(false)
+    load()
+  }
+
+  async function handleRemove() {
+    if (!confirm('Remove training assignment?')) return
+    await supabase.from('client_training_assignments').update({ active: false }).eq('client_id', client.id)
+    load()
+  }
+
+  async function saveOverride(e) {
+    e.preventDefault()
+    await supabase.from('client_training_assignments').update({
+      week_override: overrideWeek !== '' ? parseInt(overrideWeek) : null,
+    }).eq('id', assignment.id)
+    setShowOverride(false)
+    load()
+  }
+
+  if (loading) return <LoadingSpinner size="lg" className="py-12" />
+
+  const prog = assignment?.training_programs
+  const effectiveWeek = assignment?.week_override ?? prog?.current_week ?? '—'
+  const isOverridden = assignment?.week_override != null
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      {!assignment && !showForm && (
+        <div className="card text-center py-12">
+          <p className="text-gray-400 dark:text-gray-500 text-sm mb-4">No training programme assigned.</p>
+          {programs.length === 0
+            ? <p className="text-xs text-gray-400">Create a training programme from the Training page first.</p>
+            : <button onClick={() => setShowForm(true)} className="btn-primary">Assign Programme</button>}
+        </div>
+      )}
+
+      {showForm && (
+        <form onSubmit={handleAssign} className="card space-y-4">
+          <h3 className="font-semibold text-gray-900 dark:text-white">{assignment ? 'Change Programme' : 'Assign Training Programme'}</h3>
+          <div>
+            <label className="label">Programme</label>
+            <select className="input" required value={form.program_id} onChange={e => setForm(f => ({ ...f, program_id: e.target.value }))}>
+              <option value="">Select a programme…</option>
+              {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Starting week</label>
+            <select className="input" value={form.week_override} onChange={e => setForm(f => ({ ...f, week_override: e.target.value }))}>
+              <option value="">Follow programme's current week</option>
+              {form.program_id && Array.from({ length: programs.find(p => p.id === form.program_id)?.weeks_total || 12 }, (_, i) => (
+                <option key={i + 1} value={i + 1}>Week {i + 1}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-3">
+            <button type="submit" disabled={saving || !form.program_id} className="btn-primary">{saving ? 'Saving…' : 'Assign'}</button>
+            <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+          </div>
+        </form>
+      )}
+
+      {assignment && prog && (
+        <div className="card space-y-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white">{assignment.program_name || prog.name}</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{prog.weeks_total} weeks</p>
+            </div>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <button onClick={() => { setForm({ program_id: assignment.program_id, week_override: '' }); setShowForm(true); setShowOverride(false) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Change</button>
+              <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-5 py-3 px-4 rounded-xl bg-blue-50/60 dark:bg-blue-900/10">
+            <div className="text-center">
+              <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">{effectiveWeek}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 uppercase tracking-wide">Week</p>
+            </div>
+            <div className="flex-1 min-w-0 space-y-1">
+              {isOverridden ? (
+                <>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Week {assignment.week_override} <span className="text-xs font-normal text-orange-500">(individual override)</span></p>
+                  <p className="text-xs text-gray-400">Programme is on Week {prog.current_week}</p>
+                  <button onClick={async () => { await supabase.from('client_training_assignments').update({ week_override: null }).eq('id', assignment.id); load() }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Clear → follow programme (Week {prog.current_week})</button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Following programme</p>
+                  <button onClick={() => { setOverrideWeek(prog.current_week); setShowOverride(true) }} className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium">Put on a different week</button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {showOverride && (
+            <form onSubmit={saveOverride} className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/20">
+              <span className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">Put on week:</span>
+              <select className="input py-1" value={overrideWeek} onChange={e => setOverrideWeek(e.target.value)}>
+                {Array.from({ length: prog.weeks_total }, (_, i) => <option key={i + 1} value={i + 1}>Week {i + 1}</option>)}
+              </select>
+              <button type="submit" className="btn-primary py-1.5 px-3 text-sm">Save</button>
+              <button type="button" onClick={() => setShowOverride(false)} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
+            </form>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const CHECKIN_PHOTO_ANGLES = [
   { key: 'front', label: 'Front' },
   { key: 'back',  label: 'Back' },
@@ -1688,6 +1843,7 @@ export default function CoachClientProfile() {
       <div>
         {activeTab === 'Overview'    && <OverviewTab client={client} onSaved={loadClient} />}
         {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} />}
+        {activeTab === 'Training'   && <TrainingTab client={client} coachId={profile.id} />}
         {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} />}
         {activeTab === 'Weight'     && <WeightTab clientId={client.id} />}
         {activeTab === 'Measurements' && <MeasurementsTab clientId={client.id} />}

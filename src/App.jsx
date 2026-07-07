@@ -21,6 +21,9 @@ import ClientMealPlan from './pages/client/ClientMealPlan'
 import ClientCheckin from './pages/client/ClientCheckin'
 import ClientProgress from './pages/client/ClientProgress'
 import CoachReports from './pages/coach/CoachReports'
+import CoachTrainingList from './pages/coach/CoachTrainingList'
+import CoachTrainingEditor from './pages/coach/CoachTrainingEditor'
+import ClientTraining from './pages/client/ClientTraining'
 
 export default function App() {
   return (
@@ -52,6 +55,8 @@ export default function App() {
             <Route path="meal-templates/:templateId" element={<WeeklyTemplateEditor />} />
             <Route path="settings" element={<CoachSettings />} />
             <Route path="reports" element={<CoachReports />} />
+            <Route path="training" element={<CoachTrainingList />} />
+            <Route path="training/:programId" element={<CoachTrainingEditor />} />
           </Route>
 
           {/* Client area */}
@@ -68,6 +73,7 @@ export default function App() {
             <Route path="meals" element={<ClientMealPlan />} />
             <Route path="checkin" element={<ClientCheckin />} />
             <Route path="progress" element={<ClientProgress />} />
+            <Route path="training" element={<ClientTraining />} />
           </Route>
 
           {/* Default redirect */}
