@@ -217,89 +217,98 @@ function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides,
   const slotDef = ALL_SLOT_DEFS.find(s => s.key === slotKey)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="bg-white dark:bg-gray-900 w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl flex flex-col"
+        style={{ maxHeight: '92dvh' }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Photo header */}
-        <div className="relative flex-shrink-0">
-          {meal?.photo_url ? (
-            <img src={meal.photo_url} alt={meal.name} className="w-full h-52 object-cover" />
-          ) : (
-            <div className="w-full h-24 bg-gray-100 dark:bg-gray-800" />
-          )}
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-3 p-1.5 rounded-full bg-black/40 text-white hover:bg-black/60 backdrop-blur-sm"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        {/* Close handle (mobile) */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0 sm:hidden">
+          <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
         </div>
 
-        {/* Scrollable content */}
-        <div className="overflow-y-auto flex-1 min-h-0 p-5 space-y-5">
-          {/* Title + macros */}
-          <div>
-            {slotDef?.optionLabel && (
-              <p className="text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1">{slotDef.label} — {slotDef.optionLabel}</p>
+        {/* Everything scrolls together */}
+        <div className="overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+          {/* Photo */}
+          <div className="relative">
+            {meal?.photo_url ? (
+              <img src={meal.photo_url} alt={meal.name} className="w-full h-52 object-cover" />
+            ) : (
+              <div className="w-full h-20 bg-gray-100 dark:bg-gray-800" />
             )}
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">{meal?.name}</h2>
-            {macros && (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm">
-                <span className="font-bold text-gray-900 dark:text-white">{Math.round(macros.cal)} kcal</span>
-                <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.carb)}g carbs</span>
-                <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.prot)}g protein</span>
-                <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.fat)}g fat</span>
-              </div>
-            )}
+            <button
+              onClick={onClose}
+              className="absolute top-3 right-3 p-1.5 rounded-full bg-black/40 text-white hover:bg-black/60 backdrop-blur-sm"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
-          {/* Ingredients */}
-          {ingredients.length > 0 && (
+          {/* Content */}
+          <div className="p-5 space-y-5">
+            {/* Title + macros */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Ingredients</h3>
-              <div className="space-y-2">
-                {ingredients.map((ing, i) => (
-                  <div key={ing.id || i} className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-gray-800 dark:text-gray-200 flex-1">{ing.name}</span>
-                    <div className="flex items-center gap-3 flex-shrink-0 tabular-nums">
-                      <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{formatAmount(ing)}</span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
-                        {Math.round(parseFloat(ing.carbs_g) || 0)}c · {Math.round(parseFloat(ing.protein_g) || 0)}p · {Math.round(parseFloat(ing.fat_g) || 0)}f
-                      </span>
+              {slotDef?.optionLabel && (
+                <p className="text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1">{slotDef.label} — {slotDef.optionLabel}</p>
+              )}
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{meal?.name}</h2>
+              {macros && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm">
+                  <span className="font-bold text-gray-900 dark:text-white">{Math.round(macros.cal)} kcal</span>
+                  <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.carb)}g carbs</span>
+                  <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.prot)}g protein</span>
+                  <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.fat)}g fat</span>
+                </div>
+              )}
+            </div>
+
+            {/* Ingredients */}
+            {ingredients.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Ingredients</h3>
+                <div className="space-y-2">
+                  {ingredients.map((ing, i) => (
+                    <div key={ing.id || i} className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-gray-800 dark:text-gray-200 flex-1">{ing.name}</span>
+                      <div className="flex items-center gap-3 flex-shrink-0 tabular-nums">
+                        <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{formatAmount(ing)}</span>
+                        <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
+                        <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
+                          {Math.round(parseFloat(ing.carbs_g) || 0)}c · {Math.round(parseFloat(ing.protein_g) || 0)}p · {Math.round(parseFloat(ing.fat_g) || 0)}f
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Instructions */}
-          {meal?.instructions && (
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">How to make it</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-line leading-relaxed">{meal.instructions}</p>
-            </div>
-          )}
-        </div>
+            {/* Instructions */}
+            {meal?.instructions && (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">How to make it</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-line leading-relaxed">{meal.instructions}</p>
+              </div>
+            )}
 
-        {/* Footer actions */}
-        <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-shrink-0 bg-white dark:bg-gray-900">
-          <button
-            onClick={() => { onSwap(slotKey, slotDef?.label || '', slotDef?.cat || ''); onClose() }}
-            className="btn-primary flex-1"
-          >
-            Swap meal
-          </button>
-          {isCustom && (
-            <button onClick={() => { onRevert(slotKey); onClose() }} className="btn-secondary">
-              Revert
-            </button>
-          )}
+            {/* Actions */}
+            <div className="flex items-center gap-3 pt-2 pb-2">
+              <button
+                onClick={() => { onSwap(slotKey, slotDef?.label || '', slotDef?.cat || ''); onClose() }}
+                className="btn-primary flex-1"
+              >
+                Swap meal
+              </button>
+              {isCustom && (
+                <button onClick={() => { onRevert(slotKey); onClose() }} className="btn-secondary">
+                  Revert
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
