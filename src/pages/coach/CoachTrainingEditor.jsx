@@ -207,6 +207,7 @@ export default function CoachTrainingEditor() {
   const [topLifts, setTopLifts] = useState([])
   const [savingLifts, setSavingLifts] = useState(false)
   const [liftsSaved, setLiftsSaved] = useState(false)
+  const [exerciseNames, setExerciseNames] = useState([])
 
   async function loadProgram() {
     const { data } = await supabase
@@ -221,6 +222,21 @@ export default function CoachTrainingEditor() {
     setNewName(data.name)
     setTopLifts(data.top_lifts || [])
     setLoading(false)
+    loadExerciseNames()
+  }
+
+  async function loadExerciseNames() {
+    const { data } = await supabase
+      .from('training_sessions')
+      .select('session_exercises(name)')
+      .eq('program_id', programId)
+    const names = [...new Set(
+      (data || [])
+        .flatMap(s => s.session_exercises || [])
+        .map(e => e.name)
+        .filter(Boolean)
+    )].sort()
+    setExerciseNames(names)
   }
 
   async function loadSessions(week) {
@@ -239,7 +255,7 @@ export default function CoachTrainingEditor() {
   }
 
   useEffect(() => { loadProgram() }, [programId])
-  useEffect(() => { if (program) loadSessions(selectedWeek) }, [selectedWeek, program])
+  useEffect(() => { if (program) { loadSessions(selectedWeek); loadExerciseNames() } }, [selectedWeek, program])
 
   async function addSession() {
     setAddingSession(true)
@@ -426,12 +442,16 @@ export default function CoachTrainingEditor() {
             </div>
             {topLifts.map((lift, i) => (
               <div key={i} className="flex items-center gap-2">
-                <input
+                <select
                   className="flex-1 input py-1.5 text-sm"
-                  placeholder="Exercise name"
                   value={lift.name ?? ''}
                   onChange={e => updateLift(i, 'name', e.target.value)}
-                />
+                >
+                  <option value="">Select exercise</option>
+                  {exerciseNames.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
                 <div className="flex items-center gap-1 w-32">
                   <input
                     className="input py-1.5 text-sm w-12 text-center"
