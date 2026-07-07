@@ -16,6 +16,32 @@ const PHOTO_ANGLES = [
   { key: 'right', label: 'Right side' },
 ]
 
+function getBestPerformance(liftName, checkins) {
+  const results = checkins
+    .flatMap(c => c.lift_results || [])
+    .filter(r => r?.name === liftName && r.weight_kg != null && r.reps != null)
+  if (!results.length) return null
+  return results.reduce((best, r) => {
+    const w = parseFloat(r.weight_kg), bw = parseFloat(best.weight_kg)
+    if (w > bw) return r
+    if (w === bw && parseInt(r.reps) > parseInt(best.reps)) return r
+    return best
+  })
+}
+
+function calcNextTarget(lift, bestPerf) {
+  if (!bestPerf || !lift.reps_max) return null
+  const w = parseFloat(bestPerf.weight_kg)
+  const r = parseInt(bestPerf.reps)
+  const maxReps = parseInt(lift.reps_max)
+  const minReps = parseInt(lift.reps_min) || maxReps
+  const increment = parseFloat(lift.weight_increment) || 5
+  if (r >= maxReps) {
+    return { weight_kg: w + increment, reps: minReps }
+  }
+  return { weight_kg: w, reps: r + 1 }
+}
+
 function RatingInput({ field, value, onChange }) {
   const labels = RATING_LABELS[field]
   return (
@@ -93,6 +119,7 @@ export default function ClientCheckin() {
   const [weekNumber, setWeekNumber] = useState(null)
   const [collectMeasurements, setCollectMeasurements] = useState(false)
   const [topLifts, setTopLifts] = useState([])
+  const [allCheckins, setAllCheckins] = useState([])
   const [existing, setExisting] = useState(null)
   const [form, setForm] = useState({
     weight_kg: '',
@@ -106,7 +133,6 @@ export default function ClientCheckin() {
   })
   const [photos, setPhotos] = useState({ front: null, back: null, left: null, right: null })
   const [uploading, setUploading] = useState({})
-  const [uploadError, setUploadError] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -121,7 +147,20 @@ export default function ClientCheckin() {
       if (!clientRow) { setLoading(false); return }
       setClientData(clientRow)
       setCollectMeasurements(!!clientRow.collect_measurements)
-      setTopLifts((clientRow.top_lifts || []).filter(l => l?.name))
+
+      // Prefer top lifts from active training assignment; fall back to client record
+      const { data: trainingAsgn } = await supabase
+        .from('client_training_assignments')
+        .select('program_id, training_programs(top_lifts)')
+        .eq('client_id', clientRow.id)
+        .eq('active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const trainingLifts = (trainingAsgn?.training_programs?.top_lifts || []).filter(l => l?.name)
+      const clientLifts = (clientRow.top_lifts || []).filter(l => l?.name)
+      setTopLifts(trainingLifts.length > 0 ? trainingLifts : clientLifts)
 
       const { data: asgn } = await supabase
         .from('client_plan_assignments')
@@ -142,6 +181,14 @@ export default function ClientCheckin() {
         }
       }
       setWeekNumber(week)
+
+      // All check-ins with lift data, used for best-ever performance calculation
+      const { data: history } = await supabase
+        .from('client_checkins')
+        .select('week_number, lift_results')
+        .eq('client_id', clientRow.id)
+        .not('lift_results', 'is', null)
+      setAllCheckins(history || [])
 
       const { data: checkin } = await supabase
         .from('client_checkins')
@@ -227,6 +274,17 @@ export default function ClientCheckin() {
     }
   }
 
+  // Compute next-week targets based on all history plus what was just submitted
+  function getNextWeekTargets() {
+    const prevCheckins = allCheckins.filter(c => c.week_number !== weekNumber)
+    const currentEntry = { lift_results: (form.lift_results || []).filter(r => r?.name) }
+    const withCurrent = [...prevCheckins, currentEntry]
+    return topLifts.map(lift => ({
+      lift,
+      target: calcNextTarget(lift, getBestPerformance(lift.name, withCurrent)),
+    }))
+  }
+
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
   return (
@@ -306,9 +364,21 @@ export default function ClientCheckin() {
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">This week's lifts</h2>
             {topLifts.map((lift, i) => {
               const result = form.lift_results?.[i] || {}
+              const prevCheckins = allCheckins.filter(c => c.week_number !== weekNumber)
+              const best = getBestPerformance(lift.name, prevCheckins)
+              const target = calcNextTarget(lift, best)
               return (
-                <div key={i}>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{lift.name}</p>
+                <div key={i} className="space-y-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{lift.name}</p>
+                    {target ? (
+                      <span className="text-xs text-brand-600 dark:text-brand-400 font-medium whitespace-nowrap">
+                        Aim for: {target.reps} reps × {target.weight_kg} kg
+                      </span>
+                    ) : (lift.reps_min && lift.reps_max) ? (
+                      <span className="text-xs text-gray-400 whitespace-nowrap">Target: {lift.reps_min}–{lift.reps_max} reps</span>
+                    ) : null}
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="label">Weight (kg)</label>
@@ -346,6 +416,27 @@ export default function ClientCheckin() {
           {saved && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
         </div>
       </form>
+
+      {/* Next week's targets — shown after saving */}
+      {saved && topLifts.length > 0 && (
+        <div className="card space-y-3 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10">
+          <p className="text-sm font-semibold text-green-700 dark:text-green-400">Next week's targets</p>
+          <div className="divide-y divide-green-100 dark:divide-green-900/40">
+            {getNextWeekTargets().map(({ lift, target }, i) => (
+              <div key={i} className="flex items-center justify-between py-2 first:pt-0 last:pb-0">
+                <span className="text-sm text-gray-700 dark:text-gray-300">{lift.name}</span>
+                {target ? (
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {target.reps} reps × {target.weight_kg} kg
+                  </span>
+                ) : (
+                  <span className="text-xs text-gray-400">Log a result to get a target</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

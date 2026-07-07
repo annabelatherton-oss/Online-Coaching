@@ -204,6 +204,9 @@ export default function CoachTrainingEditor() {
   const [addingSession, setAddingSession] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [newName, setNewName] = useState('')
+  const [topLifts, setTopLifts] = useState([])
+  const [savingLifts, setSavingLifts] = useState(false)
+  const [liftsSaved, setLiftsSaved] = useState(false)
 
   async function loadProgram() {
     const { data } = await supabase
@@ -216,6 +219,7 @@ export default function CoachTrainingEditor() {
     setProgram(data)
     setSelectedWeek(data.current_week)
     setNewName(data.name)
+    setTopLifts(data.top_lifts || [])
     setLoading(false)
   }
 
@@ -309,6 +313,35 @@ export default function CoachTrainingEditor() {
     loadSessions(selectedWeek)
   }
 
+  function addLift() {
+    setTopLifts(prev => [...prev, { name: '', reps_min: '', reps_max: '', weight_increment: '' }])
+  }
+
+  function removeLift(i) {
+    setTopLifts(prev => prev.filter((_, idx) => idx !== i))
+  }
+
+  function updateLift(i, field, value) {
+    setTopLifts(prev => prev.map((l, idx) => idx === i ? { ...l, [field]: value } : l))
+  }
+
+  async function saveTopLifts() {
+    setSavingLifts(true)
+    const cleaned = topLifts
+      .filter(l => l.name?.trim())
+      .map(l => ({
+        name: l.name.trim(),
+        reps_min: l.reps_min !== '' && l.reps_min != null ? parseInt(l.reps_min) : null,
+        reps_max: l.reps_max !== '' && l.reps_max != null ? parseInt(l.reps_max) : null,
+        weight_increment: l.weight_increment !== '' && l.weight_increment != null ? parseFloat(l.weight_increment) : null,
+      }))
+    await supabase.from('training_programs').update({ top_lifts: cleaned }).eq('id', programId)
+    setProgram(p => ({ ...p, top_lifts: cleaned }))
+    setSavingLifts(false)
+    setLiftsSaved(true)
+    setTimeout(() => setLiftsSaved(false), 2500)
+  }
+
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
   return (
@@ -361,6 +394,94 @@ export default function CoachTrainingEditor() {
             </select>
           </div>
         </div>
+      </div>
+
+      {/* Top 3 Lifts */}
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Top 3 Lifts</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Progressive overload tracking shown to clients on check-in</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {liftsSaved && <span className="text-xs text-green-600 dark:text-green-400 font-medium">Saved</span>}
+            <button
+              type="button"
+              onClick={saveTopLifts}
+              disabled={savingLifts}
+              className="btn-primary py-1.5 px-3 text-sm"
+            >
+              {savingLifts ? 'Saving…' : 'Save lifts'}
+            </button>
+          </div>
+        </div>
+
+        {topLifts.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium">
+              <span className="flex-1">Exercise</span>
+              <span className="w-32 text-center">Rep range (min–max)</span>
+              <span className="w-20 text-center">+kg step</span>
+              <span className="w-4" />
+            </div>
+            {topLifts.map((lift, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  className="flex-1 input py-1.5 text-sm"
+                  placeholder="Exercise name"
+                  value={lift.name ?? ''}
+                  onChange={e => updateLift(i, 'name', e.target.value)}
+                />
+                <div className="flex items-center gap-1 w-32">
+                  <input
+                    className="input py-1.5 text-sm w-12 text-center"
+                    type="number"
+                    min={1}
+                    placeholder="6"
+                    value={lift.reps_min ?? ''}
+                    onChange={e => updateLift(i, 'reps_min', e.target.value)}
+                  />
+                  <span className="text-gray-400 text-sm flex-shrink-0">–</span>
+                  <input
+                    className="input py-1.5 text-sm w-12 text-center"
+                    type="number"
+                    min={1}
+                    placeholder="8"
+                    value={lift.reps_max ?? ''}
+                    onChange={e => updateLift(i, 'reps_max', e.target.value)}
+                  />
+                </div>
+                <input
+                  className="input py-1.5 text-sm w-20 text-center"
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  placeholder="5"
+                  value={lift.weight_increment ?? ''}
+                  onChange={e => updateLift(i, 'weight_increment', e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeLift(i)}
+                  className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 text-xl leading-none w-4 flex-shrink-0"
+                >×</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {topLifts.length < 3 && (
+          <button
+            type="button"
+            onClick={addLift}
+            className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium inline-flex items-center gap-1"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add lift
+          </button>
+        )}
       </div>
 
       {/* Week selector */}
