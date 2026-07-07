@@ -33,16 +33,46 @@ if (!EMAIL || !PASSWORD) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-function buildPrompt(mealName, ingredients) {
+function cookingMethodHint(instructions) {
+  if (!instructions) return ''
+  // Pull the last step (the serve/plating step) as it best describes the finished dish
+  const steps = instructions
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => /^\d+\./.test(l))
+  const lastStep = steps[steps.length - 1] || ''
+  // Also grab any cooking verbs from the first step
+  const firstStep = steps[0] || ''
+  const combined = `${firstStep} ${lastStep}`.toLowerCase()
+
+  // Extract key cooking method words to guide the image
+  const methods = []
+  if (/scrambl/.test(combined)) methods.push('scrambled')
+  if (/fried|fry/.test(combined)) methods.push('pan-fried')
+  if (/air.fri/.test(combined)) methods.push('crispy')
+  if (/bak/.test(combined)) methods.push('baked')
+  if (/grill/.test(combined)) methods.push('grilled')
+  if (/boil|mash/.test(combined)) methods.push('mashed')
+  if (/blend|soup/.test(combined)) methods.push('blended')
+  if (/toast/.test(combined)) methods.push('toasted')
+  if (/wrap|fold/.test(combined)) methods.push('wrapped')
+
+  return methods.join(', ')
+}
+
+function buildPrompt(mealName, ingredients, instructions) {
   const mainIngredients = ingredients
-    .slice(0, 6)
+    .slice(0, 5)
     .map(i => i.name)
     .join(', ')
+  const method = cookingMethodHint(instructions)
   return [
     `professional food photography of ${mealName}`,
-    mainIngredients ? `with ${mainIngredients}` : '',
-    'plated neatly on a white plate, overhead shot, bright natural lighting,',
-    'appetizing, fresh, high resolution, restaurant quality, no text',
+    method ? `${method} dish` : '',
+    mainIngredients ? `featuring ${mainIngredients}` : '',
+    'served and plated as a finished meal ready to eat,',
+    'overhead shot on a white plate, bright natural lighting,',
+    'appetizing, high resolution, restaurant quality, no text, no raw ingredients',
   ].filter(Boolean).join(', ')
 }
 
@@ -81,7 +111,7 @@ async function main() {
 
   const { data: meals, error: mealsErr } = await supabase
     .from('meals')
-    .select('id, name, photo_url, meal_ingredients(name)')
+    .select('id, name, instructions, photo_url, meal_ingredients(name)')
     .eq('coach_id', coachId)
     .order('name')
 
@@ -97,7 +127,7 @@ async function main() {
 
   for (const meal of toProcess) {
     const ingredients = meal.meal_ingredients || []
-    const prompt = buildPrompt(meal.name, ingredients)
+    const prompt = buildPrompt(meal.name, ingredients, meal.instructions)
     process.stdout.write(`  Generating "${meal.name}"... `)
 
     try {
