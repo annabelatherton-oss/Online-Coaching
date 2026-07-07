@@ -136,7 +136,7 @@ function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, me
       onClick={() => meal && onViewRecipe(slotKey)}
     >
       {/* Photo */}
-      <div className="relative aspect-[3/2] bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+      <div className="relative h-28 bg-gray-100 dark:bg-gray-800 flex-shrink-0">
         {meal?.photo_url ? (
           <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" />
         ) : (
