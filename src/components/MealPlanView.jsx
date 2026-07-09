@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 /**
  * Shared meal-plan display components and helpers.
  * Used by ClientMealPlan.jsx (client view) and the coach DeliveryPanel.
@@ -217,7 +219,10 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient }) {
+  const [showAddIngredient, setShowAddIngredient] = useState(false)
+  const [ingSearch, setIngSearch] = useState('')
+
   const mealId = editedSlots[slotKey]
   const meal = mealId ? mealMap[mealId] : null
   const overrides = ingredientOverrides[slotKey]
@@ -225,6 +230,13 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
   const macros = mealMacros(mealId, mealMap, tier, overrides)
   const isCustom = (mealId || null) !== ((templateSlots[slotKey]) || null)
   const slotDef = ALL_SLOT_DEFS.find(s => s.key === slotKey)
+
+  const ingSearchResults = ingSearch.length >= 2
+    ? Object.values(ingredientLib || {})
+        .filter(lib => lib.name && lib.name.toLowerCase().includes(ingSearch.toLowerCase()))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .slice(0, 8)
+    : []
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60" onClick={onClose}>
@@ -288,7 +300,17 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                     const libUnit = ing.ingredient_id && ingredientLib ? ingredientLib[ing.ingredient_id]?.serving_unit : null
                     const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libUnit && libUnit !== 'g') ? libUnit : 'g'
                     return (
-                      <div key={ing.id || i} className="flex items-center justify-between gap-3">
+                      <div key={ing._tempId || ing.id || i} className="flex items-center gap-2">
+                        {onRemoveIngredient && (
+                          <button
+                            onClick={e => { e.stopPropagation(); onRemoveIngredient(slotKey, ing) }}
+                            className="w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
                         <span className="text-sm text-gray-800 dark:text-gray-200 flex-1">{ing.name}</span>
                         <div className="flex items-center gap-2 flex-shrink-0 tabular-nums">
                           {onUpdateIngredient ? (
@@ -298,7 +320,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                                 min="0"
                                 step="1"
                                 value={Math.round((parseFloat(ing.quantity_g) || 0) * 10) / 10}
-                                onChange={e => onUpdateIngredient(slotKey, ing.id, parseFloat(e.target.value) || 0)}
+                                onChange={e => onUpdateIngredient(slotKey, ing._tempId || ing.id, parseFloat(e.target.value) || 0)}
                                 onClick={e => e.stopPropagation()}
                                 className="w-16 text-sm text-right border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-0.5 bg-white dark:bg-gray-800 focus:outline-none focus:border-brand-400 tabular-nums"
                               />
@@ -316,6 +338,59 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                     )
                   })}
                 </div>
+                {onAddIngredient && (
+                  <div className="pt-3 border-t border-gray-100 dark:border-gray-800 mt-3">
+                    {showAddIngredient ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            autoFocus
+                            type="text"
+                            placeholder="Search ingredients…"
+                            value={ingSearch}
+                            onChange={e => setIngSearch(e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                            className="input flex-1 text-sm py-1.5"
+                          />
+                          <button
+                            onClick={() => { setShowAddIngredient(false); setIngSearch('') }}
+                            className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 px-2 py-1.5 flex-shrink-0"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                        {ingSearchResults.length > 0 ? (
+                          <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                            {ingSearchResults.map(lib => (
+                              <button
+                                key={lib.id}
+                                onClick={() => { onAddIngredient(slotKey, lib); setIngSearch(''); setShowAddIngredient(false) }}
+                                className="w-full text-left px-3 py-2 hover:bg-brand-50 dark:hover:bg-brand-900/10 border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors"
+                              >
+                                <p className="text-sm font-medium text-gray-900 dark:text-white">{lib.name}</p>
+                                <p className="text-xs text-gray-400 dark:text-gray-500">
+                                  {lib.serving_size || '?'}{lib.serving_unit || 'g'} · {Math.round(lib.calories_per_serving || 0)} kcal · {Math.round(lib.protein_per_serving || 0)}g P
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+                        ) : ingSearch.length >= 2 ? (
+                          <p className="text-xs text-gray-400 dark:text-gray-500 py-1">No ingredients found</p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowAddIngredient(true)}
+                        className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex items-center gap-1"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add ingredient
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

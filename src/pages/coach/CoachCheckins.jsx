@@ -76,6 +76,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const [sessions, setSessions] = useState([])
   const [originalSessions, setOriginalSessions] = useState([])
   const [editedExercises, setEditedExercises] = useState({})
+  const [removedExerciseIds, setRemovedExerciseIds] = useState(new Set())
+  const [addedExercises, setAddedExercises] = useState({})
   const [saving, setSaving] = useState(false)
   const skipTierReload = useRef(true)
 
@@ -101,7 +103,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
             meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id))
         `).eq('coach_id', coachId).order('name'),
-        supabase.from('ingredients').select('id, serving_unit').eq('coach_id', coachId),
+        supabase.from('ingredients').select('id, name, serving_size, serving_unit, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', coachId),
         currentTier
           ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', currentTier).maybeSingle()
           : Promise.resolve({ data: null }),
@@ -186,10 +188,54 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     setEditedSlots(prev => ({ ...prev, [slotKey]: templateSlots[slotKey] || null }))
   }
 
-  function handleUpdateIngredient(slotKey, ingId, newQty) {
+  function handleUpdateIngredient(slotKey, ingKey, newQty) {
     setIngredientOverrides(prev => {
       const existing = normalizeOverrides(prev[slotKey])
-      return { ...prev, [slotKey]: { ...existing, qty: { ...existing.qty, [ingId]: newQty } } }
+      const matchAdded = existing.added.find(a => a._tempId === ingKey)
+      if (matchAdded) {
+        const origQty = parseFloat(matchAdded.quantity_g) || 0
+        const ratio = origQty > 0 ? newQty / origQty : 1
+        const updatedAdded = existing.added.map(a => a._tempId !== ingKey ? a : {
+          ...a,
+          quantity_g: newQty,
+          calories:  Math.round((parseFloat(a.calories)  || 0) * ratio * 10) / 10,
+          protein_g: Math.round((parseFloat(a.protein_g) || 0) * ratio * 10) / 10,
+          carbs_g:   Math.round((parseFloat(a.carbs_g)   || 0) * ratio * 10) / 10,
+          fat_g:     Math.round((parseFloat(a.fat_g)     || 0) * ratio * 10) / 10,
+        })
+        return { ...prev, [slotKey]: { ...existing, added: updatedAdded } }
+      }
+      return { ...prev, [slotKey]: { ...existing, qty: { ...existing.qty, [ingKey]: newQty } } }
+    })
+  }
+
+  function handleRemoveIngredient(slotKey, ing) {
+    setIngredientOverrides(prev => {
+      const existing = normalizeOverrides(prev[slotKey])
+      if (ing._isAdded) {
+        return { ...prev, [slotKey]: { ...existing, added: existing.added.filter(a => a._tempId !== ing._tempId) } }
+      }
+      return { ...prev, [slotKey]: { ...existing, removed: [...existing.removed, ing.id] } }
+    })
+  }
+
+  function handleAddIngredient(slotKey, libIng) {
+    const tempId = `added-${libIng.id}-${Date.now()}`
+    const newIng = {
+      _tempId: tempId,
+      id: libIng.id,
+      name: libIng.name,
+      quantity_g: libIng.serving_size || 100,
+      unit: libIng.serving_unit || 'g',
+      calories:  libIng.calories_per_serving  || 0,
+      protein_g: libIng.protein_per_serving   || 0,
+      carbs_g:   libIng.carbs_per_serving     || 0,
+      fat_g:     libIng.fat_per_serving       || 0,
+      _isAdded: true,
+    }
+    setIngredientOverrides(prev => {
+      const existing = normalizeOverrides(prev[slotKey])
+      return { ...prev, [slotKey]: { ...existing, added: [...existing.added, newIng] } }
     })
   }
 
@@ -201,12 +247,45 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     })
   }
 
+  function handleRevertMealPlan() {
+    setEditedSlots({ ...templateSlots })
+    setIngredientOverrides({})
+  }
+
   function handleUpdateExercise(exId, field, value) {
     setEditedExercises(prev => ({ ...prev, [exId]: { ...(prev[exId] || {}), [field]: value } }))
   }
 
+  function handleRemoveExercise(exId) {
+    setRemovedExerciseIds(prev => new Set([...prev, exId]))
+  }
+
+  function handleAddExercise(sessionId) {
+    const tempId = `new-${sessionId}-${Date.now()}`
+    setAddedExercises(prev => ({
+      ...prev,
+      [sessionId]: [...(prev[sessionId] || []), { _tempId: tempId, name: '', sets: null, reps: '', rpe: '', notes: '' }],
+    }))
+  }
+
+  function handleUpdateAddedExercise(sessionId, tempId, field, value) {
+    setAddedExercises(prev => ({
+      ...prev,
+      [sessionId]: (prev[sessionId] || []).map(ex => ex._tempId === tempId ? { ...ex, [field]: value } : ex),
+    }))
+  }
+
+  function handleRemoveAddedExercise(sessionId, tempId) {
+    setAddedExercises(prev => ({
+      ...prev,
+      [sessionId]: (prev[sessionId] || []).filter(ex => ex._tempId !== tempId),
+    }))
+  }
+
   function handleRevertTraining() {
     setEditedExercises({})
+    setRemovedExerciseIds(new Set())
+    setAddedExercises({})
   }
 
   async function handleSubmit() {
@@ -243,8 +322,30 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     })
 
     for (const [exId, edits] of Object.entries(editedExercises)) {
-      if (Object.keys(edits).length > 0) {
+      if (Object.keys(edits).length > 0 && !removedExerciseIds.has(exId)) {
         await supabase.from('session_exercises').update(edits).eq('id', exId)
+      }
+    }
+
+    if (removedExerciseIds.size > 0) {
+      await supabase.from('session_exercises').delete().in('id', [...removedExerciseIds])
+    }
+
+    for (const [sessionId, newExes] of Object.entries(addedExercises)) {
+      const sess = sessions.find(s => s.id === sessionId)
+      const baseCount = (sess?.session_exercises || []).filter(ex => !removedExerciseIds.has(ex.id)).length
+      const toInsert = newExes.filter(ex => ex.name.trim())
+      for (let idx = 0; idx < toInsert.length; idx++) {
+        const { _tempId, ...fields } = toInsert[idx]
+        await supabase.from('session_exercises').insert({
+          session_id: sessionId,
+          name: fields.name.trim(),
+          sets: fields.sets !== null && fields.sets !== '' ? parseInt(fields.sets) : null,
+          reps: fields.reps || null,
+          rpe: fields.rpe || null,
+          notes: fields.notes || null,
+          order_index: baseCount + idx,
+        })
       }
     }
 
@@ -260,6 +361,15 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   }
   const opt1Total = addMacros(addMacros(sumSlotKeys(OPTION_1_KEYS), preworkoutM), snackM)
   const opt2Total = addMacros(addMacros(sumSlotKeys(OPTION_2_KEYS), preworkoutM), snackM)
+
+  const hasMealPlanChanges =
+    Object.keys(ingredientOverrides).some(k => hasAnyOverride(ingredientOverrides[k])) ||
+    Object.keys({ ...templateSlots, ...editedSlots }).some(k => editedSlots[k] !== templateSlots[k])
+
+  const hasTrainingChanges =
+    Object.keys(editedExercises).length > 0 ||
+    removedExerciseIds.size > 0 ||
+    Object.values(addedExercises).some(a => a.length > 0)
 
   const prevCalTarget = activeAssignment?.calorie_target
   const calDiff = calorieTarget && prevCalTarget ? parseInt(calorieTarget) - prevCalTarget : null
@@ -346,10 +456,20 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
 
           {/* Meal plan for next week */}
           <div className="space-y-6">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-              Week {deliveryPersonalWeek} meal plan
-              <span className="ml-2 text-xs font-normal text-gray-400">Tap a meal to view recipe · Swap to change</span>
-            </h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Week {deliveryPersonalWeek} meal plan
+                <span className="ml-2 text-xs font-normal text-gray-400">Tap a meal to view · Swap to change</span>
+              </h2>
+              {hasMealPlanChanges && (
+                <button
+                  onClick={handleRevertMealPlan}
+                  className="text-xs text-orange-500 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 font-medium flex-shrink-0"
+                >
+                  Revert all
+                </button>
+              )}
+            </div>
             {MEAL_GROUPS.map(group => {
               const visibleSlots = group.slots.filter(s => editedSlots[s.key])
               if (visibleSlots.length === 0) return null
@@ -391,7 +511,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           <div className="card space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Training</h2>
-              {Object.keys(editedExercises).length > 0 && (
+              {hasTrainingChanges && (
                 <button
                   onClick={handleRevertTraining}
                   className="text-xs text-orange-500 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 font-medium"
@@ -434,22 +554,37 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                     </div>
                     {/* Exercises */}
                     <div className="flex-1 divide-y divide-gray-100 dark:divide-gray-800">
-                      {(session.session_exercises || []).map(ex => {
+                      {(session.session_exercises || []).filter(ex => !removedExerciseIds.has(ex.id)).map(ex => {
                         const edits = editedExercises[ex.id] || {}
+                        const name  = edits.name  !== undefined ? edits.name  : ex.name
                         const sets  = edits.sets  !== undefined ? edits.sets  : ex.sets
                         const reps  = edits.reps  !== undefined ? edits.reps  : ex.reps
                         const rpe   = edits.rpe   !== undefined ? edits.rpe   : ex.rpe
                         const notes = edits.notes !== undefined ? edits.notes : ex.notes
                         return (
                           <div key={ex.id} className="p-3 space-y-2">
-                            {/* Thumbnail + name */}
-                            <div className="flex items-start gap-2.5">
+                            {/* Thumbnail + name input + remove */}
+                            <div className="flex items-center gap-2">
                               <ExerciseThumb
                                 illustrationUrl={ex.illustration_url}
                                 videoUrl={ex.video_url}
                                 size="sm"
                               />
-                              <p className="text-xs font-semibold text-gray-900 dark:text-white leading-snug flex-1 mt-1">{ex.name}</p>
+                              <input
+                                type="text"
+                                value={name ?? ''}
+                                onChange={e => handleUpdateExercise(ex.id, 'name', e.target.value)}
+                                className="input flex-1 text-xs py-1 px-2 font-semibold"
+                                placeholder="Exercise name…"
+                              />
+                              <button
+                                onClick={() => handleRemoveExercise(ex.id)}
+                                className="flex-shrink-0 p-1 rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
                             </div>
                             {/* Sets / Reps / RPE */}
                             <div className="grid grid-cols-3 gap-1.5">
@@ -481,6 +616,71 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                           </div>
                         )
                       })}
+
+                      {/* Added exercises */}
+                      {(addedExercises[session.id] || []).map(ex => (
+                        <div key={ex._tempId} className="p-3 space-y-2 bg-blue-50/40 dark:bg-blue-900/10">
+                          <div className="flex items-center gap-2">
+                            <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                              <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                              </svg>
+                            </div>
+                            <input
+                              autoFocus
+                              type="text"
+                              value={ex.name}
+                              onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'name', e.target.value)}
+                              className="input flex-1 text-xs py-1 px-2 font-semibold"
+                              placeholder="Exercise name…"
+                            />
+                            <button
+                              onClick={() => handleRemoveAddedExercise(session.id, ex._tempId)}
+                              className="flex-shrink-0 p-1 rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {[
+                              { label: 'Sets', val: ex.sets, type: 'number', onChange: v => handleUpdateAddedExercise(session.id, ex._tempId, 'sets', v ? parseInt(v) : null) },
+                              { label: 'Reps', val: ex.reps, type: 'text',   onChange: v => handleUpdateAddedExercise(session.id, ex._tempId, 'reps', v || '') },
+                              { label: 'RPE',  val: ex.rpe,  type: 'text',   onChange: v => handleUpdateAddedExercise(session.id, ex._tempId, 'rpe',  v || '') },
+                            ].map(({ label, val, type, onChange }) => (
+                              <div key={label}>
+                                <label className="text-[9px] font-medium text-gray-400 uppercase tracking-wider block mb-0.5">{label}</label>
+                                <input
+                                  type={type}
+                                  min={type === 'number' ? '0' : undefined}
+                                  value={val ?? ''}
+                                  onChange={e => onChange(e.target.value)}
+                                  className="input w-full text-xs py-1 px-2"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            value={ex.notes ?? ''}
+                            onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'notes', e.target.value || '')}
+                            className="input w-full text-xs py-1 px-2"
+                            placeholder="Notes…"
+                          />
+                        </div>
+                      ))}
+
+                      {/* Add exercise button */}
+                      <button
+                        onClick={() => handleAddExercise(session.id)}
+                        className="w-full py-2.5 flex items-center justify-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add exercise
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -546,6 +746,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           onRevert={handleRevert}
           onUpdateIngredient={handleUpdateIngredient}
           onRevertIngredients={handleRevertIngredients}
+          onRemoveIngredient={handleRemoveIngredient}
+          onAddIngredient={handleAddIngredient}
         />
       )}
     </div>
