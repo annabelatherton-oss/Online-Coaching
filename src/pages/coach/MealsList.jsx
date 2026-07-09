@@ -88,7 +88,7 @@ export default function MealsList() {
 
     if (error) console.error(error)
     else {
-      const CATEGORY_ORDER = { breakfast: 0, lunch: 1, dinner: 2, pre_workout: 3, evening_snack: 4 }
+      const CATEGORY_ORDER = { breakfast: 0, lunch: 1, pre_workout: 2, dinner: 3, evening_snack: 4 }
       const sorted = (data || []).sort((a, b) => {
         const catDiff = (CATEGORY_ORDER[a.category] ?? 99) - (CATEGORY_ORDER[b.category] ?? 99)
         if (catDiff !== 0) return catDiff
