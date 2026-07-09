@@ -82,13 +82,20 @@ export default function MealsList() {
           meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, alternative_ingredient_ids),
           meal_tier_versions(calorie_tier)
         `)
-        .eq('coach_id', profile.id)
-        .order('created_at', { ascending: false }),
+        .eq('coach_id', profile.id),
       supabase.from('ingredients').select('*').eq('coach_id', profile.id),
     ])
 
     if (error) console.error(error)
-    else setMeals(data || [])
+    else {
+      const CATEGORY_ORDER = { breakfast: 0, lunch: 1, dinner: 2, pre_workout: 3, evening_snack: 4 }
+      const sorted = (data || []).sort((a, b) => {
+        const catDiff = (CATEGORY_ORDER[a.category] ?? 99) - (CATEGORY_ORDER[b.category] ?? 99)
+        if (catDiff !== 0) return catDiff
+        return (a.name || '').localeCompare(b.name || '')
+      })
+      setMeals(sorted)
+    }
     setLibrary(libData || [])
     setLoading(false)
   }
