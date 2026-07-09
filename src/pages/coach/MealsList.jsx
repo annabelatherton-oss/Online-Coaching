@@ -271,7 +271,7 @@ export default function MealsList() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {filtered.map(meal => {
             const totals = calcTotals(meal.meal_ingredients)
             const hasBase = (meal.meal_ingredients || []).length > 0
@@ -297,7 +297,7 @@ export default function MealsList() {
                 </button>
 
                 {/* Photo or placeholder */}
-                <div className="aspect-[3/4] bg-pink-50 flex items-center justify-center overflow-hidden">
+                <div className="aspect-[4/5] bg-pink-50 flex items-center justify-center overflow-hidden">
                   {photoUrl ? (
                     <img
                       src={photoUrl}

@@ -138,7 +138,7 @@ function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, me
       onClick={() => meal && onViewRecipe(slotKey)}
     >
       {/* Photo */}
-      <div className="relative aspect-[3/4] bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+      <div className="relative aspect-[4/5] bg-gray-100 dark:bg-gray-800 flex-shrink-0">
         {meal?.photo_url ? (
           <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
         ) : (
@@ -233,7 +233,7 @@ function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides,
           {/* Photo */}
           <div className="relative">
             {meal?.photo_url ? (
-              <img src={meal.photo_url} alt={meal.name} className="w-full aspect-[3/4] object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
+              <img src={meal.photo_url} alt={meal.name} className="w-full aspect-[4/5] object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
             ) : (
               <div className="w-full h-20 bg-gray-100 dark:bg-gray-800" />
             )}
