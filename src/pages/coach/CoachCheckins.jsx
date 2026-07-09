@@ -387,8 +387,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
             )}
           </div>
 
-          {/* Training */}
-          <div className="card space-y-4">
+          {/* Training — header */}
+          <div className="card space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Training</h2>
               {Object.keys(editedExercises).length > 0 && (
@@ -401,92 +401,98 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
               )}
             </div>
             {training ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/10">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{training.program_name || training.training_programs?.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Week {training.week_override ?? 1} · {training.training_programs?.weeks_total} weeks total
-                    </p>
-                  </div>
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/10">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
                 </div>
-                {sessions.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    {sessions.map((session, i) => (
-                      <div key={session.id} className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden flex flex-col">
-                        {/* Day header */}
-                        <div className="bg-blue-50 dark:bg-blue-900/20 px-3 py-2.5 flex items-center gap-2 flex-shrink-0">
-                          <span className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
-                            {i + 1}
-                          </span>
-                          <p className="text-xs font-semibold text-gray-900 dark:text-white leading-snug truncate">{session.name}</p>
-                        </div>
-                        {/* Exercises */}
-                        <div className="flex-1 divide-y divide-gray-100 dark:divide-gray-800">
-                          {(session.session_exercises || []).map(ex => {
-                            const edits = editedExercises[ex.id] || {}
-                            const sets  = edits.sets  !== undefined ? edits.sets  : ex.sets
-                            const reps  = edits.reps  !== undefined ? edits.reps  : ex.reps
-                            const rpe   = edits.rpe   !== undefined ? edits.rpe   : ex.rpe
-                            const notes = edits.notes !== undefined ? edits.notes : ex.notes
-                            return (
-                              <div key={ex.id} className="p-2.5 space-y-1.5">
-                                {/* Thumbnail + name */}
-                                <div className="flex items-start gap-2">
-                                  <ExerciseThumb
-                                    illustrationUrl={ex.illustration_url}
-                                    videoUrl={ex.video_url}
-                                    size="sm"
-                                  />
-                                  <p className="text-[11px] font-semibold text-gray-900 dark:text-white leading-snug flex-1 mt-1">{ex.name}</p>
-                                </div>
-                                {/* Sets / Reps / RPE */}
-                                <div className="grid grid-cols-3 gap-1">
-                                  {[
-                                    { label: 'Sets', val: sets, type: 'number', onChange: v => handleUpdateExercise(ex.id, 'sets', v ? parseInt(v) : null) },
-                                    { label: 'Reps', val: reps, type: 'text',   onChange: v => handleUpdateExercise(ex.id, 'reps', v || null) },
-                                    { label: 'RPE',  val: rpe,  type: 'text',   onChange: v => handleUpdateExercise(ex.id, 'rpe',  v || null) },
-                                  ].map(({ label, val, type, onChange }) => (
-                                    <div key={label}>
-                                      <label className="text-[9px] font-medium text-gray-400 uppercase tracking-wider block mb-0.5">{label}</label>
-                                      <input
-                                        type={type}
-                                        min={type === 'number' ? '0' : undefined}
-                                        value={val ?? ''}
-                                        onChange={e => onChange(e.target.value)}
-                                        className="input w-full text-xs py-0.5 px-1.5"
-                                      />
-                                    </div>
-                                  ))}
-                                </div>
-                                {/* Notes */}
-                                <input
-                                  type="text"
-                                  value={notes ?? ''}
-                                  onChange={e => handleUpdateExercise(ex.id, 'notes', e.target.value || null)}
-                                  className="input w-full text-xs py-0.5 px-1.5"
-                                  placeholder="Notes…"
-                                />
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-400">No sessions found for this training week.</p>
-                )}
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{training.program_name || training.training_programs?.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Week {training.week_override ?? 1} · {training.training_programs?.weeks_total} weeks total
+                  </p>
+                </div>
               </div>
             ) : (
               <p className="text-sm text-gray-400">No training programme assigned.</p>
             )}
-            <div>
+          </div>
+
+          {/* Training — session blocks (full width) */}
+          {training && (
+            sessions.length > 0 ? (
+              <div className="grid grid-cols-2 gap-4">
+                {sessions.map((session, i) => (
+                  <div key={session.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
+                    {/* Day header */}
+                    <div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-3 flex items-center gap-2.5 flex-shrink-0">
+                      <span className="w-7 h-7 rounded-full bg-blue-500 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                        {i + 1}
+                      </span>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white leading-snug">{session.name}</p>
+                    </div>
+                    {/* Exercises */}
+                    <div className="flex-1 divide-y divide-gray-100 dark:divide-gray-800">
+                      {(session.session_exercises || []).map(ex => {
+                        const edits = editedExercises[ex.id] || {}
+                        const sets  = edits.sets  !== undefined ? edits.sets  : ex.sets
+                        const reps  = edits.reps  !== undefined ? edits.reps  : ex.reps
+                        const rpe   = edits.rpe   !== undefined ? edits.rpe   : ex.rpe
+                        const notes = edits.notes !== undefined ? edits.notes : ex.notes
+                        return (
+                          <div key={ex.id} className="p-3 space-y-2">
+                            {/* Thumbnail + name */}
+                            <div className="flex items-start gap-2.5">
+                              <ExerciseThumb
+                                illustrationUrl={ex.illustration_url}
+                                videoUrl={ex.video_url}
+                                size="sm"
+                              />
+                              <p className="text-xs font-semibold text-gray-900 dark:text-white leading-snug flex-1 mt-1">{ex.name}</p>
+                            </div>
+                            {/* Sets / Reps / RPE */}
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {[
+                                { label: 'Sets', val: sets, type: 'number', onChange: v => handleUpdateExercise(ex.id, 'sets', v ? parseInt(v) : null) },
+                                { label: 'Reps', val: reps, type: 'text',   onChange: v => handleUpdateExercise(ex.id, 'reps', v || null) },
+                                { label: 'RPE',  val: rpe,  type: 'text',   onChange: v => handleUpdateExercise(ex.id, 'rpe',  v || null) },
+                              ].map(({ label, val, type, onChange }) => (
+                                <div key={label}>
+                                  <label className="text-[9px] font-medium text-gray-400 uppercase tracking-wider block mb-0.5">{label}</label>
+                                  <input
+                                    type={type}
+                                    min={type === 'number' ? '0' : undefined}
+                                    value={val ?? ''}
+                                    onChange={e => onChange(e.target.value)}
+                                    className="input w-full text-xs py-1 px-2"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            {/* Notes */}
+                            <input
+                              type="text"
+                              value={notes ?? ''}
+                              onChange={e => handleUpdateExercise(ex.id, 'notes', e.target.value || null)}
+                              className="input w-full text-xs py-1 px-2"
+                              placeholder="Notes…"
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 px-1">No sessions found for this training week.</p>
+            )
+          )}
+
+          {/* Training notes */}
+          {training && (
+            <div className="card space-y-2">
               <label className="label text-xs">Training notes for this week (optional)</label>
               <textarea
                 className="input w-full text-sm resize-none"
@@ -496,7 +502,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                 onChange={e => setTrainingNotes(e.target.value)}
               />
             </div>
-          </div>
+          )}
 
           {/* Bottom submit */}
           <div className="pb-8">
@@ -617,7 +623,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   // Show the full delivery panel when the coach clicks "Submit Week X Plan"
   if (showDeliveryPanel && current && activeAssignment) {
     return (
-      <div className="max-w-3xl">
+      <div className="w-full">
         <DeliveryPanel
           client={client}
           current={current}
