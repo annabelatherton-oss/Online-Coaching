@@ -555,7 +555,7 @@ export default function ClientMealPlan() {
         return (
           <section key={group.label}>
             <h2 className="text-base font-bold text-gray-900 dark:text-white mb-3">{group.label}</h2>
-            <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-3">
               {visibleSlots.map(slot => (
                 <MealCard
                   key={slot.key}
