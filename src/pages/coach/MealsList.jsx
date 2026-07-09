@@ -297,7 +297,7 @@ export default function MealsList() {
                 </button>
 
                 {/* Photo or placeholder */}
-                <div className="h-40 bg-pink-50 flex items-center justify-center overflow-hidden">
+                <div className="aspect-[3/4] bg-pink-50 flex items-center justify-center overflow-hidden">
                   {photoUrl ? (
                     <img
                       src={photoUrl}
