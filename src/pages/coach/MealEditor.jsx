@@ -173,7 +173,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
         {(photoPreview || currentPhotoUrl) && (
           <div className="space-y-1">
             <div
-              className="w-full aspect-[4/5] rounded-xl overflow-hidden border border-pink-100 cursor-grab active:cursor-grabbing select-none"
+              className="w-full aspect-square rounded-xl overflow-hidden border border-pink-100 cursor-grab active:cursor-grabbing select-none"
               onMouseDown={handlePhotoDragStart}
               onTouchStart={handlePhotoDragStart}
             >
