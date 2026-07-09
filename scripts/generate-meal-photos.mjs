@@ -33,46 +33,70 @@ if (!EMAIL || !PASSWORD) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-function cookingMethodHint(instructions) {
-  if (!instructions) return ''
-  // Pull the last step (the serve/plating step) as it best describes the finished dish
+function extractPresentation(instructions) {
+  if (!instructions) return { methods: [], vessel: '', garnish: '' }
+
   const steps = instructions
     .split('\n')
     .map(l => l.trim())
     .filter(l => /^\d+\./.test(l))
+    .map(l => l.replace(/^\d+\.\s*/, '').toLowerCase())
+
+  const allText = steps.join(' ')
   const lastStep = steps[steps.length - 1] || ''
-  // Also grab any cooking verbs from the first step
-  const firstStep = steps[0] || ''
-  const combined = `${firstStep} ${lastStep}`.toLowerCase()
 
-  // Extract key cooking method words to guide the image
+  // Cooking method — scan all steps
   const methods = []
-  if (/scrambl/.test(combined)) methods.push('scrambled')
-  if (/fried|fry/.test(combined)) methods.push('pan-fried')
-  if (/air.fri/.test(combined)) methods.push('crispy')
-  if (/bak/.test(combined)) methods.push('baked')
-  if (/grill/.test(combined)) methods.push('grilled')
-  if (/boil|mash/.test(combined)) methods.push('mashed')
-  if (/blend|soup/.test(combined)) methods.push('blended')
-  if (/toast/.test(combined)) methods.push('toasted')
-  if (/wrap|fold/.test(combined)) methods.push('wrapped')
+  if (/scrambl/.test(allText)) methods.push('scrambled')
+  if (/\bair.fri/.test(allText)) methods.push('crispy air-fried')
+  else if (/\bfr(y|ied|ying)\b/.test(allText)) methods.push('pan-fried')
+  if (/\bbak(e|ed|ing)\b/.test(allText)) methods.push('baked')
+  if (/\bgrill/.test(allText)) methods.push('grilled')
+  if (/\broast/.test(allText)) methods.push('roasted')
+  if (/\btoast/.test(allText)) methods.push('toasted')
+  if (/\bmash/.test(allText)) methods.push('mashed')
+  if (/\bblend\b/.test(allText)) methods.push('blended smooth')
+  if (/\bpoach/.test(allText)) methods.push('poached')
 
-  return methods.join(', ')
+  // Serving vessel — checked in priority order
+  let vessel = ''
+  if (/\bwrap\b/.test(allText)) vessel = 'in a tortilla wrap, cut in half to show filling'
+  else if (/\bsourdough\b/.test(allText)) vessel = 'on sourdough toast'
+  else if (/\bbagel\b/.test(allText)) vessel = 'on a toasted bagel'
+  else if (/on toast/.test(allText)) vessel = 'on toast'
+  else if (/\bpita\b/.test(allText)) vessel = 'in a pita bread'
+  else if (/burger bun|brioche bun/.test(allText)) vessel = 'in a burger bun, stacked'
+  else if (/\bpizza\b/.test(allText)) vessel = 'pizza on a wooden board'
+  else if (/jacket potato/.test(allText)) vessel = 'loaded jacket potato split open'
+  else if (/\bpasta\b/.test(allText)) vessel = 'in a wide pasta bowl'
+  else if (/\brice\b/.test(allText)) vessel = 'served with rice on a plate'
+  else if (/\bsoup\b/.test(allText)) vessel = 'in a bowl with a garnish'
+  else if (/\bbowl\b/.test(lastStep)) vessel = 'in a bowl'
+  else if (/\bplate\b/.test(lastStep)) vessel = 'plated'
+
+  // Garnish/topping from the final step
+  let garnish = ''
+  const garnishMatch = lastStep.match(
+    /(?:drizzle[d]?|top(?:ped)?|garnish(?:ed)?|sprinkle[d]?) (?:with |of )?([a-z][a-z ,&]+?)(?:\.|,$| and |\band\b|$)/
+  )
+  if (garnishMatch) garnish = garnishMatch[1].trim().replace(/,$/, '')
+
+  return { methods, vessel, garnish }
 }
 
 function buildPrompt(mealName, ingredients, instructions) {
-  const mainIngredients = ingredients
-    .slice(0, 5)
-    .map(i => i.name)
-    .join(', ')
-  const method = cookingMethodHint(instructions)
+  const mainIngredients = ingredients.slice(0, 4).map(i => i.name).join(', ')
+  const { methods, vessel, garnish } = extractPresentation(instructions)
+
   return [
     `professional food photography of ${mealName}`,
-    method ? `${method} dish` : '',
-    mainIngredients ? `featuring ${mainIngredients}` : '',
-    'served and plated as a finished meal ready to eat,',
-    'overhead shot on a white plate, bright natural lighting,',
-    'appetizing, high resolution, restaurant quality, no text, no raw ingredients',
+    methods.length ? `${methods.join(' and ')}` : '',
+    vessel,
+    mainIngredients ? `with ${mainIngredients}` : '',
+    garnish ? garnish : '',
+    'beautifully plated as a finished cooked meal ready to eat,',
+    'overhead shot, bright natural lighting, white background,',
+    'appetizing, high resolution, restaurant quality, no text, no raw ingredients, no recipe cards',
   ].filter(Boolean).join(', ')
 }
 
