@@ -44,11 +44,23 @@ export default function CoachDashboard() {
           return exp > now && exp <= sevenDays
         })
 
+        const clientIds = clients.map(c => c.id)
+        let pendingCheckins = 0
+        if (clientIds.length > 0) {
+          const { count } = await supabase
+            .from('client_checkins')
+            .select('id', { count: 'exact', head: true })
+            .in('client_id', clientIds)
+            .is('coach_responded_at', null)
+          pendingCheckins = count ?? 0
+        }
+
         setStats({
           total: clients.length,
           active: active.length,
           paused: clients.filter(c => c.is_paused).length,
           expiringSoon: expiringSoon.length,
+          pendingCheckins,
         })
         setRecentClients(clients.slice(0, 5))
       }
@@ -113,8 +125,9 @@ export default function CoachDashboard() {
         />
         <StatCard
           title="Pending Check-ins"
-          value="—"
-          subtitle="Coming in Phase 6"
+          value={stats?.pendingCheckins ?? '—'}
+          subtitle={stats?.pendingCheckins ? 'need your response' : 'all responded'}
+          to="/coach/checkins"
           color="bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400"
           icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

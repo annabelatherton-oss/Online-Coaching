@@ -28,6 +28,7 @@ export default function ClientMealPlan() {
   const [saveError, setSaveError] = useState('')
   const [saved, setSaved] = useState(false)
   const [ingredientLib, setIngredientLib] = useState({})
+  const [coachDelivery, setCoachDelivery] = useState(null)
   const [swapModal, setSwapModal] = useState(null)   // { slotKey, label, cat }
   const [recipeModal, setRecipeModal] = useState(null) // slotKey
 
@@ -93,6 +94,16 @@ export default function ClientMealPlan() {
       setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
       setIngredientOverrides(cwm?.ingredient_overrides || {})
       setSlotsDirty(false)
+
+      const { data: delivery } = await supabase
+        .from('weekly_deliveries')
+        .select('id, coach_notes, training_notes, personal_week, delivered_at')
+        .eq('client_id', clientRow.id)
+        .order('delivered_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      setCoachDelivery(delivery)
+
       setLoading(false)
     }
     load()
@@ -178,6 +189,21 @@ export default function ClientMealPlan() {
           )}
         </div>
       </div>
+
+      {/* Coach's weekly message */}
+      {coachDelivery?.coach_notes && (
+        <div className="card border-brand-200 dark:border-brand-800 bg-brand-50/40 dark:bg-brand-900/10 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center flex-shrink-0">
+              <svg className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <p className="text-xs font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wide">Coach's notes — Week {coachDelivery.personal_week}</p>
+          </div>
+          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{coachDelivery.coach_notes}</p>
+        </div>
+      )}
 
       {/* Meal groups */}
       {MEAL_GROUPS.map(group => {

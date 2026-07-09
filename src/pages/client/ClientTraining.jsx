@@ -10,6 +10,7 @@ export default function ClientTraining() {
   const [programName, setProgramName] = useState('')
   const [sessions, setSessions] = useState([])
   const [expanded, setExpanded] = useState(new Set())
+  const [coachNotes, setCoachNotes] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -48,6 +49,16 @@ export default function ClientTraining() {
       }))
       setSessions(sorted)
       if (sorted.length > 0) setExpanded(new Set([sorted[0].id]))
+
+      const { data: delivery } = await supabase
+        .from('weekly_deliveries')
+        .select('training_notes')
+        .eq('client_id', client.id)
+        .order('delivered_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (delivery?.training_notes) setCoachNotes(delivery.training_notes)
+
       setLoading(false)
     }
     load()
@@ -88,6 +99,20 @@ export default function ClientTraining() {
           {programName && <span>{programName} · </span>}Week {weekNumber}
         </p>
       </div>
+
+      {coachNotes && (
+        <div className="card border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-900/10 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
+              <svg className="w-3 h-3 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Coach's training notes</p>
+          </div>
+          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{coachNotes}</p>
+        </div>
+      )}
 
       {sessions.length === 0 ? (
         <div className="card text-center py-12">
