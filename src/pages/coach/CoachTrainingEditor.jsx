@@ -1,65 +1,133 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
 function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFirst, isLast }) {
+  const hasMedia = !!(exercise.illustration_url || exercise.video_url)
+  const [mediaOpen, setMediaOpen] = useState(hasMedia)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef(null)
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    const ext = file.name.split('.').pop()
+    const path = `exercise-illustrations/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const { error } = await supabase.storage.from('exercise-media').upload(path, file, { upsert: true })
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage.from('exercise-media').getPublicUrl(path)
+      onChange('illustration_url', publicUrl)
+    }
+    setUploading(false)
+    e.target.value = ''
+  }
+
   return (
-    <div className="flex items-start gap-2 py-2 group">
-      <div className="flex flex-col gap-0.5 mt-2 flex-shrink-0">
+    <div className="group">
+      <div className="flex items-start gap-2 py-2">
+        {/* Reorder */}
+        <div className="flex flex-col gap-0.5 mt-2 flex-shrink-0">
+          <button type="button" onClick={onMoveUp} disabled={isFirst}
+            className="text-gray-200 hover:text-gray-500 dark:text-gray-700 dark:hover:text-gray-400 disabled:opacity-0">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+          <button type="button" onClick={onMoveDown} disabled={isLast}
+            className="text-gray-200 hover:text-gray-500 dark:text-gray-700 dark:hover:text-gray-400 disabled:opacity-0">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Name */}
+        <input
+          className="flex-1 input py-1.5 text-sm"
+          placeholder="Exercise name"
+          value={exercise.name}
+          onChange={e => onChange('name', e.target.value)}
+        />
+
+        {/* Sets / Reps / RPE */}
+        <input className="input py-1.5 text-sm w-14 text-center" placeholder="Sets" type="number" min={1}
+          value={exercise.sets ?? ''} onChange={e => onChange('sets', e.target.value ? parseInt(e.target.value) : null)} />
+        <input className="input py-1.5 text-sm w-20 text-center" placeholder="Reps"
+          value={exercise.reps ?? ''} onChange={e => onChange('reps', e.target.value)} />
+        <input className="input py-1.5 text-sm w-16 text-center" placeholder="RPE"
+          value={exercise.rpe ?? ''} onChange={e => onChange('rpe', e.target.value)} />
+
+        {/* Media toggle */}
         <button
           type="button"
-          onClick={onMoveUp}
-          disabled={isFirst}
-          className="text-gray-200 hover:text-gray-500 dark:text-gray-700 dark:hover:text-gray-400 disabled:opacity-0"
+          onClick={() => setMediaOpen(o => !o)}
+          title="Add illustration / video"
+          className={`mt-1.5 flex-shrink-0 transition-colors ${hasMedia || mediaOpen ? 'text-brand-500 dark:text-brand-400' : 'text-gray-300 hover:text-gray-400 dark:text-gray-600 dark:hover:text-gray-500'}`}
         >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
         </button>
-        <button
-          type="button"
-          onClick={onMoveDown}
-          disabled={isLast}
-          className="text-gray-200 hover:text-gray-500 dark:text-gray-700 dark:hover:text-gray-400 disabled:opacity-0"
-        >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+
+        {/* Remove */}
+        <button type="button" onClick={onRemove}
+          className="mt-1.5 text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 flex-shrink-0 text-xl leading-none">
+          ×
         </button>
       </div>
-      <input
-        className="flex-1 input py-1.5 text-sm"
-        placeholder="Exercise name"
-        value={exercise.name}
-        onChange={e => onChange('name', e.target.value)}
-      />
-      <input
-        className="input py-1.5 text-sm w-14 text-center"
-        placeholder="Sets"
-        type="number"
-        min={1}
-        value={exercise.sets ?? ''}
-        onChange={e => onChange('sets', e.target.value ? parseInt(e.target.value) : null)}
-      />
-      <input
-        className="input py-1.5 text-sm w-20 text-center"
-        placeholder="Reps"
-        value={exercise.reps ?? ''}
-        onChange={e => onChange('reps', e.target.value)}
-      />
-      <input
-        className="input py-1.5 text-sm w-16 text-center"
-        placeholder="RPE"
-        value={exercise.rpe ?? ''}
-        onChange={e => onChange('rpe', e.target.value)}
-      />
-      <button
-        type="button"
-        onClick={onRemove}
-        className="mt-1.5 text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 flex-shrink-0 text-xl leading-none"
-      >×</button>
+
+      {/* Media section */}
+      {mediaOpen && (
+        <div className="flex items-start gap-4 pl-5 pb-3 -mt-1">
+          {/* Illustration */}
+          <div className="flex items-center gap-2.5 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="w-14 h-14 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center overflow-hidden flex-shrink-0 hover:opacity-80 transition-opacity"
+              title="Upload illustration"
+            >
+              {exercise.illustration_url ? (
+                <img src={exercise.illustration_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <svg className="w-6 h-6 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                    d="M12 4v16m8-8H4" />
+                </svg>
+              )}
+            </button>
+            <div className="space-y-1">
+              <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+                className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 block font-medium disabled:opacity-50">
+                {uploading ? 'Uploading…' : exercise.illustration_url ? 'Replace' : 'Upload image'}
+              </button>
+              {exercise.illustration_url && (
+                <button type="button" onClick={() => onChange('illustration_url', null)}
+                  className="text-xs text-red-400 hover:text-red-600 block">
+                  Remove
+                </button>
+              )}
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          </div>
+
+          {/* Video URL */}
+          <div className="flex-1">
+            <label className="text-xs font-medium text-gray-400 dark:text-gray-500 block mb-1">Video URL (optional — replace illustration with video later)</label>
+            <input
+              type="url"
+              placeholder="https://…"
+              value={exercise.video_url ?? ''}
+              onChange={e => onChange('video_url', e.target.value || null)}
+              className="input w-full text-sm py-1.5"
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -71,7 +139,7 @@ function SessionCard({ session, onDelete }) {
   const [saved, setSaved] = useState(false)
 
   function addExercise() {
-    setExercises(prev => [...prev, { _key: Math.random().toString(36).slice(2), name: '', sets: null, reps: '', rpe: '', notes: '' }])
+    setExercises(prev => [...prev, { _key: Math.random().toString(36).slice(2), name: '', sets: null, reps: '', rpe: '', notes: '', illustration_url: null, video_url: null }])
   }
 
   function update(idx, field, value) {
@@ -115,6 +183,8 @@ function SessionCard({ session, onDelete }) {
           rpe: ex.rpe?.trim() || null,
           rest_seconds: ex.rest_seconds || null,
           notes: ex.notes?.trim() || null,
+          illustration_url: ex.illustration_url ?? null,
+          video_url: ex.video_url ?? null,
         }))
       )
     }
