@@ -1,7 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { CALORIE_TIERS } from '../../lib/calorieTiers'
+import {
+  MEAL_GROUPS, OPTION_1_KEYS, OPTION_2_KEYS,
+  mealMacros, addMacros,
+  MealCard, RecipeModal, SwapModal,
+} from '../../components/MealPlanView'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
@@ -50,6 +56,363 @@ function DeltaTag({ delta, invertColors = false, suffix = ' kg' }) {
   return <span className={`text-xs font-semibold ${cls}`}>{arrow}{up ? '+' : ''}{delta}{suffix}</span>
 }
 
+// ── Plan delivery panel ───────────────────────────────────────────────────────
+function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
+  const [loading, setLoading] = useState(true)
+  const [coachNotes, setCoachNotes] = useState(current?.coach_response || '')
+  const [calorieTarget, setCalorieTarget] = useState(String(activeAssignment?.calorie_target ?? ''))
+  const [trainingNotes, setTrainingNotes] = useState('')
+  const [editedSlots, setEditedSlots] = useState({})
+  const [templateSlots, setTemplateSlots] = useState({})
+  const [ingredientOverrides] = useState({})
+  const [mealMap, setMealMap] = useState({})
+  const [mealsByCategory, setMealsByCategory] = useState({})
+  const [ingredientLib, setIngredientLib] = useState({})
+  const [training, setTraining] = useState(null)
+  const [swapModal, setSwapModal] = useState(null)
+  const [recipeModal, setRecipeModal] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const skipTierReload = useRef(true)
+
+  const nextTemplateWeek = (current?.week_number ?? 0) + 1
+  const tier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
+
+  // Initial data load
+  useEffect(() => {
+    if (!activeAssignment) { setLoading(false); return }
+    async function load() {
+      const currentTier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
+      const [
+        { data: mealsData },
+        { data: libData },
+        { data: tierTmplData },
+        { data: stdTmplData },
+        { data: cwm },
+        { data: trainingAsgn },
+      ] = await Promise.all([
+        supabase.from('meals').select(`
+          id, name, category, instructions, photo_url, photo_position,
+          meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id),
+          meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
+            meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id))
+        `).eq('coach_id', coachId).order('name'),
+        supabase.from('ingredients').select('id, serving_unit').eq('coach_id', coachId),
+        currentTier
+          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', currentTier).maybeSingle()
+          : Promise.resolve({ data: null }),
+        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
+        supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
+        supabase.from('client_training_assignments').select('*, training_programs(name, current_week, weeks_total)').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      ])
+
+      const map = {}, byCat = {}
+      for (const m of (mealsData || [])) {
+        if (m.photo_url) m.photo_url = supabase.storage.from('meal-photos').getPublicUrl(m.photo_url).data.publicUrl
+        map[m.id] = m
+        ;(byCat[m.category] = byCat[m.category] || []).push(m)
+      }
+      setMealMap(map)
+      setMealsByCategory(byCat)
+      const lib = {}
+      for (const ing of (libData || [])) lib[ing.id] = ing
+      setIngredientLib(lib)
+
+      const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
+      setTemplateSlots(tSlots)
+      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
+      setTraining(trainingAsgn)
+      setLoading(false)
+      skipTierReload.current = false
+    }
+    load()
+  }, [])
+
+  // Reload template slots when calorie tier changes
+  useEffect(() => {
+    if (skipTierReload.current || !activeAssignment) return
+    async function reloadTemplate() {
+      const newTier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
+      const [{ data: tierTmplData }, { data: stdTmplData }] = await Promise.all([
+        newTier
+          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', newTier).maybeSingle()
+          : Promise.resolve({ data: null }),
+        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
+      ])
+      const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
+      setTemplateSlots(tSlots)
+      setEditedSlots(tSlots)
+    }
+    reloadTemplate()
+  }, [calorieTarget])
+
+  function buildTemplateSlots(tierTmplData, stdTmplData, asgn) {
+    const tmpl = tierTmplData || stdTmplData
+    const slots = {}
+    for (const s of (tmpl?.template_meal_slots || [])) slots[s.slot_type] = s.meal_id
+    if (asgn.preworkout_static && asgn.preworkout_meal_id) slots.preworkout = asgn.preworkout_meal_id
+    if (asgn.evening_snack_static && asgn.evening_snack_meal_id) slots.evening_snack = asgn.evening_snack_meal_id
+    return slots
+  }
+
+  function handleSwapOpen(slotKey, label, cat) { setSwapModal({ slotKey, label, cat }) }
+  function handleSwapSelect(slotKey, newMealId) {
+    setEditedSlots(prev => ({ ...prev, [slotKey]: newMealId }))
+    setSwapModal(null)
+  }
+  function handleRevert(slotKey) {
+    setEditedSlots(prev => ({ ...prev, [slotKey]: templateSlots[slotKey] || null }))
+  }
+
+  async function handleSubmit() {
+    if (!current || !activeAssignment) return
+    setSaving(true)
+    const newCalTarget = calorieTarget ? parseInt(calorieTarget) : activeAssignment.calorie_target
+
+    await supabase.from('client_checkins')
+      .update({ coach_response: coachNotes.trim() || null, coach_responded_at: new Date().toISOString() })
+      .eq('id', current.id)
+
+    await supabase.from('client_week_meals').upsert({
+      client_id: client.id,
+      coach_id: coachId,
+      assignment_id: activeAssignment.id,
+      week_number: nextTemplateWeek,
+      slots: editedSlots,
+      ingredient_overrides: ingredientOverrides,
+    }, { onConflict: 'assignment_id,week_number' })
+
+    await supabase.from('client_plan_assignments')
+      .update({ week_override: nextTemplateWeek, calorie_target: newCalTarget })
+      .eq('id', activeAssignment.id)
+
+    supabase.from('weekly_deliveries').insert({
+      client_id: client.id,
+      coach_id: coachId,
+      checkin_id: current.id,
+      personal_week: deliveryPersonalWeek,
+      template_week: nextTemplateWeek,
+      coach_notes: coachNotes.trim() || null,
+      calorie_target: newCalTarget,
+      training_notes: trainingNotes.trim() || null,
+    })
+
+    setSaving(false)
+    onDelivered(coachNotes.trim(), newCalTarget)
+  }
+
+  // Daily macro totals
+  const preworkoutM = mealMacros(editedSlots.preworkout, mealMap, tier, ingredientOverrides.preworkout) || { cal: 0, prot: 0, carb: 0, fat: 0 }
+  const snackM      = mealMacros(editedSlots.evening_snack, mealMap, tier, ingredientOverrides.evening_snack) || { cal: 0, prot: 0, carb: 0, fat: 0 }
+  function sumSlotKeys(keys) {
+    return keys.reduce((acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, tier, ingredientOverrides[key])), { cal: 0, prot: 0, carb: 0, fat: 0 })
+  }
+  const opt1Total = addMacros(addMacros(sumSlotKeys(OPTION_1_KEYS), preworkoutM), snackM)
+  const opt2Total = addMacros(addMacros(sumSlotKeys(OPTION_2_KEYS), preworkoutM), snackM)
+
+  const prevCalTarget = activeAssignment?.calorie_target
+  const calDiff = calorieTarget && prevCalTarget ? parseInt(calorieTarget) - prevCalTarget : null
+
+  return (
+    <div className="space-y-0">
+      {/* Sticky header */}
+      <div className="sticky top-0 z-10 bg-white dark:bg-gray-950 border-b border-gray-100 dark:border-gray-800 px-0 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button onClick={onCancel} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            Cancel
+          </button>
+          <div>
+            <h1 className="text-base font-bold text-gray-900 dark:text-white leading-tight">Submit Week {deliveryPersonalWeek} Plan</h1>
+            <p className="text-xs text-gray-400 leading-tight">{client?.full_name}</p>
+          </div>
+        </div>
+        <button
+          onClick={handleSubmit}
+          disabled={saving || loading}
+          className="btn-primary py-1.5 px-4 text-sm flex-shrink-0"
+        >
+          {saving ? 'Submitting…' : `Submit Week ${deliveryPersonalWeek} Plan`}
+        </button>
+      </div>
+
+      {loading ? (
+        <LoadingSpinner size="lg" className="py-16" />
+      ) : (
+        <div className="space-y-8 pt-6">
+          {/* Coach notes */}
+          <div className="card space-y-3">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Message to client</h2>
+            <textarea
+              autoFocus
+              className="input w-full text-sm resize-none"
+              rows={5}
+              placeholder="Weekly feedback, notes and encouragement…"
+              value={coachNotes}
+              onChange={e => setCoachNotes(e.target.value)}
+            />
+          </div>
+
+          {/* Calorie target */}
+          <div className="card space-y-3">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Calorie target</h2>
+            <div className="flex items-center gap-4">
+              <div>
+                <label className="label text-xs">kcal/day</label>
+                <input
+                  className="input w-32 text-sm"
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={calorieTarget}
+                  onChange={e => setCalorieTarget(e.target.value)}
+                  placeholder="e.g. 1800"
+                />
+              </div>
+              {calDiff !== null && calDiff !== 0 && (
+                <div className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${calDiff > 0 ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'}`}>
+                  {calDiff > 0 ? `↑ +${calDiff}` : `↓ ${calDiff}`} kcal vs last week
+                </div>
+              )}
+            </div>
+            {/* Daily macro totals */}
+            <div className="grid grid-cols-2 gap-3">
+              {[{ label: 'Option A', macros: opt1Total }, { label: 'Option B', macros: opt2Total }].map(({ label, macros }) => (
+                <div key={label} className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{label} daily total</p>
+                  <div className="grid grid-cols-4 gap-1 text-center">
+                    {[{ val: Math.round(macros.cal), lbl: 'kcal' }, { val: Math.round(macros.carb) + 'g', lbl: 'carbs' }, { val: Math.round(macros.prot) + 'g', lbl: 'prot' }, { val: Math.round(macros.fat) + 'g', lbl: 'fat' }].map(({ val, lbl }) => (
+                      <div key={lbl}>
+                        <p className="text-xs font-bold text-gray-900 dark:text-white tabular-nums">{val}</p>
+                        <p className="text-[10px] text-gray-400">{lbl}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Meal plan for next week */}
+          <div className="space-y-6">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+              Week {deliveryPersonalWeek} meal plan
+              <span className="ml-2 text-xs font-normal text-gray-400">Tap a meal to view recipe · Swap to change</span>
+            </h2>
+            {MEAL_GROUPS.map(group => {
+              const visibleSlots = group.slots.filter(s => editedSlots[s.key])
+              if (visibleSlots.length === 0) return null
+              return (
+                <section key={group.label}>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{group.label}</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {visibleSlots.map(slot => (
+                      <MealCard
+                        key={slot.key}
+                        slotKey={slot.key}
+                        label={slot.label}
+                        optionLabel={slot.optionLabel}
+                        cat={slot.cat}
+                        mealId={editedSlots[slot.key]}
+                        templateMealId={templateSlots[slot.key]}
+                        mealMap={mealMap}
+                        mealsByCategory={mealsByCategory}
+                        tier={tier}
+                        overrides={ingredientOverrides[slot.key]}
+                        onSwap={handleSwapOpen}
+                        onViewRecipe={setRecipeModal}
+                        ingredientLib={ingredientLib}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
+            {Object.values(editedSlots).every(v => !v) && (
+              <div className="card text-center py-10">
+                <p className="text-sm text-gray-400">No meal plan template set for this week.</p>
+                <p className="text-xs text-gray-400 mt-1">Set up weekly templates in the plan editor first.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Training */}
+          <div className="card space-y-4">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Training</h2>
+            {training ? (
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/10">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{training.program_name || training.training_programs?.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {training.training_programs?.weeks_total} weeks · no changes this week
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">No training programme assigned.</p>
+            )}
+            <div>
+              <label className="label text-xs">Training notes for this week (optional)</label>
+              <textarea
+                className="input w-full text-sm resize-none"
+                rows={3}
+                placeholder="Any changes to training, extra rest days, focus points…"
+                value={trainingNotes}
+                onChange={e => setTrainingNotes(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Bottom submit */}
+          <div className="pb-8">
+            <button
+              onClick={handleSubmit}
+              disabled={saving || loading}
+              className="btn-primary w-full py-3 text-sm"
+            >
+              {saving ? 'Submitting…' : `Submit Week ${deliveryPersonalWeek} Plan to ${client?.full_name}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {swapModal && (
+        <SwapModal
+          slotKey={swapModal.slotKey}
+          label={swapModal.label}
+          cat={swapModal.cat}
+          currentMealId={editedSlots[swapModal.slotKey]}
+          mealMap={mealMap}
+          mealsByCategory={mealsByCategory}
+          tier={tier}
+          onSelect={handleSwapSelect}
+          onClose={() => setSwapModal(null)}
+        />
+      )}
+
+      {recipeModal && (
+        <RecipeModal
+          slotKey={recipeModal}
+          mealMap={mealMap}
+          editedSlots={editedSlots}
+          tier={tier}
+          ingredientOverrides={ingredientOverrides}
+          templateSlots={templateSlots}
+          mealsByCategory={mealsByCategory}
+          ingredientLib={ingredientLib}
+          onClose={() => setRecipeModal(null)}
+          onSwap={(slotKey, label, cat) => { setRecipeModal(null); setSwapModal({ slotKey, label, cat }) }}
+          onRevert={handleRevert}
+        />
+      )}
+    </div>
+  )
+}
+
 // ── Client detail view ────────────────────────────────────────────────────────
 function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const { profile } = useAuth()
@@ -59,9 +422,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const [responseText, setResponseText] = useState('')
   const [saving, setSaving] = useState(false)
   const [activeAssignment, setActiveAssignment] = useState(null)
-  const [delivering, setDelivering] = useState(false)
-  const [deliverForm, setDeliverForm] = useState({ coachNotes: '', calorieTarget: '', trainingNotes: '' })
-  const [deliverSaving, setDeliverSaving] = useState(false)
+  const [showDeliveryPanel, setShowDeliveryPanel] = useState(false)
   const [delivered, setDelivered] = useState(false)
 
   // desc order (most recent first)
@@ -92,63 +453,14 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     if (!client?.id) return
     supabase
       .from('client_plan_assignments')
-      .select('id, calorie_target, week_override')
+      .select('id, calorie_target, week_override, plan_group_id, preworkout_static, preworkout_meal_id, evening_snack_static, evening_snack_meal_id')
       .eq('client_id', client.id)
       .eq('active', true)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
-      .then(({ data }) => {
-        setActiveAssignment(data)
-        if (data?.calorie_target != null) {
-          setDeliverForm(f => ({ ...f, calorieTarget: String(data.calorie_target) }))
-        }
-      })
+      .then(({ data }) => { setActiveAssignment(data) })
   }, [client?.id])
-
-  function openDeliver() {
-    setDeliverForm(f => ({ ...f, coachNotes: current?.coach_response || '' }))
-    setDelivering(true)
-  }
-
-  async function handleDeliver() {
-    if (!current) return
-    setDeliverSaving(true)
-    const notes = deliverForm.coachNotes.trim()
-    const calTarget = deliverForm.calorieTarget ? parseInt(deliverForm.calorieTarget) : activeAssignment?.calorie_target
-
-    await supabase.from('client_checkins')
-      .update({ coach_response: notes || null, coach_responded_at: new Date().toISOString() })
-      .eq('id', current.id)
-
-    if (activeAssignment) {
-      await supabase.from('client_plan_assignments')
-        .update({ week_override: current.week_number + 1, calorie_target: calTarget })
-        .eq('id', activeAssignment.id)
-    }
-
-    // Record delivery (table must exist — see supabase/weekly-deliveries.sql)
-    supabase.from('weekly_deliveries').insert({
-      client_id: client.id,
-      coach_id: profile.id,
-      checkin_id: current.id,
-      personal_week: deliveryPersonalWeek,
-      template_week: current.week_number + 1,
-      coach_notes: notes || null,
-      calorie_target: calTarget,
-      training_notes: deliverForm.trainingNotes.trim() || null,
-    })
-
-    setDeliverSaving(false)
-    setDelivering(false)
-    setDelivered(true)
-    const updatedCheckins = checkins.map(c => c.id === current.id
-      ? { ...c, coach_response: notes, coach_responded_at: new Date().toISOString() }
-      : c)
-    setCheckins(updatedCheckins)
-    onResponded(current.id, notes)
-    setActiveAssignment(prev => prev ? { ...prev, calorie_target: calTarget } : prev)
-  }
 
   function openRespond(c) {
     setResponseText(c.coach_response || '')
@@ -167,6 +479,31 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     const updated = checkins.map(c => c.id === checkinId ? { ...c, coach_response: text, coach_responded_at: new Date().toISOString() } : c)
     setCheckins(updated)
     onResponded(checkinId, text)
+  }
+
+  // Show the full delivery panel when the coach clicks "Submit Week X Plan"
+  if (showDeliveryPanel && current && activeAssignment) {
+    return (
+      <div className="max-w-3xl">
+        <DeliveryPanel
+          client={client}
+          current={current}
+          activeAssignment={activeAssignment}
+          deliveryPersonalWeek={deliveryPersonalWeek}
+          coachId={profile.id}
+          onCancel={() => setShowDeliveryPanel(false)}
+          onDelivered={(notes, calTarget) => {
+            setShowDeliveryPanel(false)
+            setDelivered(true)
+            setCheckins(prev => prev.map(c => c.id === current.id
+              ? { ...c, coach_response: notes, coach_responded_at: new Date().toISOString() }
+              : c))
+            onResponded(current.id, notes)
+            setActiveAssignment(prev => prev ? { ...prev, calorie_target: calTarget } : prev)
+          }}
+        />
+      </div>
+    )
   }
 
   return (
@@ -325,7 +662,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           )}
 
           {/* Submit week plan / respond to current week */}
-          {current.coach_response && !delivering && (
+          {current.coach_response && (
             <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl p-3">
               <div className="flex items-center justify-between gap-2 mb-1">
                 <p className="text-xs font-semibold text-brand-700 dark:text-brand-400">Your response</p>
@@ -334,66 +671,14 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{current.coach_response}</p>
             </div>
           )}
-          {delivering ? (
-            <div className="border border-brand-200 dark:border-brand-700 rounded-2xl p-4 space-y-4 bg-brand-50/50 dark:bg-brand-900/10">
-              <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">Submit Week {deliveryPersonalWeek} Plan</p>
-                <p className="text-xs text-gray-400 mt-0.5">Updates {client?.full_name}'s meal plan to the next week and records your response.</p>
-              </div>
-              <div>
-                <label className="label text-xs">Message to client</label>
-                <textarea
-                  autoFocus
-                  className="input w-full text-sm resize-none"
-                  rows={4}
-                  placeholder="Weekly feedback, notes and encouragement…"
-                  value={deliverForm.coachNotes}
-                  onChange={e => setDeliverForm(f => ({ ...f, coachNotes: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="label text-xs">Calorie target (kcal/day)</label>
-                <div className="flex items-center gap-3">
-                  <input
-                    className="input w-32 text-sm"
-                    type="number"
-                    min="0"
-                    value={deliverForm.calorieTarget}
-                    onChange={e => setDeliverForm(f => ({ ...f, calorieTarget: e.target.value }))}
-                    placeholder="e.g. 1800"
-                  />
-                  {activeAssignment?.calorie_target && deliverForm.calorieTarget &&
-                    parseInt(deliverForm.calorieTarget) !== activeAssignment.calorie_target && (
-                    <span className={`text-xs font-semibold ${parseInt(deliverForm.calorieTarget) > activeAssignment.calorie_target ? 'text-orange-500' : 'text-blue-500'}`}>
-                      {parseInt(deliverForm.calorieTarget) > activeAssignment.calorie_target ? '↑' : '↓'} {Math.abs(parseInt(deliverForm.calorieTarget) - activeAssignment.calorie_target)} kcal change
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div>
-                <label className="label text-xs">Training notes (optional)</label>
-                <textarea
-                  className="input w-full text-sm resize-none"
-                  rows={2}
-                  placeholder="Any changes to training this week…"
-                  value={deliverForm.trainingNotes}
-                  onChange={e => setDeliverForm(f => ({ ...f, trainingNotes: e.target.value }))}
-                />
-              </div>
-              <div className="flex gap-2">
-                <button onClick={handleDeliver} disabled={deliverSaving} className="btn-primary py-1.5 px-4 text-sm">
-                  {deliverSaving ? 'Submitting…' : `Submit Week ${deliveryPersonalWeek} Plan`}
-                </button>
-                <button onClick={() => setDelivering(false)} className="btn-secondary py-1.5 px-3 text-sm">Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <button onClick={openDeliver} className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">
-              {current.coach_response && !delivered
-                ? `Edit & resubmit Week ${deliveryPersonalWeek} Plan →`
-                : `Submit Week ${deliveryPersonalWeek} Plan →`}
-            </button>
-          )}
+          <button
+            onClick={() => setShowDeliveryPanel(true)}
+            className="btn-primary py-2 px-4 text-sm"
+          >
+            {current.coach_response && !delivered
+              ? `Edit & resubmit Week ${deliveryPersonalWeek} Plan →`
+              : `Submit Week ${deliveryPersonalWeek} Plan →`}
+          </button>
         </div>
       )}
 
