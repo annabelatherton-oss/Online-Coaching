@@ -40,10 +40,10 @@ const RECIPES = [
   // New high-quality images (from Food Images folder)
   { name: 'Raspberry Overnight Weetabix',           file: 'Raspberry Overnight Weetabix.jpg' },
   { name: 'Overnight Weetabix',                     file: 'Raspberry Overnight Weetabix.jpg' },
-  { name: 'Raspberry Overnight Oats',               file: 'lucid-origin_overnight_oats_in_a_delicate_glass_jar_topped_with_a_vibrant_raspberry_compote_g-0.jpg' },
-  { name: 'Overnight Oats',                         file: 'lucid-origin_overnight_oats_in_a_delicate_glass_jar_topped_with_a_vibrant_raspberry_compote_g-0.jpg' },
-  { name: 'Biscoff Overnight Oats',                 file: 'lucid-origin_overnight_oats_in_a_delicate_glass_jar_topped_with_a_vibrant_raspberry_compote_g-0.jpg' },
-  { name: 'Strawberry Cheesecake Overnight Oats',   file: 'lucid-origin_overnight_oats_in_a_delicate_glass_jar_topped_with_a_vibrant_raspberry_compote_g-0.jpg' },
+  { name: 'Raspberry Overnight Oats',               file: 'Overnight Oats.jpg' },
+  { name: 'Overnight Oats',                         file: 'Overnight Oats.jpg' },
+  { name: 'Biscoff Overnight Oats',                 file: 'Overnight Oats.jpg' },
+  { name: 'Strawberry Cheesecake Overnight Oats',   file: 'Overnight Oats.jpg' },
   { name: 'Chia Pudding',                           file: '5.jpg' },
   { name: 'Porridge',                               file: '6.jpg' },
   { name: 'Porridge and Honey',                     file: '6.jpg' },
@@ -58,7 +58,7 @@ const RECIPES = [
   { name: 'Yogurt Bowl',                            file: 'Yogurt Bowl (2).jpg' },
 
   // ── LUNCH ───────────────────────────────────────────────────────────────
-  { name: 'Avacado and Egg on Sourdough',           file: '16.jpg' },
+  { name: 'Avacado and Egg on Sourdough',           file: 'Avacado and Egg on Sourdough.jpg' },
   { name: 'Sweet Chilli Chicken Wrap',              file: '17.jpg' },
   { name: 'BBQ Chicken Wrap',                       file: '18.jpg' },
   { name: 'Jerk Chicken Cheese Burger',             file: '19.jpg' },
