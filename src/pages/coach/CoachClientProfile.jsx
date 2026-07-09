@@ -1488,12 +1488,28 @@ function MealPlanTab({ client, coachId }) {
   )
 }
 
+const TRAINING_BLOCKS = [
+  { key: 'Block 1', label: 'Block 1' },
+  { key: 'Block 2', label: 'Block 2' },
+  { key: 'Block 3', label: 'Block 3' },
+]
+const TRAINING_DAY_ORDER = ['5 Day', '4 Day', '3 Day']
+
+function getProgBlock(name) {
+  for (const b of TRAINING_BLOCKS) { if (name?.includes(b.key)) return b.key }
+  return null
+}
+function getProgDays(name) {
+  for (const d of TRAINING_DAY_ORDER) { if (name?.startsWith(d)) return d }
+  return null
+}
+
 function TrainingTab({ client, coachId }) {
   const [programs, setPrograms] = useState([])
   const [assignment, setAssignment] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ program_id: '', week_override: '' })
+  const [form, setForm] = useState({ block: '', days: '', week_override: '' })
   const [saving, setSaving] = useState(false)
   const [showOverride, setShowOverride] = useState(false)
   const [overrideWeek, setOverrideWeek] = useState('')
@@ -1517,16 +1533,23 @@ function TrainingTab({ client, coachId }) {
 
   useEffect(() => { load() }, [client.id])
 
+  const selectedProgram = programs.find(p =>
+    p.name?.startsWith(form.days) && p.name?.includes(form.block)
+  )
+  const availableDays = TRAINING_DAY_ORDER.filter(d =>
+    programs.some(p => p.name?.startsWith(d) && p.name?.includes(form.block))
+  )
+
   async function handleAssign(e) {
     e.preventDefault()
+    if (!selectedProgram) return
     setSaving(true)
     await supabase.from('client_training_assignments').update({ active: false }).eq('client_id', client.id)
-    const prog = programs.find(p => p.id === form.program_id)
     await supabase.from('client_training_assignments').insert({
       client_id: client.id,
       coach_id: coachId,
-      program_id: form.program_id,
-      program_name: prog?.name || '',
+      program_id: selectedProgram.id,
+      program_name: selectedProgram.name,
       week_override: form.week_override ? parseInt(form.week_override) : null,
       active: true,
     })
@@ -1571,23 +1594,36 @@ function TrainingTab({ client, coachId }) {
         <form onSubmit={handleAssign} className="card space-y-4">
           <h3 className="font-semibold text-gray-900 dark:text-white">{assignment ? 'Change Programme' : 'Assign Training Programme'}</h3>
           <div>
-            <label className="label">Programme</label>
-            <select className="input" required value={form.program_id} onChange={e => setForm(f => ({ ...f, program_id: e.target.value }))}>
-              <option value="">Select a programme…</option>
-              {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <label className="label">Block</label>
+            <select className="input" required value={form.block} onChange={e => setForm(f => ({ ...f, block: e.target.value, days: '' }))}>
+              <option value="">Select a block…</option>
+              {TRAINING_BLOCKS.filter(b => programs.some(p => p.name?.includes(b.key))).map(b => (
+                <option key={b.key} value={b.key}>{b.label}</option>
+              ))}
             </select>
           </div>
+          {form.block && (
+            <div>
+              <label className="label">Training days per week</label>
+              <select className="input" required value={form.days} onChange={e => setForm(f => ({ ...f, days: e.target.value }))}>
+                <option value="">Select training days…</option>
+                {availableDays.map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="label">Starting week</label>
             <select className="input" value={form.week_override} onChange={e => setForm(f => ({ ...f, week_override: e.target.value }))}>
               <option value="">Follow programme's current week</option>
-              {form.program_id && Array.from({ length: programs.find(p => p.id === form.program_id)?.weeks_total || 12 }, (_, i) => (
+              {selectedProgram && Array.from({ length: selectedProgram.weeks_total || 12 }, (_, i) => (
                 <option key={i + 1} value={i + 1}>Week {i + 1}</option>
               ))}
             </select>
           </div>
           <div className="flex gap-3">
-            <button type="submit" disabled={saving || !form.program_id} className="btn-primary">{saving ? 'Saving…' : 'Assign'}</button>
+            <button type="submit" disabled={saving || !selectedProgram} className="btn-primary">{saving ? 'Saving…' : 'Assign'}</button>
             <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
           </div>
         </form>
@@ -1601,7 +1637,7 @@ function TrainingTab({ client, coachId }) {
               <p className="text-sm text-gray-500 dark:text-gray-400">{prog.weeks_total} weeks</p>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
-              <button onClick={() => { setForm({ program_id: assignment.program_id, week_override: '' }); setShowForm(true); setShowOverride(false) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Change</button>
+              <button onClick={() => { setForm({ block: getProgBlock(assignment.program_name) || '', days: getProgDays(assignment.program_name) || '', week_override: '' }); setShowForm(true); setShowOverride(false) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Change</button>
               <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
             </div>
           </div>
