@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import ExerciseThumb from '../../components/ExerciseThumb'
 
 export default function ClientTraining() {
   const { session } = useAuth()
@@ -146,30 +147,41 @@ export default function ClientTraining() {
 
               {expanded.has(s.id) && s.exercises.length > 0 && (
                 <div className="border-t border-gray-100 dark:border-gray-800">
-                  <div className="grid grid-cols-[1fr_44px_68px_52px] gap-2 px-4 py-2 text-xs text-gray-400 uppercase tracking-wider font-medium bg-gray-50/60 dark:bg-gray-800/40">
-                    <span>Exercise</span>
-                    <span className="text-center">Sets</span>
-                    <span className="text-center">Reps</span>
-                    <span className="text-center">RPE</span>
+                  {/* Column header */}
+                  <div className="flex items-center gap-3 px-4 py-2 text-xs text-gray-400 uppercase tracking-wider font-medium bg-gray-50/60 dark:bg-gray-800/40">
+                    <div className="w-10 flex-shrink-0" />
+                    <div className="flex-1 grid grid-cols-[1fr_44px_68px_52px] gap-2">
+                      <span>Exercise</span>
+                      <span className="text-center">Sets</span>
+                      <span className="text-center">Reps</span>
+                      <span className="text-center">RPE</span>
+                    </div>
                   </div>
                   <div className="divide-y divide-gray-50 dark:divide-gray-800">
                     {s.exercises.map(ex => (
-                      <div key={ex.id} className="grid grid-cols-[1fr_44px_68px_52px] gap-2 px-4 py-3 items-center">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">{ex.name}</p>
-                          {ex.notes && (
-                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{ex.notes}</p>
-                          )}
+                      <div key={ex.id} className="flex items-center gap-3 px-4 py-3">
+                        <ExerciseThumb
+                          illustrationUrl={ex.illustration_url}
+                          videoUrl={ex.video_url}
+                          size="sm"
+                        />
+                        <div className="flex-1 grid grid-cols-[1fr_44px_68px_52px] gap-2 items-center min-w-0">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{ex.name}</p>
+                            {ex.notes && (
+                              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{ex.notes}</p>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 text-center tabular-nums">
+                            {ex.sets ?? '—'}
+                          </p>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 text-center">
+                            {ex.reps || '—'}
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                            {ex.rpe || '—'}
+                          </p>
                         </div>
-                        <p className="text-sm text-gray-700 dark:text-gray-300 text-center tabular-nums">
-                          {ex.sets ?? '—'}
-                        </p>
-                        <p className="text-sm text-gray-700 dark:text-gray-300 text-center">
-                          {ex.reps || '—'}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                          {ex.rpe || '—'}
-                        </p>
                       </div>
                     ))}
                   </div>

@@ -9,6 +9,7 @@ import {
   mealMacros, addMacros,
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
+import ExerciseThumb from '../../components/ExerciseThumb'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
@@ -415,62 +416,62 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                   </div>
                 </div>
                 {sessions.length > 0 ? (
-                  <div className="space-y-3">
-                    {sessions.map(session => (
-                      <div key={session.id} className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
-                        <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2.5">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{session.name}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {sessions.map((session, i) => (
+                      <div key={session.id} className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden flex flex-col">
+                        {/* Day header */}
+                        <div className="bg-blue-50 dark:bg-blue-900/20 px-3 py-2.5 flex items-center gap-2 flex-shrink-0">
+                          <span className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                            {i + 1}
+                          </span>
+                          <p className="text-xs font-semibold text-gray-900 dark:text-white leading-snug truncate">{session.name}</p>
                         </div>
-                        <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                        {/* Exercises */}
+                        <div className="flex-1 divide-y divide-gray-100 dark:divide-gray-800">
                           {(session.session_exercises || []).map(ex => {
                             const edits = editedExercises[ex.id] || {}
-                            const sets = edits.sets !== undefined ? edits.sets : ex.sets
-                            const reps = edits.reps !== undefined ? edits.reps : ex.reps
-                            const rpe = edits.rpe !== undefined ? edits.rpe : ex.rpe
+                            const sets  = edits.sets  !== undefined ? edits.sets  : ex.sets
+                            const reps  = edits.reps  !== undefined ? edits.reps  : ex.reps
+                            const rpe   = edits.rpe   !== undefined ? edits.rpe   : ex.rpe
                             const notes = edits.notes !== undefined ? edits.notes : ex.notes
                             return (
-                              <div key={ex.id} className="px-4 py-3 space-y-2">
-                                <p className="text-sm font-medium text-gray-900 dark:text-white">{ex.name}</p>
-                                <div className="grid grid-cols-3 gap-2">
-                                  <div>
-                                    <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wider block mb-1">Sets</label>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      value={sets ?? ''}
-                                      onChange={e => handleUpdateExercise(ex.id, 'sets', e.target.value ? parseInt(e.target.value) : null)}
-                                      className="input w-full text-sm py-1"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wider block mb-1">Reps</label>
-                                    <input
-                                      type="text"
-                                      value={reps ?? ''}
-                                      onChange={e => handleUpdateExercise(ex.id, 'reps', e.target.value || null)}
-                                      className="input w-full text-sm py-1"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wider block mb-1">RPE</label>
-                                    <input
-                                      type="text"
-                                      value={rpe ?? ''}
-                                      onChange={e => handleUpdateExercise(ex.id, 'rpe', e.target.value || null)}
-                                      className="input w-full text-sm py-1"
-                                    />
-                                  </div>
-                                </div>
-                                <div>
-                                  <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wider block mb-1">Notes</label>
-                                  <input
-                                    type="text"
-                                    value={notes ?? ''}
-                                    onChange={e => handleUpdateExercise(ex.id, 'notes', e.target.value || null)}
-                                    className="input w-full text-sm py-1"
-                                    placeholder="Exercise notes…"
+                              <div key={ex.id} className="p-2.5 space-y-1.5">
+                                {/* Thumbnail + name */}
+                                <div className="flex items-start gap-2">
+                                  <ExerciseThumb
+                                    illustrationUrl={ex.illustration_url}
+                                    videoUrl={ex.video_url}
+                                    size="sm"
                                   />
+                                  <p className="text-[11px] font-semibold text-gray-900 dark:text-white leading-snug flex-1 mt-1">{ex.name}</p>
                                 </div>
+                                {/* Sets / Reps / RPE */}
+                                <div className="grid grid-cols-3 gap-1">
+                                  {[
+                                    { label: 'Sets', val: sets, type: 'number', onChange: v => handleUpdateExercise(ex.id, 'sets', v ? parseInt(v) : null) },
+                                    { label: 'Reps', val: reps, type: 'text',   onChange: v => handleUpdateExercise(ex.id, 'reps', v || null) },
+                                    { label: 'RPE',  val: rpe,  type: 'text',   onChange: v => handleUpdateExercise(ex.id, 'rpe',  v || null) },
+                                  ].map(({ label, val, type, onChange }) => (
+                                    <div key={label}>
+                                      <label className="text-[9px] font-medium text-gray-400 uppercase tracking-wider block mb-0.5">{label}</label>
+                                      <input
+                                        type={type}
+                                        min={type === 'number' ? '0' : undefined}
+                                        value={val ?? ''}
+                                        onChange={e => onChange(e.target.value)}
+                                        className="input w-full text-xs py-0.5 px-1.5"
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                                {/* Notes */}
+                                <input
+                                  type="text"
+                                  value={notes ?? ''}
+                                  onChange={e => handleUpdateExercise(ex.id, 'notes', e.target.value || null)}
+                                  className="input w-full text-xs py-0.5 px-1.5"
+                                  placeholder="Notes…"
+                                />
                               </div>
                             )
                           })}
