@@ -37,13 +37,13 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 // Exact meal names as stored in the database → image filename
 const RECIPES = [
   // ── BREAKFAST ───────────────────────────────────────────────────────────
-  { name: 'Overnight Oats',                         file: 'Overnight Oats.jpg' },
-  // Renamed overnight oats variants — share the same base image
-  { name: 'Raspberry Overnight Oats',               file: 'Overnight Oats.jpg' },
-  { name: 'Biscoff Overnight Oats',                 file: 'Overnight Oats.jpg' },
-  { name: 'Strawberry Cheesecake Overnight Oats',   file: 'Overnight Oats.jpg' },
-  { name: 'Overnight Weetabix',                     file: 'Overnight Weetabix.jpg' },
-  { name: 'Raspberry Overnight Weetabix',           file: 'Overnight Weetabix.jpg' },
+  // New high-quality images (from Food Images folder)
+  { name: 'Raspberry Overnight Weetabix',           file: 'Raspberry Overnight Weetabix.jpg' },
+  { name: 'Overnight Weetabix',                     file: 'Raspberry Overnight Weetabix.jpg' },
+  { name: 'Raspberry Overnight Oats',               file: 'lucid-origin_overnight_oats_in_a_delicate_glass_jar_topped_with_a_vibrant_raspberry_compote_g-0.jpg' },
+  { name: 'Overnight Oats',                         file: 'lucid-origin_overnight_oats_in_a_delicate_glass_jar_topped_with_a_vibrant_raspberry_compote_g-0.jpg' },
+  { name: 'Biscoff Overnight Oats',                 file: 'lucid-origin_overnight_oats_in_a_delicate_glass_jar_topped_with_a_vibrant_raspberry_compote_g-0.jpg' },
+  { name: 'Strawberry Cheesecake Overnight Oats',   file: 'lucid-origin_overnight_oats_in_a_delicate_glass_jar_topped_with_a_vibrant_raspberry_compote_g-0.jpg' },
   { name: 'Chia Pudding',                           file: '5.jpg' },
   { name: 'Porridge',                               file: '6.jpg' },
   { name: 'Porridge and Honey',                     file: '6.jpg' },
