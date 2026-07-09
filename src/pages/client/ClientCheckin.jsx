@@ -16,6 +16,20 @@ const PHOTO_ANGLES = [
   { key: 'right', label: 'Right side' },
 ]
 
+// Check-in window: opens Thursday, expected Friday, grace period through Tuesday
+// Wednesday is the "closed" day between windows
+function isCheckinWindowOpen() {
+  const dow = new Date().getDay() // 0=Sun,1=Mon,...,4=Thu,5=Fri,6=Sat
+  return dow !== 3 // closed Wednesday only
+}
+
+function nextThursdayLabel() {
+  const d = new Date()
+  const daysUntil = (4 - d.getDay() + 7) % 7 || 7
+  d.setDate(d.getDate() + daysUntil)
+  return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+}
+
 function getBestPerformance(liftName, checkins) {
   const results = checkins
     .flatMap(c => c.lift_results || [])
@@ -286,6 +300,30 @@ export default function ClientCheckin() {
   }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
+
+  // Gate: no check-in submitted yet AND window is closed (Wednesday)
+  if (!isCheckinWindowOpen() && !existing) {
+    return (
+      <div className="space-y-6 max-w-lg">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
+          {weekNumber != null && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Week {weekNumber}</p>}
+        </div>
+        <div className="card text-center py-10 space-y-3">
+          <div className="w-12 h-12 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center mx-auto">
+            <svg className="w-6 h-6 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <p className="font-semibold text-gray-900 dark:text-white">Check-in opens Thursday</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Your next check-in will be available on {nextThursdayLabel()}.<br />
+            You'll get a reminder on Friday morning.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 max-w-lg">

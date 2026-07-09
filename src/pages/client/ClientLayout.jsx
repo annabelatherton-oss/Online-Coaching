@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import DarkModeToggle from '../../components/DarkModeToggle'
+import { supabase } from '../../lib/supabase'
+import { registerPushNotifications } from '../../lib/pushNotifications'
 
 const navItems = [
   {
@@ -78,11 +80,24 @@ const navItems = [
 ]
 
 export default function ClientLayout() {
-  const { profile, signOut } = useAuth()
+  const { profile, session, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const mainRef = useRef(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Register for push notifications once after login
+  useEffect(() => {
+    if (!session?.user?.id) return
+    supabase
+      .from('clients')
+      .select('id')
+      .eq('profile_id', session.user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.id) registerPushNotifications(data.id)
+      })
+  }, [session?.user?.id])
 
   useEffect(() => {
     const main = mainRef.current
