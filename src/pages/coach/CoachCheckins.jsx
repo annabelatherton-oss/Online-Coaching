@@ -13,6 +13,13 @@ import ExerciseThumb from '../../components/ExerciseThumb'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
+const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+function dayRank(name) {
+  const n = (name || '').toLowerCase().substring(0, 3)
+  const idx = DAY_ORDER.indexOf(n)
+  return idx >= 0 ? idx : 99
+}
+
 function fmtDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -141,7 +148,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         const sortedSessions = (sessionsData || []).map(s => ({
           ...s,
           session_exercises: [...(s.session_exercises || [])].sort((a, b) => a.order_index - b.order_index),
-        }))
+        })).sort((a, b) => dayRank(a.name) - dayRank(b.name))
         setSessions(sortedSessions)
         setOriginalSessions(JSON.parse(JSON.stringify(sortedSessions)))
       }
@@ -553,128 +560,139 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                       <p className="text-sm font-semibold text-gray-900 dark:text-white leading-snug">{session.name}</p>
                     </div>
                     {/* Exercises */}
-                    <div className="flex-1 divide-y divide-gray-100 dark:divide-gray-800">
-                      {(session.session_exercises || []).filter(ex => !removedExerciseIds.has(ex.id)).map(ex => {
-                        const edits = editedExercises[ex.id] || {}
-                        const name  = edits.name  !== undefined ? edits.name  : ex.name
-                        const sets  = edits.sets  !== undefined ? edits.sets  : ex.sets
-                        const reps  = edits.reps  !== undefined ? edits.reps  : ex.reps
-                        const rpe   = edits.rpe   !== undefined ? edits.rpe   : ex.rpe
-                        const notes = edits.notes !== undefined ? edits.notes : ex.notes
-                        return (
-                          <div key={ex.id} className="p-3 space-y-2">
-                            {/* Thumbnail + name input + remove */}
-                            <div className="flex items-center gap-2">
-                              <ExerciseThumb
-                                illustrationUrl={ex.illustration_url}
-                                videoUrl={ex.video_url}
-                                size="sm"
+                    <div className="flex-1 flex flex-col">
+                      {/* Column headers */}
+                      <div className="px-3 py-1 flex items-center gap-1.5 bg-gray-50/60 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 text-[9px] font-semibold text-gray-400 uppercase tracking-wider flex-shrink-0">
+                        <div className="w-10 flex-shrink-0" />
+                        <span className="flex-1 min-w-0">Exercise</span>
+                        <span className="w-10 text-center flex-shrink-0">Sets</span>
+                        <span className="w-12 text-center flex-shrink-0">Reps</span>
+                        <span className="w-10 text-center flex-shrink-0">RPE</span>
+                        <div className="w-6 flex-shrink-0" />
+                      </div>
+
+                      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                        {(session.session_exercises || []).filter(ex => !removedExerciseIds.has(ex.id)).map(ex => {
+                          const edits = editedExercises[ex.id] || {}
+                          const name  = edits.name  !== undefined ? edits.name  : ex.name
+                          const sets  = edits.sets  !== undefined ? edits.sets  : ex.sets
+                          const reps  = edits.reps  !== undefined ? edits.reps  : ex.reps
+                          const rpe   = edits.rpe   !== undefined ? edits.rpe   : ex.rpe
+                          const notes = edits.notes !== undefined ? edits.notes : ex.notes
+                          return (
+                            <div key={ex.id} className="px-3 py-2 space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
+                                <input
+                                  type="text"
+                                  value={name ?? ''}
+                                  onChange={e => handleUpdateExercise(ex.id, 'name', e.target.value)}
+                                  className="input flex-1 text-xs py-0.5 px-2 font-medium min-w-0"
+                                  placeholder="Exercise name…"
+                                />
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={sets ?? ''}
+                                  onChange={e => handleUpdateExercise(ex.id, 'sets', e.target.value ? parseInt(e.target.value) : null)}
+                                  className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
+                                />
+                                <input
+                                  type="text"
+                                  value={reps ?? ''}
+                                  onChange={e => handleUpdateExercise(ex.id, 'reps', e.target.value || null)}
+                                  className="w-12 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
+                                />
+                                <input
+                                  type="text"
+                                  value={rpe ?? ''}
+                                  onChange={e => handleUpdateExercise(ex.id, 'rpe', e.target.value || null)}
+                                  className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
+                                />
+                                <button
+                                  onClick={() => handleRemoveExercise(ex.id)}
+                                  className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                              <div className="pl-12">
+                                <input
+                                  type="text"
+                                  value={notes ?? ''}
+                                  onChange={e => handleUpdateExercise(ex.id, 'notes', e.target.value || null)}
+                                  className="input w-full text-xs py-0.5 px-2 text-gray-500 dark:text-gray-400"
+                                  placeholder="Notes…"
+                                />
+                              </div>
+                            </div>
+                          )
+                        })}
+
+                        {/* Added exercises */}
+                        {(addedExercises[session.id] || []).map(ex => (
+                          <div key={ex._tempId} className="px-3 py-2 space-y-1 bg-blue-50/30 dark:bg-blue-900/10">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                                <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                              </div>
+                              <input
+                                autoFocus
+                                type="text"
+                                value={ex.name}
+                                onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'name', e.target.value)}
+                                className="input flex-1 text-xs py-0.5 px-2 font-medium min-w-0"
+                                placeholder="Exercise name…"
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                value={ex.sets ?? ''}
+                                onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'sets', e.target.value ? parseInt(e.target.value) : null)}
+                                className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
                               />
                               <input
                                 type="text"
-                                value={name ?? ''}
-                                onChange={e => handleUpdateExercise(ex.id, 'name', e.target.value)}
-                                className="input flex-1 text-xs py-1 px-2 font-semibold"
-                                placeholder="Exercise name…"
+                                value={ex.reps ?? ''}
+                                onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'reps', e.target.value || '')}
+                                className="w-12 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
+                              />
+                              <input
+                                type="text"
+                                value={ex.rpe ?? ''}
+                                onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'rpe', e.target.value || '')}
+                                className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
                               />
                               <button
-                                onClick={() => handleRemoveExercise(ex.id)}
-                                className="flex-shrink-0 p-1 rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                onClick={() => handleRemoveAddedExercise(session.id, ex._tempId)}
+                                className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
                               >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                               </button>
                             </div>
-                            {/* Sets / Reps / RPE */}
-                            <div className="grid grid-cols-3 gap-1.5">
-                              {[
-                                { label: 'Sets', val: sets, type: 'number', onChange: v => handleUpdateExercise(ex.id, 'sets', v ? parseInt(v) : null) },
-                                { label: 'Reps', val: reps, type: 'text',   onChange: v => handleUpdateExercise(ex.id, 'reps', v || null) },
-                                { label: 'RPE',  val: rpe,  type: 'text',   onChange: v => handleUpdateExercise(ex.id, 'rpe',  v || null) },
-                              ].map(({ label, val, type, onChange }) => (
-                                <div key={label}>
-                                  <label className="text-[9px] font-medium text-gray-400 uppercase tracking-wider block mb-0.5">{label}</label>
-                                  <input
-                                    type={type}
-                                    min={type === 'number' ? '0' : undefined}
-                                    value={val ?? ''}
-                                    onChange={e => onChange(e.target.value)}
-                                    className="input w-full text-xs py-1 px-2"
-                                  />
-                                </div>
-                              ))}
+                            <div className="pl-12">
+                              <input
+                                type="text"
+                                value={ex.notes ?? ''}
+                                onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'notes', e.target.value || '')}
+                                className="input w-full text-xs py-0.5 px-2 text-gray-500 dark:text-gray-400"
+                                placeholder="Notes…"
+                              />
                             </div>
-                            {/* Notes */}
-                            <input
-                              type="text"
-                              value={notes ?? ''}
-                              onChange={e => handleUpdateExercise(ex.id, 'notes', e.target.value || null)}
-                              className="input w-full text-xs py-1 px-2"
-                              placeholder="Notes…"
-                            />
                           </div>
-                        )
-                      })}
-
-                      {/* Added exercises */}
-                      {(addedExercises[session.id] || []).map(ex => (
-                        <div key={ex._tempId} className="p-3 space-y-2 bg-blue-50/40 dark:bg-blue-900/10">
-                          <div className="flex items-center gap-2">
-                            <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                              <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                              </svg>
-                            </div>
-                            <input
-                              autoFocus
-                              type="text"
-                              value={ex.name}
-                              onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'name', e.target.value)}
-                              className="input flex-1 text-xs py-1 px-2 font-semibold"
-                              placeholder="Exercise name…"
-                            />
-                            <button
-                              onClick={() => handleRemoveAddedExercise(session.id, ex._tempId)}
-                              className="flex-shrink-0 p-1 rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-3 gap-1.5">
-                            {[
-                              { label: 'Sets', val: ex.sets, type: 'number', onChange: v => handleUpdateAddedExercise(session.id, ex._tempId, 'sets', v ? parseInt(v) : null) },
-                              { label: 'Reps', val: ex.reps, type: 'text',   onChange: v => handleUpdateAddedExercise(session.id, ex._tempId, 'reps', v || '') },
-                              { label: 'RPE',  val: ex.rpe,  type: 'text',   onChange: v => handleUpdateAddedExercise(session.id, ex._tempId, 'rpe',  v || '') },
-                            ].map(({ label, val, type, onChange }) => (
-                              <div key={label}>
-                                <label className="text-[9px] font-medium text-gray-400 uppercase tracking-wider block mb-0.5">{label}</label>
-                                <input
-                                  type={type}
-                                  min={type === 'number' ? '0' : undefined}
-                                  value={val ?? ''}
-                                  onChange={e => onChange(e.target.value)}
-                                  className="input w-full text-xs py-1 px-2"
-                                />
-                              </div>
-                            ))}
-                          </div>
-                          <input
-                            type="text"
-                            value={ex.notes ?? ''}
-                            onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'notes', e.target.value || '')}
-                            className="input w-full text-xs py-1 px-2"
-                            placeholder="Notes…"
-                          />
-                        </div>
-                      ))}
+                        ))}
+                      </div>
 
                       {/* Add exercise button */}
                       <button
                         onClick={() => handleAddExercise(session.id)}
-                        className="w-full py-2.5 flex items-center justify-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors"
+                        className="mt-auto py-2 flex items-center justify-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium hover:bg-blue-50/60 dark:hover:bg-blue-900/10 transition-colors border-t border-gray-100 dark:border-gray-800"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
