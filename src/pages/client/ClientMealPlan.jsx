@@ -135,11 +135,11 @@ function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, me
 
   return (
     <div
-      className="flex flex-col rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 cursor-pointer active:opacity-90"
+      className="flex flex-col rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 cursor-pointer active:opacity-90 w-44 flex-shrink-0"
       onClick={() => meal && onViewRecipe(slotKey)}
     >
       {/* Photo */}
-      <div className="relative h-32 bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+      <div className="relative aspect-square bg-gray-100 dark:bg-gray-800 flex-shrink-0">
         {meal?.photo_url ? (
           <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
         ) : (
@@ -555,7 +555,7 @@ export default function ClientMealPlan() {
         return (
           <section key={group.label}>
             <h2 className="text-base font-bold text-gray-900 dark:text-white mb-3">{group.label}</h2>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-wrap gap-3">
               {visibleSlots.map(slot => (
                 <MealCard
                   key={slot.key}
