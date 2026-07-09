@@ -131,6 +131,7 @@ export default function ClientCheckin() {
   const [loading, setLoading] = useState(true)
   const [clientData, setClientData] = useState(null)
   const [weekNumber, setWeekNumber] = useState(null)
+  const [personalWeek, setPersonalWeek] = useState(null)
   const [collectMeasurements, setCollectMeasurements] = useState(false)
   const [topLifts, setTopLifts] = useState([])
   const [allCheckins, setAllCheckins] = useState([])
@@ -197,19 +198,16 @@ export default function ClientCheckin() {
       setWeekNumber(week)
 
       // All check-ins with lift data, used for best-ever performance calculation
-      const { data: history } = await supabase
-        .from('client_checkins')
-        .select('week_number, lift_results')
-        .eq('client_id', clientRow.id)
-        .not('lift_results', 'is', null)
+      const [{ data: history }, { count: checkinCount }, { data: checkin }] = await Promise.all([
+        supabase.from('client_checkins').select('week_number, lift_results').eq('client_id', clientRow.id).not('lift_results', 'is', null),
+        supabase.from('client_checkins').select('id', { count: 'exact', head: true }).eq('client_id', clientRow.id),
+        supabase.from('client_checkins').select('*').eq('client_id', clientRow.id).eq('week_number', week).maybeSingle(),
+      ])
       setAllCheckins(history || [])
 
-      const { data: checkin } = await supabase
-        .from('client_checkins')
-        .select('*')
-        .eq('client_id', clientRow.id)
-        .eq('week_number', week)
-        .maybeSingle()
+      // Personal week = position of this check-in in client's history (1-indexed)
+      const count = checkinCount ?? 0
+      setPersonalWeek(checkin ? count : count + 1)
 
       if (checkin) {
         setExisting(checkin)
@@ -307,7 +305,7 @@ export default function ClientCheckin() {
       <div className="space-y-6 max-w-lg">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
-          {weekNumber != null && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Week {weekNumber}</p>}
+          {personalWeek != null && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Week {personalWeek}</p>}
         </div>
         <div className="card text-center py-10 space-y-3">
           <div className="w-12 h-12 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center mx-auto">
@@ -330,7 +328,7 @@ export default function ClientCheckin() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          {weekNumber != null ? `Week ${weekNumber}` : 'Your weekly progress update.'}
+          {personalWeek != null ? `Week ${personalWeek}` : 'Your weekly progress update.'}
           {existing && <span className="ml-1 text-brand-500">Already submitted — you can update it below.</span>}
         </p>
       </div>

@@ -31,7 +31,7 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function CheckinCard({ ci, onLightbox }) {
+function CheckinCard({ ci, weekNum, onLightbox }) {
   const [open, setOpen] = useState(false)
   const photos = ci.progress_photos ? PHOTO_ANGLES.filter(a => ci.progress_photos[a]) : []
   const lifts = (ci.lift_results || []).filter(l => l?.name)
@@ -45,7 +45,7 @@ function CheckinCard({ ci, onLightbox }) {
       >
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex-shrink-0">
-            <span className="text-sm font-bold text-gray-900 dark:text-white">Week {ci.week_number}</span>
+            <span className="text-sm font-bold text-gray-900 dark:text-white">Week {weekNum}</span>
             {ci.updated_at || ci.submitted_at
               ? <p className="text-xs text-gray-400 mt-0.5">{fmtDate(ci.updated_at || ci.submitted_at)}</p>
               : null}
@@ -209,13 +209,17 @@ export default function ClientProgress() {
     : null
 
   // Build strength progress: for each lift name, find earliest and latest entry
-  const liftMap = {} // name -> { first: {weight_kg, reps, week}, latest: {weight_kg, reps, week} }
+  const liftMap = {} // name -> { first: {weight_kg, reps, personalWeek}, latest: ... }
   const sorted = [...checkins].sort((a, b) => a.week_number - b.week_number)
-  sorted.forEach(ci => {
-    (ci.lift_results || []).filter(l => l?.name && l.weight_kg != null && l.reps != null).forEach(l => {
+  // Personal week = 1-based position in ascending sorted order
+  const weekToPersonal = {}
+  sorted.forEach((ci, i) => { weekToPersonal[ci.week_number] = i + 1 })
+  sorted.forEach((ci, i) => {
+    const pw = i + 1
+    ;(ci.lift_results || []).filter(l => l?.name && l.weight_kg != null && l.reps != null).forEach(l => {
       if (!liftMap[l.name]) liftMap[l.name] = { first: null, latest: null }
-      if (!liftMap[l.name].first) liftMap[l.name].first = { weight_kg: parseFloat(l.weight_kg), reps: parseInt(l.reps), week: ci.week_number }
-      liftMap[l.name].latest = { weight_kg: parseFloat(l.weight_kg), reps: parseInt(l.reps), week: ci.week_number }
+      if (!liftMap[l.name].first) liftMap[l.name].first = { weight_kg: parseFloat(l.weight_kg), reps: parseInt(l.reps), personalWeek: pw }
+      liftMap[l.name].latest = { weight_kg: parseFloat(l.weight_kg), reps: parseInt(l.reps), personalWeek: pw }
     })
   })
   const liftProgress = Object.entries(liftMap)
@@ -275,7 +279,7 @@ export default function ClientProgress() {
                 <div className="grid grid-cols-3 gap-2">
                   {/* Start */}
                   <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
-                    <p className="text-[10px] text-gray-400 mb-0.5 uppercase tracking-wider">Start · Wk {first.week}</p>
+                    <p className="text-[10px] text-gray-400 mb-0.5 uppercase tracking-wider">Start · Wk {first.personalWeek}</p>
                     <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">
                       {first.weight_kg} kg
                     </p>
@@ -283,7 +287,7 @@ export default function ClientProgress() {
                   </div>
                   {/* Now */}
                   <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
-                    <p className="text-[10px] text-gray-400 mb-0.5 uppercase tracking-wider">Now · Wk {latest.week}</p>
+                    <p className="text-[10px] text-gray-400 mb-0.5 uppercase tracking-wider">Now · Wk {latest.personalWeek}</p>
                     <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">
                       {latest.weight_kg} kg
                     </p>
@@ -314,7 +318,10 @@ export default function ClientProgress() {
         const latest = checkins[0]
         const isComparison = first.id !== latest.id
 
-        function PhotoSlot({ photos, weekNumber }) {
+        const firstPersonalWeek = weekToPersonal[first.week_number] ?? 1
+        const latestPersonalWeek = weekToPersonal[latest.week_number] ?? checkins.length
+
+        function PhotoSlot({ photos, pw }) {
           return angle => {
             const url = photos?.[angle]
             return url ? (
@@ -322,7 +329,7 @@ export default function ClientProgress() {
                 <div className="aspect-[3/4] rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity w-full">
                   <img src={url} alt={angle} className="w-full h-full object-cover" />
                 </div>
-                <p className="text-[10px] text-center text-gray-400">Wk {weekNumber}</p>
+                <p className="text-[10px] text-center text-gray-400">Wk {pw}</p>
               </button>
             ) : (
               <div className="flex flex-col gap-1 w-full">
@@ -332,14 +339,14 @@ export default function ClientProgress() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
-                <p className="text-[10px] text-center text-gray-400">Wk {weekNumber}</p>
+                <p className="text-[10px] text-center text-gray-400">Wk {pw}</p>
               </div>
             )
           }
         }
 
-        const firstSlot = PhotoSlot({ photos: first.progress_photos, weekNumber: first.week_number })
-        const latestSlot = PhotoSlot({ photos: latest.progress_photos, weekNumber: latest.week_number })
+        const firstSlot = PhotoSlot({ photos: first.progress_photos, pw: firstPersonalWeek })
+        const latestSlot = PhotoSlot({ photos: latest.progress_photos, pw: latestPersonalWeek })
 
         return (
           <div className="card">
@@ -368,8 +375,8 @@ export default function ClientProgress() {
       {checkins.length > 0 && (
         <div className="space-y-3">
           <h2 className="font-semibold text-gray-900 dark:text-white">Check-in History</h2>
-          {checkins.map(ci => (
-            <CheckinCard key={ci.id} ci={ci} onLightbox={setLightbox} />
+          {checkins.map((ci, i) => (
+            <CheckinCard key={ci.id} ci={ci} weekNum={checkins.length - i} onLightbox={setLightbox} />
           ))}
         </div>
       )}

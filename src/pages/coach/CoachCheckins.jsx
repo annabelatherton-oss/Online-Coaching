@@ -52,11 +52,17 @@ function DeltaTag({ delta, invertColors = false, suffix = ' kg' }) {
 
 // ── Client detail view ────────────────────────────────────────────────────────
 function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
+  const { profile } = useAuth()
   const [checkins, setCheckins] = useState(rawCheckins)
   const [lightbox, setLightbox] = useState(null)
-  const [responding, setResponding] = useState(null) // checkin id
+  const [responding, setResponding] = useState(null) // checkin id (past check-ins only)
   const [responseText, setResponseText] = useState('')
   const [saving, setSaving] = useState(false)
+  const [activeAssignment, setActiveAssignment] = useState(null)
+  const [delivering, setDelivering] = useState(false)
+  const [deliverForm, setDeliverForm] = useState({ coachNotes: '', calorieTarget: '', trainingNotes: '' })
+  const [deliverSaving, setDeliverSaving] = useState(false)
+  const [delivered, setDelivered] = useState(false)
 
   // desc order (most recent first)
   const sorted = [...checkins].sort((a, b) => b.week_number - a.week_number)
@@ -64,8 +70,12 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const first = sorted[sorted.length - 1]
   const prev = sorted[1] || null
 
-  // ascending for history table
+  // ascending for history table + personal week mapping
   const asc = [...sorted].reverse()
+  const personalWeekMap = {}
+  asc.forEach((c, i) => { personalWeekMap[c.id] = i + 1 })
+  const currentPersonalWeek = current ? personalWeekMap[current.id] : 0
+  const deliveryPersonalWeek = currentPersonalWeek + 1
 
   const wDeltaPrev = weightDelta(current, prev)
   const wDeltaStart = current && first && current.id !== first.id ? weightDelta(current, first) : null
@@ -76,6 +86,69 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const firstP = withPhotos[withPhotos.length - 1]
   const compAngles = PHOTO_ANGLES.filter(a => newestP?.progress_photos?.[a])
   const showComparison = newestP && firstP && newestP.id !== firstP.id && compAngles.length > 0
+
+  // Load active plan assignment for calorie target
+  useEffect(() => {
+    if (!client?.id) return
+    supabase
+      .from('client_plan_assignments')
+      .select('id, calorie_target, week_override')
+      .eq('client_id', client.id)
+      .eq('active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        setActiveAssignment(data)
+        if (data?.calorie_target != null) {
+          setDeliverForm(f => ({ ...f, calorieTarget: String(data.calorie_target) }))
+        }
+      })
+  }, [client?.id])
+
+  function openDeliver() {
+    setDeliverForm(f => ({ ...f, coachNotes: current?.coach_response || '' }))
+    setDelivering(true)
+  }
+
+  async function handleDeliver() {
+    if (!current) return
+    setDeliverSaving(true)
+    const notes = deliverForm.coachNotes.trim()
+    const calTarget = deliverForm.calorieTarget ? parseInt(deliverForm.calorieTarget) : activeAssignment?.calorie_target
+
+    await supabase.from('client_checkins')
+      .update({ coach_response: notes || null, coach_responded_at: new Date().toISOString() })
+      .eq('id', current.id)
+
+    if (activeAssignment) {
+      await supabase.from('client_plan_assignments')
+        .update({ week_override: current.week_number + 1, calorie_target: calTarget })
+        .eq('id', activeAssignment.id)
+    }
+
+    // Record delivery (table must exist — see supabase/weekly-deliveries.sql)
+    supabase.from('weekly_deliveries').insert({
+      client_id: client.id,
+      coach_id: profile.id,
+      checkin_id: current.id,
+      personal_week: deliveryPersonalWeek,
+      template_week: current.week_number + 1,
+      coach_notes: notes || null,
+      calorie_target: calTarget,
+      training_notes: deliverForm.trainingNotes.trim() || null,
+    })
+
+    setDeliverSaving(false)
+    setDelivering(false)
+    setDelivered(true)
+    const updatedCheckins = checkins.map(c => c.id === current.id
+      ? { ...c, coach_response: notes, coach_responded_at: new Date().toISOString() }
+      : c)
+    setCheckins(updatedCheckins)
+    onResponded(current.id, notes)
+    setActiveAssignment(prev => prev ? { ...prev, calorie_target: calTarget } : prev)
+  }
 
   function openRespond(c) {
     setResponseText(c.coach_response || '')
@@ -129,7 +202,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         <div className="card space-y-4 border-brand-200 dark:border-brand-800">
           <div className="flex items-start justify-between flex-wrap gap-2">
             <div>
-              <p className="text-xs font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wide">This week — Week {current.week_number}</p>
+              <p className="text-xs font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wide">This week — Week {currentPersonalWeek}</p>
               <p className="text-xs text-gray-400 mt-0.5">{fmtDate(current.updated_at || current.submitted_at)}</p>
             </div>
             <div className="flex gap-2 flex-wrap">
@@ -213,8 +286,8 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           {/* Photos — current week + first week below for comparison */}
           <div className="space-y-3">
             {[
-              { label: `Now — Week ${current.week_number}`, photos: current.progress_photos },
-              first && first.id !== current.id ? { label: `Start — Week ${first.week_number}`, photos: first.progress_photos } : null,
+              { label: `Now — Week ${personalWeekMap[current.id]}`, photos: current.progress_photos },
+              first && first.id !== current.id ? { label: `Start — Week ${personalWeekMap[first.id]}`, photos: first.progress_photos } : null,
             ].filter(Boolean).map(row => (
               <div key={row.label}>
                 <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{row.label}</p>
@@ -251,24 +324,74 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             </div>
           )}
 
-          {/* Respond to current week */}
-          {current.coach_response && responding !== current.id && (
+          {/* Submit week plan / respond to current week */}
+          {current.coach_response && !delivering && (
             <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl p-3">
-              <p className="text-xs font-semibold text-brand-700 dark:text-brand-400 mb-1">Your response</p>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <p className="text-xs font-semibold text-brand-700 dark:text-brand-400">Your response</p>
+                {delivered && <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-full px-2 py-0.5 font-medium">Week {deliveryPersonalWeek} plan delivered</span>}
+              </div>
               <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{current.coach_response}</p>
             </div>
           )}
-          {responding === current.id ? (
-            <div className="space-y-2">
-              <textarea autoFocus className="input w-full text-sm resize-none" rows={3} placeholder="Write your response…" value={responseText} onChange={e => setResponseText(e.target.value)} />
+          {delivering ? (
+            <div className="border border-brand-200 dark:border-brand-700 rounded-2xl p-4 space-y-4 bg-brand-50/50 dark:bg-brand-900/10">
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">Submit Week {deliveryPersonalWeek} Plan</p>
+                <p className="text-xs text-gray-400 mt-0.5">Updates {client?.full_name}'s meal plan to the next week and records your response.</p>
+              </div>
+              <div>
+                <label className="label text-xs">Message to client</label>
+                <textarea
+                  autoFocus
+                  className="input w-full text-sm resize-none"
+                  rows={4}
+                  placeholder="Weekly feedback, notes and encouragement…"
+                  value={deliverForm.coachNotes}
+                  onChange={e => setDeliverForm(f => ({ ...f, coachNotes: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="label text-xs">Calorie target (kcal/day)</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    className="input w-32 text-sm"
+                    type="number"
+                    min="0"
+                    value={deliverForm.calorieTarget}
+                    onChange={e => setDeliverForm(f => ({ ...f, calorieTarget: e.target.value }))}
+                    placeholder="e.g. 1800"
+                  />
+                  {activeAssignment?.calorie_target && deliverForm.calorieTarget &&
+                    parseInt(deliverForm.calorieTarget) !== activeAssignment.calorie_target && (
+                    <span className={`text-xs font-semibold ${parseInt(deliverForm.calorieTarget) > activeAssignment.calorie_target ? 'text-orange-500' : 'text-blue-500'}`}>
+                      {parseInt(deliverForm.calorieTarget) > activeAssignment.calorie_target ? '↑' : '↓'} {Math.abs(parseInt(deliverForm.calorieTarget) - activeAssignment.calorie_target)} kcal change
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="label text-xs">Training notes (optional)</label>
+                <textarea
+                  className="input w-full text-sm resize-none"
+                  rows={2}
+                  placeholder="Any changes to training this week…"
+                  value={deliverForm.trainingNotes}
+                  onChange={e => setDeliverForm(f => ({ ...f, trainingNotes: e.target.value }))}
+                />
+              </div>
               <div className="flex gap-2">
-                <button onClick={() => sendResponse(current.id)} disabled={saving || !responseText.trim()} className="btn-primary py-1.5 px-4 text-sm">{saving ? 'Sending…' : 'Send'}</button>
-                <button onClick={() => setResponding(null)} className="btn-secondary py-1.5 px-3 text-sm">Cancel</button>
+                <button onClick={handleDeliver} disabled={deliverSaving} className="btn-primary py-1.5 px-4 text-sm">
+                  {deliverSaving ? 'Submitting…' : `Submit Week ${deliveryPersonalWeek} Plan`}
+                </button>
+                <button onClick={() => setDelivering(false)} className="btn-secondary py-1.5 px-3 text-sm">Cancel</button>
               </div>
             </div>
           ) : (
-            <button onClick={() => openRespond(current)} className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">
-              {current.coach_response ? 'Edit response' : 'Respond →'}
+            <button onClick={openDeliver} className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">
+              {current.coach_response && !delivered
+                ? `Edit & resubmit Week ${deliveryPersonalWeek} Plan →`
+                : `Submit Week ${deliveryPersonalWeek} Plan →`}
             </button>
           )}
         </div>
@@ -280,18 +403,18 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Photo Comparison</h3>
             <p className="text-xs text-gray-400 mt-0.5">
-              Start (Wk {firstP.week_number})
-              {prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && ` · Last week (Wk ${prevP.week_number})`}
-              {` · Now (Wk ${newestP.week_number})`}
+              Start (Wk {personalWeekMap[firstP.id]})
+              {prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && ` · Last week (Wk ${personalWeekMap[prevP.id]})`}
+              {` · Now (Wk ${personalWeekMap[newestP.id]})`}
             </p>
           </div>
           {compAngles.map(angle => {
             const cols = [
-              { label: `Start · Wk ${firstP.week_number}`, url: firstP.progress_photos[angle] },
+              { label: `Start · Wk ${personalWeekMap[firstP.id]}`, url: firstP.progress_photos[angle] },
               prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && prevP.progress_photos?.[angle]
-                ? { label: `Last week · Wk ${prevP.week_number}`, url: prevP.progress_photos[angle] }
+                ? { label: `Last week · Wk ${personalWeekMap[prevP.id]}`, url: prevP.progress_photos[angle] }
                 : null,
-              { label: `Now · Wk ${newestP.week_number}`, url: newestP.progress_photos[angle] },
+              { label: `Now · Wk ${personalWeekMap[newestP.id]}`, url: newestP.progress_photos[angle] },
             ].filter(Boolean)
             return (
               <div key={angle}>
@@ -331,7 +454,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                   const delta = weightDelta(c, p)
                   return (
                     <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                      <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">Wk {c.week_number}</td>
+                      <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">Wk {personalWeekMap[c.id]}</td>
                       <td className="py-2.5 pr-4 text-xs text-gray-400 whitespace-nowrap">{fmtDate(c.updated_at || c.submitted_at)}</td>
                       <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white tabular-nums">{c.weight_kg != null ? `${c.weight_kg} kg` : '—'}</td>
                       <td className="py-2.5 pr-4 tabular-nums">
@@ -359,7 +482,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           <div key={c.id} className="card space-y-4">
             <div className="flex items-start justify-between flex-wrap gap-2">
               <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">Week {c.week_number}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-white">Week {personalWeekMap[c.id]}</h3>
                 <p className="text-xs text-gray-400">{fmtDate(c.updated_at || c.submitted_at)}</p>
               </div>
               {wDelta !== null && (
@@ -509,7 +632,7 @@ export default function CoachCheckins() {
             {client.full_name || 'Unnamed client'}
           </p>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-            {latest ? `Last check-in: Week ${latest.week_number} · ${fmtDate(latest.updated_at || latest.submitted_at)}` : 'No check-ins yet'}
+            {latest ? `Last check-in: ${fmtDate(latest.updated_at || latest.submitted_at)}` : 'No check-ins yet'}
           </p>
         </div>
         {status === 'needs-response' && (

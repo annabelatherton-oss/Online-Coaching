@@ -390,6 +390,7 @@ export default function ClientMealPlan() {
   const [clientData, setClientData] = useState(null)
   const [assignment, setAssignment] = useState(null)
   const [weekNumber, setWeekNumber] = useState(null)
+  const [personalWeek, setPersonalWeek] = useState(null)
   const [mealMap, setMealMap] = useState({})
   const [mealsByCategory, setMealsByCategory] = useState({})
   const [editedSlots, setEditedSlots] = useState({})
@@ -413,9 +414,13 @@ export default function ClientMealPlan() {
       if (!asgn) { setLoading(false); return }
       setAssignment(asgn)
 
-      const { data: pg } = await supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single()
+      const [{ data: pg }, { count: checkinCount }] = await Promise.all([
+        supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single(),
+        supabase.from('client_checkins').select('id', { count: 'exact', head: true }).eq('client_id', clientRow.id),
+      ])
       const effectiveWeek = asgn.week_override ?? pg?.current_week ?? 1
       setWeekNumber(effectiveWeek)
+      setPersonalWeek((checkinCount ?? 0) + 1)
 
       const [{ data: mealsData }, { data: libData }] = await Promise.all([
         supabase.from('meals').select(`
@@ -536,11 +541,11 @@ export default function ClientMealPlan() {
       {/* Week banner */}
       <div className="flex items-center gap-4 p-4 rounded-2xl bg-brand-50 dark:bg-brand-900/20">
         <div className="w-14 h-14 rounded-xl bg-brand-500 flex flex-col items-center justify-center flex-shrink-0">
-          <span className="text-2xl font-bold text-white leading-none">{weekNumber}</span>
+          <span className="text-2xl font-bold text-white leading-none">{personalWeek ?? weekNumber}</span>
           <span className="text-xs text-brand-100 uppercase tracking-wide">Week</span>
         </div>
         <div>
-          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Week {weekNumber} of your plan</p>
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Week {personalWeek ?? weekNumber} of your plan</p>
           {assignment.calorie_target && (
             <p className="text-sm text-gray-500 dark:text-gray-400">{assignment.calorie_target} kcal/day target</p>
           )}
