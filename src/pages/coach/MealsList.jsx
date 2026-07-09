@@ -78,7 +78,7 @@ export default function MealsList() {
       supabase
         .from('meals')
         .select(`
-          id, name, category, photo_url, instructions,
+          id, name, category, photo_url, photo_position, instructions,
           meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, alternative_ingredient_ids),
           meal_tier_versions(calorie_tier)
         `)
@@ -303,6 +303,7 @@ export default function MealsList() {
                       src={photoUrl}
                       alt={meal.name}
                       className="w-full h-full object-cover"
+                      style={{ objectPosition: meal.photo_position || '50% 50%' }}
                     />
                   ) : (
                     <svg className="w-12 h-12 text-pink-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">

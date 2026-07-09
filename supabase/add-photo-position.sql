@@ -1,0 +1,1 @@
+ALTER TABLE meals ADD COLUMN IF NOT EXISTS photo_position TEXT DEFAULT '50% 50%';

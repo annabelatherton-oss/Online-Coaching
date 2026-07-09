@@ -43,10 +43,17 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
   })
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
+  const [photoPosition, setPhotoPosition] = useState(meal?.photo_position || '50% 50%')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [savedMsg, setSavedMsg] = useState(false)
   const fileRef = useRef()
+
+  const POSITIONS = [
+    { label: '↖', value: '0% 0%' },   { label: '↑', value: '50% 0%' },   { label: '↗', value: '100% 0%' },
+    { label: '←', value: '0% 50%' },  { label: '·', value: '50% 50%' },  { label: '→', value: '100% 50%' },
+    { label: '↙', value: '0% 100%' }, { label: '↓', value: '50% 100%' }, { label: '↘', value: '100% 100%' },
+  ]
 
   const currentPhotoUrl = meal?.photo_url
     ? supabase.storage.from('meal-photos').getPublicUrl(meal.photo_url).data.publicUrl
@@ -81,6 +88,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
       description: form.description || null,
       instructions: form.instructions || null,
       photo_url: photoPath,
+      photo_position: photoPosition,
       active: form.active,
     }
 
@@ -131,8 +139,34 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
       <div className="card space-y-4">
         <h3 className="font-semibold text-gray-900 dark:text-white">Photo</h3>
         {(photoPreview || currentPhotoUrl) && (
-          <div className="w-40 h-40 rounded-xl overflow-hidden border border-pink-100">
-            <img src={photoPreview || currentPhotoUrl} alt="Meal photo" className="w-full h-full object-cover" />
+          <div className="flex gap-4 items-start">
+            <div className="w-48 h-32 rounded-xl overflow-hidden border border-pink-100 flex-shrink-0">
+              <img
+                src={photoPreview || currentPhotoUrl}
+                alt="Meal photo"
+                className="w-full h-full object-cover"
+                style={{ objectPosition: photoPosition }}
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Adjust crop position</p>
+              <div className="grid grid-cols-3 gap-1">
+                {POSITIONS.map(p => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setPhotoPosition(p.value)}
+                    className={`w-9 h-9 rounded text-sm font-medium transition-colors ${
+                      photoPosition === p.value
+                        ? 'bg-pink-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-pink-100 dark:hover:bg-pink-900/30'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
         <div>

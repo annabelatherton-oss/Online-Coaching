@@ -140,7 +140,7 @@ function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, me
       {/* Photo */}
       <div className="relative h-36 bg-gray-100 dark:bg-gray-800 flex-shrink-0">
         {meal?.photo_url ? (
-          <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" />
+          <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <svg className="w-10 h-10 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -233,7 +233,7 @@ function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides,
           {/* Photo */}
           <div className="relative">
             {meal?.photo_url ? (
-              <img src={meal.photo_url} alt={meal.name} className="w-full h-52 object-cover" />
+              <img src={meal.photo_url} alt={meal.name} className="w-full h-52 object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
             ) : (
               <div className="w-full h-20 bg-gray-100 dark:bg-gray-800" />
             )}
@@ -407,7 +407,7 @@ export default function ClientMealPlan() {
 
       const [{ data: mealsData }, { data: libData }] = await Promise.all([
         supabase.from('meals').select(`
-          id, name, category, instructions, photo_url,
+          id, name, category, instructions, photo_url, photo_position,
           meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id),
           meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
             meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id))
