@@ -889,6 +889,7 @@ function MealPlanTab({ client, coachId }) {
   const [error, setError] = useState('')
   const [showOverride, setShowOverride] = useState(false)
   const [overrideWeek, setOverrideWeek] = useState('')
+  const [pastAssignments, setPastAssignments] = useState([])
 
   async function loadWeekSlots(asgn, weekNum, planGroupId) {
     // If a coach has forked this client's exact calorie target into its own version of the plan
@@ -914,9 +915,10 @@ function MealPlanTab({ client, coachId }) {
   }
 
   async function load() {
-    const [{ data: groups }, { data: asgn }, { data: mealsData }, { data: libData }] = await Promise.all([
+    const [{ data: groups }, { data: asgn }, { data: past }, { data: mealsData }, { data: libData }] = await Promise.all([
       supabase.from('plan_groups').select('*').eq('coach_id', coachId).order('created_at', { ascending: false }),
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('client_plan_assignments').select('id, plan_group_name, calorie_target, start_date, ended_at, created_at').eq('client_id', client.id).eq('active', false).order('ended_at', { ascending: false }),
       supabase.from('meals').select(`
         id, name, category,
         meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id),
@@ -929,6 +931,7 @@ function MealPlanTab({ client, coachId }) {
     const allGroups = groups || []
     setPlanGroups(allGroups)
     setAssignment(asgn || null)
+    setPastAssignments(past || [])
     setLibrary(libData || [])
 
     const map = {}, byCat = {}
@@ -1086,7 +1089,7 @@ function MealPlanTab({ client, coachId }) {
 
   async function handleAssign(e) {
     e.preventDefault(); setSaving(true); setError('')
-    await supabase.from('client_plan_assignments').update({ active: false }).eq('client_id', client.id)
+    await supabase.from('client_plan_assignments').update({ active: false, ended_at: new Date().toISOString() }).eq('client_id', client.id).eq('active', true)
     const group = planGroups.find(g => g.id === form.plan_group_id)
     const { error: err } = await supabase.from('client_plan_assignments').insert({
       client_id: client.id, coach_id: coachId,
@@ -1114,7 +1117,7 @@ function MealPlanTab({ client, coachId }) {
 
   async function handleRemove() {
     if (!confirm('Remove this meal plan assignment?')) return
-    await supabase.from('client_plan_assignments').update({ active: false }).eq('client_id', client.id)
+    await supabase.from('client_plan_assignments').update({ active: false, ended_at: new Date().toISOString() }).eq('client_id', client.id).eq('active', true)
     load()
   }
 
@@ -1483,6 +1486,38 @@ function MealPlanTab({ client, coachId }) {
             </div>
           )}
         </>
+      )}
+
+      {/* Plan history */}
+      {pastAssignments.length > 0 && (
+        <div className="card space-y-3">
+          <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Plan History</h3>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {pastAssignments.map(p => {
+              const start = p.start_date
+                ? new Date(p.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                : p.created_at
+                  ? new Date(p.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                  : '—'
+              const end = p.ended_at
+                ? new Date(p.ended_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                : 'Removed'
+              return (
+                <div key={p.id} className="flex items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
+                      {p.plan_group_name || 'Unnamed plan'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">{start} → {end}</p>
+                  </div>
+                  {p.calorie_target && (
+                    <span className="text-xs text-gray-400 flex-shrink-0">{p.calorie_target} kcal</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
       )}
     </div>
   )
