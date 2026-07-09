@@ -217,7 +217,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients }) {
   const mealId = editedSlots[slotKey]
   const meal = mealId ? mealMap[mealId] : null
   const overrides = ingredientOverrides[slotKey]
@@ -272,20 +272,49 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
 
             {ingredients.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Ingredients</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Ingredients</h3>
+                  {onRevertIngredients && hasAnyOverride(overrides) && (
+                    <button
+                      onClick={() => onRevertIngredients(slotKey)}
+                      className="text-xs text-orange-500 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 font-medium"
+                    >
+                      Revert to original
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-2">
-                  {ingredients.map((ing, i) => (
-                    <div key={ing.id || i} className="flex items-center justify-between gap-3">
-                      <span className="text-sm text-gray-800 dark:text-gray-200 flex-1">{ing.name}</span>
-                      <div className="flex items-center gap-3 flex-shrink-0 tabular-nums">
-                        <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{formatAmount(ing, ingredientLib)}</span>
-                        <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
-                        <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
-                          {Math.round(parseFloat(ing.carbs_g) || 0)}c · {Math.round(parseFloat(ing.protein_g) || 0)}p · {Math.round(parseFloat(ing.fat_g) || 0)}f
-                        </span>
+                  {ingredients.map((ing, i) => {
+                    const libUnit = ing.ingredient_id && ingredientLib ? ingredientLib[ing.ingredient_id]?.serving_unit : null
+                    const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libUnit && libUnit !== 'g') ? libUnit : 'g'
+                    return (
+                      <div key={ing.id || i} className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-gray-800 dark:text-gray-200 flex-1">{ing.name}</span>
+                        <div className="flex items-center gap-2 flex-shrink-0 tabular-nums">
+                          {onUpdateIngredient ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={Math.round((parseFloat(ing.quantity_g) || 0) * 10) / 10}
+                                onChange={e => onUpdateIngredient(slotKey, ing.id, parseFloat(e.target.value) || 0)}
+                                onClick={e => e.stopPropagation()}
+                                className="w-16 text-sm text-right border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-0.5 bg-white dark:bg-gray-800 focus:outline-none focus:border-brand-400 tabular-nums"
+                              />
+                              <span className="text-xs text-gray-400 dark:text-gray-500 w-6">{unit}</span>
+                            </div>
+                          ) : (
+                            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{formatAmount(ing, ingredientLib)}</span>
+                          )}
+                          <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
+                            {Math.round(parseFloat(ing.carbs_g) || 0)}c · {Math.round(parseFloat(ing.protein_g) || 0)}p · {Math.round(parseFloat(ing.fat_g) || 0)}f
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}

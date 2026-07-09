@@ -5,6 +5,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import {
   MEAL_GROUPS, OPTION_1_KEYS, OPTION_2_KEYS,
+  normalizeOverrides, hasAnyOverride,
   mealMacros, addMacros,
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
@@ -64,13 +65,16 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const [trainingNotes, setTrainingNotes] = useState('')
   const [editedSlots, setEditedSlots] = useState({})
   const [templateSlots, setTemplateSlots] = useState({})
-  const [ingredientOverrides] = useState({})
+  const [ingredientOverrides, setIngredientOverrides] = useState({})
   const [mealMap, setMealMap] = useState({})
   const [mealsByCategory, setMealsByCategory] = useState({})
   const [ingredientLib, setIngredientLib] = useState({})
   const [training, setTraining] = useState(null)
   const [swapModal, setSwapModal] = useState(null)
   const [recipeModal, setRecipeModal] = useState(null)
+  const [sessions, setSessions] = useState([])
+  const [originalSessions, setOriginalSessions] = useState([])
+  const [editedExercises, setEditedExercises] = useState({})
   const [saving, setSaving] = useState(false)
   const skipTierReload = useRef(true)
 
@@ -120,7 +124,25 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
       setTemplateSlots(tSlots)
       setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
+      if (cwm?.ingredient_overrides) setIngredientOverrides(cwm.ingredient_overrides)
       setTraining(trainingAsgn)
+
+      if (trainingAsgn) {
+        const trainingWeek = trainingAsgn.week_override ?? 1
+        const { data: sessionsData } = await supabase
+          .from('training_sessions')
+          .select('*, session_exercises(*)')
+          .eq('program_id', trainingAsgn.program_id)
+          .eq('week_number', trainingWeek)
+          .order('order_index')
+        const sortedSessions = (sessionsData || []).map(s => ({
+          ...s,
+          session_exercises: [...(s.session_exercises || [])].sort((a, b) => a.order_index - b.order_index),
+        }))
+        setSessions(sortedSessions)
+        setOriginalSessions(JSON.parse(JSON.stringify(sortedSessions)))
+      }
+
       setLoading(false)
       skipTierReload.current = false
     }
@@ -163,6 +185,29 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     setEditedSlots(prev => ({ ...prev, [slotKey]: templateSlots[slotKey] || null }))
   }
 
+  function handleUpdateIngredient(slotKey, ingId, newQty) {
+    setIngredientOverrides(prev => {
+      const existing = normalizeOverrides(prev[slotKey])
+      return { ...prev, [slotKey]: { ...existing, qty: { ...existing.qty, [ingId]: newQty } } }
+    })
+  }
+
+  function handleRevertIngredients(slotKey) {
+    setIngredientOverrides(prev => {
+      const next = { ...prev }
+      delete next[slotKey]
+      return next
+    })
+  }
+
+  function handleUpdateExercise(exId, field, value) {
+    setEditedExercises(prev => ({ ...prev, [exId]: { ...(prev[exId] || {}), [field]: value } }))
+  }
+
+  function handleRevertTraining() {
+    setEditedExercises({})
+  }
+
   async function handleSubmit() {
     if (!current || !activeAssignment) return
     setSaving(true)
@@ -195,6 +240,12 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       calorie_target: newCalTarget,
       training_notes: trainingNotes.trim() || null,
     })
+
+    for (const [exId, edits] of Object.entries(editedExercises)) {
+      if (Object.keys(edits).length > 0) {
+        await supabase.from('session_exercises').update(edits).eq('id', exId)
+      }
+    }
 
     setSaving(false)
     onDelivered(coachNotes.trim(), newCalTarget)
@@ -337,20 +388,99 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
 
           {/* Training */}
           <div className="card space-y-4">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Training</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Training</h2>
+              {Object.keys(editedExercises).length > 0 && (
+                <button
+                  onClick={handleRevertTraining}
+                  className="text-xs text-orange-500 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 font-medium"
+                >
+                  Revert to original
+                </button>
+              )}
+            </div>
             {training ? (
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/10">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/10">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{training.program_name || training.training_programs?.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Week {training.week_override ?? 1} · {training.training_programs?.weeks_total} weeks total
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{training.program_name || training.training_programs?.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {training.training_programs?.weeks_total} weeks · no changes this week
-                  </p>
-                </div>
+                {sessions.length > 0 ? (
+                  <div className="space-y-3">
+                    {sessions.map(session => (
+                      <div key={session.id} className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+                        <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2.5">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{session.name}</p>
+                        </div>
+                        <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {(session.session_exercises || []).map(ex => {
+                            const edits = editedExercises[ex.id] || {}
+                            const sets = edits.sets !== undefined ? edits.sets : ex.sets
+                            const reps = edits.reps !== undefined ? edits.reps : ex.reps
+                            const rpe = edits.rpe !== undefined ? edits.rpe : ex.rpe
+                            const notes = edits.notes !== undefined ? edits.notes : ex.notes
+                            return (
+                              <div key={ex.id} className="px-4 py-3 space-y-2">
+                                <p className="text-sm font-medium text-gray-900 dark:text-white">{ex.name}</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div>
+                                    <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wider block mb-1">Sets</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={sets ?? ''}
+                                      onChange={e => handleUpdateExercise(ex.id, 'sets', e.target.value ? parseInt(e.target.value) : null)}
+                                      className="input w-full text-sm py-1"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wider block mb-1">Reps</label>
+                                    <input
+                                      type="text"
+                                      value={reps ?? ''}
+                                      onChange={e => handleUpdateExercise(ex.id, 'reps', e.target.value || null)}
+                                      className="input w-full text-sm py-1"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wider block mb-1">RPE</label>
+                                    <input
+                                      type="text"
+                                      value={rpe ?? ''}
+                                      onChange={e => handleUpdateExercise(ex.id, 'rpe', e.target.value || null)}
+                                      className="input w-full text-sm py-1"
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wider block mb-1">Notes</label>
+                                  <input
+                                    type="text"
+                                    value={notes ?? ''}
+                                    onChange={e => handleUpdateExercise(ex.id, 'notes', e.target.value || null)}
+                                    className="input w-full text-sm py-1"
+                                    placeholder="Exercise notes…"
+                                  />
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">No sessions found for this training week.</p>
+                )}
               </div>
             ) : (
               <p className="text-sm text-gray-400">No training programme assigned.</p>
@@ -407,6 +537,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           onClose={() => setRecipeModal(null)}
           onSwap={(slotKey, label, cat) => { setRecipeModal(null); setSwapModal({ slotKey, label, cat }) }}
           onRevert={handleRevert}
+          onUpdateIngredient={handleUpdateIngredient}
+          onRevertIngredients={handleRevertIngredients}
         />
       )}
     </div>
