@@ -918,7 +918,7 @@ function MealPlanTab({ client, coachId }) {
     const [{ data: groups }, { data: asgn }, { data: past }, { data: mealsData }, { data: libData }] = await Promise.all([
       supabase.from('plan_groups').select('*').eq('coach_id', coachId).order('created_at', { ascending: false }),
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
-      supabase.from('client_plan_assignments').select('id, plan_group_name, calorie_target, start_date, ended_at, created_at').eq('client_id', client.id).eq('active', false).order('ended_at', { ascending: false }),
+      supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', false).order('created_at', { ascending: false }),
       supabase.from('meals').select(`
         id, name, category,
         meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id),
