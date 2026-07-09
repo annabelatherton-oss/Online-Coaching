@@ -6,10 +6,166 @@ import WeightChart from '../../components/WeightChart'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
+const RATING_LABELS = {
+  energy_level: ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
+  sleep_quality: ['', 'Very poor', 'Poor', 'OK', 'Good', 'Excellent'],
+  adherence:     ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
+}
+
+function ratingColor(v) {
+  if (!v) return 'text-gray-400'
+  if (v >= 4) return 'text-green-600 dark:text-green-400'
+  if (v >= 3) return 'text-yellow-500 dark:text-yellow-400'
+  return 'text-red-500 dark:text-red-400'
+}
+
 function RatingDot({ value }) {
   const colors = ['', 'bg-red-400', 'bg-orange-400', 'bg-amber-400', 'bg-lime-400', 'bg-green-500']
   return (
     <span className={`inline-block w-2.5 h-2.5 rounded-full ${colors[value] || 'bg-gray-200'}`} />
+  )
+}
+
+function fmtDate(d) {
+  if (!d) return ''
+  return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function CheckinCard({ ci, onLightbox }) {
+  const [open, setOpen] = useState(false)
+  const photos = ci.progress_photos ? PHOTO_ANGLES.filter(a => ci.progress_photos[a]) : []
+  const lifts = (ci.lift_results || []).filter(l => l?.name)
+
+  return (
+    <div className="card overflow-hidden">
+      {/* Header row — always visible */}
+      <button
+        className="w-full flex items-center justify-between gap-3 text-left"
+        onClick={() => setOpen(o => !o)}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex-shrink-0">
+            <span className="text-sm font-bold text-gray-900 dark:text-white">Week {ci.week_number}</span>
+            {ci.updated_at || ci.submitted_at
+              ? <p className="text-xs text-gray-400 mt-0.5">{fmtDate(ci.updated_at || ci.submitted_at)}</p>
+              : null}
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            {ci.weight_kg != null && (
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 tabular-nums">{ci.weight_kg} kg</span>
+            )}
+            <div className="flex items-center gap-1.5">
+              {ci.energy_level != null && <RatingDot value={ci.energy_level} />}
+              {ci.sleep_quality != null && <RatingDot value={ci.sleep_quality} />}
+              {ci.adherence != null && <RatingDot value={ci.adherence} />}
+            </div>
+            {photos.length > 0 && (
+              <span className="text-xs text-gray-400">{photos.length} photo{photos.length !== 1 ? 's' : ''}</span>
+            )}
+            {ci.coach_response && (
+              <span className="text-xs font-medium text-brand-500 bg-brand-50 dark:bg-brand-900/20 px-2 py-0.5 rounded-full">Coach replied</span>
+            )}
+          </div>
+        </div>
+        <svg
+          className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Expanded detail */}
+      {open && (
+        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-4">
+          {/* Ratings */}
+          {(ci.energy_level != null || ci.sleep_quality != null || ci.adherence != null) && (
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { key: 'energy_level', label: 'Energy' },
+                { key: 'sleep_quality', label: 'Sleep' },
+                { key: 'adherence', label: 'Adherence' },
+              ].map(({ key, label }) => ci[key] != null && (
+                <div key={key} className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 text-center">
+                  <p className="text-xs text-gray-400 mb-0.5">{label}</p>
+                  <p className={`text-base font-bold ${ratingColor(ci[key])}`}>{ci[key]}<span className="text-xs font-normal text-gray-400">/5</span></p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{RATING_LABELS[key][ci[key]]}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Measurements */}
+          {(ci.waist_cm != null || ci.hips_cm != null) && (
+            <div className="grid grid-cols-2 gap-2">
+              {ci.waist_cm != null && (
+                <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
+                  <p className="text-xs text-gray-400 mb-0.5">Waist</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{ci.waist_cm} cm</p>
+                </div>
+              )}
+              {ci.hips_cm != null && (
+                <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
+                  <p className="text-xs text-gray-400 mb-0.5">Hips</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{ci.hips_cm} cm</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Lifts */}
+          {lifts.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Lifts</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {lifts.map((lift, i) => (
+                  <div key={i} className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
+                    <p className="text-xs text-gray-400 mb-0.5 truncate">{lift.name}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {lift.weight_kg} kg <span className="text-xs font-normal text-gray-400">× {lift.reps}</span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
+          {ci.notes && (
+            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3">
+              <p className="text-xs font-medium text-gray-400 mb-1">Your notes</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300 italic">"{ci.notes}"</p>
+            </div>
+          )}
+
+          {/* Photos */}
+          {photos.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Progress photos</p>
+              <div className="grid grid-cols-4 gap-2">
+                {photos.map(angle => (
+                  <button
+                    key={angle}
+                    onClick={() => onLightbox(ci.progress_photos[angle])}
+                    className="aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity"
+                  >
+                    <img src={ci.progress_photos[angle]} alt={angle} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Coach response */}
+          {ci.coach_response && (
+            <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl p-3">
+              <p className="text-xs font-semibold text-brand-700 dark:text-brand-400 mb-1">Message from your coach</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{ci.coach_response}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -46,23 +202,11 @@ export default function ClientProgress() {
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
-  const latestCheckin = checkins[0]
   const currentWeight = weightEntries[0]?.weight_kg ?? null
   const startWeight = weightEntries.length >= 2 ? weightEntries[weightEntries.length - 1].weight_kg : null
   const totalChange = currentWeight != null && startWeight != null
     ? (parseFloat(currentWeight) - parseFloat(startWeight)).toFixed(1)
     : null
-
-  const checkinsWithPhotos = checkins.filter(c => c.progress_photos && Object.values(c.progress_photos).some(Boolean))
-  const latestWithPhotos = checkinsWithPhotos[0]
-  const firstWithPhotos = checkinsWithPhotos[checkinsWithPhotos.length - 1]
-  const showComparison = checkinsWithPhotos.length >= 2 && latestWithPhotos?.id !== firstWithPhotos?.id
-  const comparisonAngles = showComparison
-    ? PHOTO_ANGLES.filter(a => firstWithPhotos.progress_photos?.[a] && latestWithPhotos.progress_photos?.[a])
-    : []
-  const latestOnlyAngles = !showComparison && latestWithPhotos
-    ? PHOTO_ANGLES.filter(a => latestWithPhotos.progress_photos?.[a])
-    : []
 
   return (
     <div className="space-y-6">
@@ -102,122 +246,13 @@ export default function ClientProgress() {
         <WeightChart data={weightEntries} />
       </div>
 
-      {/* Check-in history table */}
+      {/* Check-in history */}
       {checkins.length > 0 && (
-        <div className="card">
-          <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Check-in History</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-gray-800">
-                  {['Week', 'Weight', 'Energy', 'Sleep', 'Adherence'].map(h => (
-                    <th key={h} className="text-left pb-2.5 text-xs text-gray-400 uppercase tracking-wider font-medium pr-4">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                {checkins.slice(0, 12).map(ci => (
-                  <>
-                    <tr key={ci.id}>
-                      <td className="py-2.5 pr-4 font-medium text-gray-900 dark:text-white">Week {ci.week_number}</td>
-                      <td className="py-2.5 pr-4 text-gray-600 dark:text-gray-400 tabular-nums">
-                        {ci.weight_kg != null ? `${ci.weight_kg} kg` : '—'}
-                      </td>
-                      <td className="py-2.5 pr-4">
-                        {ci.energy_level != null
-                          ? <span className="inline-flex items-center gap-1.5"><RatingDot value={ci.energy_level} /><span className="text-gray-600 dark:text-gray-400">{ci.energy_level}/5</span></span>
-                          : <span className="text-gray-300 dark:text-gray-600">—</span>}
-                      </td>
-                      <td className="py-2.5 pr-4">
-                        {ci.sleep_quality != null
-                          ? <span className="inline-flex items-center gap-1.5"><RatingDot value={ci.sleep_quality} /><span className="text-gray-600 dark:text-gray-400">{ci.sleep_quality}/5</span></span>
-                          : <span className="text-gray-300 dark:text-gray-600">—</span>}
-                      </td>
-                      <td className="py-2.5">
-                        {ci.adherence != null
-                          ? <span className="inline-flex items-center gap-1.5"><RatingDot value={ci.adherence} /><span className="text-gray-600 dark:text-gray-400">{ci.adherence}/5</span></span>
-                          : <span className="text-gray-300 dark:text-gray-600">—</span>}
-                      </td>
-                    </tr>
-                    {ci.coach_response && (
-                      <tr key={`${ci.id}-response`}>
-                        <td colSpan={5} className="pb-3 pt-0">
-                          <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
-                            <span className="font-semibold text-brand-700 dark:text-brand-400 mr-2">Coach:</span>
-                            {ci.coach_response}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Progress photos — comparison if ≥2 check-ins with photos, otherwise latest only */}
-      {showComparison && comparisonAngles.length > 0 && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900 dark:text-white">Progress Comparison</h2>
-            <span className="text-xs text-gray-400">Week {firstWithPhotos.week_number} → Week {latestWithPhotos.week_number}</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">
-              Start — Week {firstWithPhotos.week_number}
-            </p>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">
-              Now — Week {latestWithPhotos.week_number}
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            {comparisonAngles.map(angle => (
-              <div key={angle}>
-                <p className="text-xs text-gray-400 capitalize mb-2">{angle}</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setLightbox(firstWithPhotos.progress_photos[angle])}
-                    className="aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity"
-                  >
-                    <img src={firstWithPhotos.progress_photos[angle]} alt={`${angle} start`} className="w-full h-full object-cover" />
-                  </button>
-                  <button
-                    onClick={() => setLightbox(latestWithPhotos.progress_photos[angle])}
-                    className="aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity"
-                  >
-                    <img src={latestWithPhotos.progress_photos[angle]} alt={`${angle} now`} className="w-full h-full object-cover" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!showComparison && latestOnlyAngles.length > 0 && (
-        <div className="card">
-          <h2 className="font-semibold text-gray-900 dark:text-white mb-4">
-            Progress Photos
-            <span className="ml-2 text-sm font-normal text-gray-400">Week {latestWithPhotos.week_number}</span>
-          </h2>
-          <div className="grid grid-cols-4 gap-3">
-            {latestOnlyAngles.map(angle => (
-              <button
-                key={angle}
-                onClick={() => setLightbox(latestWithPhotos.progress_photos[angle])}
-                className="flex flex-col gap-1 text-left"
-              >
-                <div className="aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity">
-                  <img src={latestWithPhotos.progress_photos[angle]} alt={angle} className="w-full h-full object-cover" />
-                </div>
-                <p className="text-xs text-gray-400 capitalize text-center">{angle}</p>
-              </button>
-            ))}
-          </div>
+        <div className="space-y-3">
+          <h2 className="font-semibold text-gray-900 dark:text-white">Check-in History</h2>
+          {checkins.map(ci => (
+            <CheckinCard key={ci.id} ci={ci} onLightbox={setLightbox} />
+          ))}
         </div>
       )}
 
