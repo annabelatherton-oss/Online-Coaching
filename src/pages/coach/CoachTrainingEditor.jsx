@@ -281,6 +281,7 @@ export default function CoachTrainingEditor() {
   const [sessions, setSessions] = useState([])
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [addingSession, setAddingSession] = useState(false)
+  const [addSessionForm, setAddSessionForm] = useState(null)
   const [editingName, setEditingName] = useState(false)
   const [newName, setNewName] = useState('')
   const [topLifts, setTopLifts] = useState([])
@@ -345,19 +346,64 @@ export default function CoachTrainingEditor() {
   useEffect(() => { loadProgram() }, [programId])
   useEffect(() => { if (program) { loadSessions(selectedWeek); loadExerciseNames() } }, [selectedWeek, program])
 
-  async function addSession() {
+  function openAddSessionForm() {
+    const usedDays = new Set(
+      sessions.map(s => {
+        for (const day of ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']) {
+          if (s.name?.startsWith(day)) return day
+        }
+        return null
+      }).filter(Boolean)
+    )
+    const allDays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+    const firstAvail = allDays.find(d => !usedDays.has(d)) || 'Monday'
+    setAddSessionForm({ day: firstAvail, label: '', copyFrom: '' })
+  }
+
+  async function confirmAddSession() {
+    const { day, label, copyFrom } = addSessionForm
+    const name = label.trim() ? `${day} – ${label.trim()}` : day
     setAddingSession(true)
-    const { data } = await supabase
+    const { data: newSess } = await supabase
       .from('training_sessions')
       .insert({
         program_id: programId,
         week_number: selectedWeek,
         order_index: sessions.length,
-        name: `Session ${sessions.length + 1}`,
+        name,
       })
       .select('*')
       .single()
-    if (data) setSessions(prev => [...prev, { ...data, exercises: [] }])
+
+    let exercises = []
+    if (copyFrom && newSess) {
+      const src = sessions.find(s => s.id === copyFrom)
+      if (src?.exercises?.length) {
+        await supabase.from('session_exercises').insert(
+          src.exercises.map((ex, i) => ({
+            session_id: newSess.id,
+            order_index: i,
+            name: ex.name,
+            sets: ex.sets,
+            reps: ex.reps,
+            rpe: ex.rpe,
+            rest_seconds: ex.rest_seconds,
+            notes: ex.notes,
+            illustration_url: ex.illustration_url,
+            video_url: ex.video_url,
+          }))
+        )
+        exercises = src.exercises.map(ex => ({ ...ex, _key: Math.random().toString(36).slice(2) }))
+      }
+    }
+
+    if (newSess) {
+      setSessions(prev =>
+        [...prev, { ...newSess, exercises }]
+          .sort((a, b) => sessionDayRank(a.name) - sessionDayRank(b.name))
+      )
+    }
+    setAddSessionForm(null)
     setAddingSession(false)
   }
 
@@ -642,21 +688,85 @@ export default function CoachTrainingEditor() {
             </div>
           )}
 
-          {sessions.map(session => (
-            <SessionCard
-              key={session.id}
-              session={session}
-              onDelete={deleteSession}
-            />
-          ))}
+          {sessions.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {sessions.map(session => (
+                <SessionCard
+                  key={session.id}
+                  session={session}
+                  onDelete={deleteSession}
+                />
+              ))}
+            </div>
+          )}
 
-          <button
-            onClick={addSession}
-            disabled={addingSession}
-            className="w-full py-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-sm text-gray-400 hover:border-brand-300 hover:text-brand-500 dark:hover:border-brand-700 dark:hover:text-brand-400 transition-colors"
-          >
-            {addingSession ? 'Adding…' : '+ Add session'}
-          </button>
+          {addSessionForm ? (
+            <div className="card space-y-3">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Add training day</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Day</label>
+                  <select
+                    className="input w-full py-1.5 text-sm"
+                    value={addSessionForm.day}
+                    onChange={e => setAddSessionForm(f => ({ ...f, day: e.target.value }))}
+                  >
+                    {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Label (optional)</label>
+                  <input
+                    className="input w-full py-1.5 text-sm"
+                    placeholder="e.g. Upper Body A"
+                    value={addSessionForm.label}
+                    onChange={e => setAddSessionForm(f => ({ ...f, label: e.target.value }))}
+                  />
+                </div>
+              </div>
+              {sessions.length > 0 && (
+                <div>
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Copy exercises from (optional)</label>
+                  <select
+                    className="input w-full py-1.5 text-sm"
+                    value={addSessionForm.copyFrom}
+                    onChange={e => setAddSessionForm(f => ({ ...f, copyFrom: e.target.value }))}
+                  >
+                    <option value="">— none —</option>
+                    {sessions.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={confirmAddSession}
+                  disabled={addingSession}
+                  className="btn-primary py-1.5 px-4 text-sm"
+                >
+                  {addingSession ? 'Adding…' : 'Add day'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddSessionForm(null)}
+                  className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={openAddSessionForm}
+              className="w-full py-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-sm text-gray-400 hover:border-brand-300 hover:text-brand-500 dark:hover:border-brand-700 dark:hover:text-brand-400 transition-colors"
+            >
+              + Add training day
+            </button>
+          )}
         </div>
       )}
     </div>
