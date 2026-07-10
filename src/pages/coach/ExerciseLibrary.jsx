@@ -339,6 +339,7 @@ export default function ExerciseLibrary() {
   const [modal, setModal] = useState(null) // null | 'new' | exercise object
   const [seeding, setSeeding] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [expandedId, setExpandedId] = useState(null)
 
   async function load() {
     const { data } = await supabase.from('exercises').select('*').eq('coach_id', profile.id).eq('is_archived', false).order('name')
@@ -375,15 +376,38 @@ export default function ExerciseLibrary() {
     load()
   }
 
-  async function seedLibrary() {
+  async function refreshSeedData() {
     setSeeding(true)
-    const existingNames = new Set(exercises.map(e => e.name.toLowerCase()))
-    const toInsert = SEED_EXERCISES.filter(e => !existingNames.has(e.name.toLowerCase()))
-      .map(e => ({ ...e, coach_id: profile.id, secondary_muscles: e.secondary_muscles || [] }))
+    const existingByName = {}
+    exercises.forEach(e => { existingByName[e.name.toLowerCase()] = e })
+
+    const toUpdate = SEED_EXERCISES
+      .filter(ex => existingByName[ex.name.toLowerCase()])
+      .map(ex => {
+        const existing = existingByName[ex.name.toLowerCase()]
+        return {
+          id: existing.id,
+          primary_muscle: ex.primary_muscle || existing.primary_muscle,
+          secondary_muscles: ex.secondary_muscles || existing.secondary_muscles || [],
+          equipment: ex.equipment || existing.equipment,
+          exercise_type: ex.exercise_type || existing.exercise_type,
+          difficulty: ex.difficulty || existing.difficulty,
+          coaching_cues: ex.coaching_cues || existing.coaching_cues,
+          default_rest_seconds: ex.default_rest_seconds ?? existing.default_rest_seconds,
+        }
+      })
+
+    const toInsert = SEED_EXERCISES
+      .filter(ex => !existingByName[ex.name.toLowerCase()])
+      .map(ex => ({ ...ex, coach_id: profile.id, secondary_muscles: ex.secondary_muscles || [] }))
+
+    if (toUpdate.length > 0) {
+      await supabase.from('exercises').upsert(toUpdate, { onConflict: 'id' })
+    }
     if (toInsert.length > 0) {
       await supabase.from('exercises').insert(toInsert)
-      await load()
     }
+    await load()
     setSeeding(false)
   }
 
@@ -416,12 +440,10 @@ export default function ExerciseLibrary() {
             className="text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">
             {importing ? 'Importing…' : 'Import from programmes'}
           </button>
-          {exercises.length === 0 && (
-            <button onClick={seedLibrary} disabled={seeding}
-              className="text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">
-              {seeding ? 'Adding…' : 'Initialize with common exercises'}
-            </button>
-          )}
+          <button onClick={refreshSeedData} disabled={seeding}
+            className="text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">
+            {seeding ? 'Updating…' : exercises.length === 0 ? 'Initialize library' : 'Refresh library data'}
+          </button>
           <button onClick={() => setModal('new')} className="btn-primary py-1.5 px-4 text-sm">
             + Add exercise
           </button>
@@ -468,38 +490,74 @@ export default function ExerciseLibrary() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {filtered.map(ex => (
-          <div key={ex.id} className="card hover:border-brand-300 dark:hover:border-brand-700 transition-colors group">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 dark:text-white text-sm leading-tight">{ex.name}</p>
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {ex.primary_muscle && (
-                    <Badge label={ex.primary_muscle} colourClass={MUSCLE_COLOURS[ex.primary_muscle]} />
-                  )}
-                  {ex.exercise_type && (
-                    <Badge label={ex.exercise_type} colourClass="bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" />
-                  )}
-                  {ex.difficulty && (
-                    <Badge label={ex.difficulty} colourClass={
-                      ex.difficulty === 'Advanced' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' :
-                      ex.difficulty === 'Intermediate' ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                      'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
-                    } />
-                  )}
+        {filtered.map(ex => {
+          const isExpanded = expandedId === ex.id
+          const hasDetails = ex.coaching_cues || ex.instructions || (ex.secondary_muscles?.length > 0) || ex.notes
+          return (
+            <div key={ex.id} className="card hover:border-brand-300 dark:hover:border-brand-700 transition-colors group">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 dark:text-white text-sm leading-tight">{ex.name}</p>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {ex.primary_muscle && (
+                      <Badge label={ex.primary_muscle} colourClass={MUSCLE_COLOURS[ex.primary_muscle]} />
+                    )}
+                    {(ex.secondary_muscles || []).map(m => (
+                      <Badge key={m} label={m} colourClass="bg-gray-100 text-gray-500 dark:bg-gray-700/60 dark:text-gray-400" />
+                    ))}
+                    {ex.exercise_type && (
+                      <Badge label={ex.exercise_type} colourClass="bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" />
+                    )}
+                    {ex.difficulty && (
+                      <Badge label={ex.difficulty} colourClass={
+                        ex.difficulty === 'Advanced' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' :
+                        ex.difficulty === 'Intermediate' ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                        'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
+                      } />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 mt-1.5">
+                    {ex.equipment && <p className="text-xs text-gray-400 dark:text-gray-500">{ex.equipment}</p>}
+                    {ex.default_rest_seconds && <p className="text-xs text-gray-400 dark:text-gray-500">Rest {ex.default_rest_seconds}s</p>}
+                  </div>
                 </div>
-                {ex.equipment && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">{ex.equipment}</p>}
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                  <button onClick={() => setModal(ex)} className="text-xs text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 px-1.5 py-1">Edit</button>
+                  <button onClick={() => handleDelete(ex)} className="text-xs text-gray-400 hover:text-red-500 px-1.5 py-1">Archive</button>
+                </div>
               </div>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                <button onClick={() => setModal(ex)} className="text-xs text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 px-1.5 py-1">Edit</button>
-                <button onClick={() => handleDelete(ex)} className="text-xs text-gray-400 hover:text-red-500 px-1.5 py-1">Archive</button>
-              </div>
+
+              {ex.coaching_cues && (
+                <p className={`text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
+                  {ex.coaching_cues}
+                </p>
+              )}
+
+              {isExpanded && ex.instructions && (
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                  <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">Instructions</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{ex.instructions}</p>
+                </div>
+              )}
+
+              {isExpanded && ex.notes && (
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                  <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">Notes</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{ex.notes}</p>
+                </div>
+              )}
+
+              {hasDetails && (
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : ex.id)}
+                  className="mt-2 text-xs text-brand-600 dark:text-brand-400 hover:underline"
+                >
+                  {isExpanded ? 'Show less' : 'Show more'}
+                </button>
+              )}
             </div>
-            {ex.coaching_cues && (
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 line-clamp-2 italic">"{ex.coaching_cues}"</p>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {modal && (
