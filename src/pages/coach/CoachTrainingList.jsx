@@ -4,11 +4,11 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
-const BLOCKS = [
-  { key: 'Block 1', label: 'Block 1', subtitle: 'Hypertrophy / Foundations' },
-  { key: 'Block 2', label: 'Block 2', subtitle: 'Strength & Hypertrophy' },
-  { key: 'Block 3', label: 'Block 3', subtitle: 'Hypertrophy Variation' },
-]
+const HARDCODED_SUBTITLES = {
+  'Block 1': 'Hypertrophy / Foundations',
+  'Block 2': 'Strength & Hypertrophy',
+  'Block 3': 'Hypertrophy Variation',
+}
 
 const DAY_ORDER = ['5 Day', '4 Day', '3 Day']
 
@@ -19,19 +19,14 @@ function getDayVariant(name) {
   return null
 }
 
-function getBlock(name) {
-  for (const b of BLOCKS) {
-    if (name.includes(b.key)) return b.key
-  }
-  return null
-}
-
 export default function CoachTrainingList() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const [programs, setPrograms] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedBlock, setSelectedBlock] = useState(null)
+  const [blockForm, setBlockForm] = useState(null)
+  const [addingBlock, setAddingBlock] = useState(false)
 
   async function load() {
     const { data, error } = await supabase
@@ -48,17 +43,57 @@ export default function CoachTrainingList() {
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
-  const blockMap = {}
-  BLOCKS.forEach(b => { blockMap[b.key] = {} })
+  // Derive blocks from DB programme names + hardcoded defaults
+  const blockKeySet = new Set(Object.keys(HARDCODED_SUBTITLES))
   programs.forEach(p => {
-    const block = getBlock(p.name)
+    const match = p.name.match(/Block\s+(\d+)/i)
+    if (match) blockKeySet.add(`Block ${parseInt(match[1])}`)
+  })
+  const blocks = [...blockKeySet]
+    .sort((a, b) => (parseInt(a.match(/\d+/)?.[0]) || 99) - (parseInt(b.match(/\d+/)?.[0]) || 99))
+    .map(key => ({ key, label: key, subtitle: HARDCODED_SUBTITLES[key] || '' }))
+
+  function getBlockKey(name) {
+    for (const b of blocks) {
+      if (name.includes(b.key)) return b.key
+    }
+    return null
+  }
+
+  const blockMap = {}
+  blocks.forEach(b => { blockMap[b.key] = {} })
+  programs.forEach(p => {
+    const block = getBlockKey(p.name)
     const day = getDayVariant(p.name)
     if (block && day) blockMap[block][day] = p
   })
 
+  function openAddBlockForm() {
+    const nums = blocks.map(b => parseInt(b.key.match(/\d+/)?.[0])).filter(Boolean)
+    const next = nums.length > 0 ? Math.max(...nums) + 1 : 1
+    setBlockForm({ label: `Block ${next}`, subtitle: '', weeks: 12 })
+  }
+
+  async function confirmAddBlock() {
+    const trimmedLabel = blockForm.label.trim()
+    if (!trimmedLabel) return
+    setAddingBlock(true)
+    const inserts = DAY_ORDER.map(day => ({
+      coach_id: profile.id,
+      name: `${day} – ${trimmedLabel}`,
+      weeks_total: parseInt(blockForm.weeks) || 12,
+      current_week: 1,
+      top_lifts: [],
+    }))
+    const { data, error } = await supabase.from('training_programs').insert(inserts).select('*')
+    if (!error && data) setPrograms(prev => [...prev, ...data])
+    setBlockForm(null)
+    setAddingBlock(false)
+  }
+
   // Day variant view
   if (selectedBlock) {
-    const block = BLOCKS.find(b => b.key === selectedBlock)
+    const block = blocks.find(b => b.key === selectedBlock)
     const variants = blockMap[selectedBlock]
     return (
       <div className="space-y-6">
@@ -74,7 +109,7 @@ export default function CoachTrainingList() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{block.label}</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{block.subtitle}</p>
+            {block.subtitle && <p className="text-sm text-gray-500 dark:text-gray-400">{block.subtitle}</p>}
           </div>
         </div>
 
@@ -114,7 +149,7 @@ export default function CoachTrainingList() {
       </div>
 
       <div className="space-y-4">
-        {BLOCKS.map((block, bi) => (
+        {blocks.map((block, bi) => (
           <button
             key={block.key}
             onClick={() => setSelectedBlock(block.key)}
@@ -127,13 +162,75 @@ export default function CoachTrainingList() {
               <p className="font-semibold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 text-lg">
                 {block.label}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{block.subtitle}</p>
+              {block.subtitle && <p className="text-sm text-gray-500 dark:text-gray-400">{block.subtitle}</p>}
             </div>
             <svg className="w-5 h-5 text-gray-400 dark:text-gray-600 group-hover:text-brand-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </button>
         ))}
+
+        {blockForm ? (
+          <div className="card space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Add training block</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Block name</label>
+                <input
+                  className="input w-full py-1.5 text-sm"
+                  placeholder="e.g. Block 4"
+                  value={blockForm.label}
+                  onChange={e => setBlockForm(f => ({ ...f, label: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Weeks</label>
+                <input
+                  className="input w-full py-1.5 text-sm"
+                  type="number"
+                  min={1}
+                  placeholder="12"
+                  value={blockForm.weeks}
+                  onChange={e => setBlockForm(f => ({ ...f, weeks: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Description (optional)</label>
+              <input
+                className="input w-full py-1.5 text-sm"
+                placeholder="e.g. Peaking Phase"
+                value={blockForm.subtitle}
+                onChange={e => setBlockForm(f => ({ ...f, subtitle: e.target.value }))}
+              />
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Creates 5 Day, 4 Day, and 3 Day programmes for this block.</p>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={confirmAddBlock}
+                disabled={addingBlock || !blockForm.label.trim()}
+                className="btn-primary py-1.5 px-4 text-sm"
+              >
+                {addingBlock ? 'Creating…' : 'Create block'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setBlockForm(null)}
+                className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={openAddBlockForm}
+            className="w-full py-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-sm text-gray-400 hover:border-brand-300 hover:text-brand-500 dark:hover:border-brand-700 dark:hover:text-brand-400 transition-colors"
+          >
+            + Add training block
+          </button>
+        )}
       </div>
     </div>
   )
