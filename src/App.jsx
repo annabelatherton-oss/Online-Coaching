@@ -25,6 +25,11 @@ import CoachTrainingList from './pages/coach/CoachTrainingList'
 import CoachTrainingEditor from './pages/coach/CoachTrainingEditor'
 import CoachCheckins from './pages/coach/CoachCheckins'
 import CoachMessages from './pages/coach/CoachMessages'
+import ExerciseLibrary from './pages/coach/ExerciseLibrary'
+import WorkoutLibrary from './pages/coach/WorkoutLibrary'
+import WorkoutEditor from './pages/coach/WorkoutEditor'
+import CardioLibrary from './pages/coach/CardioLibrary'
+import HiitLibrary from './pages/coach/HiitLibrary'
 import ClientTraining from './pages/client/ClientTraining'
 import ClientMessages from './pages/client/ClientMessages'
 
@@ -60,6 +65,11 @@ export default function App() {
             <Route path="reports" element={<CoachReports />} />
             <Route path="training" element={<CoachTrainingList />} />
             <Route path="training/:programId" element={<CoachTrainingEditor />} />
+            <Route path="exercises" element={<ExerciseLibrary />} />
+            <Route path="workouts" element={<WorkoutLibrary />} />
+            <Route path="workouts/:workoutId" element={<WorkoutEditor />} />
+            <Route path="cardio" element={<CardioLibrary />} />
+            <Route path="hiit" element={<HiitLibrary />} />
             <Route path="checkins" element={<CoachCheckins />} />
             <Route path="messages" element={<CoachMessages />} />
           </Route>
