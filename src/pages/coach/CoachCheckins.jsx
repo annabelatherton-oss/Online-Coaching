@@ -85,6 +85,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const [editedExercises, setEditedExercises] = useState({})
   const [removedExerciseIds, setRemovedExerciseIds] = useState(new Set())
   const [addedExercises, setAddedExercises] = useState({})
+  const [addedSessions, setAddedSessions] = useState([])
+  const [newSessionForm, setNewSessionForm] = useState(null)
   const [saving, setSaving] = useState(false)
   const skipTierReload = useRef(true)
 
@@ -289,10 +291,58 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     }))
   }
 
+  function handleAddSession() {
+    if (!newSessionForm?.name?.trim()) return
+    const copyFrom = newSessionForm.copyFromId
+      ? sessions.find(s => s.id === newSessionForm.copyFromId)
+      : null
+    const exercises = copyFrom
+      ? (copyFrom.session_exercises || [])
+          .filter(ex => !removedExerciseIds.has(ex.id))
+          .map(ex => ({
+            _tempId: `cp-${ex.id}-${Date.now()}`,
+            name: ex.name, sets: ex.sets, reps: ex.reps, rpe: ex.rpe, notes: ex.notes,
+          }))
+      : []
+    setAddedSessions(prev => [...prev, {
+      _tempId: `sess-${Date.now()}`,
+      name: newSessionForm.name.trim(),
+      exercises,
+    }])
+    setNewSessionForm(null)
+  }
+
+  function handleRemoveAddedSession(tempId) {
+    setAddedSessions(prev => prev.filter(s => s._tempId !== tempId))
+  }
+
+  function handleAddExToAddedSession(sessTempId) {
+    setAddedSessions(prev => prev.map(s => s._tempId !== sessTempId ? s : {
+      ...s,
+      exercises: [...s.exercises, { _tempId: `nex-${Date.now()}`, name: '', sets: null, reps: '', rpe: '', notes: '' }],
+    }))
+  }
+
+  function handleUpdateAddedSessionExercise(sessTempId, exTempId, field, value) {
+    setAddedSessions(prev => prev.map(s => s._tempId !== sessTempId ? s : {
+      ...s,
+      exercises: s.exercises.map(ex => ex._tempId !== exTempId ? ex : { ...ex, [field]: value }),
+    }))
+  }
+
+  function handleRemoveExFromAddedSession(sessTempId, exTempId) {
+    setAddedSessions(prev => prev.map(s => s._tempId !== sessTempId ? s : {
+      ...s,
+      exercises: s.exercises.filter(ex => ex._tempId !== exTempId),
+    }))
+  }
+
   function handleRevertTraining() {
     setEditedExercises({})
     setRemovedExerciseIds(new Set())
     setAddedExercises({})
+    setAddedSessions([])
+    setNewSessionForm(null)
   }
 
   async function handleSubmit() {
@@ -356,6 +406,32 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       }
     }
 
+    const trainingWeek = training?.week_override ?? 1
+    for (const sess of addedSessions) {
+      if (!sess.name.trim()) continue
+      const { data: newSess } = await supabase.from('training_sessions').insert({
+        program_id: training.program_id,
+        week_number: trainingWeek,
+        name: sess.name.trim(),
+        order_index: sessions.length + addedSessions.indexOf(sess),
+      }).select('id').single()
+      if (newSess) {
+        const toInsert = sess.exercises.filter(ex => ex.name?.trim())
+        for (let idx = 0; idx < toInsert.length; idx++) {
+          const { _tempId, ...fields } = toInsert[idx]
+          await supabase.from('session_exercises').insert({
+            session_id: newSess.id,
+            name: fields.name.trim(),
+            sets: fields.sets != null && fields.sets !== '' ? parseInt(fields.sets) : null,
+            reps: fields.reps || null,
+            rpe: fields.rpe || null,
+            notes: fields.notes || null,
+            order_index: idx,
+          })
+        }
+      }
+    }
+
     setSaving(false)
     onDelivered(coachNotes.trim(), newCalTarget)
   }
@@ -376,7 +452,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const hasTrainingChanges =
     Object.keys(editedExercises).length > 0 ||
     removedExerciseIds.size > 0 ||
-    Object.values(addedExercises).some(a => a.length > 0)
+    Object.values(addedExercises).some(a => a.length > 0) ||
+    addedSessions.length > 0
 
   const prevCalTarget = activeAssignment?.calorie_target
   const calDiff = calorieTarget && prevCalTarget ? parseInt(calorieTarget) - prevCalTarget : null
@@ -547,166 +624,180 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           </div>
 
           {/* Training — session blocks (full width) */}
-          {training && (
-            sessions.length > 0 ? (
-              <div className="grid grid-cols-2 gap-4">
-                {sessions.map((session, i) => (
-                  <div key={session.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
-                    {/* Day header */}
-                    <div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-3 flex items-center gap-2.5 flex-shrink-0">
-                      <span className="w-7 h-7 rounded-full bg-blue-500 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
-                        {i + 1}
-                      </span>
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white leading-snug">{session.name}</p>
-                    </div>
-                    {/* Exercises */}
-                    <div className="flex-1 flex flex-col">
-                      {/* Column headers */}
-                      <div className="px-3 py-1 flex items-center gap-1.5 bg-gray-50/60 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 text-[9px] font-semibold text-gray-400 uppercase tracking-wider flex-shrink-0">
-                        <div className="w-10 flex-shrink-0" />
-                        <span className="flex-1 min-w-0">Exercise</span>
-                        <span className="w-10 text-center flex-shrink-0">Sets</span>
-                        <span className="w-12 text-center flex-shrink-0">Reps</span>
-                        <span className="w-10 text-center flex-shrink-0">RPE</span>
-                        <div className="w-6 flex-shrink-0" />
-                      </div>
+          {training && (() => {
+            const displaySessions = [
+              ...sessions.map(s => ({ ...s, _kind: 'existing' })),
+              ...addedSessions.map(s => ({ ...s, _kind: 'added' })),
+            ].sort((a, b) => dayRank(a.name) - dayRank(b.name))
 
-                      <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                        {(session.session_exercises || []).filter(ex => !removedExerciseIds.has(ex.id)).map(ex => {
-                          const edits = editedExercises[ex.id] || {}
-                          const name  = edits.name  !== undefined ? edits.name  : ex.name
-                          const sets  = edits.sets  !== undefined ? edits.sets  : ex.sets
-                          const reps  = edits.reps  !== undefined ? edits.reps  : ex.reps
-                          const rpe   = edits.rpe   !== undefined ? edits.rpe   : ex.rpe
-                          const notes = edits.notes !== undefined ? edits.notes : ex.notes
-                          return (
-                            <div key={ex.id} className="px-3 py-2 space-y-1">
-                              <div className="flex items-center gap-1.5">
-                                <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
-                                <input
-                                  type="text"
-                                  value={name ?? ''}
-                                  onChange={e => handleUpdateExercise(ex.id, 'name', e.target.value)}
-                                  className="input flex-1 text-xs py-0.5 px-2 font-medium min-w-0"
-                                  placeholder="Exercise name…"
-                                />
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={sets ?? ''}
-                                  onChange={e => handleUpdateExercise(ex.id, 'sets', e.target.value ? parseInt(e.target.value) : null)}
-                                  className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
-                                />
-                                <input
-                                  type="text"
-                                  value={reps ?? ''}
-                                  onChange={e => handleUpdateExercise(ex.id, 'reps', e.target.value || null)}
-                                  className="w-12 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
-                                />
-                                <input
-                                  type="text"
-                                  value={rpe ?? ''}
-                                  onChange={e => handleUpdateExercise(ex.id, 'rpe', e.target.value || null)}
-                                  className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
-                                />
-                                <button
-                                  onClick={() => handleRemoveExercise(ex.id)}
-                                  className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
-                                >
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                                  </svg>
+            const ExRow = ({ ex, onUpdate, onRemove, autoF }) => (
+              <div className="px-3 py-2 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  {ex.illustration_url != null || ex.video_url != null
+                    ? <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
+                    : <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
+                        <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                      </div>
+                  }
+                  <input autoFocus={autoF} type="text" value={ex.name ?? ''} onChange={e => onUpdate('name', e.target.value)}
+                    className="input flex-1 text-xs py-0.5 px-2 font-medium min-w-0" placeholder="Exercise name…" />
+                  <input type="number" min="0" value={ex.sets ?? ''} onChange={e => onUpdate('sets', e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
+                  <input type="text" value={ex.reps ?? ''} onChange={e => onUpdate('reps', e.target.value || null)}
+                    className="w-12 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
+                  <input type="text" value={ex.rpe ?? ''} onChange={e => onUpdate('rpe', e.target.value || null)}
+                    className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
+                  <button onClick={onRemove} className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div className="pl-12">
+                  <input type="text" value={ex.notes ?? ''} onChange={e => onUpdate('notes', e.target.value || null)}
+                    className="input w-full text-xs py-0.5 px-2 text-gray-500 dark:text-gray-400" placeholder="Notes…" />
+                </div>
+              </div>
+            )
+
+            return (
+              <>
+                {displaySessions.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    {displaySessions.map((sess, i) => {
+                      const isAdded = sess._kind === 'added'
+                      const dbExercises = isAdded ? [] : (sess.session_exercises || []).filter(ex => !removedExerciseIds.has(ex.id))
+                      const newExercises = isAdded ? sess.exercises : (addedExercises[sess.id] || [])
+                      const hasExercises = dbExercises.length > 0 || newExercises.length > 0
+
+                      const onUpdateNew = (exTempId, field, value) => isAdded
+                        ? handleUpdateAddedSessionExercise(sess._tempId, exTempId, field, value)
+                        : handleUpdateAddedExercise(sess.id, exTempId, field, value)
+                      const onRemoveNew = exTempId => isAdded
+                        ? handleRemoveExFromAddedSession(sess._tempId, exTempId)
+                        : handleRemoveAddedExercise(sess.id, exTempId)
+                      const onAddNew = () => isAdded
+                        ? handleAddExToAddedSession(sess._tempId)
+                        : handleAddExercise(sess.id)
+
+                      return (
+                        <div key={isAdded ? sess._tempId : sess.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
+                          {/* Session header */}
+                          <div className={`px-3 py-2.5 flex items-center gap-2 flex-shrink-0 ${isAdded ? 'bg-green-50 dark:bg-green-900/20' : 'bg-blue-50 dark:bg-blue-900/20'}`}>
+                            <span className={`w-6 h-6 rounded-full text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 ${isAdded ? 'bg-green-500' : 'bg-blue-500'}`}>
+                              {i + 1}
+                            </span>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white leading-snug flex-1 min-w-0 truncate">{sess.name}</p>
+                            {isAdded && (
+                              <>
+                                <span className="text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full flex-shrink-0">New</span>
+                                <button onClick={() => handleRemoveAddedSession(sess._tempId)} className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
                                 </button>
-                              </div>
-                              <div className="pl-12">
-                                <input
-                                  type="text"
-                                  value={notes ?? ''}
-                                  onChange={e => handleUpdateExercise(ex.id, 'notes', e.target.value || null)}
-                                  className="input w-full text-xs py-0.5 px-2 text-gray-500 dark:text-gray-400"
-                                  placeholder="Notes…"
-                                />
-                              </div>
-                            </div>
-                          )
-                        })}
-
-                        {/* Added exercises */}
-                        {(addedExercises[session.id] || []).map(ex => (
-                          <div key={ex._tempId} className="px-3 py-2 space-y-1 bg-blue-50/30 dark:bg-blue-900/10">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                                <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                </svg>
-                              </div>
-                              <input
-                                autoFocus
-                                type="text"
-                                value={ex.name}
-                                onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'name', e.target.value)}
-                                className="input flex-1 text-xs py-0.5 px-2 font-medium min-w-0"
-                                placeholder="Exercise name…"
-                              />
-                              <input
-                                type="number"
-                                min="0"
-                                value={ex.sets ?? ''}
-                                onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'sets', e.target.value ? parseInt(e.target.value) : null)}
-                                className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
-                              />
-                              <input
-                                type="text"
-                                value={ex.reps ?? ''}
-                                onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'reps', e.target.value || '')}
-                                className="w-12 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
-                              />
-                              <input
-                                type="text"
-                                value={ex.rpe ?? ''}
-                                onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'rpe', e.target.value || '')}
-                                className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0"
-                              />
-                              <button
-                                onClick={() => handleRemoveAddedExercise(session.id, ex._tempId)}
-                                className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            </div>
-                            <div className="pl-12">
-                              <input
-                                type="text"
-                                value={ex.notes ?? ''}
-                                onChange={e => handleUpdateAddedExercise(session.id, ex._tempId, 'notes', e.target.value || '')}
-                                className="input w-full text-xs py-0.5 px-2 text-gray-500 dark:text-gray-400"
-                                placeholder="Notes…"
-                              />
-                            </div>
+                              </>
+                            )}
                           </div>
-                        ))}
-                      </div>
 
-                      {/* Add exercise button */}
-                      <button
-                        onClick={() => handleAddExercise(session.id)}
-                        className="mt-auto py-2 flex items-center justify-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium hover:bg-blue-50/60 dark:hover:bg-blue-900/10 transition-colors border-t border-gray-100 dark:border-gray-800"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add exercise
+                          {/* Column header */}
+                          {hasExercises && (
+                            <div className="px-3 py-1 flex items-center gap-1.5 bg-gray-50/60 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 text-[9px] font-semibold text-gray-400 uppercase tracking-wider flex-shrink-0">
+                              <div className="w-10 flex-shrink-0" />
+                              <span className="flex-1 min-w-0">Exercise</span>
+                              <span className="w-10 text-center flex-shrink-0">Sets</span>
+                              <span className="w-12 text-center flex-shrink-0">Reps</span>
+                              <span className="w-10 text-center flex-shrink-0">RPE</span>
+                              <div className="w-6 flex-shrink-0" />
+                            </div>
+                          )}
+
+                          {/* Exercise rows */}
+                          <div className="flex-1 flex flex-col">
+                            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                              {dbExercises.map(ex => {
+                                const edits = editedExercises[ex.id] || {}
+                                const merged = {
+                                  ...ex,
+                                  name:  edits.name  !== undefined ? edits.name  : ex.name,
+                                  sets:  edits.sets  !== undefined ? edits.sets  : ex.sets,
+                                  reps:  edits.reps  !== undefined ? edits.reps  : ex.reps,
+                                  rpe:   edits.rpe   !== undefined ? edits.rpe   : ex.rpe,
+                                  notes: edits.notes !== undefined ? edits.notes : ex.notes,
+                                }
+                                return <ExRow key={ex.id} ex={merged}
+                                  onUpdate={(f, v) => handleUpdateExercise(ex.id, f, v)}
+                                  onRemove={() => handleRemoveExercise(ex.id)} />
+                              })}
+                              {newExercises.map((ex, ni) => (
+                                <ExRow key={ex._tempId} ex={ex} autoF={ni === 0}
+                                  onUpdate={(f, v) => onUpdateNew(ex._tempId, f, v)}
+                                  onRemove={() => onRemoveNew(ex._tempId)} />
+                              ))}
+                            </div>
+
+                            <button onClick={onAddNew} className="mt-auto py-2 flex items-center justify-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium hover:bg-blue-50/60 dark:hover:bg-blue-900/10 transition-colors border-t border-gray-100 dark:border-gray-800">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                              Add exercise
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 px-1">No sessions found for this training week.</p>
+                )}
+
+                {/* Add training day */}
+                {newSessionForm ? (
+                  <div className="card space-y-3">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Add training day</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="label text-xs">Day</label>
+                        <select
+                          value={newSessionForm.name}
+                          onChange={e => setNewSessionForm(p => ({ ...p, name: e.target.value }))}
+                          className="input w-full text-sm"
+                        >
+                          <option value="">Select day…</option>
+                          {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => (
+                            <option key={d} value={d}>{d}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label text-xs">Copy exercises from (optional)</label>
+                        <select
+                          value={newSessionForm.copyFromId || ''}
+                          onChange={e => setNewSessionForm(p => ({ ...p, copyFromId: e.target.value }))}
+                          className="input w-full text-sm"
+                        >
+                          <option value="">— Start empty —</option>
+                          {sessions.map(s => (
+                            <option key={s.id} value={s.id}>{s.name} ({(s.session_exercises || []).length} exercises)</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleAddSession} disabled={!newSessionForm.name} className="btn-primary text-sm py-1.5 px-4">
+                        Add day
+                      </button>
+                      <button onClick={() => setNewSessionForm(null)} className="btn-secondary text-sm py-1.5 px-3">
+                        Cancel
                       </button>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400 px-1">No sessions found for this training week.</p>
+                ) : (
+                  <button
+                    onClick={() => setNewSessionForm({ name: '', copyFromId: '' })}
+                    className="flex items-center gap-2 text-sm text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium px-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    Add training day
+                  </button>
+                )}
+              </>
             )
-          )}
+          })()}
 
           {/* Training notes */}
           {training && (
