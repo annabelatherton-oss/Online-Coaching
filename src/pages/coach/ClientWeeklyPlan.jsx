@@ -10,6 +10,19 @@ function parseProgram(name) {
   return null
 }
 
+// Handles both "Monday" and "Monday — Glutes and Hamstrings" session name formats.
+// Returns { day, label } or null if no day found.
+function parseDaySession(session, workouts) {
+  for (const day of DAYS) {
+    if (session.name === day || session.name.startsWith(day + ' ') || session.name.startsWith(day + '—')) {
+      const rest = session.name.slice(day.length).replace(/^[\s–—\-]+/, '').trim()
+      const wkt = workouts.find(w => w.id === session.workout_id)
+      return { day, label: wkt?.name || rest || day }
+    }
+  }
+  return null
+}
+
 export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const [items, setItems] = useState([])
   const [programs, setPrograms] = useState([])
@@ -107,47 +120,34 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     await supabase.from('client_schedule_items')
       .delete().eq('client_id', clientId).in('item_type', ['workout', 'hiit'])
 
-    // Sessions loaded via nested join in main load() call
-    const rawSessions = prog.training_sessions || []
-    console.log('[populate] program:', prog.name, 'sessions:', rawSessions)
-    const daySessions = rawSessions.filter(s => DAYS.includes(s.name))
-    console.log('[populate] daySessions:', daySessions)
+    // Use sessions from nested join; fall back to a direct query if empty
+    let rawSessions = prog.training_sessions || []
+    if (rawSessions.length === 0) {
+      const { data: direct } = await supabase
+        .from('training_sessions')
+        .select('id, name, workout_id')
+        .eq('program_id', prog.id)
+      rawSessions = direct || []
+    }
 
     const seenDays = new Set()
     const toInsert = []
 
-    if (daySessions.length > 0) {
-      // Use actual sessions — show linked workout name (e.g. "Glutes & Hamstrings")
-      for (const s of daySessions) {
-        if (!seenDays.has(s.name)) {
-          seenDays.add(s.name)
-          const wkt = workouts.find(w => w.id === s.workout_id)
-          toInsert.push({
-            client_id: clientId,
-            coach_id: coachId,
-            day_of_week: s.name,
-            item_type: 'workout',
-            workout_id: s.workout_id || null,
-            custom_label: wkt?.name || s.name,
-            order_index: 0,
-          })
-        }
-      }
-    } else {
-      // No sessions set up yet — generate placeholders from day count in programme name
-      const parsed = parseProgram(prog.name)
-      const dayCount = parsed?.days || 0
-      for (const day of DAYS.slice(0, dayCount)) {
-        toInsert.push({
-          client_id: clientId,
-          coach_id: coachId,
-          day_of_week: day,
-          item_type: 'workout',
-          workout_id: null,
-          custom_label: 'Training',
-          order_index: 0,
-        })
-      }
+    for (const s of rawSessions) {
+      const parsed = parseDaySession(s, workouts)
+      if (!parsed) continue
+      const { day, label } = parsed
+      if (seenDays.has(day)) continue
+      seenDays.add(day)
+      toInsert.push({
+        client_id: clientId,
+        coach_id: coachId,
+        day_of_week: day,
+        item_type: 'workout',
+        workout_id: s.workout_id || null,
+        custom_label: label,
+        order_index: 0,
+      })
     }
 
     if (toInsert.length === 0) {
@@ -229,10 +229,15 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
           <div className="mb-4 rounded-xl border border-brand-100 dark:border-brand-800/40 bg-brand-50/50 dark:bg-brand-900/10 px-4 py-3 space-y-2">
             {assignedProgram ? (
               <div className="flex flex-wrap items-center gap-3">
-                <p className="text-sm text-gray-600 dark:text-gray-300 flex-1 min-w-0">
-                  {hasAnySchedule ? 'Re-populate' : 'Populate schedule'} from assigned programme:
-                  <span className="font-semibold text-gray-800 dark:text-white"> {assignment.program_name}</span>
-                </p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    {hasAnySchedule ? 'Re-populate' : 'Populate schedule'} from assigned programme:
+                    <span className="font-semibold text-gray-800 dark:text-white"> {assignment.program_name}</span>
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                    {(assignedProgram.training_sessions || []).length} sessions · {(assignedProgram.training_sessions || []).filter(s => parseDaySession(s, workouts)).length} days matched
+                  </p>
+                </div>
                 <button
                   onClick={() => populateFromProgram(assignedProgram)}
                   disabled={populating}
