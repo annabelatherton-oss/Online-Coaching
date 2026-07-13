@@ -107,15 +107,18 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     await supabase.from('client_schedule_items')
       .delete().eq('client_id', clientId).in('item_type', ['workout', 'hiit'])
 
-    // Fetch sessions fresh with a simple query (no nested joins)
-    const { data: sessions } = await supabase
-      .from('training_sessions')
-      .select('id, name, workout_id')
-      .eq('program_id', prog.id)
+    // Refetch program with sessions via nested join (RLS is set up for this path)
+    const { data: fullProg } = await supabase
+      .from('training_programs')
+      .select('id, name, training_sessions(id, name, workout_id)')
+      .eq('id', prog.id)
+      .single()
+
+    const sessions = fullProg?.training_sessions || []
 
     const seenDays = new Set()
     const toInsert = []
-    for (const s of (sessions || [])) {
+    for (const s of sessions) {
       if (DAYS.includes(s.name) && !seenDays.has(s.name)) {
         seenDays.add(s.name)
         // Resolve workout name from already-loaded workouts array
