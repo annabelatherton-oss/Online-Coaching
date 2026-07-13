@@ -12,7 +12,7 @@ function dayRank(name) {
 }
 
 function parseProgram(name) {
-  const m = (name || '').match(/^(\d+)\s*Day\s*[–\-]\s*Block\s*(\d+)/i)
+  const m = (name || '').match(/^(\d+)\s*Day\s*[–—\-]\s*Block\s*(\d+)/i)
   if (m) return { days: parseInt(m[1]), block: parseInt(m[2]) }
   return null
 }
