@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS client_schedule_items (
   id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
-  client_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  client_id uuid NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   coach_id uuid NOT NULL,
   day_of_week text NOT NULL CHECK (day_of_week IN ('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday')),
   item_type text NOT NULL CHECK (item_type IN ('workout', 'hiit', 'cardio')),
