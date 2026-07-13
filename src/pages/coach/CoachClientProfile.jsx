@@ -1542,6 +1542,17 @@ function getProgDays(name) {
 
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
+function stripDayPrefix(name) {
+  if (!name) return ''
+  for (const d of WEEK_DAYS) {
+    if (name === d) return ''
+    if (name.startsWith(d + ' ') || name.startsWith(d + '—')) {
+      return name.slice(d.length).replace(/^[\s–—\-]+/, '').trim()
+    }
+  }
+  return name
+}
+
 function TrainingTab({ client, coachId }) {
   const [programs, setPrograms] = useState([])
   const [assignment, setAssignment] = useState(null)
@@ -1736,7 +1747,7 @@ function TrainingTab({ client, coachId }) {
                 <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Programme template</p>
                 {WEEK_DAYS.map(day => {
                   const s = byDay[day]
-                  const label = s?.workouts?.name
+                  const label = stripDayPrefix(s?.workouts?.name)
                     || (s ? s.name.replace(new RegExp(`^${day}[\\s\\u2013\\u2014\\-]+`), '').trim() || s.name : null)
                   return (
                     <div key={day} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${

@@ -18,6 +18,17 @@ function parseProgram(name) {
   return null
 }
 
+function stripDay(name) {
+  if (!name) return ''
+  for (const d of DAY_ORDER) {
+    if (name === d) return ''
+    if (name.startsWith(d + ' ') || name.startsWith(d + '—')) {
+      return name.slice(d.length).replace(/^[\s–—\-]+/, '').trim()
+    }
+  }
+  return name
+}
+
 function getBlockLabel(programs, blockNum) {
   const prog = programs.find(p => parseProgram(p.name)?.block === blockNum)
   if (!prog) return ''
@@ -353,7 +364,9 @@ export default function WorkoutLibrary() {
             const session = sessionByDay[day]
             const workout = session?.workouts
             const exCount = workout?.workout_exercises?.length || 0
-            const draftName = draftNames[workout?.id] ?? workout?.name ?? ''
+            const draftName = draftNames[workout?.id] !== undefined
+              ? draftNames[workout.id]
+              : stripDay(workout?.name ?? '')
 
             if (!session) {
               return (
@@ -427,7 +440,9 @@ export default function WorkoutLibrary() {
             {unscheduled.map(session => {
               const workout = session.workouts
               const exCount = workout?.workout_exercises?.length || 0
-              const draftName = draftNames[workout?.id] ?? workout?.name ?? session.name
+              const draftName = draftNames[workout?.id] !== undefined
+                ? draftNames[workout.id]
+                : stripDay(workout?.name ?? session.name)
               return (
                 <div key={session.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40 px-4 py-3">
                   <div className="flex items-center gap-3">

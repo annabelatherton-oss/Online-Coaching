@@ -10,6 +10,17 @@ function parseProgram(name) {
   return null
 }
 
+function stripDay(name) {
+  if (!name) return ''
+  for (const d of DAYS) {
+    if (name === d) return ''
+    if (name.startsWith(d + ' ') || name.startsWith(d + '—')) {
+      return name.slice(d.length).replace(/^[\s–—\-]+/, '').trim()
+    }
+  }
+  return name
+}
+
 // Handles "Monday", "Monday — Glutes and Hamstrings", etc.
 // Returns { day, label } or null if no DAYS prefix found.
 function parseDaySession(session, workouts) {
@@ -17,7 +28,7 @@ function parseDaySession(session, workouts) {
     if (session.name === day || session.name.startsWith(day + ' ') || session.name.startsWith(day + '—')) {
       const rest = session.name.slice(day.length).replace(/^[\s–—\-]+/, '').trim()
       const wkt = workouts.find(w => w.id === session.workout_id)
-      return { day, label: wkt?.name || rest || day }
+      return { day, label: stripDay(wkt?.name) || rest || day }
     }
   }
   return null
@@ -28,7 +39,7 @@ function parseDaySession(session, workouts) {
 // "Push" → "Push"
 function sessionLabel(session, workouts) {
   const wkt = workouts.find(w => w.id === session.workout_id)
-  if (wkt) return wkt.name
+  if (wkt) return stripDay(wkt.name) || wkt.name
   for (const day of DAYS) {
     if (session.name === day) return day
     if (session.name.startsWith(day + ' ') || session.name.startsWith(day + '—')) {
