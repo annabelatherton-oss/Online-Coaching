@@ -44,22 +44,25 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       { data: hiits },
       { data: cardios },
     ] = await Promise.all([
+      // No nested joins — resolve names client-side to avoid FK ambiguity
       supabase
         .from('client_schedule_items')
-        .select('*, workouts(id, name), hiit_circuits(id, name), cardio_sessions(id, name, cardio_type, duration_minutes)')
+        .select('id, client_id, day_of_week, item_type, workout_id, hiit_circuit_id, cardio_session_id, custom_label, notes, order_index')
         .eq('client_id', clientId)
         .order('order_index'),
       supabase
         .from('training_programs')
-        .select('id, name, training_sessions(id, name, workout_id, workouts(id, name))')
+        .select('id, name')
         .eq('coach_id', coachId)
         .order('name'),
       supabase.from('workouts').select('id, name').eq('coach_id', coachId).eq('is_archived', false).order('name'),
       supabase.from('hiit_circuits').select('id, name, circuit_type').eq('coach_id', coachId).eq('is_archived', false).order('name'),
       supabase.from('cardio_sessions').select('id, name, cardio_type, duration_minutes').eq('coach_id', coachId).eq('is_archived', false).order('name'),
     ])
-    if (schedErr?.message?.includes('does not exist') || schedErr?.code === '42P01') {
+    if (schedErr?.code === '42P01' || schedErr?.message?.includes('does not exist')) {
       setError('migration_needed')
+    } else if (schedErr) {
+      setError(`select_failed:${schedErr.message}`)
     } else {
       setError('')
     }
@@ -104,18 +107,26 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     await supabase.from('client_schedule_items')
       .delete().eq('client_id', clientId).in('item_type', ['workout', 'hiit'])
 
+    // Fetch sessions fresh with a simple query (no nested joins)
+    const { data: sessions } = await supabase
+      .from('training_sessions')
+      .select('id, name, workout_id')
+      .eq('program_id', prog.id)
+
     const seenDays = new Set()
     const toInsert = []
-    for (const s of (prog.training_sessions || [])) {
+    for (const s of (sessions || [])) {
       if (DAYS.includes(s.name) && !seenDays.has(s.name)) {
         seenDays.add(s.name)
+        // Resolve workout name from already-loaded workouts array
+        const linkedWorkout = workouts.find(w => w.id === s.workout_id)
         toInsert.push({
           client_id: clientId,
           coach_id: coachId,
           day_of_week: s.name,
           item_type: 'workout',
           workout_id: s.workout_id || null,
-          custom_label: s.workouts?.name || s.name,
+          custom_label: linkedWorkout?.name || s.name,
           order_index: 0,
         })
       }
@@ -319,8 +330,8 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                     {dayItems.map(item => {
                       const isHiit = item.item_type === 'hiit'
                       const label = isHiit
-                        ? (item.hiit_circuits?.name || 'HIIT')
-                        : (item.workouts?.name || item.custom_label || 'Workout')
+                        ? (hiitCircuits.find(h => h.id === item.hiit_circuit_id)?.name || 'HIIT')
+                        : (workouts.find(w => w.id === item.workout_id)?.name || item.custom_label || 'Workout')
                       return (
                         <div
                           key={item.id}
@@ -487,7 +498,9 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
           <div className="space-y-2">
             {DAYS.flatMap(day => {
               const dayCardio = cardioItems.filter(i => i.day_of_week === day)
-              return dayCardio.map(item => (
+              return dayCardio.map(item => {
+                const cs = cardioSessions.find(c => c.id === item.cardio_session_id)
+                return (
                 <div
                   key={item.id}
                   className="flex items-center justify-between rounded-xl border border-emerald-100 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3"
@@ -497,13 +510,13 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                     <span className="text-xs font-bold text-emerald-400 dark:text-emerald-500 uppercase w-8 flex-shrink-0">{day.slice(0, 3)}</span>
                     <div>
                       <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                        {item.cardio_sessions?.name || 'Cardio'}
+                        {cs?.name || 'Cardio'}
                       </p>
-                      {(item.cardio_sessions?.duration_minutes || item.cardio_sessions?.cardio_type) && (
+                      {(cs?.duration_minutes || cs?.cardio_type) && (
                         <p className="text-xs text-emerald-500/70 dark:text-emerald-600 mt-0.5">
                           {[
-                            item.cardio_sessions.duration_minutes ? `${item.cardio_sessions.duration_minutes} min` : null,
-                            item.cardio_sessions.cardio_type ? item.cardio_sessions.cardio_type.replace(/-/g, ' ') : null,
+                            cs.duration_minutes ? `${cs.duration_minutes} min` : null,
+                            cs.cardio_type ? cs.cardio_type.replace(/-/g, ' ') : null,
                           ].filter(Boolean).join(' · ')}
                         </p>
                       )}
@@ -519,7 +532,8 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                     </svg>
                   </button>
                 </div>
-              ))
+                )
+              })
             })}
           </div>
         )}
