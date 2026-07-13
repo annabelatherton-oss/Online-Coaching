@@ -10,8 +10,8 @@ function parseProgram(name) {
   return null
 }
 
-// Handles both "Monday" and "Monday — Glutes and Hamstrings" session name formats.
-// Returns { day, label } or null if no day found.
+// Handles "Monday", "Monday — Glutes and Hamstrings", etc.
+// Returns { day, label } or null if no DAYS prefix found.
 function parseDaySession(session, workouts) {
   for (const day of DAYS) {
     if (session.name === day || session.name.startsWith(day + ' ') || session.name.startsWith(day + '—')) {
@@ -23,37 +23,19 @@ function parseDaySession(session, workouts) {
   return null
 }
 
-// Organise workouts by block → day-variant → session for the add-workout dropdown.
-function buildWorkoutGroups(programs, workouts) {
-  const blocks = {}           // { blockNum: { days: [{ id, name }] } }
-  const usedIds = new Set()
-
-  const sorted = [...programs].sort((a, b) => {
-    const pa = parseProgram(a.name)
-    const pb = parseProgram(b.name)
-    if (!pa || !pb) return 0
-    if (pa.block !== pb.block) return pa.block - pb.block
-    return pb.days - pa.days   // more days first within a block
-  })
-
-  for (const prog of sorted) {
-    const parsed = parseProgram(prog.name)
-    if (!parsed) continue
-    const { block, days } = parsed
-    if (!blocks[block]) blocks[block] = {}
-    if (!blocks[block][days]) blocks[block][days] = []
-
-    for (const sess of prog.training_sessions || []) {
-      if (!sess.workout_id) continue
-      const wkt = workouts.find(w => w.id === sess.workout_id)
-      if (!wkt || usedIds.has(wkt.id)) continue
-      usedIds.add(wkt.id)
-      blocks[block][days].push({ id: wkt.id, name: wkt.name })
+// Strip day prefix from a session name to get the interchangeable label.
+// "Monday — Glutes and Hamstrings" → "Glutes and Hamstrings"
+// "Push" → "Push"
+function sessionLabel(session, workouts) {
+  const wkt = workouts.find(w => w.id === session.workout_id)
+  if (wkt) return wkt.name
+  for (const day of DAYS) {
+    if (session.name === day) return day
+    if (session.name.startsWith(day + ' ') || session.name.startsWith(day + '—')) {
+      return session.name.slice(day.length).replace(/^[\s–—\-]+/, '').trim() || day
     }
   }
-
-  const standalone = workouts.filter(w => !usedIds.has(w.id))
-  return { blocks, standalone }
+  return session.name
 }
 
 export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
@@ -70,6 +52,8 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   // Per-day add form state
   const [addingToDay, setAddingToDay] = useState(null)
   const [addType, setAddType] = useState('workout')
+  const [addBlock, setAddBlock] = useState('')
+  const [addDayVariant, setAddDayVariant] = useState('')
   const [addItemId, setAddItemId] = useState('')
 
   // Cardio add state
@@ -77,10 +61,14 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const [addCardioDay, setAddCardioDay] = useState('Monday')
   const [addCardioId, setAddCardioId] = useState('')
 
-  // "Choose different block" expander for populate
+  // Populate banner "use different block" expander
   const [showAltPopulate, setShowAltPopulate] = useState(false)
   const [altBlock, setAltBlock] = useState('')
   const [altDays, setAltDays] = useState('')
+
+  // Drag-and-drop state
+  const [dragItemId, setDragItemId] = useState(null)
+  const [dragOverDay, setDragOverDay] = useState(null)
 
   async function load() {
     const [
@@ -90,7 +78,6 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       { data: hiits },
       { data: cardios },
     ] = await Promise.all([
-      // No nested joins — resolve names client-side to avoid FK ambiguity
       supabase
         .from('client_schedule_items')
         .select('id, client_id, day_of_week, item_type, workout_id, hiit_circuit_id, cardio_session_id, custom_label, notes, order_index')
@@ -142,6 +129,11 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
 
   async function removeItem(id) {
     await supabase.from('client_schedule_items').delete().eq('id', id)
+    await load()
+  }
+
+  async function moveItem(id, toDay) {
+    await supabase.from('client_schedule_items').update({ day_of_week: toDay }).eq('id', id)
     await load()
   }
 
@@ -209,12 +201,11 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const cardioItems = items.filter(i => i.item_type === 'cardio')
   const hasAnySchedule = scheduleItems.length > 0
 
-  // Programme that matches the current assignment
   const assignedProgram = assignment
     ? programs.find(p => p.id === assignment.program_id)
     : null
 
-  // Block numbers from all programs (for the "choose different" picker)
+  // Populate banner — "use different block"
   const blockNums = [...new Set(programs.map(p => parseProgram(p.name)?.block).filter(Boolean))].sort()
   const altDayOptions = altBlock
     ? [...new Set(
@@ -223,6 +214,34 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
           .map(p => parseProgram(p.name)?.days)
           .filter(Boolean)
       )].sort((a, b) => b - a)
+    : []
+
+  // Cascading add-workout selector data
+  const addBlockOptions = [...new Set(
+    programs.map(p => parseProgram(p.name)?.block).filter(Boolean)
+  )].sort((a, b) => a - b)
+
+  const addDayOptions = addBlock
+    ? [...new Set(
+        programs
+          .filter(p => parseProgram(p.name)?.block === parseInt(addBlock))
+          .map(p => parseProgram(p.name)?.days)
+          .filter(Boolean)
+      )].sort((a, b) => b - a)
+    : []
+
+  const addSessionOptions = (addBlock && addDayVariant)
+    ? (() => {
+        const prog = programs.find(p => {
+          const parsed = parseProgram(p.name)
+          return parsed?.block === parseInt(addBlock) && parsed?.days === parseInt(addDayVariant)
+        })
+        return (prog?.training_sessions || []).map(s => ({
+          id: s.workout_id || s.id,
+          workoutId: s.workout_id || null,
+          label: sessionLabel(s, workouts),
+        }))
+      })()
     : []
 
   return (
@@ -257,7 +276,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">Weekly Schedule</h3>
         </div>
 
-        {/* Populate banner — shown when assigned programme is detected */}
+        {/* Populate banner */}
         {(assignedProgram || programs.length > 0) && (
           <div className="mb-4 rounded-xl border border-brand-100 dark:border-brand-800/40 bg-brand-50/50 dark:bg-brand-900/10 px-4 py-3 space-y-2">
             {assignedProgram ? (
@@ -326,34 +345,53 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
           </div>
         )}
 
-        {/* Day cards — vertical list */}
+        {/* Day cards — vertical list with drag-and-drop */}
         <div className="space-y-2">
           {DAYS.map(day => {
             const dayItems = scheduleItems.filter(i => i.day_of_week === day)
             const isEmpty = dayItems.length === 0
             const isAdding = addingToDay === day
+            const isDragTarget = dragOverDay === day
 
             return (
               <div
                 key={day}
+                onDragOver={e => { e.preventDefault(); if (dragItemId) setDragOverDay(day) }}
+                onDragLeave={e => {
+                  if (!e.currentTarget.contains(e.relatedTarget)) setDragOverDay(null)
+                }}
+                onDrop={async e => {
+                  e.preventDefault()
+                  setDragOverDay(null)
+                  if (dragItemId) {
+                    const item = items.find(i => i.id === dragItemId)
+                    if (item && item.day_of_week !== day) await moveItem(dragItemId, day)
+                    setDragItemId(null)
+                  }
+                }}
                 className={`rounded-2xl border transition-colors ${
-                  isEmpty
-                    ? 'border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20'
-                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40'
+                  isDragTarget
+                    ? 'border-brand-400 dark:border-brand-500 bg-brand-50 dark:bg-brand-900/20 ring-2 ring-brand-200 dark:ring-brand-800'
+                    : isEmpty
+                      ? 'border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40'
                 }`}
               >
                 {/* Day header */}
                 <div className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-2.5">
                     <span className={`text-sm font-bold w-24 ${
-                      isEmpty
+                      isEmpty && !isDragTarget
                         ? 'text-gray-400 dark:text-gray-600'
                         : 'text-gray-800 dark:text-gray-100'
                     }`}>
                       {day}
                     </span>
-                    {isEmpty && !isAdding && (
+                    {isEmpty && !isAdding && !isDragTarget && (
                       <span className="text-xs text-gray-300 dark:text-gray-700 italic">Rest day</span>
+                    )}
+                    {isDragTarget && isEmpty && (
+                      <span className="text-xs text-brand-400 italic">Drop here</span>
                     )}
                     {!isEmpty && (
                       <div className="flex gap-1.5">
@@ -372,7 +410,13 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                   </div>
                   {!isAdding && (
                     <button
-                      onClick={() => { setAddingToDay(day); setAddType('workout'); setAddItemId('') }}
+                      onClick={() => {
+                        setAddingToDay(day)
+                        setAddType('workout')
+                        setAddBlock('')
+                        setAddDayVariant('')
+                        setAddItemId('')
+                      }}
                       className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium transition-colors"
                     >
                       + Add
@@ -388,17 +432,29 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                       const label = isHiit
                         ? (hiitCircuits.find(h => h.id === item.hiit_circuit_id)?.name || 'HIIT')
                         : (workouts.find(w => w.id === item.workout_id)?.name || item.custom_label || 'Workout')
+                      const isDragging = dragItemId === item.id
                       return (
                         <div
                           key={item.id}
-                          className={`flex items-center justify-between rounded-xl px-3 py-2.5 ${
+                          draggable
+                          onDragStart={e => {
+                            setDragItemId(item.id)
+                            e.dataTransfer.effectAllowed = 'move'
+                          }}
+                          onDragEnd={() => { setDragItemId(null); setDragOverDay(null) }}
+                          className={`flex items-center justify-between rounded-xl px-3 py-2.5 cursor-grab active:cursor-grabbing transition-opacity ${
+                            isDragging ? 'opacity-40' : ''
+                          } ${
                             isHiit
                               ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800/40'
                               : 'bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40'
                           }`}
                         >
                           <div className="flex items-center gap-2.5">
-                            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isHiit ? 'bg-orange-400' : 'bg-brand-400'}`} />
+                            {/* Drag handle */}
+                            <svg className={`w-3.5 h-3.5 flex-shrink-0 ${isHiit ? 'text-orange-300' : 'text-brand-300'}`} fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z"/>
+                            </svg>
                             <div>
                               <p className={`text-sm font-semibold leading-tight ${
                                 isHiit
@@ -430,9 +486,10 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                 {/* Inline add form */}
                 {isAdding && (
                   <div className="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-800 pt-3">
+                    {/* Workout / HIIT toggle */}
                     <div className="flex gap-2">
                       <button
-                        onClick={() => { setAddType('workout'); setAddItemId('') }}
+                        onClick={() => { setAddType('workout'); setAddBlock(''); setAddDayVariant(''); setAddItemId('') }}
                         className={`flex-1 text-sm py-1.5 rounded-lg font-medium transition-colors ${
                           addType === 'workout'
                             ? 'bg-brand-500 text-white'
@@ -442,7 +499,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                         Workout
                       </button>
                       <button
-                        onClick={() => { setAddType('hiit'); setAddItemId('') }}
+                        onClick={() => { setAddType('hiit'); setAddBlock(''); setAddDayVariant(''); setAddItemId('') }}
                         className={`flex-1 text-sm py-1.5 rounded-lg font-medium transition-colors ${
                           addType === 'hiit'
                             ? 'bg-orange-500 text-white'
@@ -452,43 +509,66 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                         HIIT
                       </button>
                     </div>
-                    {addType === 'workout' ? (() => {
-                      const { blocks, standalone } = buildWorkoutGroups(programs, workouts)
-                      const blockNums = Object.keys(blocks).map(Number).sort((a, b) => a - b)
-                      return (
-                        <select className="input w-full" value={addItemId} onChange={e => setAddItemId(e.target.value)}>
-                          <option value="">Select a workout…</option>
-                          {blockNums.map(blockNum => {
-                            const dayVariants = Object.keys(blocks[blockNum]).map(Number).sort((a, b) => b - a)
-                            return dayVariants.map(days => (
-                              blocks[blockNum][days].length > 0 && (
-                                <optgroup key={`${blockNum}-${days}`} label={`Block ${blockNum} — ${days} Day`}>
-                                  {blocks[blockNum][days].map(w => (
-                                    <option key={w.id} value={w.id}>{w.name}</option>
-                                  ))}
-                                </optgroup>
-                              )
-                            ))
-                          })}
-                          {standalone.length > 0 && (
-                            <optgroup label="Standalone">
-                              {standalone.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                            </optgroup>
-                          )}
+
+                    {addType === 'workout' ? (
+                      <div className="space-y-2">
+                        {/* Step 1: Block */}
+                        <select
+                          className="input w-full"
+                          value={addBlock}
+                          onChange={e => { setAddBlock(e.target.value); setAddDayVariant(''); setAddItemId('') }}
+                        >
+                          <option value="">Select block…</option>
+                          {addBlockOptions.map(n => (
+                            <option key={n} value={n}>Block {n}</option>
+                          ))}
                         </select>
-                      )
-                    })() : (
+
+                        {/* Step 2: Day count */}
+                        {addBlock && (
+                          <select
+                            className="input w-full"
+                            value={addDayVariant}
+                            onChange={e => { setAddDayVariant(e.target.value); setAddItemId('') }}
+                          >
+                            <option value="">Select days…</option>
+                            {addDayOptions.map(d => (
+                              <option key={d} value={d}>{d} Day</option>
+                            ))}
+                          </select>
+                        )}
+
+                        {/* Step 3: Session (day prefix stripped) */}
+                        {addDayVariant && (
+                          <select
+                            className="input w-full"
+                            value={addItemId}
+                            onChange={e => setAddItemId(e.target.value)}
+                          >
+                            <option value="">Select session…</option>
+                            {addSessionOptions.map(s => (
+                              <option key={s.id} value={s.workoutId || ''} disabled={!s.workoutId}>
+                                {s.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    ) : (
                       <select className="input w-full" value={addItemId} onChange={e => setAddItemId(e.target.value)}>
                         <option value="">Select a HIIT circuit…</option>
                         {hiitCircuits.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
                       </select>
                     )}
+
                     <div className="flex gap-2">
                       <button
                         onClick={async () => {
                           if (!addItemId) return
                           await addItem(day, addType, addItemId)
                           setAddingToDay(null)
+                          setAddBlock('')
+                          setAddDayVariant('')
                           setAddItemId('')
                         }}
                         disabled={!addItemId || saving}
@@ -497,7 +577,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                         Add to {day}
                       </button>
                       <button
-                        onClick={() => { setAddingToDay(null); setAddItemId('') }}
+                        onClick={() => { setAddingToDay(null); setAddBlock(''); setAddDayVariant(''); setAddItemId('') }}
                         className="btn-secondary text-sm"
                       >
                         Cancel
@@ -578,37 +658,37 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
               return dayCardio.map(item => {
                 const cs = cardioSessions.find(c => c.id === item.cardio_session_id)
                 return (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between rounded-xl border border-emerald-100 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                    <span className="text-xs font-bold text-emerald-400 dark:text-emerald-500 uppercase w-8 flex-shrink-0">{day.slice(0, 3)}</span>
-                    <div>
-                      <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                        {cs?.name || 'Cardio'}
-                      </p>
-                      {(cs?.duration_minutes || cs?.cardio_type) && (
-                        <p className="text-xs text-emerald-500/70 dark:text-emerald-600 mt-0.5">
-                          {[
-                            cs.duration_minutes ? `${cs.duration_minutes} min` : null,
-                            cs.cardio_type ? cs.cardio_type.replace(/-/g, ' ') : null,
-                          ].filter(Boolean).join(' · ')}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => removeItem(item.id)}
-                    className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 transition-colors p-1"
-                    title="Remove"
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between rounded-xl border border-emerald-100 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                      <span className="text-xs font-bold text-emerald-400 dark:text-emerald-500 uppercase w-8 flex-shrink-0">{day.slice(0, 3)}</span>
+                      <div>
+                        <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                          {cs?.name || 'Cardio'}
+                        </p>
+                        {(cs?.duration_minutes || cs?.cardio_type) && (
+                          <p className="text-xs text-emerald-500/70 dark:text-emerald-600 mt-0.5">
+                            {[
+                              cs.duration_minutes ? `${cs.duration_minutes} min` : null,
+                              cs.cardio_type ? cs.cardio_type.replace(/-/g, ' ') : null,
+                            ].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeItem(item.id)}
+                      className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 transition-colors p-1"
+                      title="Remove"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
                 )
               })
             })}
