@@ -295,9 +295,23 @@ export default function WorkoutLibrary() {
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
-  // ── LEVEL 3: Sessions ─────────────────────────────────────────────────────
+  // ── LEVEL 3: Sessions — Mon–Sun template view ────────────────────────────
   if (selectedBlock !== null && selectedDays !== null) {
     const { sessions } = grouped[selectedBlock]?.[selectedDays] || { sessions: [] }
+
+    // Map each session to its day slot using the day prefix in the name
+    const sessionByDay = {}
+    const unscheduled = []
+    for (const session of sessions) {
+      const day = DAY_ORDER.find(d =>
+        session.name === d ||
+        session.name.startsWith(d + ' ') ||
+        session.name.startsWith(d + '—')
+      )
+      if (day) sessionByDay[day] = session
+      else unscheduled.push(session)
+    }
+
     return (
       <div className="space-y-6">
         <div className="space-y-1">
@@ -314,40 +328,90 @@ export default function WorkoutLibrary() {
           </div>
         </div>
 
-        <div className="card overflow-hidden p-0">
-          {sessions.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-center text-gray-400 dark:text-gray-500">No sessions yet.</p>
-          ) : (
-            <div className="divide-y divide-gray-50 dark:divide-gray-800">
-              {sessions.map(session => {
-                const workout = session.workouts
-                const exCount = workout?.workout_exercises?.length || 0
-                return (
-                  <div key={session.id} className="flex items-center justify-between px-4 py-4 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 dark:text-white">{session.name}</p>
+        {/* Mon–Sun template grid */}
+        <div className="space-y-2">
+          {DAY_ORDER.map(day => {
+            const session = sessionByDay[day]
+            const workout = session?.workouts
+            const exCount = workout?.workout_exercises?.length || 0
+
+            // Strip the day prefix to get just the session name
+            const label = workout?.name
+              || (session
+                ? session.name.replace(new RegExp(`^${day}[\\s\\u2013\\u2014\\-]+`), '').trim() || session.name
+                : null)
+
+            if (!session) {
+              return (
+                <div key={day} className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-800/20 px-4 py-3 flex items-center gap-3">
+                  <span className="text-sm font-bold text-gray-400 dark:text-gray-600 w-24 flex-shrink-0">{day}</span>
+                  <span className="text-xs text-gray-300 dark:text-gray-700 italic">Rest</span>
+                </div>
+              )
+            }
+
+            return (
+              <div key={day} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-sm font-bold text-gray-800 dark:text-gray-100 w-24 flex-shrink-0">{day}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{label}</p>
                       {workout
-                        ? <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">{exCount} exercise{exCount !== 1 ? 's' : ''}</p>
-                        : <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 italic">No workout linked yet</p>
+                        ? <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{exCount} exercise{exCount !== 1 ? 's' : ''}</p>
+                        : <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 italic">No workout linked</p>
                       }
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-                      {workout && (
-                        <>
-                          <button onClick={() => navigate(`/coach/workouts/${workout.id}`)}
-                            className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium">Edit</button>
-                          <button onClick={() => duplicate(workout.id)}
-                            className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Duplicate</button>
-                        </>
-                      )}
-                      <DeleteBtn onClick={() => deleteSession(session)} />
-                    </div>
                   </div>
-                )
-              })}
-            </div>
-          )}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {workout && (
+                      <>
+                        <button onClick={() => navigate(`/coach/workouts/${workout.id}`)}
+                          className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium">Edit</button>
+                        <button onClick={() => duplicate(workout.id)}
+                          className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Duplicate</button>
+                      </>
+                    )}
+                    <DeleteBtn onClick={() => deleteSession(session)} />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
+
+        {/* Sessions without a day prefix */}
+        {unscheduled.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Unscheduled</p>
+            {unscheduled.map(session => {
+              const workout = session.workouts
+              const exCount = workout?.workout_exercises?.length || 0
+              return (
+                <div key={session.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40 px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{workout?.name || session.name}</p>
+                    {workout
+                      ? <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{exCount} exercise{exCount !== 1 ? 's' : ''}</p>
+                      : <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 italic">No workout linked</p>
+                    }
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {workout && (
+                      <>
+                        <button onClick={() => navigate(`/coach/workouts/${workout.id}`)}
+                          className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium">Edit</button>
+                        <button onClick={() => duplicate(workout.id)}
+                          className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Duplicate</button>
+                      </>
+                    )}
+                    <DeleteBtn onClick={() => deleteSession(session)} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     )
   }
