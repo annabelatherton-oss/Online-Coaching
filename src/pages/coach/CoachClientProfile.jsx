@@ -1713,7 +1713,7 @@ function TrainingTab({ client, coachId }) {
       )}
 
       <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
-        <ClientWeeklyPlan clientId={client.id} coachId={coachId} />
+        <ClientWeeklyPlan clientId={client.id} coachId={coachId} assignment={assignment} />
       </div>
     </div>
   )
