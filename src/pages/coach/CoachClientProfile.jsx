@@ -1540,9 +1540,12 @@ function getProgDays(name) {
   return null
 }
 
+const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
 function TrainingTab({ client, coachId }) {
   const [programs, setPrograms] = useState([])
   const [assignment, setAssignment] = useState(null)
+  const [assignedSessions, setAssignedSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ block: '', days: '', week_override: '' })
@@ -1564,6 +1567,17 @@ function TrainingTab({ client, coachId }) {
     setPrograms(progs || [])
     setAssignment(asgn || null)
     setOverrideWeek(asgn?.week_override ?? '')
+
+    if (asgn?.program_id) {
+      const { data: sessions } = await supabase
+        .from('training_sessions')
+        .select('id, name, workout_id, workouts(id, name)')
+        .eq('program_id', asgn.program_id)
+      setAssignedSessions(sessions || [])
+    } else {
+      setAssignedSessions([])
+    }
+
     setLoading(false)
   }
 
@@ -1709,6 +1723,38 @@ function TrainingTab({ client, coachId }) {
               <button type="button" onClick={() => setShowOverride(false)} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
             </form>
           )}
+
+          {/* Mon–Sun template from the assigned programme */}
+          {assignedSessions.length > 0 && (() => {
+            const byDay = {}
+            for (const s of assignedSessions) {
+              const day = WEEK_DAYS.find(d => s.name === d || s.name.startsWith(d + ' ') || s.name.startsWith(d + '—'))
+              if (day) byDay[day] = s
+            }
+            return (
+              <div className="space-y-1.5 pt-1">
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Programme template</p>
+                {WEEK_DAYS.map(day => {
+                  const s = byDay[day]
+                  const label = s?.workouts?.name
+                    || (s ? s.name.replace(new RegExp(`^${day}[\\s\\u2013\\u2014\\-]+`), '').trim() || s.name : null)
+                  return (
+                    <div key={day} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${
+                      s
+                        ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/30'
+                        : 'bg-gray-50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-800'
+                    }`}>
+                      <span className={`text-xs font-bold w-20 flex-shrink-0 ${s ? 'text-brand-600 dark:text-brand-400' : 'text-gray-400 dark:text-gray-600'}`}>{day}</span>
+                      {s
+                        ? <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{label}</span>
+                        : <span className="text-xs text-gray-300 dark:text-gray-700 italic">Rest</span>
+                      }
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
         </div>
       )}
 
