@@ -23,6 +23,39 @@ function parseDaySession(session, workouts) {
   return null
 }
 
+// Organise workouts by block → day-variant → session for the add-workout dropdown.
+function buildWorkoutGroups(programs, workouts) {
+  const blocks = {}           // { blockNum: { days: [{ id, name }] } }
+  const usedIds = new Set()
+
+  const sorted = [...programs].sort((a, b) => {
+    const pa = parseProgram(a.name)
+    const pb = parseProgram(b.name)
+    if (!pa || !pb) return 0
+    if (pa.block !== pb.block) return pa.block - pb.block
+    return pb.days - pa.days   // more days first within a block
+  })
+
+  for (const prog of sorted) {
+    const parsed = parseProgram(prog.name)
+    if (!parsed) continue
+    const { block, days } = parsed
+    if (!blocks[block]) blocks[block] = {}
+    if (!blocks[block][days]) blocks[block][days] = []
+
+    for (const sess of prog.training_sessions || []) {
+      if (!sess.workout_id) continue
+      const wkt = workouts.find(w => w.id === sess.workout_id)
+      if (!wkt || usedIds.has(wkt.id)) continue
+      usedIds.add(wkt.id)
+      blocks[block][days].push({ id: wkt.id, name: wkt.name })
+    }
+  }
+
+  const standalone = workouts.filter(w => !usedIds.has(w.id))
+  return { blocks, standalone }
+}
+
 export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const [items, setItems] = useState([])
   const [programs, setPrograms] = useState([])
@@ -419,16 +452,37 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                         HIIT
                       </button>
                     </div>
-                    <select
-                      className="input w-full"
-                      value={addItemId}
-                      onChange={e => setAddItemId(e.target.value)}
-                    >
-                      <option value="">Select {addType === 'workout' ? 'a workout' : 'a HIIT circuit'}…</option>
-                      {(addType === 'workout' ? workouts : hiitCircuits).map(w => (
-                        <option key={w.id} value={w.id}>{w.name}</option>
-                      ))}
-                    </select>
+                    {addType === 'workout' ? (() => {
+                      const { blocks, standalone } = buildWorkoutGroups(programs, workouts)
+                      const blockNums = Object.keys(blocks).map(Number).sort((a, b) => a - b)
+                      return (
+                        <select className="input w-full" value={addItemId} onChange={e => setAddItemId(e.target.value)}>
+                          <option value="">Select a workout…</option>
+                          {blockNums.map(blockNum => {
+                            const dayVariants = Object.keys(blocks[blockNum]).map(Number).sort((a, b) => b - a)
+                            return dayVariants.map(days => (
+                              blocks[blockNum][days].length > 0 && (
+                                <optgroup key={`${blockNum}-${days}`} label={`Block ${blockNum} — ${days} Day`}>
+                                  {blocks[blockNum][days].map(w => (
+                                    <option key={w.id} value={w.id}>{w.name}</option>
+                                  ))}
+                                </optgroup>
+                              )
+                            ))
+                          })}
+                          {standalone.length > 0 && (
+                            <optgroup label="Standalone">
+                              {standalone.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                            </optgroup>
+                          )}
+                        </select>
+                      )
+                    })() : (
+                      <select className="input w-full" value={addItemId} onChange={e => setAddItemId(e.target.value)}>
+                        <option value="">Select a HIIT circuit…</option>
+                        {hiitCircuits.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                      </select>
+                    )}
                     <div className="flex gap-2">
                       <button
                         onClick={async () => {
