@@ -107,31 +107,52 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     await supabase.from('client_schedule_items')
       .delete().eq('client_id', clientId).in('item_type', ['workout', 'hiit'])
 
-    // Refetch program with sessions via nested join (RLS is set up for this path)
+    // Try to get sessions via nested join
     const { data: fullProg } = await supabase
       .from('training_programs')
       .select('id, name, training_sessions(id, name, workout_id)')
       .eq('id', prog.id)
       .single()
 
-    const sessions = fullProg?.training_sessions || []
+    const rawSessions = fullProg?.training_sessions || []
+    const daySessions = rawSessions.filter(s => DAYS.includes(s.name))
 
     const seenDays = new Set()
     const toInsert = []
-    for (const s of sessions) {
-      if (DAYS.includes(s.name) && !seenDays.has(s.name)) {
-        seenDays.add(s.name)
-        // Resolve workout name from already-loaded workouts array
-        const linkedWorkout = workouts.find(w => w.id === s.workout_id)
-        toInsert.push({
-          client_id: clientId,
-          coach_id: coachId,
-          day_of_week: s.name,
-          item_type: 'workout',
-          workout_id: s.workout_id || null,
-          custom_label: linkedWorkout?.name || s.name,
-          order_index: 0,
-        })
+
+    if (daySessions.length > 0) {
+      // Sessions with day names exist — use them
+      for (const s of daySessions) {
+        if (!seenDays.has(s.name)) {
+          seenDays.add(s.name)
+          const linkedWorkout = workouts.find(w => w.id === s.workout_id)
+          toInsert.push({
+            client_id: clientId,
+            coach_id: coachId,
+            day_of_week: s.name,
+            item_type: 'workout',
+            workout_id: s.workout_id || null,
+            custom_label: linkedWorkout?.name || s.name,
+            order_index: 0,
+          })
+        }
+      }
+    } else {
+      // No sessions yet — generate training days from the programme name (e.g. "5 Day" → Mon–Fri)
+      const parsed = parseProgram(prog.name)
+      const dayCount = parsed?.days || 0
+      if (dayCount > 0) {
+        for (const day of DAYS.slice(0, dayCount)) {
+          toInsert.push({
+            client_id: clientId,
+            coach_id: coachId,
+            day_of_week: day,
+            item_type: 'workout',
+            workout_id: null,
+            custom_label: 'Training',
+            order_index: 0,
+          })
+        }
       }
     }
 
