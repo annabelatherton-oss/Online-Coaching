@@ -52,7 +52,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
         .order('order_index'),
       supabase
         .from('training_programs')
-        .select('id, name')
+        .select('id, name, training_sessions(id, name, workout_id, workouts(id, name))')
         .eq('coach_id', coachId)
         .order('name'),
       supabase.from('workouts').select('id, name').eq('coach_id', coachId).eq('is_archived', false).order('name'),
@@ -107,52 +107,43 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     await supabase.from('client_schedule_items')
       .delete().eq('client_id', clientId).in('item_type', ['workout', 'hiit'])
 
-    // Try to get sessions via nested join
-    const { data: fullProg } = await supabase
-      .from('training_programs')
-      .select('id, name, training_sessions(id, name, workout_id)')
-      .eq('id', prog.id)
-      .single()
-
-    const rawSessions = fullProg?.training_sessions || []
+    // Sessions are already loaded in prog.training_sessions (same query as WorkoutLibrary uses)
+    const rawSessions = prog.training_sessions || []
     const daySessions = rawSessions.filter(s => DAYS.includes(s.name))
 
     const seenDays = new Set()
     const toInsert = []
 
     if (daySessions.length > 0) {
-      // Sessions with day names exist — use them
+      // Use actual sessions — show linked workout name (e.g. "Glutes & Hamstrings")
       for (const s of daySessions) {
         if (!seenDays.has(s.name)) {
           seenDays.add(s.name)
-          const linkedWorkout = workouts.find(w => w.id === s.workout_id)
           toInsert.push({
             client_id: clientId,
             coach_id: coachId,
             day_of_week: s.name,
             item_type: 'workout',
             workout_id: s.workout_id || null,
-            custom_label: linkedWorkout?.name || s.name,
+            custom_label: s.workouts?.name || s.name,
             order_index: 0,
           })
         }
       }
     } else {
-      // No sessions yet — generate training days from the programme name (e.g. "5 Day" → Mon–Fri)
+      // No sessions set up yet — generate placeholders from day count in programme name
       const parsed = parseProgram(prog.name)
       const dayCount = parsed?.days || 0
-      if (dayCount > 0) {
-        for (const day of DAYS.slice(0, dayCount)) {
-          toInsert.push({
-            client_id: clientId,
-            coach_id: coachId,
-            day_of_week: day,
-            item_type: 'workout',
-            workout_id: null,
-            custom_label: 'Training',
-            order_index: 0,
-          })
-        }
+      for (const day of DAYS.slice(0, dayCount)) {
+        toInsert.push({
+          client_id: clientId,
+          coach_id: coachId,
+          day_of_week: day,
+          item_type: 'workout',
+          workout_id: null,
+          custom_label: 'Training',
+          order_index: 0,
+        })
       }
     }
 
