@@ -17,6 +17,17 @@ function parseProgram(name) {
   return null
 }
 
+function BackButton({ onClick, label }) {
+  return (
+    <button onClick={onClick} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 transition-colors">
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+      </svg>
+      {label}
+    </button>
+  )
+}
+
 export default function WorkoutLibrary() {
   const { profile } = useAuth()
   const navigate = useNavigate()
@@ -25,6 +36,8 @@ export default function WorkoutLibrary() {
   const [loading, setLoading] = useState(true)
   const [importing, setImporting] = useState(false)
   const [importDone, setImportDone] = useState(false)
+  const [selectedBlock, setSelectedBlock] = useState(null)
+  const [selectedDays, setSelectedDays] = useState(null)
 
   async function load() {
     const [{ data: progs }, { data: allWorkouts }] = await Promise.all([
@@ -42,7 +55,6 @@ export default function WorkoutLibrary() {
     ])
 
     setPrograms(progs || [])
-
     const linkedIds = new Set()
     for (const prog of progs || []) {
       for (const sess of prog.training_sessions || []) {
@@ -55,7 +67,7 @@ export default function WorkoutLibrary() {
 
   useEffect(() => { load() }, [])
 
-  // Build hierarchy: { blockNum: { dayCount: { progId, sessions[] } } }
+  // Build hierarchy
   const grouped = {}
   for (const prog of programs) {
     const parsed = parseProgram(prog.name)
@@ -63,7 +75,6 @@ export default function WorkoutLibrary() {
     const { block, days } = parsed
     if (!grouped[block]) grouped[block] = {}
     grouped[block][days] = {
-      progId: prog.id,
       sessions: [...(prog.training_sessions || [])].sort((a, b) => dayRank(a.name) - dayRank(b.name)),
     }
   }
@@ -71,10 +82,7 @@ export default function WorkoutLibrary() {
   const unorganised = programs.filter(p => !parseProgram(p.name))
 
   async function createWorkout() {
-    const { data } = await supabase.from('workouts').insert({
-      coach_id: profile.id,
-      name: 'New Workout',
-    }).select('id').single()
+    const { data } = await supabase.from('workouts').insert({ coach_id: profile.id, name: 'New Workout' }).select('id').single()
     if (data) navigate(`/coach/workouts/${data.id}`)
   }
 
@@ -106,7 +114,6 @@ export default function WorkoutLibrary() {
 
   async function importFromBlocks() {
     setImporting(true)
-    // Only import sessions that don't yet have a workout linked
     const { data: sessions } = await supabase
       .from('training_sessions')
       .select('id, name, program_id, training_programs(name), session_exercises(*)')
@@ -120,7 +127,6 @@ export default function WorkoutLibrary() {
       }).select('id').single()
 
       if (!newW) continue
-
       if (session.session_exercises?.length) {
         await supabase.from('workout_exercises').insert(
           session.session_exercises
@@ -148,14 +154,96 @@ export default function WorkoutLibrary() {
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
-  const hasContent = blocks.length > 0 || unorganised.length > 0 || standaloneWorkouts.length > 0
+  // ── LEVEL 3: Sessions for a block + day variant ──────────────────────────
+  if (selectedBlock !== null && selectedDays !== null) {
+    const { sessions } = grouped[selectedBlock]?.[selectedDays] || { sessions: [] }
+    return (
+      <div className="space-y-6">
+        <div className="space-y-1">
+          <BackButton onClick={() => setSelectedDays(null)} label={`Block ${selectedBlock}`} />
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Block {selectedBlock} — {selectedDays} Day</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</p>
+        </div>
 
+        <div className="card overflow-hidden p-0">
+          {sessions.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-center text-gray-400 dark:text-gray-500">No sessions found.</p>
+          ) : (
+            <div className="divide-y divide-gray-50 dark:divide-gray-800">
+              {sessions.map(session => {
+                const workout = session.workouts
+                const exCount = workout?.workout_exercises?.length || 0
+                return (
+                  <div key={session.id} className="flex items-center justify-between px-4 py-4 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 dark:text-white">{session.name}</p>
+                      {workout
+                        ? <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">{exCount} exercise{exCount !== 1 ? 's' : ''}</p>
+                        : <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 italic">No workout linked yet — click Import from training blocks</p>
+                      }
+                    </div>
+                    {workout && (
+                      <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                        <button onClick={() => navigate(`/coach/workouts/${workout.id}`)}
+                          className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium">Edit</button>
+                        <button onClick={() => duplicate(workout.id)}
+                          className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Duplicate</button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── LEVEL 2: Day variants for a block ─────────────────────────────────────
+  if (selectedBlock !== null) {
+    const dayVariants = Object.keys(grouped[selectedBlock] || {}).map(Number).sort((a, b) => b - a)
+    return (
+      <div className="space-y-6">
+        <div className="space-y-1">
+          <BackButton onClick={() => setSelectedBlock(null)} label="Workout Library" />
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Block {selectedBlock}</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{dayVariants.length} day variant{dayVariants.length !== 1 ? 's' : ''}</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {dayVariants.map(days => {
+            const { sessions } = grouped[selectedBlock][days]
+            const linkedCount = sessions.filter(s => s.workout_id).length
+            return (
+              <button key={days} onClick={() => setSelectedDays(days)}
+                className="card text-left hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all group">
+                <p className="text-2xl font-bold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
+                  {days} Day
+                </p>
+                <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                  {sessions.length} session{sessions.length !== 1 ? 's' : ''}
+                </p>
+                {linkedCount < sessions.length && (
+                  <p className="text-xs text-amber-500 dark:text-amber-400 mt-1">
+                    {sessions.length - linkedCount} not yet imported
+                  </p>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // ── LEVEL 1: All blocks ───────────────────────────────────────────────────
   return (
     <div className="space-y-8">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Workout Library</h1>
-          {hasContent && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{programs.length} programme{programs.length !== 1 ? 's' : ''}</p>}
+          {blocks.length > 0 && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{blocks.length} block{blocks.length !== 1 ? 's' : ''}</p>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={importFromBlocks} disabled={importing}
@@ -166,7 +254,7 @@ export default function WorkoutLibrary() {
         </div>
       </div>
 
-      {!hasContent && (
+      {blocks.length === 0 && unorganised.length === 0 && standaloneWorkouts.length === 0 && (
         <div className="card text-center py-16">
           <p className="text-gray-500 dark:text-gray-400 font-medium">No workouts yet</p>
           <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
@@ -175,52 +263,35 @@ export default function WorkoutLibrary() {
         </div>
       )}
 
-      {/* Blocks hierarchy */}
-      {blocks.map(block => (
-        <div key={block} className="space-y-3">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Block {block}</h2>
-          {Object.keys(grouped[block]).map(Number).sort((a, b) => b - a).map(days => {
-            const { sessions } = grouped[block][days]
+      {/* Block cards */}
+      {blocks.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {blocks.map(block => {
+            const dayVariants = Object.keys(grouped[block]).length
+            const totalSessions = Object.values(grouped[block]).reduce((sum, { sessions }) => sum + sessions.length, 0)
+            const linkedSessions = Object.values(grouped[block]).reduce((sum, { sessions }) => sum + sessions.filter(s => s.workout_id).length, 0)
             return (
-              <div key={days} className="card overflow-hidden p-0">
-                <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
-                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{days} Day</p>
-                </div>
-                <div className="divide-y divide-gray-50 dark:divide-gray-800">
-                  {sessions.map(session => {
-                    const workout = session.workouts
-                    const exCount = workout?.workout_exercises?.length || 0
-                    return (
-                      <div key={session.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm text-gray-900 dark:text-white">{session.name}</p>
-                          {workout
-                            ? <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{exCount} exercise{exCount !== 1 ? 's' : ''}</p>
-                            : <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 italic">No workout linked yet</p>
-                          }
-                        </div>
-                        {workout && (
-                          <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-                            <button onClick={() => navigate(`/coach/workouts/${workout.id}`)}
-                              className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium">Edit</button>
-                            <button onClick={() => duplicate(workout.id)}
-                              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Duplicate</button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+              <button key={block} onClick={() => setSelectedBlock(block)}
+                className="card text-left hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all group">
+                <p className="text-2xl font-bold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
+                  Block {block}
+                </p>
+                <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
+                  {dayVariants} day variant{dayVariants !== 1 ? 's' : ''}
+                </p>
+                <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
+                  {linkedSessions} / {totalSessions} sessions imported
+                </p>
+              </button>
             )
           })}
         </div>
-      ))}
+      )}
 
-      {/* Programmes that don't match the Block naming pattern */}
+      {/* Unrecognised programmes */}
       {unorganised.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Other Programmes</h2>
+          <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">Other Programmes</h2>
           {unorganised.map(prog => (
             <div key={prog.id} className="card overflow-hidden p-0">
               <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
@@ -234,10 +305,7 @@ export default function WorkoutLibrary() {
                     <div key={session.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm text-gray-900 dark:text-white">{session.name}</p>
-                        {workout
-                          ? <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{exCount} exercise{exCount !== 1 ? 's' : ''}</p>
-                          : <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 italic">No workout linked yet</p>
-                        }
+                        {workout && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{exCount} exercise{exCount !== 1 ? 's' : ''}</p>}
                       </div>
                       {workout && (
                         <div className="flex items-center gap-3 flex-shrink-0 ml-4">
@@ -256,10 +324,10 @@ export default function WorkoutLibrary() {
         </div>
       )}
 
-      {/* Workouts not linked to any programme session */}
+      {/* Standalone workouts */}
       {standaloneWorkouts.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Standalone Workouts</h2>
+          <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">Standalone Workouts</h2>
           <div className="card overflow-hidden p-0">
             <div className="divide-y divide-gray-50 dark:divide-gray-800">
               {standaloneWorkouts.map(workout => {
