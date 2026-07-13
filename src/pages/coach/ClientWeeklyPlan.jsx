@@ -19,6 +19,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const [loading, setLoading] = useState(true)
   const [populating, setPopulating] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   // Per-day add form state
   const [addingToDay, setAddingToDay] = useState(null)
@@ -37,7 +38,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
 
   async function load() {
     const [
-      { data: schedItems },
+      { data: schedItems, error: schedErr },
       { data: progs },
       { data: wkts },
       { data: hiits },
@@ -57,6 +58,11 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       supabase.from('hiit_circuits').select('id, name, circuit_type').eq('coach_id', coachId).eq('is_archived', false).order('name'),
       supabase.from('cardio_sessions').select('id, name, cardio_type, duration_minutes').eq('coach_id', coachId).eq('is_archived', false).order('name'),
     ])
+    if (schedErr?.message?.includes('does not exist') || schedErr?.code === '42P01') {
+      setError('migration_needed')
+    } else {
+      setError('')
+    }
     setItems(schedItems || [])
     setPrograms(progs || [])
     setWorkouts(wkts || [])
@@ -93,6 +99,8 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   async function populateFromProgram(prog) {
     if (!prog) return
     setPopulating(true)
+    setError('')
+
     await supabase.from('client_schedule_items')
       .delete().eq('client_id', clientId).in('item_type', ['workout', 'hiit'])
 
@@ -112,7 +120,22 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
         })
       }
     }
-    if (toInsert.length > 0) await supabase.from('client_schedule_items').insert(toInsert)
+
+    if (toInsert.length === 0) {
+      setError('no_sessions')
+      setPopulating(false)
+      return
+    }
+
+    const { error: insertErr } = await supabase.from('client_schedule_items').insert(toInsert)
+    if (insertErr) {
+      setError(insertErr.message?.includes('does not exist') || insertErr.code === '42P01'
+        ? 'migration_needed'
+        : `insert_failed:${insertErr.message}`)
+      setPopulating(false)
+      return
+    }
+
     setPopulating(false)
     setShowAltPopulate(false)
     await load()
@@ -142,6 +165,29 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
 
   return (
     <div className="space-y-8">
+
+      {error === 'migration_needed' && (
+        <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-4 py-3">
+          <p className="text-sm font-semibold text-red-700 dark:text-red-400">Database table missing</p>
+          <p className="text-sm text-red-600 dark:text-red-500 mt-1">
+            Run <code className="font-mono bg-red-100 dark:bg-red-900/40 px-1 rounded">supabase/client-schedule-migration.sql</code> in your Supabase SQL Editor, then refresh the page.
+          </p>
+        </div>
+      )}
+
+      {error === 'no_sessions' && (
+        <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 px-4 py-3">
+          <p className="text-sm text-amber-700 dark:text-amber-400">
+            No sessions found in this programme. Open the <strong>Workouts</strong> library and make sure the block has sessions created.
+          </p>
+        </div>
+      )}
+
+      {error && !['migration_needed', 'no_sessions'].includes(error) && (
+        <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 px-4 py-3">
+          <p className="text-sm text-red-600 dark:text-red-400">{error.replace('insert_failed:', '')}</p>
+        </div>
+      )}
 
       {/* ── Weekly Training Schedule ── */}
       <div>
