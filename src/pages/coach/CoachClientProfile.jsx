@@ -6,6 +6,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
+import ClientWeeklyPlan from './ClientWeeklyPlan'
 
 const TABS = ['Overview', 'Meal Plan', 'Training', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
 
@@ -1710,6 +1711,10 @@ function TrainingTab({ client, coachId }) {
           )}
         </div>
       )}
+
+      <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
+        <ClientWeeklyPlan clientId={client.id} coachId={coachId} />
+      </div>
     </div>
   )
 }
