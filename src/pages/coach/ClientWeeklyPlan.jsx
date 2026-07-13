@@ -440,9 +440,10 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                   <div className="px-4 pb-3 space-y-2">
                     {dayItems.map(item => {
                       const isHiit = item.item_type === 'hiit'
+                      const wktName = workouts.find(w => w.id === item.workout_id)?.name
                       const label = isHiit
                         ? (hiitCircuits.find(h => h.id === item.hiit_circuit_id)?.name || 'HIIT')
-                        : (workouts.find(w => w.id === item.workout_id)?.name || item.custom_label || 'Workout')
+                        : (stripDay(wktName) || wktName || item.custom_label || 'Workout')
                       const isDragging = dragItemId === item.id
                       return (
                         <div
