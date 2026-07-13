@@ -52,7 +52,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
         .order('order_index'),
       supabase
         .from('training_programs')
-        .select('id, name, training_sessions(id, name, workout_id, workouts(id, name))')
+        .select('id, name, training_sessions(id, name, workout_id)')
         .eq('coach_id', coachId)
         .order('name'),
       supabase.from('workouts').select('id, name').eq('coach_id', coachId).eq('is_archived', false).order('name'),
@@ -107,9 +107,11 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     await supabase.from('client_schedule_items')
       .delete().eq('client_id', clientId).in('item_type', ['workout', 'hiit'])
 
-    // Sessions are already loaded in prog.training_sessions (same query as WorkoutLibrary uses)
+    // Sessions loaded via nested join in main load() call
     const rawSessions = prog.training_sessions || []
+    console.log('[populate] program:', prog.name, 'sessions:', rawSessions)
     const daySessions = rawSessions.filter(s => DAYS.includes(s.name))
+    console.log('[populate] daySessions:', daySessions)
 
     const seenDays = new Set()
     const toInsert = []
@@ -119,13 +121,14 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       for (const s of daySessions) {
         if (!seenDays.has(s.name)) {
           seenDays.add(s.name)
+          const wkt = workouts.find(w => w.id === s.workout_id)
           toInsert.push({
             client_id: clientId,
             coach_id: coachId,
             day_of_week: s.name,
             item_type: 'workout',
             workout_id: s.workout_id || null,
-            custom_label: s.workouts?.name || s.name,
+            custom_label: wkt?.name || s.name,
             order_index: 0,
           })
         }
