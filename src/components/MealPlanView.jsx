@@ -61,8 +61,9 @@ export function hasAnyOverride(raw) {
 
 export function applyIngredientOverrides(ingredients, overridesForSlot) {
   const { qty, removed, added } = normalizeOverrides(overridesForSlot)
-  const visible = removed.length ? ingredients.filter(ing => !removed.includes(ing.id)) : ingredients
+  const visible = removed.length ? ingredients.filter(ing => ing.is_static || !removed.includes(ing.id)) : ingredients
   const withQty = visible.map(ing => {
+    if (ing.is_static) return ing
     const override = qty[ing.id]
     if (override == null) return ing
     const origQty = parseFloat(ing.quantity_g) || 0
@@ -219,7 +220,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
 
@@ -299,9 +300,10 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                   {ingredients.map((ing, i) => {
                     const libUnit = ing.ingredient_id && ingredientLib ? ingredientLib[ing.ingredient_id]?.serving_unit : null
                     const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libUnit && libUnit !== 'g') ? libUnit : 'g'
+                    const isStatic = ing.is_static && !ing._isAdded
                     return (
                       <div key={ing._tempId || ing.id || i} className="flex items-center gap-2">
-                        {onRemoveIngredient && (
+                        {onRemoveIngredient && !isStatic && (
                           <button
                             onClick={e => { e.stopPropagation(); onRemoveIngredient(slotKey, ing) }}
                             className="w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 transition-colors"
@@ -311,9 +313,16 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                             </svg>
                           </button>
                         )}
+                        {onRemoveIngredient && isStatic && (
+                          <span className="w-5 h-5 flex items-center justify-center flex-shrink-0 text-amber-400" title="Static ingredient — cannot be removed">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                              <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
+                            </svg>
+                          </span>
+                        )}
                         <span className="text-sm text-gray-800 dark:text-gray-200 flex-1">{ing.name}</span>
                         <div className="flex items-center gap-2 flex-shrink-0 tabular-nums">
-                          {onUpdateIngredient ? (
+                          {onUpdateIngredient && !isStatic ? (
                             <div className="flex items-center gap-1">
                               <input
                                 type="number"

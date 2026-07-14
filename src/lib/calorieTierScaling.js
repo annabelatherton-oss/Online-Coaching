@@ -76,6 +76,7 @@ function buildRow(ing, library) {
     ingredient_id: ing.ingredient_id || null, libIng, origQty,
     calPerG, protPerG, carbPerG, fatPerG,
     cal: origQty * calPerG, prot: origQty * protPerG, carb: origQty * carbPerG, fat: origQty * fatPerG,
+    is_static: ing.is_static || false,
   }
 }
 
@@ -97,6 +98,7 @@ function finalizeRow(row, qty) {
     name: row.name, quantity_g: f.quantity_g, unit: row.unit,
     calories: f.calories, protein_g: f.protein_g, carbs_g: f.carbs_g, fat_g: f.fat_g,
     scaling_type: row.scaling_type, ingredient_id: row.ingredient_id,
+    is_static: row.is_static || false,
   }
 }
 
@@ -170,8 +172,8 @@ const TIER_CONVERGENCE_KCAL = 5
 
 export function generateTierIngredients(baseIngredients, library, targets) {
   const rows = baseIngredients.map(ing => buildRow(ing, library))
-  const flexRows = rows.filter(r => r.scaling_type !== 'fixed')
-  const fixedRows = rows.filter(r => r.scaling_type === 'fixed')
+  const flexRows = rows.filter(r => r.scaling_type !== 'fixed' && !r.is_static)
+  const fixedRows = rows.filter(r => r.scaling_type === 'fixed' || r.is_static)
   const fixedTotals = {
     cal:  fixedRows.reduce((s, r) => s + r.cal,  0),
     prot: fixedRows.reduce((s, r) => s + r.prot, 0),
@@ -186,7 +188,7 @@ export function generateTierIngredients(baseIngredients, library, targets) {
     let factors = solveFactors(flexRows, fixedTotals, targetVec)
     factors = factors.map(f => Math.min(3, Math.max(0.1, f)))
     let flexIdx = 0
-    qtyByRow = rows.map(r => r.scaling_type === 'fixed' ? r.origQty : r.origQty * factors[flexIdx++])
+    qtyByRow = rows.map(r => (r.scaling_type === 'fixed' || r.is_static) ? r.origQty : r.origQty * factors[flexIdx++])
 
     let bestQty = qtyByRow
     let bestAbsDiff = Infinity
@@ -203,11 +205,11 @@ export function generateTierIngredients(baseIngredients, library, targets) {
       const diff = targetVec.cal - achievedCal // > 0 = under target, < 0 = over target
       if (Math.abs(diff) < bestAbsDiff) { bestAbsDiff = Math.abs(diff); bestQty = qtyByRow }
       if (Math.abs(diff) <= TIER_CONVERGENCE_KCAL) break
-      const flexAchievedCal = snapped.reduce((s, r, i) => s + (rows[i].scaling_type === 'fixed' ? 0 : r.calories), 0)
+      const flexAchievedCal = snapped.reduce((s, r, i) => s + ((rows[i].scaling_type === 'fixed' || rows[i].is_static) ? 0 : r.calories), 0)
       if (flexAchievedCal <= 0) break
       const desiredFlexCal = targetVec.cal - fixedTotals.cal
       const corr = Math.min(2, Math.max(0.3, desiredFlexCal / flexAchievedCal))
-      qtyByRow = qtyByRow.map((q, i) => rows[i].scaling_type === 'fixed' ? q : q * corr)
+      qtyByRow = qtyByRow.map((q, i) => (rows[i].scaling_type === 'fixed' || rows[i].is_static) ? q : q * corr)
     }
     qtyByRow = bestQty
   }

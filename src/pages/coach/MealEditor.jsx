@@ -297,7 +297,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
       ingredient_id: null, _library: null,
       name: '', quantity_g: '', unit: 'g',
       calories: '', protein_g: '', carbs_g: '', fat_g: '',
-      scaling_type: 'flexible', _alternatives: [],
+      scaling_type: 'flexible', is_static: false, _alternatives: [],
     }])
     setDirty(true)
   }
@@ -336,6 +336,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
         carbs_g: parseFloat(ing.carbs_g) || 0,
         fat_g: parseFloat(ing.fat_g) || 0,
         scaling_type: ing.scaling_type || 'flexible',
+        is_static: ing.is_static || false,
         alternative_ingredient_ids: (ing._alternatives || []).map(a => a.ingredient_id),
       }
       if (ing._isNew) {
@@ -361,6 +362,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
         carbs_g: parseFloat(ing.carbs_g) || 0,
         fat_g: parseFloat(ing.fat_g) || 0,
         scaling_type: ing.scaling_type || 'flexible',
+        is_static: ing.is_static || false,
         ingredient_id: ing.ingredient_id || null,
         alternatives: (ing._alternatives || []).map(a => ({ ingredient_id: a.ingredient_id })),
         alternative_ingredient_ids: (ing._alternatives || []).map(a => a.ingredient_id),
@@ -423,6 +425,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Protein (g)</th>
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Fat (g)</th>
                 <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Lock</th>
                 <th className="px-3 py-2.5" />
               </tr>
             </thead>
@@ -496,6 +499,24 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
                       {ing.scaling_type === 'fixed' ? 'Fixed' : ing.scaling_type === 'optional' ? 'Optional' : 'Flex'}
                     </button>
                   </td>
+                  <td className="px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => updateRow(idx, { is_static: !ing.is_static })}
+                      title={ing.is_static ? 'Static — click to unlock (allow editing)' : 'Unlocked — click to lock (prevent editing from all views)'}
+                      className={`p-1 rounded transition-colors ${ing.is_static ? 'text-amber-500 hover:text-amber-700' : 'text-gray-300 hover:text-gray-500'}`}
+                    >
+                      {ing.is_static ? (
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 018 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                    </button>
+                  </td>
                   <td className="px-3 py-2 text-right">
                     <button onClick={() => deleteRow(idx)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Remove">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -505,7 +526,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
                   </td>
                 </tr>
                 <tr className="bg-gray-50/50 dark:bg-gray-800/30">
-                    <td colSpan={8} className="px-4 pb-2 pt-0">
+                    <td colSpan={9} className="px-4 pb-2 pt-0">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-xs text-gray-400 mr-0.5">↔ swap:</span>
                         {(ing._alternatives || []).map((alt, ai) => (
@@ -561,7 +582,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
                 <td className="px-3 py-2.5 text-gray-800 dark:text-white text-sm">{totals.carbs_g}</td>
                 <td className="px-3 py-2.5 text-gray-800 dark:text-white text-sm">{totals.protein_g}</td>
                 <td className="px-3 py-2.5 text-gray-800 dark:text-white text-sm">{totals.fat_g}</td>
-                <td /><td />
+                <td /><td /><td />
               </tr>
             </tfoot>
           </table>

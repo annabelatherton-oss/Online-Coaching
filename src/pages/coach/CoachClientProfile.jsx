@@ -881,8 +881,9 @@ function hasAnyOverride(raw) {
 // Quantity overrides rescale that ingredient's macros proportionally.
 function applyIngredientOverrides(ingredients, overridesForSlot) {
   const { qty, removed, added } = normalizeOverrides(overridesForSlot)
-  const visible = removed.length ? ingredients.filter(ing => !removed.includes(ing.id)) : ingredients
+  const visible = removed.length ? ingredients.filter(ing => ing.is_static || !removed.includes(ing.id)) : ingredients
   const withQty = visible.map(ing => {
+    if (ing.is_static) return ing
     const override = qty[ing.id]
     if (override == null) return ing
     const origQty = parseFloat(ing.quantity_g) || 0
@@ -1111,34 +1112,49 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
           {ingredients.map((ing, i) => {
             const libIng = ing.ingredient_id ? libraryById[ing.ingredient_id] : null
             const overridden = !ing._isAdded && overrideQty[ing.id] != null
+            const isStatic = ing.is_static && !ing._isAdded
             return (
               <div key={ing.id || i} className="flex items-center gap-2 text-xs">
+                {isStatic && (
+                  <span className="text-amber-400 flex-shrink-0" title="Static ingredient — cannot be edited for this meal">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                      <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
+                    </svg>
+                  </span>
+                )}
                 <span className={`flex-1 truncate ${ing._isAdded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`}>{ing.name}</span>
                 <input
                   type="number"
                   min={libIng?.min_amount ?? 0}
                   step={libIng?.serving_step ?? 1}
+                  disabled={isStatic}
                   className={`w-16 text-right text-xs py-0.5 px-1 rounded border tabular-nums focus:outline-none focus:ring-1 focus:ring-brand-400 ${
-                    overridden
+                    isStatic
+                      ? 'border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                      : overridden
                       ? 'border-orange-300 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/10'
                       : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400'
                   }`}
                   value={ing.quantity_g}
-                  onChange={e => onQtyChange(ing.id, e.target.value)}
-                  onBlur={() => handleBlur(ing)}
+                  onChange={e => !isStatic && onQtyChange(ing.id, e.target.value)}
+                  onBlur={() => !isStatic && handleBlur(ing)}
                 />
                 <span className="tabular-nums w-16 text-right text-gray-500 dark:text-gray-400">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
                 <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.carbs_g) || 0)}g</span>
                 <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.protein_g) || 0)}g</span>
                 <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.fat_g) || 0)}g</span>
-                <button
-                  type="button"
-                  onClick={() => ing._isAdded ? onRemoveAdded(ing.id) : onRemove(ing.id)}
-                  className="w-4 text-center text-gray-300 hover:text-red-400 flex-shrink-0"
-                  title={ing._isAdded ? 'Remove this ingredient' : 'Remove for this client'}
-                >
-                  ×
-                </button>
+                {isStatic ? (
+                  <span className="w-4 flex-shrink-0" />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => ing._isAdded ? onRemoveAdded(ing.id) : onRemove(ing.id)}
+                    className="w-4 text-center text-gray-300 hover:text-red-400 flex-shrink-0"
+                    title={ing._isAdded ? 'Remove this ingredient' : 'Remove for this client'}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             )
           })}
@@ -1284,9 +1300,9 @@ function MealPlanTab({ client, coachId }) {
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', false).order('created_at', { ascending: false }),
       supabase.from('meals').select(`
         id, name, category,
-        meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id),
+        meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static),
         meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
-          meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id))
+          meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
       `).eq('coach_id', coachId).order('name'),
       supabase.from('ingredients').select('*').eq('coach_id', coachId),
     ])
