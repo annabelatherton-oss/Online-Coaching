@@ -1011,7 +1011,7 @@ function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides) {
 // and ingredients can be removed or added just for this client — none of it touches the shared
 // master meal/tier-version data. Quantity overrides rescale that ingredient's macros proportionally;
 // added ingredients are pulled from the coach's ingredient library so their macros are accurate.
-function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll }) {
+function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic }) {
   const [addingOpen, setAddingOpen] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addSelected, setAddSelected] = useState(null)
@@ -1115,8 +1115,26 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
             const isStatic = ing.is_static && !ing._isAdded
             return (
               <div key={ing.id || i} className="flex items-center gap-2 text-xs">
-                {isStatic && (
-                  <span className="text-amber-400 flex-shrink-0" title="Static ingredient — cannot be edited for this meal">
+                {onToggleStatic && !ing._isAdded && (
+                  <button
+                    type="button"
+                    onClick={() => onToggleStatic(ing)}
+                    title={isStatic ? 'Static — click to unlock for all clients' : 'Click to lock this ingredient for all clients'}
+                    className={`flex-shrink-0 transition-colors ${isStatic ? 'text-amber-400 hover:text-amber-600' : 'text-gray-200 dark:text-gray-700 hover:text-gray-400'}`}
+                  >
+                    {isStatic ? (
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                        <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 018 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                      </svg>
+                    )}
+                  </button>
+                )}
+                {(!onToggleStatic || ing._isAdded) && isStatic && (
+                  <span className="flex-shrink-0 text-amber-400" title="Static ingredient — cannot be edited for this meal">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                       <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
                     </svg>
@@ -1342,6 +1360,34 @@ function MealPlanTab({ client, coachId }) {
 
   const slotHandlers = makeOverrideHandlers(setIngredientOverrides, setSlotsDirty)
 
+  async function toggleIngredientStatic(mealId, ing) {
+    const meal = mealMap[mealId]
+    if (!meal || ing._isAdded) return
+    const newVal = !ing.is_static
+    const baseIng = meal.meal_ingredients.find(b =>
+      (ing.ingredient_id && b.ingredient_id === ing.ingredient_id) || b.name === ing.name
+    )
+    if (!baseIng) return
+    await supabase.from('meal_ingredients').update({ is_static: newVal }).eq('id', baseIng.id)
+    const tierVersionIds = (meal.meal_tier_versions || []).map(v => v.id)
+    if (tierVersionIds.length > 0) {
+      const q = supabase.from('meal_tier_ingredients').update({ is_static: newVal }).in('tier_version_id', tierVersionIds)
+      ing.ingredient_id ? await q.eq('ingredient_id', ing.ingredient_id) : await q.eq('name', ing.name)
+    }
+    setMealMap(prev => {
+      const m = { ...prev[mealId] }
+      m.meal_ingredients = m.meal_ingredients.map(b => b.id === baseIng.id ? { ...b, is_static: newVal } : b)
+      m.meal_tier_versions = (m.meal_tier_versions || []).map(v => ({
+        ...v,
+        meal_tier_ingredients: (v.meal_tier_ingredients || []).map(ti =>
+          (ing.ingredient_id ? ti.ingredient_id === ing.ingredient_id : ti.name === ing.name)
+            ? { ...ti, is_static: newVal }
+            : ti
+        ),
+      }))
+      return { ...prev, [mealId]: m }
+    })
+  }
 
   useEffect(() => { load() }, [client.id])
 
@@ -1679,6 +1725,7 @@ function MealPlanTab({ client, coachId }) {
                           onAdd={newIng => slotHandlers.add(slot.key, newIng)}
                           onRemoveAdded={addedId => slotHandlers.removeAdded(slot.key, addedId)}
                           onRevertAll={() => slotHandlers.revertAll(slot.key)}
+                          onToggleStatic={ing => toggleIngredientStatic(currentId, ing)}
                         />
                       </div>
                     )}
@@ -1786,6 +1833,7 @@ function MealPlanTab({ client, coachId }) {
                           onAdd={newIng => slotHandlers.add(templateKey, newIng)}
                           onRemoveAdded={addedId => slotHandlers.removeAdded(templateKey, addedId)}
                           onRevertAll={() => slotHandlers.revertAll(templateKey)}
+                          onToggleStatic={ing => toggleIngredientStatic(mealId, ing)}
                         />
                       ) : (
                         <p className="text-xs text-gray-400 dark:text-gray-500 py-2">No meal set in the plan template for this slot.</p>
