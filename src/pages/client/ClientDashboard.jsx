@@ -18,7 +18,9 @@ function calcPause(returnDateStr) {
   else if (todayDay <= 5) nextFri.setDate(today.getDate() + (5 - todayDay))
   else nextFri.setDate(today.getDate() + 6)
   const weeks = Math.round((firstFri - nextFri) / (7 * 24 * 60 * 60 * 1000))
-  return { firstCheckinDate: firstFri.toISOString().split('T')[0], weeksPaused: weeks }
+  const pad = n => String(n).padStart(2, '0')
+  const fISO = `${firstFri.getFullYear()}-${pad(firstFri.getMonth() + 1)}-${pad(firstFri.getDate())}`
+  return { firstCheckinDate: fISO, weeksPaused: weeks }
 }
 
 function fmtDate(iso) {

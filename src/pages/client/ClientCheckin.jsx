@@ -126,6 +126,101 @@ function PhotoSlot({ angle, url, uploading, onUpload }) {
   )
 }
 
+function RatingDisplay({ field, value }) {
+  return (
+    <div className="flex gap-2">
+      {[1, 2, 3, 4, 5].map(n => (
+        <div key={n} className={`flex-1 py-2 rounded-xl text-sm font-semibold text-center border ${
+          value === n
+            ? 'bg-brand-500 border-brand-500 text-white'
+            : 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-800 text-gray-300 dark:text-gray-700'
+        }`}>{n}</div>
+      ))}
+    </div>
+  )
+}
+
+function CheckinReadView({ checkin, collectMeasurements }) {
+  const photos = checkin.progress_photos || {}
+  const hasPhotos = Object.values(photos).some(Boolean)
+  return (
+    <div className="space-y-5">
+      <div className="card space-y-4">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Body metrics</h2>
+        <div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Weight</p>
+          <p className="text-xl font-bold text-gray-900 dark:text-white">{checkin.weight_kg != null ? `${checkin.weight_kg} kg` : '—'}</p>
+        </div>
+        {collectMeasurements && (checkin.waist_cm != null || checkin.hips_cm != null) && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Waist</p>
+              <p className="font-semibold text-gray-900 dark:text-white">{checkin.waist_cm != null ? `${checkin.waist_cm} cm` : '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Hips</p>
+              <p className="font-semibold text-gray-900 dark:text-white">{checkin.hips_cm != null ? `${checkin.hips_cm} cm` : '—'}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {hasPhotos && (
+        <div className="card space-y-3">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Progress photos</h2>
+          <div className="grid grid-cols-4 gap-2">
+            {PHOTO_ANGLES.map(angle => photos[angle.key] ? (
+              <div key={angle.key} className="flex flex-col gap-1">
+                <img src={photos[angle.key]} alt={angle.label} className="w-full aspect-[3/4] object-cover rounded-xl" />
+                <p className="text-xs text-center text-gray-400">{angle.label}</p>
+              </div>
+            ) : null)}
+          </div>
+        </div>
+      )}
+
+      <div className="card space-y-4">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">How was this week?</h2>
+        {['energy_level', 'sleep_quality', 'adherence'].map(field => (
+          <div key={field}>
+            <label className="label capitalize">{field.replace('_', ' ')}</label>
+            <RatingDisplay field={field} value={checkin[field]} />
+            {checkin[field] && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">{RATING_LABELS[field][checkin[field]]}</p>}
+          </div>
+        ))}
+      </div>
+
+      {(checkin.lift_results || []).filter(r => r?.name).length > 0 && (
+        <div className="card space-y-3">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Lifts</h2>
+          {checkin.lift_results.filter(r => r?.name).map((r, i) => (
+            <div key={i} className="flex items-center justify-between">
+              <p className="text-sm text-gray-700 dark:text-gray-300">{r.name}</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                {r.reps} reps × {r.weight_kg} kg
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {checkin.notes && (
+        <div className="card space-y-2">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Notes</h2>
+          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{checkin.notes}</p>
+        </div>
+      )}
+
+      {checkin.coach_response && (
+        <div className="card space-y-2 border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/10">
+          <p className="text-sm font-semibold text-brand-700 dark:text-brand-400">Message from your coach</p>
+          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{checkin.coach_response}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ClientCheckin() {
   const { session } = useAuth()
   const [loading, setLoading] = useState(true)
@@ -136,6 +231,8 @@ export default function ClientCheckin() {
   const [topLifts, setTopLifts] = useState([])
   const [allCheckins, setAllCheckins] = useState([])
   const [existing, setExisting] = useState(null)
+  const [historyList, setHistoryList] = useState([])
+  const [viewingId, setViewingId] = useState(null)
   const [form, setForm] = useState({
     weight_kg: '',
     waist_cm: '',
@@ -197,17 +294,17 @@ export default function ClientCheckin() {
       }
       setWeekNumber(week)
 
-      // All check-ins with lift data, used for best-ever performance calculation
-      const [{ data: history }, { count: checkinCount }, { data: checkin }] = await Promise.all([
-        supabase.from('client_checkins').select('week_number, lift_results').eq('client_id', clientRow.id).not('lift_results', 'is', null),
-        supabase.from('client_checkins').select('id', { count: 'exact', head: true }).eq('client_id', clientRow.id),
-        supabase.from('client_checkins').select('*').eq('client_id', clientRow.id).eq('week_number', week).maybeSingle(),
-      ])
-      setAllCheckins(history || [])
+      // Load full check-in history (oldest first) for week numbering + sidebar
+      const { data: allHistory } = await supabase.from('client_checkins')
+        .select('*').eq('client_id', clientRow.id).order('created_at', { ascending: true })
 
-      // Personal week = position of this check-in in client's history (1-indexed)
-      const count = checkinCount ?? 0
-      setPersonalWeek(checkin ? count : count + 1)
+      const histWithWeeks = (allHistory || []).map((c, i) => ({ ...c, personal_week: i + 1 }))
+      setAllCheckins(histWithWeeks)
+
+      // Sidebar: past check-ins newest first
+      const checkin = histWithWeeks.find(c => c.week_number === week) || null
+      setHistoryList([...histWithWeeks].reverse())
+      setPersonalWeek(checkin ? checkin.personal_week : histWithWeeks.length + 1)
 
       if (checkin) {
         setExisting(checkin)
@@ -299,32 +396,90 @@ export default function ClientCheckin() {
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
+  const viewingCheckin = viewingId ? historyList.find(c => c.id === viewingId) : null
+
+  function fmtCheckinDate(iso) {
+    return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  function Sidebar() {
+    return (
+      <aside className="hidden sm:flex flex-col w-48 shrink-0 gap-1">
+        <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide px-3 mb-2">Check-ins</p>
+        <button
+          onClick={() => setViewingId(null)}
+          className={`text-left px-3 py-2.5 rounded-xl transition-colors ${
+            viewingId === null
+              ? 'bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300'
+              : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
+          }`}
+        >
+          <p className="text-sm font-semibold">Week {personalWeek}</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">This week</p>
+        </button>
+        {historyList.filter(c => c.week_number !== weekNumber).map(c => (
+          <button
+            key={c.id}
+            onClick={() => setViewingId(c.id)}
+            className={`text-left px-3 py-2.5 rounded-xl transition-colors ${
+              viewingId === c.id
+                ? 'bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300'
+                : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
+            }`}
+          >
+            <p className="text-sm font-semibold">Week {c.personal_week}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{fmtCheckinDate(c.created_at)}</p>
+          </button>
+        ))}
+      </aside>
+    )
+  }
+
   // Gate: no check-in submitted yet AND window is closed (Wednesday)
   if (!isCheckinWindowOpen() && !existing) {
     return (
-      <div className="space-y-6 max-w-lg">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
-          {personalWeek != null && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Week {personalWeek}</p>}
-        </div>
-        <div className="card text-center py-10 space-y-3">
-          <div className="w-12 h-12 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center mx-auto">
-            <svg className="w-6 h-6 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
+      <div className="flex gap-6">
+        <Sidebar />
+        <div className="flex-1 min-w-0 space-y-6 max-w-lg">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
+            {personalWeek != null && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Week {personalWeek}</p>}
           </div>
-          <p className="font-semibold text-gray-900 dark:text-white">Check-in opens Thursday</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Your next check-in will be available on {nextThursdayLabel()}.<br />
-            You'll get a reminder on Friday morning.
-          </p>
+          {viewingCheckin ? (
+            <CheckinReadView checkin={viewingCheckin} collectMeasurements={collectMeasurements} />
+          ) : (
+            <div className="card text-center py-10 space-y-3">
+              <div className="w-12 h-12 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center mx-auto">
+                <svg className="w-6 h-6 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <p className="font-semibold text-gray-900 dark:text-white">Check-in opens Thursday</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Your next check-in will be available on {nextThursdayLabel()}.<br />
+                You'll get a reminder on Friday morning.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6 max-w-lg">
+    <div className="flex gap-6">
+      <Sidebar />
+      <div className="flex-1 min-w-0 space-y-6 max-w-lg">
+      {viewingCheckin ? (
+        <>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Week {viewingCheckin.personal_week} · {fmtCheckinDate(viewingCheckin.created_at)}</p>
+          </div>
+          <CheckinReadView checkin={viewingCheckin} collectMeasurements={collectMeasurements} />
+        </>
+      ) : (
+      <>
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -481,6 +636,9 @@ export default function ClientCheckin() {
           </div>
         </div>
       )}
+      </>
+      )}
+      </div>
     </div>
   )
 }
