@@ -71,6 +71,9 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   // Cardio free-text add state
   const [addCardioText, setAddCardioText] = useState('')
 
+  // Rest day sub-type
+  const [addRestSubtype, setAddRestSubtype] = useState('rest')
+
   // Workout exercise drill-down (editable)
   const [expandedItemId, setExpandedItemId] = useState(null)
   const [exerciseDrafts, setExerciseDrafts] = useState({})   // workoutId → Exercise[]
@@ -167,6 +170,22 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     }
     if (cardioSessionId) record.cardio_session_id = cardioSessionId
     if (customLabel) record.custom_label = customLabel
+    await supabase.from('client_schedule_items').insert(record)
+    setSaving(false)
+    await load()
+  }
+
+  async function addRestItem(day, subtype) {
+    setSaving(true)
+    const existing = items.filter(i => i.day_of_week === day && i.item_type === 'rest')
+    const record = {
+      client_id: clientId,
+      coach_id: coachId,
+      day_of_week: day,
+      item_type: 'rest',
+      custom_label: subtype === 'active_rest' ? 'Active Rest Day' : 'Rest Day',
+      order_index: existing.length,
+    }
     await supabase.from('client_schedule_items').insert(record)
     setSaving(false)
     await load()
@@ -470,19 +489,13 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                 className={`rounded-2xl border transition-colors ${
                   isDragTarget
                     ? 'border-brand-400 dark:border-brand-500 bg-brand-50 dark:bg-brand-900/20 ring-2 ring-brand-200 dark:ring-brand-800'
-                    : isEmpty
-                      ? 'border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40'
+                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40'
                 }`}
               >
                 {/* Day header */}
                 <div className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-2.5">
-                    <span className={`text-sm font-bold w-24 ${
-                      isEmpty && !isDragTarget
-                        ? 'text-gray-400 dark:text-gray-600'
-                        : 'text-gray-800 dark:text-gray-100'
-                    }`}>
+                    <span className="text-sm font-bold w-24 text-gray-800 dark:text-gray-100">
                       {day}
                     </span>
                     {isEmpty && !isAdding && !isDragTarget && (
@@ -508,6 +521,11 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                             Cardio
                           </span>
                         )}
+                        {dayItems.filter(i => i.item_type === 'rest').map(i => (
+                          <span key={i.id} className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/60 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                            {i.custom_label || 'Rest'}
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -520,6 +538,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                         setAddDayVariant('')
                         setAddItemId('')
                         setAddCardioText('')
+                        setAddRestSubtype('rest')
                       }}
                       className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium transition-colors"
                     >
@@ -534,13 +553,16 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                     {dayItems.map(item => {
                       const isHiit = item.item_type === 'hiit'
                       const isCardio = item.item_type === 'cardio'
+                      const isRest = item.item_type === 'rest'
                       const wktName = workouts.find(w => w.id === item.workout_id)?.name
                       const cs = cardioSessions.find(c => c.id === item.cardio_session_id)
                       const label = isHiit
                         ? (hiitCircuits.find(h => h.id === item.hiit_circuit_id)?.name || 'HIIT')
                         : isCardio
                           ? (item.custom_label || cs?.name || 'Cardio')
-                          : (stripDay(wktName) || wktName || item.custom_label || 'Workout')
+                          : isRest
+                            ? (item.custom_label || 'Rest Day')
+                            : (stripDay(wktName) || wktName || item.custom_label || 'Workout')
                       const isDragging = dragItemId === item.id
                       const isExpanded = expandedItemId === item.id
                       const exercises = item.workout_id ? exerciseDrafts[item.workout_id] : null
@@ -548,26 +570,28 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                       return (
                         <div key={item.id}>
                           <div
-                            draggable={!isCardio}
+                            draggable={!isCardio && !isRest}
                             onDragStart={e => {
-                              if (isCardio) return
+                              if (isCardio || isRest) return
                               setDragItemId(item.id)
                               e.dataTransfer.effectAllowed = 'move'
                             }}
                             onDragEnd={() => { setDragItemId(null); setDragOverDay(null) }}
                             className={`flex items-center justify-between rounded-xl px-3 py-2.5 transition-opacity ${
                               isDragging ? 'opacity-40' : ''
-                            } ${!isCardio ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                            } ${!isCardio && !isRest ? 'cursor-grab active:cursor-grabbing' : ''} ${
                               isHiit
                                 ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800/40'
                                 : isCardio
                                   ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40'
-                                  : 'bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40'
+                                  : isRest
+                                    ? 'bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700'
+                                    : 'bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40'
                             }`}
                           >
                             <div className="flex items-center gap-2.5 flex-1 min-w-0">
                               {/* Drag handle (workouts/HIIT only) */}
-                              {!isCardio && (
+                              {!isCardio && !isRest && (
                                 <svg className={`w-3.5 h-3.5 flex-shrink-0 ${isHiit ? 'text-orange-300' : 'text-brand-300'}`} fill="currentColor" viewBox="0 0 20 20">
                                   <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z"/>
                                 </svg>
@@ -578,8 +602,14 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                                 </svg>
                               )}
+                              {/* Rest icon */}
+                              {isRest && (
+                                <svg className="w-3.5 h-3.5 flex-shrink-0 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                                </svg>
+                              )}
                               {/* Clickable name for workouts */}
-                              {!isCardio && !isHiit ? (
+                              {!isCardio && !isHiit && !isRest ? (
                                 <button
                                   className="text-left flex-1 min-w-0"
                                   onClick={() => toggleExpand(item)}
@@ -591,6 +621,12 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                     Workout {isExpanded ? '▲' : '▼'}
                                   </p>
                                 </button>
+                              ) : isRest ? (
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold leading-tight truncate text-gray-600 dark:text-gray-300">
+                                    {label}
+                                  </p>
+                                </div>
                               ) : (
                                 <div className="flex-1 min-w-0">
                                   <p className={`text-sm font-semibold leading-tight truncate ${
@@ -616,7 +652,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                           </div>
 
                           {/* Exercise detail panel — editable */}
-                          {isExpanded && !isCardio && !isHiit && (
+                          {isExpanded && !isCardio && !isHiit && !isRest && (
                             <div className="mt-1 ml-4 rounded-xl border border-brand-100 dark:border-brand-800/30 bg-brand-50/50 dark:bg-brand-900/10 px-3 py-3">
                               {exercises === undefined ? (
                                 <p className="text-xs text-gray-400">Loading…</p>
@@ -702,22 +738,41 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                   <div className="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-800 pt-3">
                     {/* Type toggle */}
                     <div className="flex gap-2">
-                      {['workout', 'hiit', 'cardio'].map(type => (
+                      {['workout', 'hiit', 'cardio', 'rest'].map(type => (
                         <button
                           key={type}
-                          onClick={() => { setAddType(type); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioText('') }}
+                          onClick={() => { setAddType(type); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioText(''); setAddRestSubtype('rest') }}
                           className={`flex-1 text-sm py-1.5 rounded-lg font-medium capitalize transition-colors ${
                             addType === type
                               ? type === 'workout' ? 'bg-brand-500 text-white'
                                 : type === 'hiit' ? 'bg-orange-500 text-white'
-                                : 'bg-emerald-500 text-white'
+                                : type === 'cardio' ? 'bg-emerald-500 text-white'
+                                : 'bg-gray-400 dark:bg-gray-500 text-white'
                               : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
                           }`}
                         >
-                          {type === 'hiit' ? 'HIIT' : type.charAt(0).toUpperCase() + type.slice(1)}
+                          {type === 'hiit' ? 'HIIT' : type === 'rest' ? 'Rest' : type.charAt(0).toUpperCase() + type.slice(1)}
                         </button>
                       ))}
                     </div>
+
+                    {addType === 'rest' && (
+                      <div className="flex gap-2">
+                        {['rest', 'active_rest'].map(sub => (
+                          <button
+                            key={sub}
+                            onClick={() => setAddRestSubtype(sub)}
+                            className={`flex-1 text-sm py-2 rounded-lg font-medium transition-colors border ${
+                              addRestSubtype === sub
+                                ? 'border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'
+                            }`}
+                          >
+                            {sub === 'active_rest' ? 'Active Rest Day' : 'Rest Day'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
 
                     {addType === 'workout' && (
                       <div className="space-y-2">
@@ -793,7 +848,9 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                     <div className="flex gap-2">
                       <button
                         onClick={async () => {
-                          if (addType === 'cardio') {
+                          if (addType === 'rest') {
+                            await addRestItem(day, addRestSubtype)
+                          } else if (addType === 'cardio') {
                             if (!addCardioText && !addItemId) return
                             await addCardioItem(day, addCardioText || null, addItemId || null)
                           } else {
@@ -805,14 +862,15 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                           setAddDayVariant('')
                           setAddItemId('')
                           setAddCardioText('')
+                          setAddRestSubtype('rest')
                         }}
-                        disabled={(addType === 'cardio' ? (!addCardioText && !addItemId) : !addItemId) || saving}
+                        disabled={addType !== 'rest' && (addType === 'cardio' ? (!addCardioText && !addItemId) : !addItemId) || saving}
                         className="btn-primary text-sm"
                       >
                         Add to {day}
                       </button>
                       <button
-                        onClick={() => { setAddingToDay(null); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioText('') }}
+                        onClick={() => { setAddingToDay(null); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioText(''); setAddRestSubtype('rest') }}
                         className="btn-secondary text-sm"
                       >
                         Cancel
