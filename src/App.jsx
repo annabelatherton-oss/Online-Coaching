@@ -32,6 +32,7 @@ import CardioLibrary from './pages/coach/CardioLibrary'
 import HiitLibrary from './pages/coach/HiitLibrary'
 import ClientTraining from './pages/client/ClientTraining'
 import ClientMessages from './pages/client/ClientMessages'
+import ClientTodoList from './pages/client/ClientTodoList'
 
 export default function App() {
   return (
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="progress" element={<ClientProgress />} />
             <Route path="training" element={<ClientTraining />} />
             <Route path="messages" element={<ClientMessages />} />
+            <Route path="todos" element={<ClientTodoList />} />
           </Route>
 
           {/* Default redirect */}
