@@ -39,6 +39,7 @@ export default function ClientsList() {
   const [duplicateData, setDuplicateData] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
+  const [pauseClientIds, setPauseClientIds] = useState(new Set())
 
   async function loadClients() {
     const { data, error } = await supabase
@@ -53,7 +54,17 @@ export default function ClientsList() {
       .order('created_at', { ascending: false })
 
     if (error) console.error(error)
-    else setClients(data || [])
+    else {
+      setClients(data || [])
+      if (data && data.length > 0) {
+        const { data: pauses } = await supabase
+          .from('plan_pauses')
+          .select('client_id')
+          .in('client_id', data.map(c => c.id))
+          .eq('status', 'pending')
+        setPauseClientIds(new Set((pauses || []).map(p => p.client_id)))
+      }
+    }
     setLoading(false)
   }
 
@@ -228,7 +239,12 @@ export default function ClientsList() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <StatusBadge client={client} />
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <StatusBadge client={client} />
+                        {pauseClientIds.has(client.id) && (
+                          <span className="badge bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">🌴 Pause pending</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
                       {client.access_weeks} week{client.access_weeks !== 1 ? 's' : ''}
@@ -304,7 +320,12 @@ export default function ClientsList() {
                       <p className="text-xs text-gray-400">{client.profiles?.email}</p>
                     </div>
                   </div>
-                  <StatusBadge client={client} />
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <StatusBadge client={client} />
+                    {pauseClientIds.has(client.id) && (
+                      <span className="badge bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">🌴 Pause pending</span>
+                    )}
+                  </div>
                 </div>
                 {(client.tags || []).length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">

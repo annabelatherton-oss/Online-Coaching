@@ -1299,15 +1299,34 @@ export default function CoachCheckins() {
   const [checkins, setCheckins] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedClientId, setSelectedClientId] = useState(null)
+  const [pendingPauses, setPendingPauses] = useState([])
 
   async function load() {
     const [{ data: clientData }, { data: checkinData }] = await Promise.all([
       supabase.from('clients').select('id, collect_measurements, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id),
       supabase.from('client_checkins').select('*').eq('coach_id', profile.id).order('week_number', { ascending: false }),
     ])
-    setClients((clientData || []).map(c => ({ ...c, full_name: c.profiles?.full_name })))
+    const mapped = (clientData || []).map(c => ({ ...c, full_name: c.profiles?.full_name }))
+    setClients(mapped)
     setCheckins(checkinData || [])
+
+    if (mapped.length > 0) {
+      const clientMap = {}
+      mapped.forEach(c => { clientMap[c.id] = c.full_name || 'Unknown' })
+      const { data: pauseData } = await supabase
+        .from('plan_pauses')
+        .select('id, client_id, return_date, first_checkin_date, weeks_paused')
+        .in('client_id', mapped.map(c => c.id))
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+      setPendingPauses((pauseData || []).map(p => ({ ...p, client_name: clientMap[p.client_id] })))
+    }
     setLoading(false)
+  }
+
+  async function actOnPause(id, status) {
+    await supabase.from('plan_pauses').update({ status }).eq('id', id)
+    setPendingPauses(prev => prev.filter(p => p.id !== id))
   }
 
   useEffect(() => { load() }, [])
@@ -1370,6 +1389,11 @@ export default function CoachCheckins() {
             {latest ? `Last check-in: ${fmtDate(latest.updated_at || latest.submitted_at)}` : 'No check-ins yet'}
           </p>
         </div>
+        {pendingPauses.some(p => p.client_id === client.id) && (
+          <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-full px-2.5 py-1 font-medium flex-shrink-0">
+            🌴 Pause
+          </span>
+        )}
         {status === 'needs-response' && (
           <span className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 rounded-full px-2.5 py-1 font-medium flex-shrink-0">
             Respond
@@ -1392,10 +1416,39 @@ export default function CoachCheckins() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Check-ins</h1>
         <div className="flex gap-4 mt-1.5 flex-wrap">
+          {pendingPauses.length > 0 && <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">{pendingPauses.length} pause request{pendingPauses.length !== 1 ? 's' : ''}</span>}
           {needsResponse.length > 0 && <span className="text-sm text-orange-600 dark:text-orange-400 font-medium">{needsResponse.length} to respond to</span>}
           {missing.length > 0 && <span className="text-sm text-red-500 dark:text-red-400 font-medium">{missing.length} overdue</span>}
         </div>
       </div>
+
+      {pendingPauses.length > 0 && (
+        <div className="card space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🌴</span>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white">Pause Requests</h2>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {pendingPauses.map(p => (
+              <div key={p.id} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-900 dark:text-white">{p.client_name}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                    Returning {fmtDate(p.return_date)} ·{' '}
+                    {p.weeks_paused > 0
+                      ? `${p.weeks_paused} week${p.weeks_paused !== 1 ? 's' : ''} · first check-in ${fmtDate(p.first_checkin_date)}`
+                      : 'Short break'}
+                  </p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => actOnPause(p.id, 'approved')} className="btn-primary py-1.5 px-3 text-xs">Approve</button>
+                  <button onClick={() => actOnPause(p.id, 'rejected')} className="btn-secondary py-1.5 px-3 text-xs">Decline</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {clients.length === 0 && (
         <div className="card text-center py-16">

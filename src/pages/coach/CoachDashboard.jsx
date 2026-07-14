@@ -21,11 +21,16 @@ function StatCard({ title, value, subtitle, icon, color, to }) {
   return content
 }
 
+function fmtDate(iso) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 export default function CoachDashboard() {
   const { profile } = useAuth()
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [recentClients, setRecentClients] = useState([])
+  const [pendingPauses, setPendingPauses] = useState([])
 
   useEffect(() => {
     async function load() {
@@ -55,6 +60,20 @@ export default function CoachDashboard() {
           pendingCheckins = count ?? 0
         }
 
+        const clientMap = {}
+        clients.forEach(c => { clientMap[c.id] = c.profiles?.full_name || 'Unknown' })
+        let pauses = []
+        if (clientIds.length > 0) {
+          const { data: pauseData } = await supabase
+            .from('plan_pauses')
+            .select('id, client_id, return_date, first_checkin_date, weeks_paused')
+            .in('client_id', clientIds)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false })
+          pauses = (pauseData || []).map(p => ({ ...p, client_name: clientMap[p.client_id] }))
+        }
+        setPendingPauses(pauses)
+
         setStats({
           total: clients.length,
           active: active.length,
@@ -68,6 +87,11 @@ export default function CoachDashboard() {
     }
     load()
   }, [profile.id])
+
+  async function actOnPause(id, status) {
+    await supabase.from('plan_pauses').update({ status }).eq('id', id)
+    setPendingPauses(prev => prev.filter(p => p.id !== id))
+  }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
@@ -137,6 +161,36 @@ export default function CoachDashboard() {
           }
         />
       </div>
+
+      {/* Pause requests */}
+      {pendingPauses.length > 0 && (
+        <div className="card space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🌴</span>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white">Pause Requests</h2>
+            <span className="badge bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">{pendingPauses.length}</span>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {pendingPauses.map(p => (
+              <div key={p.id} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-900 dark:text-white">{p.client_name}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                    Returning {fmtDate(p.return_date)} ·{' '}
+                    {p.weeks_paused > 0
+                      ? `${p.weeks_paused} week${p.weeks_paused !== 1 ? 's' : ''} paused · first check-in ${fmtDate(p.first_checkin_date)}`
+                      : 'Short break'}
+                  </p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => actOnPause(p.id, 'approved')} className="btn-primary py-1.5 px-3 text-xs">Approve</button>
+                  <button onClick={() => actOnPause(p.id, 'rejected')} className="btn-secondary py-1.5 px-3 text-xs">Decline</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent clients */}
       <div className="card">
