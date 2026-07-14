@@ -322,16 +322,21 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                         )}
                         <span className="text-sm text-gray-800 dark:text-gray-200 flex-1">{ing.name}</span>
                         <div className="flex items-center gap-2 flex-shrink-0 tabular-nums">
-                          {onUpdateIngredient && !isStatic ? (
+                          {onUpdateIngredient ? (
                             <div className="flex items-center gap-1">
                               <input
                                 type="number"
                                 min="0"
                                 step="1"
+                                disabled={isStatic}
                                 value={Math.round((parseFloat(ing.quantity_g) || 0) * 10) / 10}
-                                onChange={e => onUpdateIngredient(slotKey, ing._tempId || ing.id, parseFloat(e.target.value) || 0)}
+                                onChange={e => !isStatic && onUpdateIngredient(slotKey, ing._tempId || ing.id, parseFloat(e.target.value) || 0)}
                                 onClick={e => e.stopPropagation()}
-                                className="w-16 text-sm text-right border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-0.5 bg-white dark:bg-gray-800 focus:outline-none focus:border-brand-400 tabular-nums"
+                                className={`w-16 text-sm text-right border rounded-lg px-2 py-0.5 focus:outline-none tabular-nums ${
+                                  isStatic
+                                    ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 cursor-not-allowed'
+                                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-brand-400'
+                                }`}
                               />
                               <span className="text-xs text-gray-400 dark:text-gray-500 w-6">{unit}</span>
                             </div>

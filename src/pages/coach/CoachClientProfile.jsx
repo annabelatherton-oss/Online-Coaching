@@ -1011,11 +1011,12 @@ function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides) {
 // and ingredients can be removed or added just for this client — none of it touches the shared
 // master meal/tier-version data. Quantity overrides rescale that ingredient's macros proportionally;
 // added ingredients are pulled from the coach's ingredient library so their macros are accurate.
-function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic }) {
+function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange }) {
   const [addingOpen, setAddingOpen] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addSelected, setAddSelected] = useState(null)
   const [addQty, setAddQty] = useState('')
+  const [staticDrafts, setStaticDrafts] = useState({})
 
   const meal = mealMap[mealId]
   if (!meal) return null
@@ -1145,17 +1146,27 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
                   type="number"
                   min={libIng?.min_amount ?? 0}
                   step={libIng?.serving_step ?? 1}
-                  disabled={isStatic}
                   className={`w-16 text-right text-xs py-0.5 px-1 rounded border tabular-nums focus:outline-none focus:ring-1 focus:ring-brand-400 ${
                     isStatic
-                      ? 'border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                      ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400'
                       : overridden
                       ? 'border-orange-300 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/10'
                       : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400'
                   }`}
-                  value={ing.quantity_g}
-                  onChange={e => !isStatic && onQtyChange(ing.id, e.target.value)}
-                  onBlur={() => !isStatic && handleBlur(ing)}
+                  value={isStatic ? (staticDrafts[ing.id] ?? ing.quantity_g) : ing.quantity_g}
+                  onChange={e => {
+                    if (isStatic) setStaticDrafts(d => ({ ...d, [ing.id]: e.target.value }))
+                    else onQtyChange(ing.id, e.target.value)
+                  }}
+                  onBlur={() => {
+                    if (isStatic) {
+                      const draft = staticDrafts[ing.id]
+                      if (draft != null && draft !== String(ing.quantity_g)) onStaticQtyChange?.(ing, parseFloat(draft) || 0)
+                      setStaticDrafts(d => { const n = { ...d }; delete n[ing.id]; return n })
+                    } else {
+                      handleBlur(ing)
+                    }
+                  }}
                 />
                 <span className="tabular-nums w-16 text-right text-gray-500 dark:text-gray-400">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
                 <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.carbs_g) || 0)}g</span>
@@ -1359,6 +1370,44 @@ function MealPlanTab({ client, coachId }) {
   const libraryById = Object.fromEntries(library.map(l => [l.id, l]))
 
   const slotHandlers = makeOverrideHandlers(setIngredientOverrides, setSlotsDirty)
+
+  async function updateStaticIngredientQty(mealId, ing, newQty) {
+    const meal = mealMap[mealId]
+    if (!meal) return
+    const baseIng = meal.meal_ingredients.find(b =>
+      (ing.ingredient_id && b.ingredient_id === ing.ingredient_id) || b.name === ing.name
+    )
+    if (!baseIng) return
+    const libIng = ing.ingredient_id ? libraryById[ing.ingredient_id] : null
+    const factor = libIng && libIng.serving_size > 0 ? newQty / libIng.serving_size : newQty > 0 ? newQty / (parseFloat(baseIng.quantity_g) || 1) : 0
+    const macros = libIng ? {
+      calories:  Math.round(factor * libIng.calories_per_serving * 10) / 10,
+      protein_g: Math.round(factor * libIng.protein_per_serving  * 10) / 10,
+      carbs_g:   Math.round(factor * libIng.carbs_per_serving    * 10) / 10,
+      fat_g:     Math.round(factor * libIng.fat_per_serving      * 10) / 10,
+    } : {}
+    await supabase.from('meal_ingredients').update({ quantity_g: newQty, ...macros }).eq('id', baseIng.id)
+    const tierVersionIds = (meal.meal_tier_versions || []).map(v => v.id)
+    if (tierVersionIds.length > 0) {
+      const q = supabase.from('meal_tier_ingredients').update({ quantity_g: newQty, ...macros }).in('tier_version_id', tierVersionIds)
+      ing.ingredient_id ? await q.eq('ingredient_id', ing.ingredient_id) : await q.eq('name', ing.name)
+    }
+    setMealMap(prev => {
+      const m = { ...prev[mealId] }
+      m.meal_ingredients = m.meal_ingredients.map(b =>
+        b.id === baseIng.id ? { ...b, quantity_g: newQty, ...macros } : b
+      )
+      m.meal_tier_versions = (m.meal_tier_versions || []).map(v => ({
+        ...v,
+        meal_tier_ingredients: (v.meal_tier_ingredients || []).map(ti =>
+          (ing.ingredient_id ? ti.ingredient_id === ing.ingredient_id : ti.name === ing.name)
+            ? { ...ti, quantity_g: newQty, ...macros }
+            : ti
+        ),
+      }))
+      return { ...prev, [mealId]: m }
+    })
+  }
 
   async function toggleIngredientStatic(mealId, ing) {
     const meal = mealMap[mealId]
@@ -1726,6 +1775,7 @@ function MealPlanTab({ client, coachId }) {
                           onRemoveAdded={addedId => slotHandlers.removeAdded(slot.key, addedId)}
                           onRevertAll={() => slotHandlers.revertAll(slot.key)}
                           onToggleStatic={ing => toggleIngredientStatic(currentId, ing)}
+                          onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(currentId, ing, qty)}
                         />
                       </div>
                     )}
@@ -1834,6 +1884,7 @@ function MealPlanTab({ client, coachId }) {
                           onRemoveAdded={addedId => slotHandlers.removeAdded(templateKey, addedId)}
                           onRevertAll={() => slotHandlers.revertAll(templateKey)}
                           onToggleStatic={ing => toggleIngredientStatic(mealId, ing)}
+                          onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(mealId, ing, qty)}
                         />
                       ) : (
                         <p className="text-xs text-gray-400 dark:text-gray-500 py-2">No meal set in the plan template for this slot.</p>
