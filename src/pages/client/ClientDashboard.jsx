@@ -31,7 +31,7 @@ function calcPause(returnDateStr) {
   const weeks = Math.round((firstFri - nextFri) / (7 * 24 * 60 * 60 * 1000))
   const pad = n => String(n).padStart(2, '0')
   const fISO = `${firstFri.getFullYear()}-${pad(firstFri.getMonth() + 1)}-${pad(firstFri.getDate())}`
-  return { firstCheckinDate: fISO, weeksPaused: weeks, pauseStartDate: calcPauseStartDate() }
+  return { firstCheckinDate: fISO, weeksPaused: weeks }
 }
 
 function fmtDate(iso) {
@@ -64,9 +64,29 @@ export default function ClientDashboard() {
   const [newDelivery, setNewDelivery] = useState(null)
   const [activePause, setActivePause] = useState(null)
   const [showPauseForm, setShowPauseForm] = useState(false)
+  const [pauseStartDate, setPauseStartDate] = useState('')
   const [returnDate, setReturnDate] = useState('')
   const [pauseCalc, setPauseCalc] = useState(null)
   const [pauseSaving, setPauseSaving] = useState(false)
+
+  const earliestMonday = calcPauseStartDate()
+
+  function handleStartDateChange(val) {
+    if (!val) { setPauseStartDate(''); return }
+    const d = new Date(val + 'T00:00:00')
+    const dow = d.getDay()
+    if (dow !== 1) {
+      // Snap forward to next Monday
+      d.setDate(d.getDate() + (dow === 0 ? 1 : 8 - dow))
+    }
+    // Clamp to earliest allowed Monday
+    const earliest = new Date(earliestMonday + 'T00:00:00')
+    if (d < earliest) d.setTime(earliest.getTime())
+    const pad = n => String(n).padStart(2, '0')
+    setPauseStartDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+    setReturnDate('')
+    setPauseCalc(null)
+  }
 
   useEffect(() => {
     if (returnDate) setPauseCalc(calcPause(returnDate))
@@ -114,21 +134,26 @@ export default function ClientDashboard() {
     load()
   }, [session.user.id])
 
+  function closePauseForm() {
+    setShowPauseForm(false)
+    setPauseStartDate('')
+    setReturnDate('')
+    setPauseCalc(null)
+  }
+
   async function submitPause() {
-    if (!returnDate || !pauseCalc || !clientData?.id) return
+    if (!pauseStartDate || !returnDate || !pauseCalc || !clientData?.id) return
     setPauseSaving(true)
     const { data, error } = await supabase.from('plan_pauses').insert({
       client_id: clientData.id,
+      pause_start_date: pauseStartDate,
       return_date: returnDate,
       first_checkin_date: pauseCalc.firstCheckinDate,
       weeks_paused: pauseCalc.weeksPaused,
-      pause_start_date: pauseCalc.pauseStartDate,
     }).select().single()
     if (!error) {
       setActivePause(data)
-      setShowPauseForm(false)
-      setReturnDate('')
-      setPauseCalc(null)
+      closePauseForm()
     }
     setPauseSaving(false)
   }
@@ -251,7 +276,7 @@ export default function ClientDashboard() {
               <h3 className="font-semibold text-gray-900 dark:text-white">Request a plan pause</h3>
             </div>
             <button
-              onClick={() => { setShowPauseForm(false); setReturnDate(''); setPauseCalc(null) }}
+              onClick={closePauseForm}
               className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -260,19 +285,32 @@ export default function ClientDashboard() {
             </button>
           </div>
           <div>
-            <label className="label">When are you returning?</label>
+            <label className="label">When does your pause start?</label>
             <input
               type="date"
               className="input"
-              min={tomorrowISO}
-              value={returnDate}
-              onChange={e => setReturnDate(e.target.value)}
+              min={earliestMonday}
+              value={pauseStartDate}
+              onChange={e => handleStartDateChange(e.target.value)}
             />
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Pauses always start on a Monday — earliest is {fmtDate(earliestMonday)}.</p>
           </div>
+          {pauseStartDate && (
+            <div>
+              <label className="label">When are you returning?</label>
+              <input
+                type="date"
+                className="input"
+                min={pauseStartDate}
+                value={returnDate}
+                onChange={e => setReturnDate(e.target.value)}
+              />
+            </div>
+          )}
           {pauseCalc && (
             <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 space-y-1.5">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                Pause starts: {fmtDate(pauseCalc.pauseStartDate)}
+                {fmtDate(pauseStartDate)} → {fmtDate(returnDate)}
               </p>
               {pauseCalc.weeksPaused > 0 ? (
                 <p className="text-sm text-amber-700 dark:text-amber-400">
@@ -288,15 +326,12 @@ export default function ClientDashboard() {
           <div className="flex gap-3">
             <button
               onClick={submitPause}
-              disabled={!returnDate || !pauseCalc || pauseSaving}
+              disabled={!pauseStartDate || !returnDate || !pauseCalc || pauseSaving}
               className="btn-primary"
             >
               {pauseSaving ? 'Requesting…' : 'Request pause'}
             </button>
-            <button
-              onClick={() => { setShowPauseForm(false); setReturnDate(''); setPauseCalc(null) }}
-              className="btn-secondary"
-            >
+            <button onClick={closePauseForm} className="btn-secondary">
               Cancel
             </button>
           </div>
