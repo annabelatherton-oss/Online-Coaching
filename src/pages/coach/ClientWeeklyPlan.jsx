@@ -67,10 +67,12 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const [addDayVariant, setAddDayVariant] = useState('')
   const [addItemId, setAddItemId] = useState('')
 
-  // Cardio add state
-  const [addingCardio, setAddingCardio] = useState(false)
-  const [addCardioDay, setAddCardioDay] = useState('Monday')
-  const [addCardioId, setAddCardioId] = useState('')
+  // Cardio free-text add state
+  const [addCardioText, setAddCardioText] = useState('')
+
+  // Workout exercise drill-down
+  const [expandedItemId, setExpandedItemId] = useState(null)
+  const [workoutExercisesCache, setWorkoutExercisesCache] = useState({})
 
   // Populate banner "use different block" expander
   const [showAltPopulate, setShowAltPopulate] = useState(false)
@@ -148,6 +150,39 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     await load()
   }
 
+  async function addCardioItem(day, customLabel, cardioSessionId) {
+    setSaving(true)
+    const existing = items.filter(i => i.day_of_week === day && i.item_type === 'cardio')
+    const record = {
+      client_id: clientId,
+      coach_id: coachId,
+      day_of_week: day,
+      item_type: 'cardio',
+      order_index: existing.length,
+    }
+    if (cardioSessionId) record.cardio_session_id = cardioSessionId
+    if (customLabel) record.custom_label = customLabel
+    await supabase.from('client_schedule_items').insert(record)
+    setSaving(false)
+    await load()
+  }
+
+  async function toggleExpand(item) {
+    if (expandedItemId === item.id) {
+      setExpandedItemId(null)
+      return
+    }
+    setExpandedItemId(item.id)
+    if (item.workout_id && workoutExercisesCache[item.workout_id] === undefined) {
+      const { data } = await supabase
+        .from('workout_exercises')
+        .select('id, name, sets, reps, rpe, rest_seconds, notes, order_index')
+        .eq('workout_id', item.workout_id)
+        .order('order_index')
+      setWorkoutExercisesCache(prev => ({ ...prev, [item.workout_id]: data || [] }))
+    }
+  }
+
   async function populateFromProgram(prog) {
     if (!prog) return
     setPopulating(true)
@@ -208,9 +243,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
 
   if (loading) return <LoadingSpinner size="md" className="py-8" />
 
-  const scheduleItems = items.filter(i => i.item_type !== 'cardio')
-  const cardioItems = items.filter(i => i.item_type === 'cardio')
-  const hasAnySchedule = scheduleItems.length > 0
+  const hasAnySchedule = items.length > 0
 
   const assignedProgram = assignment
     ? programs.find(p => p.id === assignment.program_id)
@@ -359,7 +392,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
         {/* Day cards — vertical list with drag-and-drop */}
         <div className="space-y-2">
           {DAYS.map(day => {
-            const dayItems = scheduleItems.filter(i => i.day_of_week === day)
+            const dayItems = items.filter(i => i.day_of_week === day)
             const isEmpty = dayItems.length === 0
             const isAdding = addingToDay === day
             const isDragTarget = dragOverDay === day
@@ -405,7 +438,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                       <span className="text-xs text-brand-400 italic">Drop here</span>
                     )}
                     {!isEmpty && (
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-1.5 flex-wrap">
                         {dayItems.filter(i => i.item_type === 'workout').length > 0 && (
                           <span className="text-[10px] font-semibold text-brand-500 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/30 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
                             {dayItems.filter(i => i.item_type === 'workout').length} workout{dayItems.filter(i => i.item_type === 'workout').length > 1 ? 's' : ''}
@@ -414,6 +447,11 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                         {dayItems.filter(i => i.item_type === 'hiit').length > 0 && (
                           <span className="text-[10px] font-semibold text-orange-500 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/30 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
                             HIIT
+                          </span>
+                        )}
+                        {dayItems.filter(i => i.item_type === 'cardio').length > 0 && (
+                          <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                            Cardio
                           </span>
                         )}
                       </div>
@@ -427,6 +465,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                         setAddBlock('')
                         setAddDayVariant('')
                         setAddItemId('')
+                        setAddCardioText('')
                       }}
                       className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium transition-colors"
                     >
@@ -440,55 +479,115 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                   <div className="px-4 pb-3 space-y-2">
                     {dayItems.map(item => {
                       const isHiit = item.item_type === 'hiit'
+                      const isCardio = item.item_type === 'cardio'
                       const wktName = workouts.find(w => w.id === item.workout_id)?.name
+                      const cs = cardioSessions.find(c => c.id === item.cardio_session_id)
                       const label = isHiit
                         ? (hiitCircuits.find(h => h.id === item.hiit_circuit_id)?.name || 'HIIT')
-                        : (stripDay(wktName) || wktName || item.custom_label || 'Workout')
+                        : isCardio
+                          ? (item.custom_label || cs?.name || 'Cardio')
+                          : (stripDay(wktName) || wktName || item.custom_label || 'Workout')
                       const isDragging = dragItemId === item.id
+                      const isExpanded = expandedItemId === item.id
+                      const exercises = item.workout_id ? workoutExercisesCache[item.workout_id] : null
+
                       return (
-                        <div
-                          key={item.id}
-                          draggable
-                          onDragStart={e => {
-                            setDragItemId(item.id)
-                            e.dataTransfer.effectAllowed = 'move'
-                          }}
-                          onDragEnd={() => { setDragItemId(null); setDragOverDay(null) }}
-                          className={`flex items-center justify-between rounded-xl px-3 py-2.5 cursor-grab active:cursor-grabbing transition-opacity ${
-                            isDragging ? 'opacity-40' : ''
-                          } ${
-                            isHiit
-                              ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800/40'
-                              : 'bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            {/* Drag handle */}
-                            <svg className={`w-3.5 h-3.5 flex-shrink-0 ${isHiit ? 'text-orange-300' : 'text-brand-300'}`} fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z"/>
-                            </svg>
-                            <div>
-                              <p className={`text-sm font-semibold leading-tight ${
-                                isHiit
-                                  ? 'text-orange-700 dark:text-orange-300'
-                                  : 'text-brand-700 dark:text-brand-300'
-                              }`}>
-                                {label}
-                              </p>
-                              <p className={`text-[11px] mt-0.5 ${isHiit ? 'text-orange-400/80' : 'text-brand-400/80'}`}>
-                                {isHiit ? 'HIIT' : 'Workout'}
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => removeItem(item.id)}
-                            className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 transition-colors p-1"
-                            title="Remove"
+                        <div key={item.id}>
+                          <div
+                            draggable={!isCardio}
+                            onDragStart={e => {
+                              if (isCardio) return
+                              setDragItemId(item.id)
+                              e.dataTransfer.effectAllowed = 'move'
+                            }}
+                            onDragEnd={() => { setDragItemId(null); setDragOverDay(null) }}
+                            className={`flex items-center justify-between rounded-xl px-3 py-2.5 transition-opacity ${
+                              isDragging ? 'opacity-40' : ''
+                            } ${!isCardio ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                              isHiit
+                                ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800/40'
+                                : isCardio
+                                  ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40'
+                                  : 'bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40'
+                            }`}
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                              {/* Drag handle (workouts/HIIT only) */}
+                              {!isCardio && (
+                                <svg className={`w-3.5 h-3.5 flex-shrink-0 ${isHiit ? 'text-orange-300' : 'text-brand-300'}`} fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z"/>
+                                </svg>
+                              )}
+                              {/* Cardio icon */}
+                              {isCardio && (
+                                <svg className="w-3.5 h-3.5 flex-shrink-0 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                </svg>
+                              )}
+                              {/* Clickable name for workouts */}
+                              {!isCardio && !isHiit ? (
+                                <button
+                                  className="text-left flex-1 min-w-0"
+                                  onClick={() => toggleExpand(item)}
+                                >
+                                  <p className="text-sm font-semibold leading-tight text-brand-700 dark:text-brand-300 truncate">
+                                    {label}
+                                  </p>
+                                  <p className="text-[11px] mt-0.5 text-brand-400/80">
+                                    Workout {isExpanded ? '▲' : '▼'}
+                                  </p>
+                                </button>
+                              ) : (
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-semibold leading-tight truncate ${
+                                    isHiit ? 'text-orange-700 dark:text-orange-300' : 'text-emerald-700 dark:text-emerald-300'
+                                  }`}>
+                                    {label}
+                                  </p>
+                                  <p className={`text-[11px] mt-0.5 ${isHiit ? 'text-orange-400/80' : 'text-emerald-500/70'}`}>
+                                    {isHiit ? 'HIIT' : cs?.duration_minutes ? `${cs.duration_minutes} min` : 'Cardio'}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => removeItem(item.id)}
+                              className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 transition-colors p-1 flex-shrink-0"
+                              title="Remove"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+
+                          {/* Exercise detail panel */}
+                          {isExpanded && !isCardio && !isHiit && (
+                            <div className="mt-1 ml-4 rounded-xl border border-brand-100 dark:border-brand-800/30 bg-brand-50/50 dark:bg-brand-900/10 px-3 py-2.5">
+                              {exercises === undefined ? (
+                                <p className="text-xs text-gray-400">Loading…</p>
+                              ) : exercises.length === 0 ? (
+                                <p className="text-xs text-gray-400 italic">No exercises added to this workout yet.</p>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  <div className="flex gap-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wide pb-1 border-b border-brand-100 dark:border-brand-800/30">
+                                    <span className="flex-1">Exercise</span>
+                                    <span className="w-10 text-center">Sets</span>
+                                    <span className="w-14 text-center">Reps</span>
+                                    <span className="w-10 text-center">RPE</span>
+                                  </div>
+                                  {exercises.map(ex => (
+                                    <div key={ex.id} className="flex gap-3 items-center">
+                                      <span className="flex-1 text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{ex.name}</span>
+                                      <span className="w-10 text-center text-xs text-gray-500 dark:text-gray-400">{ex.sets ?? '—'}</span>
+                                      <span className="w-14 text-center text-xs text-gray-500 dark:text-gray-400">{ex.reps || '—'}</span>
+                                      <span className="w-10 text-center text-xs text-gray-500 dark:text-gray-400">{ex.rpe || '—'}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -498,45 +597,35 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                 {/* Inline add form */}
                 {isAdding && (
                   <div className="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-800 pt-3">
-                    {/* Workout / HIIT toggle */}
+                    {/* Type toggle */}
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => { setAddType('workout'); setAddBlock(''); setAddDayVariant(''); setAddItemId('') }}
-                        className={`flex-1 text-sm py-1.5 rounded-lg font-medium transition-colors ${
-                          addType === 'workout'
-                            ? 'bg-brand-500 text-white'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-                        }`}
-                      >
-                        Workout
-                      </button>
-                      <button
-                        onClick={() => { setAddType('hiit'); setAddBlock(''); setAddDayVariant(''); setAddItemId('') }}
-                        className={`flex-1 text-sm py-1.5 rounded-lg font-medium transition-colors ${
-                          addType === 'hiit'
-                            ? 'bg-orange-500 text-white'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-                        }`}
-                      >
-                        HIIT
-                      </button>
+                      {['workout', 'hiit', 'cardio'].map(type => (
+                        <button
+                          key={type}
+                          onClick={() => { setAddType(type); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioText('') }}
+                          className={`flex-1 text-sm py-1.5 rounded-lg font-medium capitalize transition-colors ${
+                            addType === type
+                              ? type === 'workout' ? 'bg-brand-500 text-white'
+                                : type === 'hiit' ? 'bg-orange-500 text-white'
+                                : 'bg-emerald-500 text-white'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          {type === 'hiit' ? 'HIIT' : type.charAt(0).toUpperCase() + type.slice(1)}
+                        </button>
+                      ))}
                     </div>
 
-                    {addType === 'workout' ? (
+                    {addType === 'workout' && (
                       <div className="space-y-2">
-                        {/* Step 1: Block */}
                         <select
                           className="input w-full"
                           value={addBlock}
                           onChange={e => { setAddBlock(e.target.value); setAddDayVariant(''); setAddItemId('') }}
                         >
                           <option value="">Select block…</option>
-                          {addBlockOptions.map(n => (
-                            <option key={n} value={n}>Block {n}</option>
-                          ))}
+                          {addBlockOptions.map(n => <option key={n} value={n}>Block {n}</option>)}
                         </select>
-
-                        {/* Step 2: Day count */}
                         {addBlock && (
                           <select
                             className="input w-full"
@@ -544,13 +633,9 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                             onChange={e => { setAddDayVariant(e.target.value); setAddItemId('') }}
                           >
                             <option value="">Select days…</option>
-                            {addDayOptions.map(d => (
-                              <option key={d} value={d}>{d} Day</option>
-                            ))}
+                            {addDayOptions.map(d => <option key={d} value={d}>{d} Day</option>)}
                           </select>
                         )}
-
-                        {/* Step 3: Session (day prefix stripped) */}
                         {addDayVariant && (
                           <select
                             className="input w-full"
@@ -559,37 +644,72 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                           >
                             <option value="">Select session…</option>
                             {addSessionOptions.map(s => (
-                              <option key={s.id} value={s.workoutId || ''} disabled={!s.workoutId}>
-                                {s.label}
-                              </option>
+                              <option key={s.id} value={s.workoutId || ''} disabled={!s.workoutId}>{s.label}</option>
                             ))}
                           </select>
                         )}
                       </div>
-                    ) : (
+                    )}
+
+                    {addType === 'hiit' && (
                       <select className="input w-full" value={addItemId} onChange={e => setAddItemId(e.target.value)}>
                         <option value="">Select a HIIT circuit…</option>
                         {hiitCircuits.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
                       </select>
                     )}
 
+                    {addType === 'cardio' && (
+                      <div className="space-y-2">
+                        <input
+                          autoFocus
+                          className="input w-full"
+                          placeholder="e.g. 10k steps, Zone 2 Stairmaster 30 mins…"
+                          value={addCardioText}
+                          onChange={e => { setAddCardioText(e.target.value); setAddItemId('') }}
+                        />
+                        {cardioSessions.length > 0 && (
+                          <>
+                            <p className="text-xs text-gray-400 text-center">— or pick from library —</p>
+                            <select
+                              className="input w-full"
+                              value={addItemId}
+                              onChange={e => { setAddItemId(e.target.value); setAddCardioText('') }}
+                            >
+                              <option value="">Select cardio session…</option>
+                              {cardioSessions.map(c => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}{c.duration_minutes ? ` — ${c.duration_minutes} min` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex gap-2">
                       <button
                         onClick={async () => {
-                          if (!addItemId) return
-                          await addItem(day, addType, addItemId)
+                          if (addType === 'cardio') {
+                            if (!addCardioText && !addItemId) return
+                            await addCardioItem(day, addCardioText || null, addItemId || null)
+                          } else {
+                            if (!addItemId) return
+                            await addItem(day, addType, addItemId)
+                          }
                           setAddingToDay(null)
                           setAddBlock('')
                           setAddDayVariant('')
                           setAddItemId('')
+                          setAddCardioText('')
                         }}
-                        disabled={!addItemId || saving}
+                        disabled={(addType === 'cardio' ? (!addCardioText && !addItemId) : !addItemId) || saving}
                         className="btn-primary text-sm"
                       >
                         Add to {day}
                       </button>
                       <button
-                        onClick={() => { setAddingToDay(null); setAddBlock(''); setAddDayVariant(''); setAddItemId('') }}
+                        onClick={() => { setAddingToDay(null); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioText('') }}
                         className="btn-secondary text-sm"
                       >
                         Cancel
@@ -601,111 +721,6 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
             )
           })}
         </div>
-      </div>
-
-      {/* ── Cardio Plan ── */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white">Cardio Plan</h3>
-          {!addingCardio && (
-            <button
-              onClick={() => { setAddingCardio(true); setAddCardioId(''); setAddCardioDay('Monday') }}
-              className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium transition-colors"
-            >
-              + Add cardio
-            </button>
-          )}
-        </div>
-
-        {addingCardio && (
-          <div className="card mb-4">
-            <div className="flex flex-wrap gap-3 items-end">
-              <div>
-                <label className="label">Day</label>
-                <select className="input" value={addCardioDay} onChange={e => setAddCardioDay(e.target.value)}>
-                  {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
-              <div className="flex-1 min-w-[200px]">
-                <label className="label">Cardio session</label>
-                <select className="input" value={addCardioId} onChange={e => setAddCardioId(e.target.value)}>
-                  <option value="">Select cardio…</option>
-                  {cardioSessions.length === 0
-                    ? <option disabled>No cardio sessions in library yet — add some in the Cardio Library</option>
-                    : cardioSessions.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}{c.duration_minutes ? ` — ${c.duration_minutes} min` : ''}
-                        </option>
-                      ))
-                  }
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={async () => {
-                    if (!addCardioId) return
-                    await addItem(addCardioDay, 'cardio', addCardioId)
-                    setAddingCardio(false)
-                    setAddCardioId('')
-                  }}
-                  disabled={!addCardioId || saving}
-                  className="btn-primary"
-                >
-                  Add
-                </button>
-                <button onClick={() => setAddingCardio(false)} className="btn-secondary">Cancel</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {cardioItems.length === 0 && !addingCardio && (
-          <p className="text-sm text-gray-400 dark:text-gray-500">No cardio scheduled yet.</p>
-        )}
-
-        {cardioItems.length > 0 && (
-          <div className="space-y-2">
-            {DAYS.flatMap(day => {
-              const dayCardio = cardioItems.filter(i => i.day_of_week === day)
-              return dayCardio.map(item => {
-                const cs = cardioSessions.find(c => c.id === item.cardio_session_id)
-                return (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between rounded-xl border border-emerald-100 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                      <span className="text-xs font-bold text-emerald-400 dark:text-emerald-500 uppercase w-8 flex-shrink-0">{day.slice(0, 3)}</span>
-                      <div>
-                        <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                          {cs?.name || 'Cardio'}
-                        </p>
-                        {(cs?.duration_minutes || cs?.cardio_type) && (
-                          <p className="text-xs text-emerald-500/70 dark:text-emerald-600 mt-0.5">
-                            {[
-                              cs.duration_minutes ? `${cs.duration_minutes} min` : null,
-                              cs.cardio_type ? cs.cardio_type.replace(/-/g, ' ') : null,
-                            ].filter(Boolean).join(' · ')}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 transition-colors p-1"
-                      title="Remove"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                )
-              })
-            })}
-          </div>
-        )}
       </div>
     </div>
   )
