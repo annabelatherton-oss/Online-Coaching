@@ -4,6 +4,17 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
+function calcPauseStartDate() {
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const dow = today.getDay()
+  // Fri/Sat/Sun: plan for next week already sent → skip to Monday after next
+  const daysToStart = dow === 5 ? 10 : dow === 6 ? 9 : dow === 0 ? 8 : 8 - dow
+  const start = new Date(today)
+  start.setDate(today.getDate() + daysToStart)
+  const pad = n => String(n).padStart(2, '0')
+  return `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`
+}
+
 function calcPause(returnDateStr) {
   const ret = new Date(returnDateStr + 'T00:00:00')
   const day = ret.getDay()
@@ -20,7 +31,7 @@ function calcPause(returnDateStr) {
   const weeks = Math.round((firstFri - nextFri) / (7 * 24 * 60 * 60 * 1000))
   const pad = n => String(n).padStart(2, '0')
   const fISO = `${firstFri.getFullYear()}-${pad(firstFri.getMonth() + 1)}-${pad(firstFri.getDate())}`
-  return { firstCheckinDate: fISO, weeksPaused: weeks }
+  return { firstCheckinDate: fISO, weeksPaused: weeks, pauseStartDate: calcPauseStartDate() }
 }
 
 function fmtDate(iso) {
@@ -111,6 +122,7 @@ export default function ClientDashboard() {
       return_date: returnDate,
       first_checkin_date: pauseCalc.firstCheckinDate,
       weeks_paused: pauseCalc.weeksPaused,
+      pause_start_date: pauseCalc.pauseStartDate,
     }).select().single()
     if (!error) {
       setActivePause(data)
@@ -210,13 +222,15 @@ export default function ClientDashboard() {
               <>
                 <p className="font-medium text-gray-900 dark:text-white">Plan pause approved</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-                  Returning {fmtDate(activePause.return_date)}{activePause.weeks_paused > 0 ? ` — first check-in window opens ${fmtDate(activePause.first_checkin_date)} (${activePause.weeks_paused} week${activePause.weeks_paused !== 1 ? 's' : ''} paused)` : ' — enjoy your trip'}.
+                  {activePause.pause_start_date && `Starts ${fmtDate(activePause.pause_start_date)} · `}
+                  Returning {fmtDate(activePause.return_date)}{activePause.weeks_paused > 0 ? ` · first check-in ${fmtDate(activePause.first_checkin_date)}` : ' — enjoy your trip'}.
                 </p>
               </>
             ) : (
               <>
                 <p className="font-medium text-gray-900 dark:text-white">Plan pause requested</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+                  {activePause.pause_start_date && `Starts ${fmtDate(activePause.pause_start_date)} · `}
                   Returning {fmtDate(activePause.return_date)} — waiting for your coach to approve.
                 </p>
               </>
@@ -256,18 +270,16 @@ export default function ClientDashboard() {
             />
           </div>
           {pauseCalc && (
-            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 space-y-1.5">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                Pause starts: {fmtDate(pauseCalc.pauseStartDate)}
+              </p>
               {pauseCalc.weeksPaused > 0 ? (
-                <>
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                    {pauseCalc.weeksPaused} week{pauseCalc.weeksPaused !== 1 ? 's' : ''} paused
-                  </p>
-                  <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
-                    Your first check-in window after returning will be the weekend of {fmtDate(pauseCalc.firstCheckinDate)}.
-                  </p>
-                </>
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  {pauseCalc.weeksPaused} week{pauseCalc.weeksPaused !== 1 ? 's' : ''} paused · first check-in {fmtDate(pauseCalc.firstCheckinDate)}.
+                </p>
               ) : (
-                <p className="text-sm text-amber-800 dark:text-amber-300">
+                <p className="text-sm text-amber-700 dark:text-amber-400">
                   Short break — your coach will be notified and your plan will be paused while you're away.
                 </p>
               )}

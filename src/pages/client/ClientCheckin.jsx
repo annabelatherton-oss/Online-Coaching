@@ -233,6 +233,7 @@ export default function ClientCheckin() {
   const [existing, setExisting] = useState(null)
   const [historyList, setHistoryList] = useState([])
   const [viewingId, setViewingId] = useState(null)
+  const [upcomingPause, setUpcomingPause] = useState(null)
   const [form, setForm] = useState({
     weight_kg: '',
     waist_cm: '',
@@ -293,6 +294,15 @@ export default function ClientCheckin() {
         }
       }
       setWeekNumber(week)
+
+      const { data: pauseRow } = await supabase.from('plan_pauses')
+        .select('pause_start_date')
+        .eq('client_id', clientRow.id)
+        .eq('status', 'approved')
+        .not('pause_start_date', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1).maybeSingle()
+      setUpcomingPause(pauseRow)
 
       // Load full check-in history (oldest first) for week numbering + sidebar
       const { data: allHistory } = await supabase.from('client_checkins')
@@ -398,6 +408,17 @@ export default function ClientCheckin() {
 
   const viewingCheckin = viewingId ? historyList.find(c => c.id === viewingId) : null
 
+  // Show holiday note if approved pause starts next Monday
+  const nextMondayISO = (() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0)
+    const dow = d.getDay()
+    const days = (8 - dow) % 7 || 7
+    d.setDate(d.getDate() + days)
+    const pad = n => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  })()
+  const showHolidayNote = upcomingPause?.pause_start_date === nextMondayISO
+
   function fmtCheckinDate(iso) {
     return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
   }
@@ -487,6 +508,16 @@ export default function ClientCheckin() {
           {existing && <span className="ml-1 text-brand-500">Already submitted — you can update it below.</span>}
         </p>
       </div>
+
+      {showHolidayNote && (
+        <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 flex items-start gap-3">
+          <span className="text-xl flex-shrink-0">🌴</span>
+          <div>
+            <p className="font-medium text-amber-800 dark:text-amber-300 text-sm">You're going on holiday next week</p>
+            <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">Your coach won't be sending you a plan for next week — enjoy your trip!</p>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Body metrics */}

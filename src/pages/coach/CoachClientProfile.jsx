@@ -305,7 +305,13 @@ function ClientPauseCard({ clientId }) {
           Submitted {_fmtDate(pause.created_at.split('T')[0])}
         </span>
       </div>
-      <div className="grid grid-cols-3 gap-4 text-sm">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+        {pause.pause_start_date && (
+          <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Pause starts</p>
+            <p className="font-medium text-gray-900 dark:text-white">{_fmtDate(pause.pause_start_date)}</p>
+          </div>
+        )}
         <div>
           <p className="text-xs text-gray-500 dark:text-gray-400">Return date</p>
           <p className="font-medium text-gray-900 dark:text-white">{_fmtDate(pause.return_date)}</p>

@@ -1315,7 +1315,7 @@ export default function CoachCheckins() {
       mapped.forEach(c => { clientMap[c.id] = c.full_name || 'Unknown' })
       const { data: pauseData } = await supabase
         .from('plan_pauses')
-        .select('id, client_id, return_date, first_checkin_date, weeks_paused')
+        .select('id, client_id, return_date, first_checkin_date, weeks_paused, pause_start_date')
         .in('client_id', mapped.map(c => c.id))
         .eq('status', 'pending')
         .order('created_at', { ascending: false })
@@ -1434,6 +1434,7 @@ export default function CoachCheckins() {
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900 dark:text-white">{p.client_name}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                    {p.pause_start_date && `Starts ${fmtDate(p.pause_start_date)} · `}
                     Returning {fmtDate(p.return_date)} ·{' '}
                     {p.weeks_paused > 0
                       ? `${p.weeks_paused} week${p.weeks_paused !== 1 ? 's' : ''} · first check-in ${fmtDate(p.first_checkin_date)}`
