@@ -8,7 +8,247 @@ import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../l
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 
-const TABS = ['Overview', 'Meal Plan', 'Training', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
+const TABS = ['Overview', 'Meal Plan', 'Training', 'Daily Plan', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
+
+// ── Helpers shared by DailyPlanTab ───────────────────────────────────────────
+const _PLAN_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+const _PLAN_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+
+function _planISO(date) {
+  const y = date.getFullYear(), m = String(date.getMonth()+1).padStart(2,'0'), d = String(date.getDate()).padStart(2,'0')
+  return `${y}-${m}-${d}`
+}
+function _planWeekStart(date) {
+  const d = new Date(date); d.setHours(0,0,0,0)
+  const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day)); return d
+}
+function _planAddDays(date, n) { const d = new Date(date); d.setDate(d.getDate()+n); return d }
+function _planStripDay(name) {
+  if (!name) return ''
+  for (const d of _PLAN_DAYS) {
+    if (name === d) return ''
+    if (name.startsWith(d + ' ') || name.startsWith(d + '—') || name.startsWith(d + ' —'))
+      return name.slice(d.length).replace(/^[\s–—\-]+/,'').trim()
+  }
+  return name
+}
+function _buildCoachSystemTasks(client, schedItems) {
+  const tasks = []
+  if (client?.current_calories) tasks.push({ key:'calories', label:`Stay within ${client.current_calories.toLocaleString()} kcal` })
+  if (client?.current_protein)  tasks.push({ key:'protein',  label:`Hit ${client.current_protein}g protein goal` })
+  if (!client?.current_calories && !client?.current_protein) tasks.push({ key:'macros', label:'Hit your macros' })
+  tasks.push({ key:'water', label:`Drink ${client?.water_target_litres ?? 2.5}L of water` })
+  tasks.push({ key:'steps', label:`Hit ${Number(client?.steps_target ?? 10000).toLocaleString()} steps` })
+  tasks.push({ key:'sleep', label:`Get ${client?.sleep_target_hours ?? 8} hours of sleep` })
+  ;(schedItems || []).filter(i => i.item_type === 'workout' || i.item_type === 'hiit').forEach((item, idx) => {
+    const name = item.item_type === 'workout'
+      ? (_planStripDay(item.workouts?.name) || item.custom_label || '')
+      : (item.hiit_circuits?.name || item.custom_label || 'HIIT')
+    tasks.push({ key: idx === 0 ? 'training' : `training_${idx}`, label: name ? `Complete ${name} session` : 'Complete your training session' })
+  })
+  ;(schedItems || []).filter(i => i.item_type === 'cardio').forEach((item, idx) => {
+    const label = item.custom_label ? `Complete ${item.custom_label}` : item.cardio_sessions?.name ? `Complete ${item.cardio_sessions.name}` : 'Complete your cardio'
+    tasks.push({ key: idx === 0 ? 'cardio' : `cardio_${idx}`, label })
+  })
+  return tasks
+}
+
+// Compute the Monday of the week containing a given date
+function _weekStartFor(dateStr) {
+  const d = new Date(dateStr); d.setHours(0,0,0,0)
+  const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day))
+  return _planISO(d)
+}
+function _weekEndFor(weekStartISO) {
+  const d = new Date(weekStartISO + 'T00:00:00'); d.setDate(d.getDate() + 6)
+  return _planISO(d)
+}
+
+// ── DailyPlanTab ─────────────────────────────────────────────────────────────
+function DailyPlanTab({ client }) {
+  const todayD = new Date(); todayD.setHours(0,0,0,0)
+  const [selectedDate, setSelectedDate] = useState(todayD)
+  const [weekStart, setWeekStart] = useState(() => _planWeekStart(todayD))
+  const [tasks, setTasks] = useState([])
+  const [schedItems, setSchedItems] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { loadForDate() }, [selectedDate])
+
+  async function loadForDate() {
+    setLoading(true)
+    const dateStr = _planISO(selectedDate)
+    const dayName = _PLAN_DAYS[selectedDate.getDay()]
+    const [{ data: taskData }, { data: sched }] = await Promise.all([
+      supabase.rpc('get_client_tasks_for_coach', { p_client_id: client.id, p_task_date: dateStr }),
+      supabase.from('client_schedule_items')
+        .select('id, item_type, custom_label, workouts(name), hiit_circuits(name), cardio_sessions(name)')
+        .eq('client_id', client.id).eq('day_of_week', dayName),
+    ])
+    setTasks(taskData || [])
+    setSchedItems(sched || [])
+    setLoading(false)
+  }
+
+  const systemTasks = _buildCoachSystemTasks(client, schedItems)
+  const customRows  = (tasks || []).filter(t => t.task_type === 'custom')
+  const systemRows  = (tasks || []).filter(t => t.task_type === 'system')
+
+  const completedSystem = systemTasks.filter(t => systemRows.find(r => r.task_key === t.key)?.completed).length
+  const completedCustom = customRows.filter(t => t.completed).length
+  const totalCompleted  = completedSystem + completedCustom
+  const totalTasks      = systemTasks.length + customRows.length
+
+  const isSelectedToday = _planISO(selectedDate) === _planISO(todayD)
+  const weekDates = Array.from({ length:7 }, (_, i) => _planAddDays(weekStart, i))
+  const selectedLabel = selectedDate.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })
+
+  function selectDate(date) {
+    const d = new Date(date); d.setHours(0,0,0,0); setSelectedDate(d)
+  }
+
+  function TaskRow({ uid, completed, label, isPrivate, notes, isSystem }) {
+    return (
+      <div className={`rounded-xl border px-4 py-3 flex items-start gap-3 ${
+        completed ? 'border-green-100 dark:border-green-900/40 bg-green-50/50 dark:bg-green-900/10'
+          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40'
+      }`}>
+        {/* Completion dot */}
+        <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+          completed ? 'border-green-500 bg-green-500' : 'border-gray-300 dark:border-gray-600'
+        }`}>
+          {completed && (
+            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
+            </svg>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          {isPrivate ? (
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+              </svg>
+              <span className="text-sm text-gray-400 dark:text-gray-600 italic select-none" style={{ filter:'blur(3px)' }}>
+                Private task
+              </span>
+            </div>
+          ) : (
+            <>
+              <p className={`text-sm font-medium leading-snug ${completed ? 'line-through text-gray-400 dark:text-gray-600' : 'text-gray-800 dark:text-gray-100'}`}>
+                {label}
+              </p>
+              {notes && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic leading-relaxed">"{notes}"</p>
+              )}
+            </>
+          )}
+        </div>
+        {!isSystem && !isPrivate && (
+          <span className="text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wide flex-shrink-0 mt-0.5">custom</span>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {isSelectedToday ? 'Today — ' : ''}{selectedLabel}
+          </p>
+        </div>
+        {!isSelectedToday && (
+          <button onClick={() => { selectDate(todayD); setWeekStart(_planWeekStart(todayD)) }}
+            className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium">
+            Today
+          </button>
+        )}
+      </div>
+
+      {/* Week strip */}
+      <div className="card p-2">
+        <div className="flex items-center gap-1">
+          <button onClick={() => setWeekStart(w => _planAddDays(w,-7))}
+            className="p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
+            </svg>
+          </button>
+          <div className="flex-1 grid grid-cols-7 gap-0.5">
+            {weekDates.map((date, i) => {
+              const isSel = _planISO(date) === _planISO(selectedDate)
+              const isTod = _planISO(date) === _planISO(todayD)
+              return (
+                <button key={i} onClick={() => selectDate(date)}
+                  className={`flex flex-col items-center py-2 rounded-xl transition-colors ${
+                    isSel ? 'bg-brand-500 text-white'
+                      : isTod ? 'bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400'
+                      : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}>
+                  <span className={`text-[9px] uppercase tracking-wide font-semibold ${isSel ? 'text-white/70' : 'text-gray-400 dark:text-gray-500'}`}>
+                    {_PLAN_SHORT[date.getDay()]}
+                  </span>
+                  <span className="text-sm font-bold leading-tight mt-0.5">{date.getDate()}</span>
+                  {isTod && !isSel && <span className="w-1 h-1 rounded-full bg-brand-400 mt-0.5"/>}
+                </button>
+              )
+            })}
+          </div>
+          <button onClick={() => setWeekStart(w => _planAddDays(w,7))}
+            className="p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {loading ? <LoadingSpinner size="md" className="py-8"/> : (
+        <div className="space-y-6">
+          {/* Progress bar */}
+          {totalTasks > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">{totalCompleted} of {totalTasks} complete</span>
+                {totalCompleted === totalTasks && totalTasks > 0 && <span className="text-green-600 dark:text-green-400 font-semibold">All done!</span>}
+              </div>
+              <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                <div className="h-full rounded-full bg-green-400 dark:bg-green-500 transition-all duration-500"
+                  style={{ width:`${totalTasks > 0 ? Math.round((totalCompleted/totalTasks)*100) : 0}%` }}/>
+              </div>
+            </div>
+          )}
+
+          {/* Daily habits */}
+          <div className="space-y-2">
+            <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Daily habits</h2>
+            {systemTasks.map(task => {
+              const row = systemRows.find(r => r.task_key === task.key)
+              return <TaskRow key={task.key} uid={task.key} completed={row?.completed||false} label={task.label} notes={row?.notes||''} isPrivate={false} isSystem/>
+            })}
+          </div>
+
+          {/* Custom + private tasks */}
+          {customRows.length > 0 && (
+            <div className="space-y-2">
+              <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Client's tasks</h2>
+              {customRows.map(task => (
+                <TaskRow key={task.id} uid={task.id} completed={task.completed} label={task.label} notes={task.notes||''} isPrivate={task.is_private} isSystem={false}/>
+              ))}
+            </div>
+          )}
+
+          {tasks.length === 0 && (
+            <p className="text-sm text-gray-400 dark:text-gray-600 text-center py-6">No tasks recorded for this day yet.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const CHECKIN_RATING_LABELS = {
   energy_level:  ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
@@ -1820,6 +2060,8 @@ function CheckinsTab({ clientId, collectMeasurements }) {
   const [checkins, setCheckins] = useState([])
   const [loading, setLoading] = useState(true)
   const [lightbox, setLightbox] = useState(null)
+  // Map of weekStartISO → { ticked, total, tasksWithNotes }
+  const [weekSummaries, setWeekSummaries] = useState({})
 
   useEffect(() => {
     async function load() {
@@ -1830,6 +2072,39 @@ function CheckinsTab({ clientId, collectMeasurements }) {
         .order('week_number', { ascending: false })
       setCheckins(data || [])
       setLoading(false)
+
+      // Fetch task data for all check-in weeks in one query
+      if (data && data.length > 0) {
+        const dates = data.map(c => c.submitted_at || c.updated_at).filter(Boolean)
+        if (dates.length === 0) return
+        const weekStarts = [...new Set(dates.map(d => _weekStartFor(d)))]
+        const allDates = weekStarts.flatMap(ws => {
+          const we = _weekEndFor(ws)
+          return [ws, we]
+        })
+        const earliest = allDates.reduce((a, b) => a < b ? a : b)
+        const latest   = allDates.reduce((a, b) => a > b ? a : b)
+
+        const { data: taskRows } = await supabase
+          .from('client_daily_tasks')
+          .select('task_date, completed, notes, task_type, task_key, label, is_private')
+          .eq('client_id', clientId)
+          .gte('task_date', earliest)
+          .lte('task_date', latest)
+
+        if (!taskRows) return
+        const summaries = {}
+        weekStarts.forEach(ws => {
+          const we = _weekEndFor(ws)
+          const rows = taskRows.filter(r => r.task_date >= ws && r.task_date <= we)
+          summaries[ws] = {
+            ticked: rows.filter(r => r.completed).length,
+            total:  rows.length,
+            tasksWithNotes: rows.filter(r => r.notes?.trim()),
+          }
+        })
+        setWeekSummaries(summaries)
+      }
     }
     load()
   }, [clientId])
@@ -2113,6 +2388,52 @@ function CheckinsTab({ clientId, collectMeasurements }) {
               </div>
             )}
 
+            {/* ── Weekly task summary ── */}
+            {(() => {
+              const ws = _weekStartFor(c.submitted_at || c.updated_at)
+              const summary = weekSummaries[ws]
+              if (!summary) return null
+              const pct = summary.total > 0 ? Math.round((summary.ticked / summary.total) * 100) : 0
+              return (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Daily Plan — Week Summary</p>
+                  <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-700 px-4 py-3 space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-600 dark:text-gray-300 font-medium">{summary.ticked} of {summary.total} tasks ticked off</span>
+                        <span className={`font-semibold ${pct >= 80 ? 'text-green-600 dark:text-green-400' : pct >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-red-500 dark:text-red-400'}`}>{pct}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${pct >= 80 ? 'bg-green-400 dark:bg-green-500' : pct >= 50 ? 'bg-amber-400 dark:bg-amber-500' : 'bg-red-400 dark:bg-red-500'}`}
+                          style={{ width:`${pct}%` }}/>
+                      </div>
+                    </div>
+                    {summary.tasksWithNotes.length > 0 && (
+                      <div className="space-y-1.5 pt-1 border-t border-gray-200 dark:border-gray-700">
+                        <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Comments</p>
+                        {summary.tasksWithNotes.map((t, i) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <span className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.completed ? 'bg-green-400' : 'bg-gray-300 dark:bg-gray-600'}`}/>
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-gray-600 dark:text-gray-300 leading-snug">
+                                {t.task_type === 'system'
+                                  ? (t.task_key?.replace(/_\d+$/, '') || t.task_key)
+                                  : (t.label || 'Task')}
+                                <span className="ml-1.5 text-[10px] text-gray-400 dark:text-gray-600 font-normal">
+                                  {new Date(t.task_date + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' })}
+                                </span>
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 italic mt-0.5">"{t.notes}"</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
             {c.coach_response && (
               <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl p-3">
                 <p className="text-xs font-semibold text-brand-700 dark:text-brand-400 mb-1">Your response</p>
@@ -2196,6 +2517,7 @@ export default function CoachClientProfile() {
         {activeTab === 'Overview'    && <OverviewTab client={client} onSaved={loadClient} />}
         {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} />}
         {activeTab === 'Training'   && <TrainingTab client={client} coachId={profile.id} />}
+        {activeTab === 'Daily Plan' && <DailyPlanTab client={client} />}
         {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} />}
         {activeTab === 'Weight'     && <WeightTab clientId={client.id} />}
         {activeTab === 'Measurements' && <MeasurementsTab clientId={client.id} />}
