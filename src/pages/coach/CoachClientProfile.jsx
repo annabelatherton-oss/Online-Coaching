@@ -266,6 +266,12 @@ function checkinRatingColor(v) {
 function _fmtDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 }
+function _fmtCheckinWindow(fridayISO) {
+  const fri = new Date(fridayISO + 'T00:00:00')
+  const sun = new Date(fri); sun.setDate(fri.getDate() + 2)
+  const opts = { day: 'numeric', month: 'short' }
+  return `${fri.toLocaleDateString('en-GB', opts)} – ${sun.toLocaleDateString('en-GB', { ...opts, year: 'numeric' })}`
+}
 
 function ClientPauseCard({ clientId }) {
   const [pause, setPause] = useState(null)
@@ -317,9 +323,9 @@ function ClientPauseCard({ clientId }) {
           <p className="font-medium text-gray-900 dark:text-white">{_fmtDate(pause.return_date)}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">First check-in</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Check-in window</p>
           <p className="font-medium text-gray-900 dark:text-white">
-            {pause.weeks_paused > 0 ? _fmtDate(pause.first_checkin_date) : 'Same week'}
+            {pause.weeks_paused > 0 ? _fmtCheckinWindow(pause.first_checkin_date) : 'Same week'}
           </p>
         </div>
         <div>

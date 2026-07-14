@@ -24,6 +24,13 @@ function fmtDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+function fmtCheckinWindow(fridayISO) {
+  if (!fridayISO) return '—'
+  const fri = new Date(fridayISO + 'T00:00:00')
+  const sun = new Date(fri); sun.setDate(fri.getDate() + 2)
+  const opts = { day: 'numeric', month: 'short' }
+  return `${fri.toLocaleDateString('en-GB', opts)}–${sun.toLocaleDateString('en-GB', { ...opts, year: 'numeric' })}`
+}
 
 function ratingColor(v) {
   if (!v) return 'text-gray-400'
@@ -1437,7 +1444,7 @@ export default function CoachCheckins() {
                     {p.pause_start_date && `Starts ${fmtDate(p.pause_start_date)} · `}
                     Returning {fmtDate(p.return_date)} ·{' '}
                     {p.weeks_paused > 0
-                      ? `${p.weeks_paused} week${p.weeks_paused !== 1 ? 's' : ''} · first check-in ${fmtDate(p.first_checkin_date)}`
+                      ? `${p.weeks_paused} week${p.weeks_paused !== 1 ? 's' : ''} · check-in window: ${fmtCheckinWindow(p.first_checkin_date)}`
                       : 'Short break'}
                   </p>
                 </div>

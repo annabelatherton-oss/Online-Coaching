@@ -18,25 +18,28 @@ function calcPauseStartDate() {
 function calcPause(returnDateStr, pauseStartDateStr) {
   const ret = new Date(returnDateStr + 'T00:00:00')
   const day = ret.getDay()
-  // First check-in: same week's Friday for Mon–Fri returns; next Friday for Sat/Sun
-  let firstFri = new Date(ret)
-  if (day === 0) firstFri.setDate(ret.getDate() + 5)
-  else if (day <= 5) firstFri.setDate(ret.getDate() + (5 - day))
-  else firstFri.setDate(ret.getDate() + 6)
 
-  // Weeks paused = number of Fridays that fall within [pause_start, return_date]
-  // Pause always starts Monday, so first affected Friday = start + 4
+  // First check-in Friday:
+  //   Mon–Fri → same week's Friday (Fri = same day)
+  //   Sat     → previous Friday (still the same Fri–Sun window, no extra week)
+  //   Sun     → next Friday (too late to check in that weekend, counts as extra week)
+  let firstFri = new Date(ret)
+  if (day === 6) firstFri.setDate(ret.getDate() - 1)
+  else if (day === 0) firstFri.setDate(ret.getDate() + 5)
+  else firstFri.setDate(ret.getDate() + (5 - day))
+
+  // Weeks paused = Fridays within [pauseStartFri, lastFriInReturnWeek] + 1 for Sunday returns
   let weeks = 0
   if (pauseStartDateStr) {
     const pauseStart = new Date(pauseStartDateStr + 'T00:00:00')
     const pauseStartFri = new Date(pauseStart)
-    pauseStartFri.setDate(pauseStart.getDate() + 4)
-    // Last Friday on or before return date
+    pauseStartFri.setDate(pauseStart.getDate() + 4) // pause starts Mon → first Fri = Mon+4
     const lastFri = new Date(ret)
-    lastFri.setDate(ret.getDate() - (day + 2) % 7)
+    lastFri.setDate(ret.getDate() - (day + 2) % 7) // last Friday on or before return date
     if (lastFri >= pauseStartFri) {
       weeks = Math.round((lastFri - pauseStartFri) / (7 * 24 * 60 * 60 * 1000)) + 1
     }
+    if (day === 0) weeks += 1 // Sunday: already past the weekend window, extra week
   }
 
   const pad = n => String(n).padStart(2, '0')
@@ -46,6 +49,13 @@ function calcPause(returnDateStr, pauseStartDateStr) {
 
 function fmtDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function fmtCheckinWindow(fridayISO) {
+  const fri = new Date(fridayISO + 'T00:00:00')
+  const sun = new Date(fri); sun.setDate(fri.getDate() + 2)
+  const opts = { day: 'numeric', month: 'short' }
+  return `${fri.toLocaleDateString('en-GB', opts)} – ${sun.toLocaleDateString('en-GB', { ...opts, year: 'numeric' })}`
 }
 
 function PlaceholderCard({ title, subtitle, icon, color, comingSoon }) {
@@ -258,7 +268,8 @@ export default function ClientDashboard() {
                 <p className="font-medium text-gray-900 dark:text-white">Plan pause approved</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
                   {activePause.pause_start_date && `Starts ${fmtDate(activePause.pause_start_date)} · `}
-                  Returning {fmtDate(activePause.return_date)}{activePause.weeks_paused > 0 ? ` · first check-in ${fmtDate(activePause.first_checkin_date)}` : ' — enjoy your trip'}.
+                  Returning {fmtDate(activePause.return_date)}{activePause.weeks_paused > 0 ? ` · check-in window: ${fmtCheckinWindow(activePause.first_checkin_date)}`
+ : ' — enjoy your trip'}.
                 </p>
               </>
             ) : (
@@ -324,7 +335,7 @@ export default function ClientDashboard() {
               </p>
               {pauseCalc.weeksPaused > 0 ? (
                 <p className="text-sm text-amber-700 dark:text-amber-400">
-                  {pauseCalc.weeksPaused} week{pauseCalc.weeksPaused !== 1 ? 's' : ''} paused · first check-in {fmtDate(pauseCalc.firstCheckinDate)}.
+                  {pauseCalc.weeksPaused} week{pauseCalc.weeksPaused !== 1 ? 's' : ''} paused · check-in window: {fmtCheckinWindow(pauseCalc.firstCheckinDate)}
                 </p>
               ) : (
                 <p className="text-sm text-amber-700 dark:text-amber-400">
