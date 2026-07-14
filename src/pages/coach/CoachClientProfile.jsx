@@ -37,9 +37,9 @@ function _buildCoachSystemTasks(client, schedItems) {
   if (client?.current_calories) tasks.push({ key:'calories', label:`Stay within ${client.current_calories.toLocaleString()} kcal` })
   if (client?.current_protein)  tasks.push({ key:'protein',  label:`Hit ${client.current_protein}g protein goal` })
   if (!client?.current_calories && !client?.current_protein) tasks.push({ key:'macros', label:'Hit your macros' })
-  tasks.push({ key:'water', label:`Drink ${client?.water_target_litres ?? 2.5}L of water` })
-  tasks.push({ key:'steps', label:`Hit ${Number(client?.steps_target ?? 10000).toLocaleString()} steps` })
-  tasks.push({ key:'sleep', label:`Get ${client?.sleep_target_hours ?? 8} hours of sleep` })
+  if (client?.water_target_litres) tasks.push({ key:'water', label:`Drink ${client.water_target_litres}L of water` })
+  if (client?.steps_target)        tasks.push({ key:'steps', label:`Hit ${Number(client.steps_target).toLocaleString()} steps` })
+  if (client?.sleep_target_hours)  tasks.push({ key:'sleep', label:`Get ${client.sleep_target_hours} hours of sleep` })
   ;(schedItems || []).filter(i => i.item_type === 'workout' || i.item_type === 'hiit').forEach((item, idx) => {
     const name = item.item_type === 'workout'
       ? (_planStripDay(item.workouts?.name) || item.custom_label || '')
@@ -283,9 +283,9 @@ function OverviewTab({ client, onSaved }) {
     current_protein: client.current_protein || '',
     current_carbs: client.current_carbs || '',
     current_fat: client.current_fat || '',
-    steps_target: client.steps_target ?? 10000,
-    water_target_litres: client.water_target_litres ?? 2.5,
-    sleep_target_hours: client.sleep_target_hours ?? 8.0,
+    steps_target: client.steps_target ?? '',
+    water_target_litres: client.water_target_litres ?? '',
+    sleep_target_hours: client.sleep_target_hours ?? '',
     start_date: client.start_date ? client.start_date.split('T')[0] : '',
     access_weeks: client.access_weeks || 4,
     is_paused: client.is_paused || false,
@@ -345,9 +345,9 @@ function OverviewTab({ client, onSaved }) {
       current_protein: form.current_protein ? parseInt(form.current_protein) : null,
       current_carbs: form.current_carbs ? parseInt(form.current_carbs) : null,
       current_fat: form.current_fat ? parseInt(form.current_fat) : null,
-      steps_target: form.steps_target ? parseInt(form.steps_target) : 10000,
-      water_target_litres: form.water_target_litres ? parseFloat(form.water_target_litres) : 2.5,
-      sleep_target_hours: form.sleep_target_hours ? parseFloat(form.sleep_target_hours) : 8.0,
+      steps_target: form.steps_target !== '' ? parseInt(form.steps_target) : null,
+      water_target_litres: form.water_target_litres !== '' ? parseFloat(form.water_target_litres) : null,
+      sleep_target_hours: form.sleep_target_hours !== '' ? parseFloat(form.sleep_target_hours) : null,
       start_date: form.start_date,
       access_weeks: parseInt(form.access_weeks),
       is_paused: form.is_paused,
@@ -457,25 +457,25 @@ function OverviewTab({ client, onSaved }) {
       <div className="card space-y-4">
         <div>
           <h3 className="font-semibold text-gray-900 dark:text-white">Daily Habit Targets</h3>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">These appear as daily tasks on the client's My Daily Plan page.</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Only habits you fill in here appear on the client's Daily Plan. Leave blank to exclude.</p>
         </div>
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="label">Steps goal</label>
             <input className="input" type="number" min={0} step={500} value={form.steps_target}
-              onChange={e => set('steps_target', e.target.value)} placeholder="10000" />
+              onChange={e => set('steps_target', e.target.value)} placeholder="e.g. 10000" />
             <p className="text-xs text-gray-400 mt-1">steps/day</p>
           </div>
           <div>
             <label className="label">Water goal</label>
             <input className="input" type="number" min={0} step={0.5} value={form.water_target_litres}
-              onChange={e => set('water_target_litres', e.target.value)} placeholder="2.5" />
+              onChange={e => set('water_target_litres', e.target.value)} placeholder="e.g. 2.5" />
             <p className="text-xs text-gray-400 mt-1">litres/day</p>
           </div>
           <div>
             <label className="label">Sleep goal</label>
             <input className="input" type="number" min={0} step={0.5} value={form.sleep_target_hours}
-              onChange={e => set('sleep_target_hours', e.target.value)} placeholder="8" />
+              onChange={e => set('sleep_target_hours', e.target.value)} placeholder="e.g. 8" />
             <p className="text-xs text-gray-400 mt-1">hours/night</p>
           </div>
         </div>

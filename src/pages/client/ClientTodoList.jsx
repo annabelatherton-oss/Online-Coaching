@@ -34,17 +34,20 @@ function buildSystemTasks(client, schedItems) {
     tasks.push({ key: 'macros', label: 'Hit your macros' })
   }
 
-  // Water
-  const water = client?.water_target_litres ?? 2.5
-  tasks.push({ key: 'water', label: `Drink ${water}L of water` })
+  // Water — only if coach has assigned a target
+  if (client?.water_target_litres) {
+    tasks.push({ key: 'water', label: `Drink ${client.water_target_litres}L of water` })
+  }
 
-  // Steps
-  const steps = client?.steps_target ?? 10000
-  tasks.push({ key: 'steps', label: `Hit ${Number(steps).toLocaleString()} steps` })
+  // Steps — only if coach has assigned a target
+  if (client?.steps_target) {
+    tasks.push({ key: 'steps', label: `Hit ${Number(client.steps_target).toLocaleString()} steps` })
+  }
 
-  // Sleep
-  const sleep = client?.sleep_target_hours ?? 8
-  tasks.push({ key: 'sleep', label: `Get ${sleep} hours of sleep` })
+  // Sleep — only if coach has assigned a target
+  if (client?.sleep_target_hours) {
+    tasks.push({ key: 'sleep', label: `Get ${client.sleep_target_hours} hours of sleep` })
+  }
 
   // Training — one task per workout/HIIT item scheduled that day
   const trainingItems = (schedItems || []).filter(i => i.item_type === 'workout' || i.item_type === 'hiit')
