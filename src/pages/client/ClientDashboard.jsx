@@ -18,20 +18,30 @@ function calcPauseStartDate() {
 function calcPause(returnDateStr, pauseStartDateStr) {
   const ret = new Date(returnDateStr + 'T00:00:00')
   const day = ret.getDay()
+  // First check-in: same week's Friday for Mon–Fri returns; next Friday for Sat/Sun
   let firstFri = new Date(ret)
-  // Fri (5): +0 same day; Mon–Thu: forward to Friday; Sat: +6; Sun: +5
   if (day === 0) firstFri.setDate(ret.getDate() + 5)
   else if (day <= 5) firstFri.setDate(ret.getDate() + (5 - day))
   else firstFri.setDate(ret.getDate() + 6)
-  // Weeks paused = span from pause start to return date
+
+  // Weeks paused = number of Fridays that fall within [pause_start, return_date]
+  // Pause always starts Monday, so first affected Friday = start + 4
   let weeks = 0
   if (pauseStartDateStr) {
     const pauseStart = new Date(pauseStartDateStr + 'T00:00:00')
-    weeks = Math.ceil((ret - pauseStart) / (7 * 24 * 60 * 60 * 1000))
+    const pauseStartFri = new Date(pauseStart)
+    pauseStartFri.setDate(pauseStart.getDate() + 4)
+    // Last Friday on or before return date
+    const lastFri = new Date(ret)
+    lastFri.setDate(ret.getDate() - (day + 2) % 7)
+    if (lastFri >= pauseStartFri) {
+      weeks = Math.round((lastFri - pauseStartFri) / (7 * 24 * 60 * 60 * 1000)) + 1
+    }
   }
+
   const pad = n => String(n).padStart(2, '0')
   const fISO = `${firstFri.getFullYear()}-${pad(firstFri.getMonth() + 1)}-${pad(firstFri.getDate())}`
-  return { firstCheckinDate: fISO, weeksPaused: Math.max(0, weeks) }
+  return { firstCheckinDate: fISO, weeksPaused: weeks }
 }
 
 function fmtDate(iso) {
