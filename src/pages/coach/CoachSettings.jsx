@@ -45,7 +45,7 @@ export default function CoachSettings() {
     const [{ data: meals, error }, { data: library }] = await Promise.all([
       supabase
         .from('meals')
-        .select('id, name, category, meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, alternative_ingredient_ids)')
+        .select('id, name, category, meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, alternative_ingredient_ids, is_static)')
         .eq('coach_id', profile.id),
       supabase.from('ingredients').select('*').eq('coach_id', profile.id),
     ])
