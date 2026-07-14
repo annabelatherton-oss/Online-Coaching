@@ -55,6 +55,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const [workouts, setWorkouts] = useState([])
   const [hiitCircuits, setHiitCircuits] = useState([])
   const [cardioSessions, setCardioSessions] = useState([])
+  const [exerciseLibrary, setExerciseLibrary] = useState([])
   const [loading, setLoading] = useState(true)
   const [populating, setPopulating] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -91,6 +92,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       { data: wkts },
       { data: hiits },
       { data: cardios },
+      { data: exLib },
     ] = await Promise.all([
       supabase
         .from('client_schedule_items')
@@ -105,6 +107,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       supabase.from('workouts').select('id, name').eq('coach_id', coachId).eq('is_archived', false).order('name'),
       supabase.from('hiit_circuits').select('id, name, circuit_type').eq('coach_id', coachId).eq('is_archived', false).order('name'),
       supabase.from('cardio_sessions').select('id, name, cardio_type, duration_minutes').eq('coach_id', coachId).eq('is_archived', false).order('name'),
+      supabase.from('exercises').select('id, name').eq('coach_id', coachId).eq('is_archived', false).order('name'),
     ])
     if (schedErr?.code === '42P01' || schedErr?.message?.includes('does not exist')) {
       setError('migration_needed')
@@ -118,6 +121,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     setWorkouts(wkts || [])
     setHiitCircuits(hiits || [])
     setCardioSessions(cardios || [])
+    setExerciseLibrary(exLib || [])
     setLoading(false)
   }
 
@@ -627,11 +631,15 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                       <span className="w-5" />
                                     </div>
                                   )}
+                                  <datalist id="cwp-exercise-list">
+                                    {exerciseLibrary.map(e => <option key={e.id} value={e.name} />)}
+                                  </datalist>
                                   {exercises.map((ex, idx) => (
                                     <div key={ex.id || ex._key || idx} className="flex gap-2 items-center">
                                       <input
                                         className="flex-1 input py-1 text-xs"
                                         placeholder="Exercise name"
+                                        list="cwp-exercise-list"
                                         value={ex.name}
                                         onChange={e => updateExercise(item.workout_id, idx, 'name', e.target.value)}
                                       />

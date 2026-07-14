@@ -21,7 +21,7 @@ function buildName(day, label) {
   return label.trim() ? `${day} — ${label.trim()}` : day
 }
 
-function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFirst, isLast }) {
+function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFirst, isLast, library }) {
   const hasMedia = !!(exercise.illustration_url || exercise.video_url)
   const [mediaOpen, setMediaOpen] = useState(hasMedia)
   const [uploading, setUploading] = useState(false)
@@ -63,6 +63,7 @@ function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFir
         <input
           className="flex-1 input py-1.5 text-sm"
           placeholder="Exercise name"
+          list="cte-exercise-list"
           value={exercise.name}
           onChange={e => onChange('name', e.target.value)}
         />
@@ -137,7 +138,7 @@ function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFir
   )
 }
 
-function SessionCard({ session, onDelete, occupiedDays }) {
+function SessionCard({ session, onDelete, occupiedDays, library }) {
   const parsed = parseDayLabel(session.name)
   const [day, setDay] = useState(parsed.day || '')
   const [label, setLabel] = useState(parsed.label)
@@ -264,6 +265,7 @@ function SessionCard({ session, onDelete, occupiedDays }) {
                 <ExerciseRow
                   key={ex.id || ex._key || i}
                   exercise={ex}
+                  library={library}
                   onChange={(field, value) => update(i, field, value)}
                   onRemove={() => remove(i)}
                   onMoveUp={() => moveUp(i)}
@@ -319,6 +321,7 @@ export default function CoachTrainingEditor() {
   const [liftsSaved, setLiftsSaved] = useState(false)
   const [exerciseNames, setExerciseNames] = useState([])
   const [exerciseRepsMap, setExerciseRepsMap] = useState({})
+  const [exerciseLibrary, setExerciseLibrary] = useState([])
 
   async function loadProgram() {
     const { data } = await supabase
@@ -334,6 +337,17 @@ export default function CoachTrainingEditor() {
     setTopLifts(data.top_lifts || [])
     setLoading(false)
     loadExerciseNames()
+    loadLibrary()
+  }
+
+  async function loadLibrary() {
+    const { data } = await supabase
+      .from('exercises')
+      .select('id, name, primary_muscle')
+      .eq('coach_id', profile.id)
+      .eq('is_archived', false)
+      .order('name')
+    setExerciseLibrary(data || [])
   }
 
   async function loadExerciseNames() {
@@ -656,6 +670,10 @@ export default function CoachTrainingEditor() {
         <LoadingSpinner size="md" className="py-8" />
       ) : (
         <div className="space-y-2">
+          <datalist id="cte-exercise-list">
+            {exerciseLibrary.map(e => <option key={e.id} value={e.name} />)}
+          </datalist>
+
           {WEEK_DAYS.map(day => {
             const session = sessionsByDay[day]
 
@@ -666,6 +684,7 @@ export default function CoachTrainingEditor() {
                   session={session}
                   onDelete={deleteSession}
                   occupiedDays={occupiedDays}
+                  library={exerciseLibrary}
                 />
               )
             }

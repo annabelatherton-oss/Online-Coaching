@@ -4,8 +4,19 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
-function ExRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown }) {
+function ExRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown, library }) {
   const [expanded, setExpanded] = useState(false)
+
+  function handleNameChange(val) {
+    onChange('name', val)
+    const match = library.find(l => l.name.toLowerCase() === val.toLowerCase())
+    if (match) {
+      if (match.default_rest_seconds && !ex.rest_seconds) onChange('rest_seconds', match.default_rest_seconds)
+      if (match.tempo && !ex.tempo) onChange('tempo', match.tempo)
+      if (match.id) onChange('exercise_id', match.id)
+    }
+  }
+
   return (
     <div className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2.5 bg-white dark:bg-gray-900">
@@ -21,8 +32,13 @@ function ExRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown }) {
           </button>
         </div>
 
-        <input className="flex-1 input py-1.5 text-sm" placeholder="Exercise name" value={ex.name}
-          onChange={e => onChange('name', e.target.value)} />
+        <input
+          className="flex-1 input py-1.5 text-sm"
+          placeholder="Exercise name"
+          list="we-exercise-list"
+          value={ex.name}
+          onChange={e => handleNameChange(e.target.value)}
+        />
         <input className="input py-1.5 text-sm w-14 text-center" type="number" min={1} placeholder="Sets"
           value={ex.sets ?? ''} onChange={e => onChange('sets', e.target.value ? parseInt(e.target.value) : null)} />
         <input className="input py-1.5 text-sm w-20 text-center" placeholder="Reps"
@@ -209,12 +225,17 @@ export default function WorkoutEditor() {
           </div>
         </div>
 
+        <datalist id="we-exercise-list">
+          {library.map(l => <option key={l.id} value={l.name} />)}
+        </datalist>
+
         {exercises.map((ex, i) => (
           <ExRow
             key={ex._key || ex.id || i}
             ex={ex}
             idx={i}
             total={exercises.length}
+            library={library}
             onChange={(field, value) => updateEx(i, field, value)}
             onRemove={() => removeEx(i)}
             onMoveUp={() => moveUp(i)}
