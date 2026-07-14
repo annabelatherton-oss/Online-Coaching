@@ -4,6 +4,27 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
+function calcPause(returnDateStr) {
+  const ret = new Date(returnDateStr + 'T00:00:00')
+  const day = ret.getDay()
+  let firstFri = new Date(ret)
+  if (day === 0) firstFri.setDate(ret.getDate() + 5)
+  else if (day <= 4) firstFri.setDate(ret.getDate() + (5 - day))
+  else firstFri.setDate(ret.getDate() + (12 - day))
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const todayDay = today.getDay()
+  let nextFri = new Date(today)
+  if (todayDay === 0) nextFri.setDate(today.getDate() + 5)
+  else if (todayDay <= 5) nextFri.setDate(today.getDate() + (5 - todayDay))
+  else nextFri.setDate(today.getDate() + 6)
+  const weeks = Math.round((firstFri - nextFri) / (7 * 24 * 60 * 60 * 1000))
+  return { firstCheckinDate: firstFri.toISOString().split('T')[0], weeksPaused: weeks }
+}
+
+function fmtDate(iso) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
 function PlaceholderCard({ title, subtitle, icon, color, comingSoon }) {
   return (
     <div className={`card flex flex-col gap-3 h-full ${comingSoon ? 'opacity-60' : ''}`}>
@@ -28,6 +49,16 @@ export default function ClientDashboard() {
   const [clientData, setClientData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [newDelivery, setNewDelivery] = useState(null)
+  const [activePause, setActivePause] = useState(null)
+  const [showPauseForm, setShowPauseForm] = useState(false)
+  const [returnDate, setReturnDate] = useState('')
+  const [pauseCalc, setPauseCalc] = useState(null)
+  const [pauseSaving, setPauseSaving] = useState(false)
+
+  useEffect(() => {
+    if (returnDate) setPauseCalc(calcPause(returnDate))
+    else setPauseCalc(null)
+  }, [returnDate])
 
   useEffect(() => {
     async function load() {
@@ -39,14 +70,22 @@ export default function ClientDashboard() {
       setClientData(data)
 
       if (data?.id) {
-        const { data: delivery } = await supabase
-          .from('weekly_deliveries')
-          .select('id, coach_notes, personal_week, delivered_at')
-          .eq('client_id', data.id)
-          .is('seen_at', null)
-          .order('delivered_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+        const [{ data: delivery }, { data: pause }] = await Promise.all([
+          supabase.from('weekly_deliveries')
+            .select('id, coach_notes, personal_week, delivered_at')
+            .eq('client_id', data.id)
+            .is('seen_at', null)
+            .order('delivered_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase.from('plan_pauses')
+            .select('*')
+            .eq('client_id', data.id)
+            .eq('status', 'active')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ])
         if (delivery) {
           setNewDelivery(delivery)
           supabase.from('weekly_deliveries')
@@ -54,6 +93,7 @@ export default function ClientDashboard() {
             .eq('id', delivery.id)
             .then(() => {})
         }
+        setActivePause(pause)
       }
 
       setLoading(false)
@@ -61,12 +101,37 @@ export default function ClientDashboard() {
     load()
   }, [session.user.id])
 
+  async function submitPause() {
+    if (!returnDate || !pauseCalc || pauseCalc.weeksPaused < 1 || !clientData?.id) return
+    setPauseSaving(true)
+    const { data, error } = await supabase.from('plan_pauses').insert({
+      client_id: clientData.id,
+      return_date: returnDate,
+      first_checkin_date: pauseCalc.firstCheckinDate,
+      weeks_paused: pauseCalc.weeksPaused,
+    }).select().single()
+    if (!error) {
+      setActivePause(data)
+      setShowPauseForm(false)
+      setReturnDate('')
+      setPauseCalc(null)
+    }
+    setPauseSaving(false)
+  }
+
+  async function cancelPause() {
+    if (!activePause) return
+    await supabase.from('plan_pauses').update({ status: 'cancelled' }).eq('id', activePause.id)
+    setActivePause(null)
+  }
+
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
   const now = new Date()
   const expiry = clientData?.access_expires_at ? new Date(clientData.access_expires_at) : null
   const daysLeft = expiry ? Math.max(0, Math.ceil((expiry - now) / (1000 * 60 * 60 * 24))) : null
   const weeksLeft = daysLeft !== null ? Math.ceil(daysLeft / 7) : null
+  const tomorrowISO = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0] })()
 
   return (
     <div className="space-y-6">
@@ -125,6 +190,95 @@ export default function ClientDashboard() {
             </svg>
           </div>
         </Link>
+      )}
+
+      {/* Holiday pause */}
+      {activePause ? (
+        <div className="card border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 flex gap-4">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0 text-xl">
+            🌴
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-gray-900 dark:text-white">Plan pause active</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+              Returning {fmtDate(activePause.return_date)} — your first check-in window opens {fmtDate(activePause.first_checkin_date)} ({activePause.weeks_paused} week{activePause.weeks_paused !== 1 ? 's' : ''} paused).
+            </p>
+          </div>
+          <button
+            onClick={cancelPause}
+            className="text-xs text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors self-start mt-1 whitespace-nowrap"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : showPauseForm ? (
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🌴</span>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Request a plan pause</h3>
+            </div>
+            <button
+              onClick={() => { setShowPauseForm(false); setReturnDate(''); setPauseCalc(null) }}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div>
+            <label className="label">When are you returning?</label>
+            <input
+              type="date"
+              className="input"
+              min={tomorrowISO}
+              value={returnDate}
+              onChange={e => setReturnDate(e.target.value)}
+            />
+          </div>
+          {pauseCalc && (
+            pauseCalc.weeksPaused < 1 ? (
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                <p className="text-sm text-blue-800 dark:text-blue-300">
+                  You'll still be able to do this Friday's check-in — no pause needed for a short trip.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                  {pauseCalc.weeksPaused} week{pauseCalc.weeksPaused !== 1 ? 's' : ''} paused
+                </p>
+                <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
+                  Your first check-in window after returning will be the weekend of {fmtDate(pauseCalc.firstCheckinDate)}.
+                </p>
+              </div>
+            )
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={submitPause}
+              disabled={!returnDate || !pauseCalc || pauseCalc.weeksPaused < 1 || pauseSaving}
+              className="btn-primary"
+            >
+              {pauseSaving ? 'Requesting…' : 'Request pause'}
+            </button>
+            <button
+              onClick={() => { setShowPauseForm(false); setReturnDate(''); setPauseCalc(null) }}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowPauseForm(true)}
+          className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+        >
+          <span>🌴</span>
+          <span>Going on holiday? Request a plan pause</span>
+        </button>
       )}
 
       {/* Quick cards */}

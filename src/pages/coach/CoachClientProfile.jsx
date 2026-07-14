@@ -263,6 +263,57 @@ function checkinRatingColor(v) {
   return 'text-red-500 dark:text-red-400'
 }
 
+function _fmtDate(iso) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function ClientPauseCard({ clientId }) {
+  const [pause, setPause] = useState(null)
+
+  useEffect(() => {
+    supabase.from('plan_pauses').select('*')
+      .eq('client_id', clientId).eq('status', 'active')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => setPause(data))
+  }, [clientId])
+
+  async function markResolved() {
+    await supabase.from('plan_pauses').update({ status: 'completed' }).eq('id', pause.id)
+    setPause(null)
+  }
+
+  if (!pause) return null
+
+  return (
+    <div className="card border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">🌴</span>
+        <h3 className="font-semibold text-amber-900 dark:text-amber-200">Holiday Pause Requested</h3>
+        <span className="text-xs text-amber-600 dark:text-amber-400 ml-auto">
+          Submitted {_fmtDate(pause.created_at.split('T')[0])}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-4 text-sm">
+        <div>
+          <p className="text-amber-700 dark:text-amber-400 text-xs">Return date</p>
+          <p className="font-medium text-gray-900 dark:text-white">{_fmtDate(pause.return_date)}</p>
+        </div>
+        <div>
+          <p className="text-amber-700 dark:text-amber-400 text-xs">First check-in</p>
+          <p className="font-medium text-gray-900 dark:text-white">{_fmtDate(pause.first_checkin_date)}</p>
+        </div>
+        <div>
+          <p className="text-amber-700 dark:text-amber-400 text-xs">Weeks paused</p>
+          <p className="font-medium text-gray-900 dark:text-white">{pause.weeks_paused}</p>
+        </div>
+      </div>
+      <button type="button" onClick={markResolved} className="btn-secondary py-1.5 px-3 text-xs">
+        Mark as resolved
+      </button>
+    </div>
+  )
+}
+
 function StatusBadge({ client }) {
   const now = new Date()
   const exp = client.access_expires_at ? new Date(client.access_expires_at) : null
@@ -365,7 +416,9 @@ function OverviewTab({ client, onSaved }) {
     : '—'
 
   return (
-    <form onSubmit={handleSave} className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-2xl">
+    <ClientPauseCard clientId={client.id} />
+    <form onSubmit={handleSave} className="space-y-6">
       <div className="card space-y-4">
         <h3 className="font-semibold text-gray-900 dark:text-white">Programme Details</h3>
         <div>
@@ -487,6 +540,7 @@ function OverviewTab({ client, onSaved }) {
         {saved && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
       </div>
     </form>
+    </div>
   )
 }
 
