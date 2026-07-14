@@ -70,9 +70,10 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   // Cardio free-text add state
   const [addCardioText, setAddCardioText] = useState('')
 
-  // Workout exercise drill-down
+  // Workout exercise drill-down (editable)
   const [expandedItemId, setExpandedItemId] = useState(null)
-  const [workoutExercisesCache, setWorkoutExercisesCache] = useState({})
+  const [exerciseDrafts, setExerciseDrafts] = useState({})   // workoutId → Exercise[]
+  const [exerciseSaving, setExerciseSaving] = useState({})
 
   // Populate banner "use different block" expander
   const [showAltPopulate, setShowAltPopulate] = useState(false)
@@ -173,14 +174,63 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       return
     }
     setExpandedItemId(item.id)
-    if (item.workout_id && workoutExercisesCache[item.workout_id] === undefined) {
+    if (item.workout_id && exerciseDrafts[item.workout_id] === undefined) {
       const { data } = await supabase
         .from('workout_exercises')
         .select('id, name, sets, reps, rpe, rest_seconds, notes, order_index')
         .eq('workout_id', item.workout_id)
         .order('order_index')
-      setWorkoutExercisesCache(prev => ({ ...prev, [item.workout_id]: data || [] }))
+      setExerciseDrafts(prev => ({ ...prev, [item.workout_id]: data || [] }))
     }
+  }
+
+  function updateExercise(workoutId, idx, field, value) {
+    setExerciseDrafts(prev => ({
+      ...prev,
+      [workoutId]: prev[workoutId].map((ex, i) => i === idx ? { ...ex, [field]: value } : ex),
+    }))
+  }
+
+  function addExercise(workoutId) {
+    setExerciseDrafts(prev => ({
+      ...prev,
+      [workoutId]: [...(prev[workoutId] || []), { _key: Math.random().toString(36).slice(2), name: '', sets: null, reps: '', rpe: '', notes: '' }],
+    }))
+  }
+
+  function removeExercise(workoutId, idx) {
+    setExerciseDrafts(prev => ({
+      ...prev,
+      [workoutId]: prev[workoutId].filter((_, i) => i !== idx),
+    }))
+  }
+
+  async function saveExercises(workoutId) {
+    setExerciseSaving(prev => ({ ...prev, [workoutId]: true }))
+    const draft = exerciseDrafts[workoutId] || []
+    await supabase.from('workout_exercises').delete().eq('workout_id', workoutId)
+    if (draft.length > 0) {
+      await supabase.from('workout_exercises').insert(
+        draft.map((ex, i) => ({
+          workout_id: workoutId,
+          order_index: i,
+          name: ex.name?.trim() || 'Exercise',
+          sets: ex.sets ? parseInt(ex.sets) : null,
+          reps: ex.reps?.trim() || null,
+          rpe: ex.rpe?.trim() || null,
+          rest_seconds: ex.rest_seconds || null,
+          notes: ex.notes?.trim() || null,
+        }))
+      )
+    }
+    // Re-fetch to get real IDs
+    const { data } = await supabase
+      .from('workout_exercises')
+      .select('id, name, sets, reps, rpe, rest_seconds, notes, order_index')
+      .eq('workout_id', workoutId)
+      .order('order_index')
+    setExerciseDrafts(prev => ({ ...prev, [workoutId]: data || [] }))
+    setExerciseSaving(prev => ({ ...prev, [workoutId]: false }))
   }
 
   async function populateFromProgram(prog) {
@@ -489,7 +539,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                           : (stripDay(wktName) || wktName || item.custom_label || 'Workout')
                       const isDragging = dragItemId === item.id
                       const isExpanded = expandedItemId === item.id
-                      const exercises = item.workout_id ? workoutExercisesCache[item.workout_id] : null
+                      const exercises = item.workout_id ? exerciseDrafts[item.workout_id] : null
 
                       return (
                         <div key={item.id}>
@@ -561,29 +611,74 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                             </button>
                           </div>
 
-                          {/* Exercise detail panel */}
+                          {/* Exercise detail panel — editable */}
                           {isExpanded && !isCardio && !isHiit && (
-                            <div className="mt-1 ml-4 rounded-xl border border-brand-100 dark:border-brand-800/30 bg-brand-50/50 dark:bg-brand-900/10 px-3 py-2.5">
+                            <div className="mt-1 ml-4 rounded-xl border border-brand-100 dark:border-brand-800/30 bg-brand-50/50 dark:bg-brand-900/10 px-3 py-3">
                               {exercises === undefined ? (
                                 <p className="text-xs text-gray-400">Loading…</p>
-                              ) : exercises.length === 0 ? (
-                                <p className="text-xs text-gray-400 italic">No exercises added to this workout yet.</p>
                               ) : (
-                                <div className="space-y-1.5">
-                                  <div className="flex gap-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wide pb-1 border-b border-brand-100 dark:border-brand-800/30">
-                                    <span className="flex-1">Exercise</span>
-                                    <span className="w-10 text-center">Sets</span>
-                                    <span className="w-14 text-center">Reps</span>
-                                    <span className="w-10 text-center">RPE</span>
-                                  </div>
-                                  {exercises.map(ex => (
-                                    <div key={ex.id} className="flex gap-3 items-center">
-                                      <span className="flex-1 text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{ex.name}</span>
-                                      <span className="w-10 text-center text-xs text-gray-500 dark:text-gray-400">{ex.sets ?? '—'}</span>
-                                      <span className="w-14 text-center text-xs text-gray-500 dark:text-gray-400">{ex.reps || '—'}</span>
-                                      <span className="w-10 text-center text-xs text-gray-500 dark:text-gray-400">{ex.rpe || '—'}</span>
+                                <div className="space-y-2">
+                                  {exercises.length > 0 && (
+                                    <div className="flex gap-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide pb-1 border-b border-brand-100 dark:border-brand-800/30">
+                                      <span className="flex-1">Exercise</span>
+                                      <span className="w-12 text-center">Sets</span>
+                                      <span className="w-16 text-center">Reps</span>
+                                      <span className="w-12 text-center">RPE</span>
+                                      <span className="w-5" />
+                                    </div>
+                                  )}
+                                  {exercises.map((ex, idx) => (
+                                    <div key={ex.id || ex._key || idx} className="flex gap-2 items-center">
+                                      <input
+                                        className="flex-1 input py-1 text-xs"
+                                        placeholder="Exercise name"
+                                        value={ex.name}
+                                        onChange={e => updateExercise(item.workout_id, idx, 'name', e.target.value)}
+                                      />
+                                      <input
+                                        className="input py-1 text-xs w-12 text-center"
+                                        type="number"
+                                        min={1}
+                                        placeholder="Sets"
+                                        value={ex.sets ?? ''}
+                                        onChange={e => updateExercise(item.workout_id, idx, 'sets', e.target.value ? parseInt(e.target.value) : null)}
+                                      />
+                                      <input
+                                        className="input py-1 text-xs w-16 text-center"
+                                        placeholder="Reps"
+                                        value={ex.reps ?? ''}
+                                        onChange={e => updateExercise(item.workout_id, idx, 'reps', e.target.value)}
+                                      />
+                                      <input
+                                        className="input py-1 text-xs w-12 text-center"
+                                        placeholder="RPE"
+                                        value={ex.rpe ?? ''}
+                                        onChange={e => updateExercise(item.workout_id, idx, 'rpe', e.target.value)}
+                                      />
+                                      <button
+                                        onClick={() => removeExercise(item.workout_id, idx)}
+                                        className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 w-5 flex-shrink-0 text-base leading-none"
+                                      >×</button>
                                     </div>
                                   ))}
+                                  <div className="flex items-center justify-between pt-1">
+                                    <button
+                                      onClick={() => addExercise(item.workout_id)}
+                                      className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium inline-flex items-center gap-1"
+                                    >
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                      </svg>
+                                      Add exercise
+                                    </button>
+                                    <button
+                                      onClick={() => saveExercises(item.workout_id)}
+                                      disabled={exerciseSaving[item.workout_id]}
+                                      className="btn-primary py-1 px-3 text-xs"
+                                    >
+                                      {exerciseSaving[item.workout_id] ? 'Saving…' : 'Save'}
+                                    </button>
+                                  </div>
                                 </div>
                               )}
                             </div>
