@@ -43,6 +43,9 @@ function OverviewTab({ client, onSaved }) {
     current_protein: client.current_protein || '',
     current_carbs: client.current_carbs || '',
     current_fat: client.current_fat || '',
+    steps_target: client.steps_target ?? 10000,
+    water_target_litres: client.water_target_litres ?? 2.5,
+    sleep_target_hours: client.sleep_target_hours ?? 8.0,
     start_date: client.start_date ? client.start_date.split('T')[0] : '',
     access_weeks: client.access_weeks || 4,
     is_paused: client.is_paused || false,
@@ -102,6 +105,9 @@ function OverviewTab({ client, onSaved }) {
       current_protein: form.current_protein ? parseInt(form.current_protein) : null,
       current_carbs: form.current_carbs ? parseInt(form.current_carbs) : null,
       current_fat: form.current_fat ? parseInt(form.current_fat) : null,
+      steps_target: form.steps_target ? parseInt(form.steps_target) : 10000,
+      water_target_litres: form.water_target_litres ? parseFloat(form.water_target_litres) : 2.5,
+      sleep_target_hours: form.sleep_target_hours ? parseFloat(form.sleep_target_hours) : 8.0,
       start_date: form.start_date,
       access_weeks: parseInt(form.access_weeks),
       is_paused: form.is_paused,
@@ -205,6 +211,33 @@ function OverviewTab({ client, onSaved }) {
           {splitTotal !== 100 && (
             <p className="text-xs text-amber-500 mt-2">Split totals {splitTotal}% — adjust so the three add up to 100%.</p>
           )}
+        </div>
+      </div>
+
+      <div className="card space-y-4">
+        <div>
+          <h3 className="font-semibold text-gray-900 dark:text-white">Daily Habit Targets</h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">These appear as daily tasks on the client's My Daily Plan page.</p>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="label">Steps goal</label>
+            <input className="input" type="number" min={0} step={500} value={form.steps_target}
+              onChange={e => set('steps_target', e.target.value)} placeholder="10000" />
+            <p className="text-xs text-gray-400 mt-1">steps/day</p>
+          </div>
+          <div>
+            <label className="label">Water goal</label>
+            <input className="input" type="number" min={0} step={0.5} value={form.water_target_litres}
+              onChange={e => set('water_target_litres', e.target.value)} placeholder="2.5" />
+            <p className="text-xs text-gray-400 mt-1">litres/day</p>
+          </div>
+          <div>
+            <label className="label">Sleep goal</label>
+            <input className="input" type="number" min={0} step={0.5} value={form.sleep_target_hours}
+              onChange={e => set('sleep_target_hours', e.target.value)} placeholder="8" />
+            <p className="text-xs text-gray-400 mt-1">hours/night</p>
+          </div>
         </div>
       </div>
 
@@ -2109,7 +2142,8 @@ export default function CoachClientProfile() {
   async function loadClient() {
     const { data, error: err } = await supabase.from('clients').select(`
       id, coach_id, profile_id, goal, current_calories, current_protein,
-      current_carbs, current_fat, start_date, access_weeks, access_expires_at,
+      current_carbs, current_fat, steps_target, water_target_litres, sleep_target_hours,
+      start_date, access_weeks, access_expires_at,
       is_active, is_paused, notes, created_at, tags, collect_measurements, top_lifts,
       profiles!clients_profile_id_fkey(full_name, email)
     `).eq('id', clientId).eq('coach_id', profile.id).single()
