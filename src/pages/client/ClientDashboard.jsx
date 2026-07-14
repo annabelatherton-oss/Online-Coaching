@@ -15,48 +15,33 @@ function calcPauseStartDate() {
   return `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`
 }
 
-function calcPause(returnDateStr, pauseStartDateStr) {
-  const ret = new Date(returnDateStr + 'T00:00:00')
-  const day = ret.getDay()
+// checkinDateStr is the day the client says they'll check in (always Fri/Sat/Sun)
+function calcPause(checkinDateStr, pauseStartDateStr) {
+  const checkin = new Date(checkinDateStr + 'T00:00:00')
+  const day = checkin.getDay() // 5=Fri, 6=Sat, 0=Sun
 
-  // First check-in Friday:
-  //   Mon–Fri → same week's Friday (Fri = same day)
-  //   Sat     → previous Friday (still the same Fri–Sun window, no extra week)
-  //   Sun     → next Friday (too late to check in that weekend, counts as extra week)
-  let firstFri = new Date(ret)
-  if (day === 6) firstFri.setDate(ret.getDate() - 1)
-  else if (day === 0) firstFri.setDate(ret.getDate() + 5)
-  else firstFri.setDate(ret.getDate() + (5 - day))
+  // Friday of the check-in weekend (Fri→same, Sat→-1, Sun→-2)
+  const checkinFri = new Date(checkin)
+  if (day === 6) checkinFri.setDate(checkin.getDate() - 1)
+  else if (day === 0) checkinFri.setDate(checkin.getDate() - 2)
 
-  // Weeks paused = Fridays within [pauseStartFri, lastFriInReturnWeek] + 1 for Sunday returns
   let weeks = 0
   if (pauseStartDateStr) {
     const pauseStart = new Date(pauseStartDateStr + 'T00:00:00')
     const pauseStartFri = new Date(pauseStart)
     pauseStartFri.setDate(pauseStart.getDate() + 4) // pause starts Mon → first Fri = Mon+4
-    const lastFri = new Date(ret)
-    lastFri.setDate(ret.getDate() - (day + 2) % 7) // last Friday on or before return date
-    if (lastFri >= pauseStartFri) {
-      weeks = Math.round((lastFri - pauseStartFri) / (7 * 24 * 60 * 60 * 1000)) + 1
+    if (checkinFri >= pauseStartFri) {
+      weeks = Math.round((checkinFri - pauseStartFri) / (7 * 24 * 60 * 60 * 1000)) + 1
     }
-    if (day === 0) weeks += 1 // Sunday: already past the weekend window, extra week
   }
 
-  const pad = n => String(n).padStart(2, '0')
-  const fISO = `${firstFri.getFullYear()}-${pad(firstFri.getMonth() + 1)}-${pad(firstFri.getDate())}`
-  return { firstCheckinDate: fISO, weeksPaused: weeks }
+  return { firstCheckinDate: checkinDateStr, weeksPaused: weeks }
 }
 
 function fmtDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-function fmtCheckinWindow(fridayISO) {
-  const fri = new Date(fridayISO + 'T00:00:00')
-  const sun = new Date(fri); sun.setDate(fri.getDate() + 2)
-  const opts = { day: 'numeric', month: 'short' }
-  return `${fri.toLocaleDateString('en-GB', opts)} – ${sun.toLocaleDateString('en-GB', { ...opts, year: 'numeric' })}`
-}
 
 function PlaceholderCard({ title, subtitle, icon, color, comingSoon }) {
   return (
@@ -85,7 +70,7 @@ export default function ClientDashboard() {
   const [activePause, setActivePause] = useState(null)
   const [showPauseForm, setShowPauseForm] = useState(false)
   const [pauseStartDate, setPauseStartDate] = useState('')
-  const [returnDate, setReturnDate] = useState('')
+  const [checkinDate, setCheckinDate] = useState('')
   const [pauseCalc, setPauseCalc] = useState(null)
   const [pauseSaving, setPauseSaving] = useState(false)
 
@@ -95,23 +80,34 @@ export default function ClientDashboard() {
     if (!val) { setPauseStartDate(''); return }
     const d = new Date(val + 'T00:00:00')
     const dow = d.getDay()
-    if (dow !== 1) {
-      // Snap forward to next Monday
-      d.setDate(d.getDate() + (dow === 0 ? 1 : 8 - dow))
-    }
-    // Clamp to earliest allowed Monday
+    if (dow !== 1) d.setDate(d.getDate() + (dow === 0 ? 1 : 8 - dow))
     const earliest = new Date(earliestMonday + 'T00:00:00')
     if (d < earliest) d.setTime(earliest.getTime())
     const pad = n => String(n).padStart(2, '0')
     setPauseStartDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
-    setReturnDate('')
+    setCheckinDate('')
     setPauseCalc(null)
   }
 
+  function handleCheckinDateChange(val) {
+    if (!val) { setCheckinDate(''); setPauseCalc(null); return }
+    const d = new Date(val + 'T00:00:00')
+    const dow = d.getDay()
+    // Snap Mon–Thu to that week's Friday; Fri/Sat/Sun stay as-is
+    if (dow >= 1 && dow <= 4) d.setDate(d.getDate() + (5 - dow))
+    // Clamp to earliest check-in (Friday of pause start week)
+    const minCheckin = new Date(pauseStartDate + 'T00:00:00')
+    minCheckin.setDate(minCheckin.getDate() + 4)
+    if (d < minCheckin) d.setTime(minCheckin.getTime())
+    const pad = n => String(n).padStart(2, '0')
+    const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    setCheckinDate(iso)
+    setPauseCalc(calcPause(iso, pauseStartDate))
+  }
+
   useEffect(() => {
-    if (returnDate) setPauseCalc(calcPause(returnDate, pauseStartDate))
-    else setPauseCalc(null)
-  }, [returnDate, pauseStartDate])
+    if (!checkinDate) setPauseCalc(null)
+  }, [checkinDate])
 
   useEffect(() => {
     async function load() {
@@ -157,17 +153,16 @@ export default function ClientDashboard() {
   function closePauseForm() {
     setShowPauseForm(false)
     setPauseStartDate('')
-    setReturnDate('')
+    setCheckinDate('')
     setPauseCalc(null)
   }
 
   async function submitPause() {
-    if (!pauseStartDate || !returnDate || !pauseCalc || !clientData?.id) return
+    if (!pauseStartDate || !checkinDate || !pauseCalc || !clientData?.id) return
     setPauseSaving(true)
     const { data, error } = await supabase.from('plan_pauses').insert({
       client_id: clientData.id,
       pause_start_date: pauseStartDate,
-      return_date: returnDate,
       first_checkin_date: pauseCalc.firstCheckinDate,
       weeks_paused: pauseCalc.weeksPaused,
     }).select().single()
@@ -190,7 +185,6 @@ export default function ClientDashboard() {
   const expiry = clientData?.access_expires_at ? new Date(clientData.access_expires_at) : null
   const daysLeft = expiry ? Math.max(0, Math.ceil((expiry - now) / (1000 * 60 * 60 * 24))) : null
   const weeksLeft = daysLeft !== null ? Math.ceil(daysLeft / 7) : null
-  const tomorrowISO = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0] })()
 
   return (
     <div className="space-y-6">
@@ -268,8 +262,9 @@ export default function ClientDashboard() {
                 <p className="font-medium text-gray-900 dark:text-white">Plan pause approved</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
                   {activePause.pause_start_date && `Starts ${fmtDate(activePause.pause_start_date)} · `}
-                  Returning {fmtDate(activePause.return_date)}{activePause.weeks_paused > 0 ? ` · check-in window: ${fmtCheckinWindow(activePause.first_checkin_date)}`
- : ' — enjoy your trip'}.
+                  {activePause.weeks_paused > 0
+                    ? `${activePause.weeks_paused} week${activePause.weeks_paused !== 1 ? 's' : ''} paused · first check-in ${fmtDate(activePause.first_checkin_date)}`
+                    : 'Short break — enjoy your trip'}.
                 </p>
               </>
             ) : (
@@ -277,7 +272,7 @@ export default function ClientDashboard() {
                 <p className="font-medium text-gray-900 dark:text-white">Plan pause requested</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
                   {activePause.pause_start_date && `Starts ${fmtDate(activePause.pause_start_date)} · `}
-                  Returning {fmtDate(activePause.return_date)} — waiting for your coach to approve.
+                  First check-in {fmtDate(activePause.first_checkin_date)} — waiting for your coach to approve.
                 </p>
               </>
             )}
@@ -318,27 +313,30 @@ export default function ClientDashboard() {
           </div>
           {pauseStartDate && (
             <div>
-              <label className="label">When are you returning?</label>
+              <label className="label">Next available check-in</label>
               <input
                 type="date"
                 className="input"
-                min={pauseStartDate}
-                value={returnDate}
-                onChange={e => setReturnDate(e.target.value)}
+                min={(() => { const d = new Date(pauseStartDate + 'T00:00:00'); d.setDate(d.getDate() + 4); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}` })()}
+                value={checkinDate}
+                onChange={e => handleCheckinDateChange(e.target.value)}
               />
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Pick a Friday, Saturday or Sunday — other days snap to that Friday.</p>
             </div>
           )}
           {pauseCalc && (
             <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 space-y-1.5">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                {fmtDate(pauseStartDate)} → {fmtDate(returnDate)}
-              </p>
               {pauseCalc.weeksPaused > 0 ? (
-                <p className="text-sm text-amber-700 dark:text-amber-400">
-                  {pauseCalc.weeksPaused} week{pauseCalc.weeksPaused !== 1 ? 's' : ''} paused · check-in window: {fmtCheckinWindow(pauseCalc.firstCheckinDate)}
-                </p>
+                <>
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                    {pauseCalc.weeksPaused} week{pauseCalc.weeksPaused !== 1 ? 's' : ''} paused
+                  </p>
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    Pause starts {fmtDate(pauseStartDate)} · first check-in {fmtDate(pauseCalc.firstCheckinDate)}.
+                  </p>
+                </>
               ) : (
-                <p className="text-sm text-amber-700 dark:text-amber-400">
+                <p className="text-sm text-amber-800 dark:text-amber-300">
                   Short break — your coach will be notified and your plan will be paused while you're away.
                 </p>
               )}
@@ -347,7 +345,7 @@ export default function ClientDashboard() {
           <div className="flex gap-3">
             <button
               onClick={submitPause}
-              disabled={!pauseStartDate || !returnDate || !pauseCalc || pauseSaving}
+              disabled={!pauseStartDate || !checkinDate || !pauseCalc || pauseSaving}
               className="btn-primary"
             >
               {pauseSaving ? 'Requesting…' : 'Request pause'}

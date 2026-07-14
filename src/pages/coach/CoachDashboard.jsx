@@ -24,12 +24,6 @@ function StatCard({ title, value, subtitle, icon, color, to }) {
 function fmtDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
-function fmtCheckinWindow(fridayISO) {
-  const fri = new Date(fridayISO + 'T00:00:00')
-  const sun = new Date(fri); sun.setDate(fri.getDate() + 2)
-  const opts = { day: 'numeric', month: 'short' }
-  return `${fri.toLocaleDateString('en-GB', opts)}–${sun.toLocaleDateString('en-GB', { ...opts, year: 'numeric' })}`
-}
 
 export default function CoachDashboard() {
   const { profile } = useAuth()
@@ -183,9 +177,8 @@ export default function CoachDashboard() {
                   <p className="font-medium text-gray-900 dark:text-white">{p.client_name}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                     {p.pause_start_date && `Starts ${fmtDate(p.pause_start_date)} · `}
-                    Returning {fmtDate(p.return_date)} ·{' '}
                     {p.weeks_paused > 0
-                      ? `${p.weeks_paused} week${p.weeks_paused !== 1 ? 's' : ''} paused · check-in window: ${fmtCheckinWindow(p.first_checkin_date)}`
+                      ? `${p.weeks_paused} week${p.weeks_paused !== 1 ? 's' : ''} paused · first check-in ${fmtDate(p.first_checkin_date)}`
                       : 'Short break'}
                   </p>
                 </div>
