@@ -81,7 +81,7 @@ export default function ClientDashboard() {
           supabase.from('plan_pauses')
             .select('*')
             .eq('client_id', data.id)
-            .eq('status', 'active')
+            .in('status', ['pending', 'approved'])
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
@@ -102,7 +102,7 @@ export default function ClientDashboard() {
   }, [session.user.id])
 
   async function submitPause() {
-    if (!returnDate || !pauseCalc || pauseCalc.weeksPaused < 1 || !clientData?.id) return
+    if (!returnDate || !pauseCalc || !clientData?.id) return
     setPauseSaving(true)
     const { data, error } = await supabase.from('plan_pauses').insert({
       client_id: clientData.id,
@@ -194,15 +194,31 @@ export default function ClientDashboard() {
 
       {/* Holiday pause */}
       {activePause ? (
-        <div className="card border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 flex gap-4">
-          <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0 text-xl">
+        <div className={`card flex gap-4 ${activePause.status === 'approved'
+          ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10'
+          : 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/10'}`}>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-xl ${
+            activePause.status === 'approved'
+              ? 'bg-amber-100 dark:bg-amber-900/30'
+              : 'bg-blue-100 dark:bg-blue-900/30'}`}>
             🌴
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-gray-900 dark:text-white">Plan pause active</p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-              Returning {fmtDate(activePause.return_date)} — your first check-in window opens {fmtDate(activePause.first_checkin_date)} ({activePause.weeks_paused} week{activePause.weeks_paused !== 1 ? 's' : ''} paused).
-            </p>
+            {activePause.status === 'approved' ? (
+              <>
+                <p className="font-medium text-gray-900 dark:text-white">Plan pause approved</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+                  Returning {fmtDate(activePause.return_date)}{activePause.weeks_paused > 0 ? ` — first check-in window opens ${fmtDate(activePause.first_checkin_date)} (${activePause.weeks_paused} week${activePause.weeks_paused !== 1 ? 's' : ''} paused)` : ' — enjoy your trip'}.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium text-gray-900 dark:text-white">Plan pause requested</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+                  Returning {fmtDate(activePause.return_date)} — waiting for your coach to approve.
+                </p>
+              </>
+            )}
           </div>
           <button
             onClick={cancelPause}
@@ -238,27 +254,27 @@ export default function ClientDashboard() {
             />
           </div>
           {pauseCalc && (
-            pauseCalc.weeksPaused < 1 ? (
-              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-                <p className="text-sm text-blue-800 dark:text-blue-300">
-                  You'll still be able to do this Friday's check-in — no pause needed for a short trip.
+            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              {pauseCalc.weeksPaused > 0 ? (
+                <>
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                    {pauseCalc.weeksPaused} week{pauseCalc.weeksPaused !== 1 ? 's' : ''} paused
+                  </p>
+                  <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
+                    Your first check-in window after returning will be the weekend of {fmtDate(pauseCalc.firstCheckinDate)}.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-amber-800 dark:text-amber-300">
+                  Short break — your coach will be notified and your plan will be paused while you're away.
                 </p>
-              </div>
-            ) : (
-              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                  {pauseCalc.weeksPaused} week{pauseCalc.weeksPaused !== 1 ? 's' : ''} paused
-                </p>
-                <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
-                  Your first check-in window after returning will be the weekend of {fmtDate(pauseCalc.firstCheckinDate)}.
-                </p>
-              </div>
-            )
+              )}
+            </div>
           )}
           <div className="flex gap-3">
             <button
               onClick={submitPause}
-              disabled={!returnDate || !pauseCalc || pauseCalc.weeksPaused < 1 || pauseSaving}
+              disabled={!returnDate || !pauseCalc || pauseSaving}
               className="btn-primary"
             >
               {pauseSaving ? 'Requesting…' : 'Request pause'}

@@ -269,47 +269,76 @@ function _fmtDate(iso) {
 
 function ClientPauseCard({ clientId }) {
   const [pause, setPause] = useState(null)
+  const [acting, setActing] = useState(false)
 
-  useEffect(() => {
-    supabase.from('plan_pauses').select('*')
-      .eq('client_id', clientId).eq('status', 'active')
+  async function load() {
+    const { data } = await supabase.from('plan_pauses').select('*')
+      .eq('client_id', clientId).in('status', ['pending', 'approved'])
+      .order('status') // 'approved' < 'pending' alphabetically — pending first
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
-      .then(({ data }) => setPause(data))
-  }, [clientId])
+    setPause(data)
+  }
 
-  async function markResolved() {
-    await supabase.from('plan_pauses').update({ status: 'completed' }).eq('id', pause.id)
-    setPause(null)
+  useEffect(() => { load() }, [clientId])
+
+  async function act(newStatus) {
+    setActing(true)
+    await supabase.from('plan_pauses').update({ status: newStatus }).eq('id', pause.id)
+    await load()
+    setActing(false)
   }
 
   if (!pause) return null
 
+  const isPending = pause.status === 'pending'
+
   return (
-    <div className="card border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 space-y-3">
+    <div className={`card space-y-3 ${isPending
+      ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/10'
+      : 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10'}`}>
       <div className="flex items-center gap-2">
         <span className="text-lg">🌴</span>
-        <h3 className="font-semibold text-amber-900 dark:text-amber-200">Holiday Pause Requested</h3>
-        <span className="text-xs text-amber-600 dark:text-amber-400 ml-auto">
+        <h3 className={`font-semibold ${isPending ? 'text-blue-900 dark:text-blue-200' : 'text-amber-900 dark:text-amber-200'}`}>
+          {isPending ? 'Holiday Pause Requested' : 'Holiday Pause Active'}
+        </h3>
+        <span className={`text-xs ml-auto ${isPending ? 'text-blue-600 dark:text-blue-400' : 'text-amber-600 dark:text-amber-400'}`}>
           Submitted {_fmtDate(pause.created_at.split('T')[0])}
         </span>
       </div>
       <div className="grid grid-cols-3 gap-4 text-sm">
         <div>
-          <p className="text-amber-700 dark:text-amber-400 text-xs">Return date</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Return date</p>
           <p className="font-medium text-gray-900 dark:text-white">{_fmtDate(pause.return_date)}</p>
         </div>
         <div>
-          <p className="text-amber-700 dark:text-amber-400 text-xs">First check-in</p>
-          <p className="font-medium text-gray-900 dark:text-white">{_fmtDate(pause.first_checkin_date)}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">First check-in</p>
+          <p className="font-medium text-gray-900 dark:text-white">
+            {pause.weeks_paused > 0 ? _fmtDate(pause.first_checkin_date) : 'Same week'}
+          </p>
         </div>
         <div>
-          <p className="text-amber-700 dark:text-amber-400 text-xs">Weeks paused</p>
-          <p className="font-medium text-gray-900 dark:text-white">{pause.weeks_paused}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Weeks paused</p>
+          <p className="font-medium text-gray-900 dark:text-white">
+            {pause.weeks_paused > 0 ? pause.weeks_paused : 'Short break'}
+          </p>
         </div>
       </div>
-      <button type="button" onClick={markResolved} className="btn-secondary py-1.5 px-3 text-xs">
-        Mark as resolved
-      </button>
+      <div className="flex gap-2">
+        {isPending ? (
+          <>
+            <button type="button" onClick={() => act('approved')} disabled={acting} className="btn-primary py-1.5 px-3 text-xs">
+              Approve
+            </button>
+            <button type="button" onClick={() => act('rejected')} disabled={acting} className="btn-secondary py-1.5 px-3 text-xs">
+              Decline
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={() => act('completed')} disabled={acting} className="btn-secondary py-1.5 px-3 text-xs">
+            Mark completed
+          </button>
+        )}
+      </div>
     </div>
   )
 }
