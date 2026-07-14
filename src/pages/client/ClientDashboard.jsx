@@ -15,23 +15,23 @@ function calcPauseStartDate() {
   return `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`
 }
 
-function calcPause(returnDateStr) {
+function calcPause(returnDateStr, pauseStartDateStr) {
   const ret = new Date(returnDateStr + 'T00:00:00')
   const day = ret.getDay()
   let firstFri = new Date(ret)
+  // Fri (5): +0 same day; Mon–Thu: forward to Friday; Sat: +6; Sun: +5
   if (day === 0) firstFri.setDate(ret.getDate() + 5)
-  else if (day <= 4) firstFri.setDate(ret.getDate() + (5 - day))
-  else firstFri.setDate(ret.getDate() + (12 - day))
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  const todayDay = today.getDay()
-  let nextFri = new Date(today)
-  if (todayDay === 0) nextFri.setDate(today.getDate() + 5)
-  else if (todayDay <= 5) nextFri.setDate(today.getDate() + (5 - todayDay))
-  else nextFri.setDate(today.getDate() + 6)
-  const weeks = Math.round((firstFri - nextFri) / (7 * 24 * 60 * 60 * 1000))
+  else if (day <= 5) firstFri.setDate(ret.getDate() + (5 - day))
+  else firstFri.setDate(ret.getDate() + 6)
+  // Weeks paused = span from pause start to return date
+  let weeks = 0
+  if (pauseStartDateStr) {
+    const pauseStart = new Date(pauseStartDateStr + 'T00:00:00')
+    weeks = Math.ceil((ret - pauseStart) / (7 * 24 * 60 * 60 * 1000))
+  }
   const pad = n => String(n).padStart(2, '0')
   const fISO = `${firstFri.getFullYear()}-${pad(firstFri.getMonth() + 1)}-${pad(firstFri.getDate())}`
-  return { firstCheckinDate: fISO, weeksPaused: weeks }
+  return { firstCheckinDate: fISO, weeksPaused: Math.max(0, weeks) }
 }
 
 function fmtDate(iso) {
@@ -89,9 +89,9 @@ export default function ClientDashboard() {
   }
 
   useEffect(() => {
-    if (returnDate) setPauseCalc(calcPause(returnDate))
+    if (returnDate) setPauseCalc(calcPause(returnDate, pauseStartDate))
     else setPauseCalc(null)
-  }, [returnDate])
+  }, [returnDate, pauseStartDate])
 
   useEffect(() => {
     async function load() {
