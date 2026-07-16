@@ -930,18 +930,20 @@ export function getMealConflicts(meal, tier, allergies, dislikes) {
       (b.ingredient_id && ing.ingredient_id && b.ingredient_id === ing.ingredient_id)
     )
     const removeId = base?.id ?? ing.id
+    const alternativeIds = base?.alternative_ingredient_ids || []
+    const quantity_g = ing.quantity_g ?? base?.quantity_g ?? 0
 
     for (const allergen of (allergies || [])) {
       if (ingredientMatchesRestriction(ing.name, allergen)) {
         if (!allergenHits.find(h => h.allergen === allergen && h.ingredientName === ing.name)) {
-          allergenHits.push({ allergen, ingredientName: ing.name, removeId })
+          allergenHits.push({ allergen, ingredientName: ing.name, removeId, quantity_g, alternativeIds })
         }
       }
     }
     for (const dislike of (dislikes || [])) {
       if (dislike && ing.name.toLowerCase().includes(dislike.toLowerCase())) {
         if (!dislikeHits.find(h => h.dislike === dislike && h.ingredientName === ing.name)) {
-          dislikeHits.push({ dislike, ingredientName: ing.name, removeId })
+          dislikeHits.push({ dislike, ingredientName: ing.name, removeId, quantity_g, alternativeIds })
         }
       }
     }
@@ -957,6 +959,18 @@ function findSafeMeal(category, excludeId, allergies, dislikes, mealMap, mealsBy
     const { allergens, dislikes: dl } = getMealConflicts(m, tier, allergies, dislikes)
     return allergens.length === 0 && dl.length === 0
   }) || null
+}
+
+function findSafeAlternative(hit, allergies, dislikes, library) {
+  for (const altId of (hit.alternativeIds || [])) {
+    const libIng = library.find(l => l.id === altId)
+    if (!libIng) continue
+    const clashes =
+      (allergies || []).some(a => ingredientMatchesRestriction(libIng.name, a)) ||
+      (dislikes  || []).some(d => d && libIng.name.toLowerCase().includes(d.toLowerCase()))
+    if (!clashes) return libIng
+  }
+  return null
 }
 
 // The client eats one option per category per day, not both — these are the two
@@ -1459,7 +1473,7 @@ function MealPlanTab({ client, coachId }) {
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', false).order('created_at', { ascending: false }),
       supabase.from('meals').select(`
         id, name, category,
-        meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static),
+        meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, alternative_ingredient_ids),
         meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
           meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
       `).eq('coach_id', coachId).order('name'),
@@ -1515,6 +1529,24 @@ function MealPlanTab({ client, coachId }) {
 
   function removeDislikedIngredient(slotKey, removeId) {
     slotHandlers.remove(slotKey, removeId)
+  }
+
+  function swapIngredient(slotKey, removeId, originalQty, libIng) {
+    const f = originalQty / libIng.serving_size
+    const round1 = n => Math.round(n * 10) / 10
+    const newIng = {
+      id: `added-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: libIng.name,
+      quantity_g: originalQty,
+      unit: libIng.serving_unit || 'g',
+      calories:   round1(f * libIng.calories_per_serving),
+      protein_g:  round1(f * libIng.protein_per_serving),
+      carbs_g:    round1(f * libIng.carbs_per_serving),
+      fat_g:      round1(f * libIng.fat_per_serving),
+      ingredient_id: libIng.id,
+    }
+    slotHandlers.remove(slotKey, removeId)
+    slotHandlers.add(slotKey, newIng)
   }
 
   async function updateStaticIngredientQty(mealId, ing, newQty) {
@@ -1921,42 +1953,64 @@ function MealPlanTab({ client, coachId }) {
 
                     {hasConflicts && (
                       <div className="ml-9 mr-3 mb-1 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 space-y-1.5">
-                        {conflicts.allergens.map(c => (
-                          <div key={c.allergen + c.ingredientName} className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs text-red-600 dark:text-red-400 flex-1">
-                              <span className="font-medium">{ALLERGEN_LABELS[c.allergen]}</span> — {c.ingredientName}
-                            </span>
-                            {canSwap && (
+                        {conflicts.allergens.map(c => {
+                          const safeAlt = findSafeAlternative(c, clientAllergies, clientDislikes, library)
+                          return (
+                            <div key={c.allergen + c.ingredientName} className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs text-red-600 dark:text-red-400 flex-1">
+                                <span className="font-medium">{ALLERGEN_LABELS[c.allergen]}</span> — {c.ingredientName}
+                              </span>
+                              {safeAlt && (
+                                <button
+                                  onClick={() => swapIngredient(slot.key, c.removeId, c.quantity_g, safeAlt)}
+                                  className="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-0.5 rounded transition-colors"
+                                >
+                                  Swap for {safeAlt.name}
+                                </button>
+                              )}
+                              {canSwap && (
+                                <button
+                                  onClick={() => autoSwapMeal(slot.key, slot.cat)}
+                                  className="text-xs border border-red-400 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20 px-2 py-0.5 rounded transition-colors"
+                                >
+                                  Swap meal
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                        {conflicts.dislikes.map(d => {
+                          const safeAlt = findSafeAlternative(d, clientAllergies, clientDislikes, library)
+                          return (
+                            <div key={d.dislike + d.ingredientName} className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs text-amber-600 dark:text-amber-400 flex-1">
+                                <span className="font-medium">Disliked</span> — {d.ingredientName}
+                              </span>
+                              {safeAlt && (
+                                <button
+                                  onClick={() => swapIngredient(slot.key, d.removeId, d.quantity_g, safeAlt)}
+                                  className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-2 py-0.5 rounded transition-colors"
+                                >
+                                  Swap for {safeAlt.name}
+                                </button>
+                              )}
                               <button
-                                onClick={() => autoSwapMeal(slot.key, slot.cat)}
-                                className="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-0.5 rounded transition-colors"
+                                onClick={() => removeDislikedIngredient(slot.key, d.removeId)}
+                                className="text-xs border border-amber-400 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 px-2 py-0.5 rounded transition-colors"
                               >
-                                Swap meal
+                                Remove
                               </button>
-                            )}
-                          </div>
-                        ))}
-                        {conflicts.dislikes.map(d => (
-                          <div key={d.dislike + d.ingredientName} className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs text-amber-600 dark:text-amber-400 flex-1">
-                              <span className="font-medium">Disliked</span> — {d.ingredientName}
-                            </span>
-                            <button
-                              onClick={() => removeDislikedIngredient(slot.key, d.removeId)}
-                              className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-2 py-0.5 rounded transition-colors"
-                            >
-                              Remove
-                            </button>
-                            {canSwap && (
-                              <button
-                                onClick={() => autoSwapMeal(slot.key, slot.cat)}
-                                className="text-xs text-amber-700 dark:text-amber-300 hover:underline"
-                              >
-                                Swap meal
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                              {canSwap && (
+                                <button
+                                  onClick={() => autoSwapMeal(slot.key, slot.cat)}
+                                  className="text-xs text-amber-700 dark:text-amber-300 hover:underline"
+                                >
+                                  Swap meal
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
 
