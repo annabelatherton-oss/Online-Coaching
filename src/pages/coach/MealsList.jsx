@@ -193,12 +193,17 @@ export default function MealsList() {
     }
   }
 
-  const filtered = meals.filter(m => {
-    const matchesSearch = m.name.toLowerCase().includes(search.toLowerCase())
-    const matchesCategory =
-      categoryFilter === 'All' || m.category === CATEGORY_VALUE_MAP[categoryFilter]
-    return matchesSearch && matchesCategory
-  })
+  const q = search.toLowerCase()
+  const matchesCat = m => categoryFilter === 'All' || m.category === CATEGORY_VALUE_MAP[categoryFilter]
+  const titleMatches = meals.filter(m => matchesCat(m) && m.name.toLowerCase().includes(q))
+  const ingredientMatches = q
+    ? meals.filter(m =>
+        matchesCat(m) &&
+        !m.name.toLowerCase().includes(q) &&
+        (m.meal_ingredients || []).some(ing => ing.name.toLowerCase().includes(q))
+      )
+    : []
+  const totalFiltered = titleMatches.length + ingredientMatches.length
 
   return (
     <div className="space-y-6">
@@ -264,7 +269,7 @@ export default function MealsList() {
 
       {loading ? (
         <LoadingSpinner size="lg" className="py-20" />
-      ) : filtered.length === 0 ? (
+      ) : totalFiltered === 0 ? (
         <div className="card text-center py-16">
           {meals.length === 0 ? (
             <>
@@ -278,8 +283,11 @@ export default function MealsList() {
           )}
         </div>
       ) : (
+        <div className="space-y-6">
+        {/* Title matches */}
+        {titleMatches.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filtered.map(meal => {
+          {titleMatches.map(meal => {
             const totals = calcTotals(meal.meal_ingredients)
             const hasBase = (meal.meal_ingredients || []).length > 0
             const missingTierList = hasBase && meal.category ? missingTiersFor(meal) : null
@@ -367,6 +375,102 @@ export default function MealsList() {
               </div>
             )
           })}
+        </div>
+        )}
+        {/* Ingredient matches — only shown when there is a search term */}
+        {ingredientMatches.length > 0 && (
+          <>
+            <div className="flex items-center gap-3 pt-2">
+              <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide whitespace-nowrap px-1">
+                Meals containing &ldquo;{search}&rdquo;
+              </p>
+              <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {ingredientMatches.map(meal => {
+                const totals = calcTotals(meal.meal_ingredients)
+                const hasBase = (meal.meal_ingredients || []).length > 0
+                const missingTierList = hasBase && meal.category ? missingTiersFor(meal) : null
+                const photoUrl = meal.photo_url
+                  ? supabase.storage.from('meal-photos').getPublicUrl(meal.photo_url).data.publicUrl
+                  : null
+                return (
+                  <div
+                    key={meal.id}
+                    onClick={() => navigate(`/coach/meals/${meal.id}`)}
+                    className="card relative cursor-pointer hover:shadow-md hover:border-pink-200 transition-all duration-150 p-0 overflow-hidden flex flex-col"
+                  >
+                    <button
+                      onClick={e => { e.stopPropagation(); setConfirmDeleteId(meal.id) }}
+                      title="Delete meal"
+                      className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/90 dark:bg-gray-900/80 text-gray-400 hover:text-red-500 hover:bg-white shadow-sm transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                    <div className="aspect-square bg-pink-50 flex items-center justify-center overflow-hidden">
+                      {photoUrl ? (
+                        <img
+                          src={photoUrl}
+                          alt={meal.name}
+                          className="w-full h-full object-cover"
+                          style={{ objectPosition: meal.photo_position || '50% 50%' }}
+                        />
+                      ) : (
+                        <svg className="w-12 h-12 text-pink-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="p-4 flex flex-col flex-1">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <h3 className="font-semibold text-gray-900 dark:text-white leading-tight">{meal.name}</h3>
+                        {meal.category && <CategoryBadge category={meal.category} />}
+                      </div>
+                      {missingTierList && (
+                        missingTierList.length === 0 ? (
+                          <span className="inline-flex items-center self-start px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 mb-2">
+                            All {CALORIE_TIERS.length} tiers
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center self-start px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 mb-2">
+                            {CALORIE_TIERS.length - missingTierList.length}/{CALORIE_TIERS.length} tiers
+                          </span>
+                        )
+                      )}
+                      {(meal.meal_ingredients || []).length > 0 ? (
+                        <div className="mt-auto pt-3 border-t border-pink-50 grid grid-cols-4 gap-1 text-center">
+                          <div>
+                            <p className="text-xs text-gray-400">kcal</p>
+                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{totals.calories}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-400">C</p>
+                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{totals.carbs_g}g</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-400">P</p>
+                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{totals.protein_g}g</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-400">F</p>
+                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{totals.fat_g}g</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-auto pt-3 text-xs text-gray-400">No ingredients added yet</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
         </div>
       )}
 
