@@ -191,9 +191,10 @@ export function generateTierIngredients(baseIngredients, library, targets) {
     qtyByRow = rows.map(r => (r.scaling_type === 'fixed' || r.is_static) ? r.origQty : r.origQty * factors[flexIdx++])
 
     let bestQty = qtyByRow
-    // Score: under by 0–40 kcal is ideal (score = undershoot, lower = closer to target).
-    // Over by N kcal scores as 40 + N, so any overshoot is worse than being up to 40 under,
-    // but being more than 40 under becomes worse than a small overshoot.
+    // Three-zone scoring (lower = better):
+    //   under by 0–40 kcal → score = undershoot        (ideal zone)
+    //   over  by N  kcal   → score = 40 + N            (worse than ideal, but beats >40 under)
+    //   under by >40 kcal  → score = 1000 + undershoot (worst — never let this win over a small over)
     let bestScore = Infinity
 
     for (let iter = 0; iter < 10; iter++) {
@@ -206,7 +207,7 @@ export function generateTierIngredients(baseIngredients, library, targets) {
       )
       const achievedCal = snapped.reduce((s, r) => s + r.calories, 0)
       const diff = targetVec.cal - achievedCal // > 0 = under target, < 0 = over target
-      const score = diff >= 0 ? diff : 40 + Math.abs(diff)
+      const score = diff < 0 ? 40 + Math.abs(diff) : diff <= 40 ? diff : 1000 + diff
       if (score < bestScore) { bestScore = score; bestQty = qtyByRow }
       // Only break early when at or under target — keep iterating if over
       if (diff >= 0 && diff <= TIER_CONVERGENCE_KCAL) break
