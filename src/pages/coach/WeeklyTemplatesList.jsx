@@ -87,7 +87,7 @@ export default function WeeklyTemplatesList() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            Generate 20 Weeks
+            Generate 50 Weeks
           </button>
           <button onClick={() => navigate('/coach/meal-templates/new')} className="btn-primary">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -104,7 +104,7 @@ export default function WeeklyTemplatesList() {
         <div className="card text-center py-16">
           <p className="text-gray-400 dark:text-gray-500 mb-3">No templates yet.</p>
           <div className="flex items-center justify-center gap-3">
-            <button onClick={() => navigate('/coach/meal-templates/generate')} className="btn-secondary">Generate 20 Weeks</button>
+            <button onClick={() => navigate('/coach/meal-templates/generate')} className="btn-secondary">Generate 50 Weeks</button>
             <button onClick={() => navigate('/coach/meal-templates/new')} className="btn-primary">New Template</button>
           </div>
         </div>
@@ -147,7 +147,7 @@ export default function WeeklyTemplatesList() {
                     <div className="flex items-center gap-1">
                       <span className="text-sm text-gray-500 dark:text-gray-400 mr-2">Current week:</span>
                       <button
-                        onClick={() => updateWeek(group.id, group.current_week > 1 ? group.current_week - 1 : 20)}
+                        onClick={() => updateWeek(group.id, group.current_week > 1 ? group.current_week - 1 : 50)}
                         className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                         title="Previous week"
                       >
@@ -158,12 +158,12 @@ export default function WeeklyTemplatesList() {
                         value={group.current_week}
                         onChange={e => updateWeek(group.id, parseInt(e.target.value))}
                       >
-                        {Array.from({ length: 20 }, (_, i) => (
+                        {Array.from({ length: 50 }, (_, i) => (
                           <option key={i + 1} value={i + 1}>Week {i + 1}</option>
                         ))}
                       </select>
                       <button
-                        onClick={() => updateWeek(group.id, group.current_week < 20 ? group.current_week + 1 : 1)}
+                        onClick={() => updateWeek(group.id, group.current_week < 50 ? group.current_week + 1 : 1)}
                         className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                         title="Next week"
                       >

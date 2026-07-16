@@ -143,7 +143,7 @@ class DeckPool {
 
 // ── Generation ─────────────────────────────────────────────────────────────────
 
-const WEEK_COUNT = 20
+const WEEK_COUNT = 50
 
 // A cycler hands out every item in a pool once (in shuffled order) before any item repeats,
 // guaranteeing full coverage as long as it's asked for at least `pool.length` items overall.
@@ -329,7 +329,7 @@ export default function GenerateTemplates() {
   const [prefsSaving, setPrefsSaving] = useState(false)
   const [prefsSaved, setPrefsSaved] = useState(false)
   const [prefsError, setPrefsError] = useState('')
-  const [planName, setPlanName] = useState('20 Week Plan')
+  const [planName, setPlanName] = useState('50 Week Plan')
   const [saving, setSaving] = useState(false)
   const [saveProgress, setSaveProgress] = useState('')
   const [saveError, setSaveError] = useState('')
@@ -485,7 +485,7 @@ export default function GenerateTemplates() {
     setSaveProgress('Creating plan…')
     const { data: planGroup, error: pgErr } = await supabase
       .from('plan_groups')
-      .insert({ coach_id: profile.id, name: planName.trim() || '20 Week Plan', current_week: 1 })
+      .insert({ coach_id: profile.id, name: planName.trim() || '50 Week Plan', current_week: 1 })
       .select('id')
       .single()
 
@@ -502,7 +502,7 @@ export default function GenerateTemplates() {
           name: `Week ${w.weekNum}`,
           week_number: w.weekNum,
           plan_group_id: planGroup.id,
-          plan_group_name: planName.trim() || '20 Week Plan',
+          plan_group_name: planName.trim() || '50 Week Plan',
         })
         .select('id')
         .single()
@@ -545,7 +545,7 @@ export default function GenerateTemplates() {
             </svg>
             Back
           </button>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Generate 20 Weeks</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Generate 50 Weeks</h1>
         </div>
 
         <div className="card bg-pink-50/60 dark:bg-pink-900/10 border-pink-100 dark:border-pink-900/30">
@@ -697,7 +697,7 @@ export default function GenerateTemplates() {
             </svg>
             Back to Setup
           </button>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Review 20 Weeks</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Review 50 Weeks</h1>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -710,7 +710,7 @@ export default function GenerateTemplates() {
             Regenerate
           </button>
           <button onClick={handleSaveAll} disabled={saving} className="btn-primary">
-            {saving ? saveProgress : 'Save All 20 Weeks'}
+            {saving ? saveProgress : 'Save All 50 Weeks'}
           </button>
         </div>
       </div>
@@ -727,7 +727,7 @@ export default function GenerateTemplates() {
           className="input flex-1"
           value={planName}
           onChange={e => setPlanName(e.target.value)}
-          placeholder="e.g. 20 Week Plan"
+          placeholder="e.g. 50 Week Plan"
           maxLength={80}
         />
         <p className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">Used when assigning to clients</p>
@@ -798,7 +798,7 @@ export default function GenerateTemplates() {
 
       <div className="flex justify-end pb-8">
         <button onClick={handleSaveAll} disabled={saving} className="btn-primary">
-          {saving ? saveProgress : 'Save All 20 Weeks'}
+          {saving ? saveProgress : 'Save All 50 Weeks'}
         </button>
       </div>
     </div>

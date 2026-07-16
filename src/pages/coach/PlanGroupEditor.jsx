@@ -707,7 +707,7 @@ export default function PlanGroupEditor() {
             <span className="text-sm text-gray-500 dark:text-gray-400">Current week:</span>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => updateCurrentWeek(planGroup.current_week > 1 ? planGroup.current_week - 1 : 20)}
+                onClick={() => updateCurrentWeek(planGroup.current_week > 1 ? planGroup.current_week - 1 : 50)}
                 className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
                 ‹
@@ -717,12 +717,12 @@ export default function PlanGroupEditor() {
                 value={planGroup.current_week}
                 onChange={e => updateCurrentWeek(parseInt(e.target.value))}
               >
-                {Array.from({ length: 20 }, (_, i) => (
+                {Array.from({ length: 50 }, (_, i) => (
                   <option key={i + 1} value={i + 1}>Week {i + 1}</option>
                 ))}
               </select>
               <button
-                onClick={() => updateCurrentWeek(planGroup.current_week < 20 ? planGroup.current_week + 1 : 1)}
+                onClick={() => updateCurrentWeek(planGroup.current_week < 50 ? planGroup.current_week + 1 : 1)}
                 className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
                 ›

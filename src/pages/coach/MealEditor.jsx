@@ -40,6 +40,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
     description: meal?.description || '',
     instructions: meal?.instructions || '',
     active: meal?.active !== false,
+    includeInTemplate: !(meal?.excluded_from_templates ?? false),
   })
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
@@ -122,6 +123,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
       photo_url: photoPath,
       photo_position: photoPosition,
       active: form.active,
+      excluded_from_templates: !form.includeInTemplate,
     }
 
     let savedId = mealId
@@ -165,6 +167,10 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
         <div className="flex items-center gap-2">
           <input id="active" type="checkbox" checked={form.active} onChange={e => set('active', e.target.checked)} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
           <label htmlFor="active" className="text-sm text-gray-700 dark:text-gray-300">Active (visible in meal library)</label>
+        </div>
+        <div className="flex items-center gap-2">
+          <input id="includeInTemplate" type="checkbox" checked={form.includeInTemplate} onChange={e => set('includeInTemplate', e.target.checked)} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
+          <label htmlFor="includeInTemplate" className="text-sm text-gray-700 dark:text-gray-300">Include in 50-week schedule generation</label>
         </div>
       </div>
 
