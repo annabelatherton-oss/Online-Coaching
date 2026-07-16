@@ -733,13 +733,44 @@ export default function GenerateTemplates() {
         <p className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">Used when assigning to clients</p>
       </div>
 
-      <p className="text-xs text-gray-400 dark:text-gray-500">
-        Click any week to expand it. Swap meals using the dropdowns. Every client on this plan gets the same meals — calorie targets are set per client when you assign the plan.
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          Click any week to expand it. Swap meals using the dropdowns. Every client on this plan gets the same meals — calorie targets are set per client when you assign the plan.
+        </p>
+        <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+          <button
+            onClick={() => setExpanded(new Set(weeks.map(w => w.weekNum)))}
+            className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          >
+            Expand all
+          </button>
+          <span className="text-gray-300 dark:text-gray-600">·</span>
+          <button
+            onClick={() => setExpanded(new Set())}
+            className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          >
+            Collapse all
+          </button>
+        </div>
+      </div>
 
       {weeks.map((week, weekIdx) => {
         const isOpen = expanded.has(week.weekNum)
-        const total = SLOTS.reduce((s, sl) => s + (week[sl.key]?._totalCals || 0), 0)
+        const calA = (week.breakfast1?._totalCals || 0) + (week.lunch1?._totalCals || 0) + (week.dinner1?._totalCals || 0)
+        const calB = (week.breakfast2?._totalCals || 0) + (week.lunch2?._totalCals || 0) + (week.dinner2?._totalCals || 0)
+
+        const OPTION_GROUPS = [
+          {
+            label: 'Option A',
+            slots: SLOTS.filter(s => s.key.endsWith('1')),
+            total: calA,
+          },
+          {
+            label: 'Option B',
+            slots: SLOTS.filter(s => s.key.endsWith('2')),
+            total: calB,
+          },
+        ]
 
         return (
           <div key={weekIdx} className="card p-0 overflow-hidden">
@@ -749,9 +780,14 @@ export default function GenerateTemplates() {
             >
               <div className="flex items-center gap-3">
                 <span className="font-semibold text-gray-900 dark:text-white text-sm">Week {week.weekNum}</span>
-                {total > 0 && (
+                {calA > 0 && (
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                    ~{total} kcal base
+                    A: ~{calA} kcal
+                  </span>
+                )}
+                {calB > 0 && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                    B: ~{calB} kcal
                   </span>
                 )}
               </div>
@@ -761,35 +797,47 @@ export default function GenerateTemplates() {
             </button>
 
             {isOpen && (
-              <div className="divide-y divide-pink-50 dark:divide-pink-900/10">
-                {SLOTS.map(slot => {
-                  const meal = week[slot.key]
-                  const options = mealOptionsForSlot(slot)
-                  return (
-                    <div key={slot.key} className="flex items-center gap-3 px-4 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
-                      <span className="w-40 flex-shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                        {slot.label}
-                      </span>
-                      <select
-                        className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
-                        value={meal?.id || ''}
-                        onChange={e => changeSlot(weekIdx, slot.key, e.target.value)}
-                      >
-                        <option value="">— None —</option>
-                        {options.map(m => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}{m._totalCals ? ` (${m._totalCals} kcal)` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      {meal?._totalCals > 0 && (
-                        <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 w-16 text-right">
-                          {meal._totalCals} kcal
-                        </span>
+              <div>
+                {OPTION_GROUPS.map((group, gi) => (
+                  <div key={group.label} className={gi > 0 ? 'border-t-2 border-pink-100 dark:border-pink-900/20' : ''}>
+                    <div className="flex items-center gap-2 px-4 pt-2 pb-1">
+                      <span className="text-xs font-semibold text-pink-500 dark:text-pink-400 uppercase tracking-wide">{group.label}</span>
+                      {group.total > 0 && (
+                        <span className="text-xs text-gray-400 dark:text-gray-500">~{group.total} kcal</span>
                       )}
                     </div>
-                  )
-                })}
+                    <div className="divide-y divide-pink-50 dark:divide-pink-900/10">
+                      {group.slots.map(slot => {
+                        const meal = week[slot.key]
+                        const options = mealOptionsForSlot(slot)
+                        return (
+                          <div key={slot.key} className="flex items-center gap-3 px-4 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
+                            <span className="w-32 flex-shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                              {slot.label.replace(/ [AB]$/, '')}
+                            </span>
+                            <select
+                              className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
+                              value={meal?.id || ''}
+                              onChange={e => changeSlot(weekIdx, slot.key, e.target.value)}
+                            >
+                              <option value="">— None —</option>
+                              {options.map(m => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}{m._totalCals ? ` (${m._totalCals} kcal)` : ''}
+                                </option>
+                              ))}
+                            </select>
+                            {meal?._totalCals > 0 && (
+                              <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 w-16 text-right">
+                                {meal._totalCals} kcal
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
