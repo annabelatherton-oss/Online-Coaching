@@ -648,7 +648,6 @@ export default function PlanGroupEditor() {
 
     setTierWeeks(prev => ({ ...prev, [activeTier]: optimized }))
     setDirty(new Set(optimized.map(w => w.templateId)))
-    setExpanded(new Set(optimized.map(w => w.weekNum)))
     setOptimizing(false)
   }
 
