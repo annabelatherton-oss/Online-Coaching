@@ -381,6 +381,8 @@ function OverviewTab({ client, onSaved }) {
       client.top_lifts?.[1]?.name || '',
       client.top_lifts?.[2]?.name || '',
     ],
+    allergies: client.allergies || [],
+    dislikes: (client.dislikes || []).join(', '),
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -439,6 +441,8 @@ function OverviewTab({ client, onSaved }) {
       is_paused: form.is_paused,
       collect_measurements: form.collect_measurements,
       top_lifts: form.top_lifts.filter(n => n.trim()).map(name => ({ name: name.trim() })),
+      allergies: form.allergies,
+      dislikes: form.dislikes ? form.dislikes.split(',').map(s => s.trim()).filter(Boolean) : [],
     }).eq('id', client.id)
     setSaving(false)
     if (err) { setError(err.message); return }
@@ -566,6 +570,47 @@ function OverviewTab({ client, onSaved }) {
               onChange={e => set('sleep_target_hours', e.target.value)} placeholder="e.g. 8" />
             <p className="text-xs text-gray-400 mt-1">hours/night</p>
           </div>
+        </div>
+      </div>
+
+      <div className="card space-y-4">
+        <div>
+          <h3 className="font-semibold text-gray-900 dark:text-white">Food Restrictions</h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+            Meals containing these ingredients will be flagged on the plan and can be auto-swapped.
+          </p>
+        </div>
+        <div>
+          <label className="label">Allergies</label>
+          <div className="grid grid-cols-3 gap-y-2 gap-x-4">
+            {ALLERGENS.map(a => (
+              <label key={a} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.allergies.includes(a)}
+                  onChange={e => set('allergies', e.target.checked
+                    ? [...form.allergies, a]
+                    : form.allergies.filter(x => x !== a)
+                  )}
+                  className="w-4 h-4 rounded accent-red-500 flex-shrink-0"
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300">{ALLERGEN_LABELS[a]}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="label">Dislikes / Intolerances</label>
+          <input
+            className="input"
+            type="text"
+            value={form.dislikes}
+            onChange={e => set('dislikes', e.target.value)}
+            placeholder="e.g. mushrooms, olives, broccoli (comma-separated)"
+          />
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+            Partial ingredient name match — e.g. "mushroom" flags any ingredient containing that word
+          </p>
         </div>
       </div>
 
@@ -828,6 +873,91 @@ const MEAL_SLOTS = [
   { key: 'dinner1',    label: 'Dinner A',    cat: 'dinner' },
   { key: 'dinner2',    label: 'Dinner B',    cat: 'dinner' },
 ]
+
+// ─── Food restriction helpers ──────────────────────────────────────────────────
+
+export const ALLERGEN_LABELS = {
+  dairy:     'Dairy',
+  gluten:    'Gluten / Wheat',
+  nuts:      'Tree Nuts',
+  peanuts:   'Peanuts',
+  shellfish: 'Shellfish',
+  fish:      'Fish',
+  eggs:      'Eggs',
+  soy:       'Soy',
+  sesame:    'Sesame',
+}
+export const ALLERGENS = Object.keys(ALLERGEN_LABELS)
+
+const ALLERGEN_KEYWORDS = {
+  dairy:     ['milk', 'cheese', 'yogurt', 'yoghurt', 'cream', 'butter', 'whey', 'casein',
+               'lactose', 'cheddar', 'mozzarella', 'feta', 'brie', 'ricotta', 'mascarpone',
+               'skyr', 'creme', 'crème', 'quark', 'fromage'],
+  gluten:    ['wheat', 'flour', 'bread', 'pasta', 'oat', 'oats', 'barley', 'rye', 'semolina',
+               'spelt', 'couscous', 'bulgur', 'wrap', 'tortilla', 'bagel', 'sourdough',
+               'naan', 'pita', 'cracker', 'biscuit', 'malt'],
+  nuts:      ['almond', 'cashew', 'walnut', 'pecan', 'pistachio', 'hazelnut', 'brazil nut',
+               'macadamia', 'pine nut', 'mixed nuts', 'tree nut'],
+  peanuts:   ['peanut', 'peanut butter', 'groundnut'],
+  shellfish: ['prawn', 'shrimp', 'crab', 'lobster', 'scallop', 'clam', 'mussel', 'oyster',
+               'crayfish', 'langoustine', 'squid', 'octopus'],
+  fish:      ['salmon', 'tuna', 'cod', 'haddock', 'tilapia', 'sea bass', 'mackerel', 'trout',
+               'anchovy', 'sardine', 'halibut', 'basa', 'pollock', 'plaice', 'herring'],
+  eggs:      ['egg'],
+  soy:       ['soy', 'soya', 'tofu', 'edamame', 'tempeh', 'miso'],
+  sesame:    ['sesame', 'tahini'],
+}
+
+function ingredientMatchesRestriction(ingName, restriction) {
+  const lower = ingName.toLowerCase()
+  const keywords = ALLERGEN_KEYWORDS[restriction] || [restriction.toLowerCase()]
+  return keywords.some(kw => lower.includes(kw))
+}
+
+export function getMealConflicts(meal, tier, allergies, dislikes) {
+  if (!meal) return { allergens: [], dislikes: [] }
+  const tierVersion = tier ? meal.meal_tier_versions?.find(v => v.calorie_tier === tier) : null
+  // Use tier ingredients for display; always look up the base meal_ingredients.id for removal
+  const displayIngs = tierVersion?.meal_tier_ingredients || meal.meal_ingredients || []
+  const baseIngs    = meal.meal_ingredients || []
+
+  const allergenHits = [], dislikeHits = []
+
+  for (const ing of displayIngs) {
+    // Find the matching base ingredient so we have the correct id for override removal
+    const base = baseIngs.find(b =>
+      b.name === ing.name ||
+      (b.ingredient_id && ing.ingredient_id && b.ingredient_id === ing.ingredient_id)
+    )
+    const removeId = base?.id ?? ing.id
+
+    for (const allergen of (allergies || [])) {
+      if (ingredientMatchesRestriction(ing.name, allergen)) {
+        if (!allergenHits.find(h => h.allergen === allergen && h.ingredientName === ing.name)) {
+          allergenHits.push({ allergen, ingredientName: ing.name, removeId })
+        }
+      }
+    }
+    for (const dislike of (dislikes || [])) {
+      if (dislike && ing.name.toLowerCase().includes(dislike.toLowerCase())) {
+        if (!dislikeHits.find(h => h.dislike === dislike && h.ingredientName === ing.name)) {
+          dislikeHits.push({ dislike, ingredientName: ing.name, removeId })
+        }
+      }
+    }
+  }
+
+  return { allergens: allergenHits, dislikes: dislikeHits }
+}
+
+function findSafeMeal(category, excludeId, allergies, dislikes, mealMap, mealsByCategory, tier) {
+  const options = mealsByCategory[category] || []
+  return options.find(m => {
+    if (m.id === excludeId) return false
+    const { allergens, dislikes: dl } = getMealConflicts(m, tier, allergies, dislikes)
+    return allergens.length === 0 && dl.length === 0
+  }) || null
+}
 
 // The client eats one option per category per day, not both — these are the two
 // interchangeable combinations the daily totals are built from.
@@ -1371,6 +1501,22 @@ function MealPlanTab({ client, coachId }) {
 
   const slotHandlers = makeOverrideHandlers(setIngredientOverrides, setSlotsDirty)
 
+  const clientAllergies = client.allergies || []
+  const clientDislikes  = (client.dislikes || []).filter(Boolean)
+
+  function autoSwapMeal(slotKey, category) {
+    const currentId = editedSlots[slotKey] || null
+    const safe = findSafeMeal(category, currentId, clientAllergies, clientDislikes, mealMap, mealsByCategory, tier)
+    if (!safe) return
+    setEditedSlots(prev => ({ ...prev, [slotKey]: safe.id }))
+    setIngredientOverrides(prev => { const n = { ...prev }; delete n[slotKey]; return n })
+    setSlotsDirty(true)
+  }
+
+  function removeDislikedIngredient(slotKey, removeId) {
+    slotHandlers.remove(slotKey, removeId)
+  }
+
   async function updateStaticIngredientQty(mealId, ing, newQty) {
     const meal = mealMap[mealId]
     if (!meal) return
@@ -1729,6 +1875,9 @@ function MealPlanTab({ client, coachId }) {
                 const isOverridden = templateSlots[slot.key] !== undefined && (editedSlots[slot.key] || null) !== (templateSlots[slot.key] || null)
                 const hasIngredientEdits = hasAnyOverride(slotOverrides)
                 const missingTierVersion = currentId && tier && !tierVersionExists(currentId, mealMap, tier)
+                const conflicts = getMealConflicts(mealMap[currentId], tier, clientAllergies, clientDislikes)
+                const hasConflicts = conflicts.allergens.length > 0 || conflicts.dislikes.length > 0
+                const canSwap = hasConflicts && !!findSafeMeal(slot.cat, currentId, clientAllergies, clientDislikes, mealMap, mealsByCategory, tier)
                 return (
                   <div key={slot.key}>
                     <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
@@ -1746,6 +1895,16 @@ function MealPlanTab({ client, coachId }) {
                         <option value="">— None —</option>
                         {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                       </select>
+                      {conflicts.allergens.length > 0 && (
+                        <span className="text-xs font-medium text-red-500 flex-shrink-0" title={conflicts.allergens.map(c => `${ALLERGEN_LABELS[c.allergen]}: ${c.ingredientName}`).join(', ')}>
+                          ⚠ Allergen
+                        </span>
+                      )}
+                      {conflicts.dislikes.length > 0 && conflicts.allergens.length === 0 && (
+                        <span className="text-xs font-medium text-amber-500 flex-shrink-0" title={conflicts.dislikes.map(d => d.ingredientName).join(', ')}>
+                          ⚠ Disliked
+                        </span>
+                      )}
                       {isOverridden && (
                         <span className="text-xs text-orange-500 flex-shrink-0" title="Different from the master template">Custom</span>
                       )}
@@ -1759,6 +1918,48 @@ function MealPlanTab({ client, coachId }) {
                         <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">{Math.round(macros.cal)} kcal</span>
                       )}
                     </div>
+
+                    {hasConflicts && (
+                      <div className="ml-9 mr-3 mb-1 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 space-y-1.5">
+                        {conflicts.allergens.map(c => (
+                          <div key={c.allergen + c.ingredientName} className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs text-red-600 dark:text-red-400 flex-1">
+                              <span className="font-medium">{ALLERGEN_LABELS[c.allergen]}</span> — {c.ingredientName}
+                            </span>
+                            {canSwap && (
+                              <button
+                                onClick={() => autoSwapMeal(slot.key, slot.cat)}
+                                className="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-0.5 rounded transition-colors"
+                              >
+                                Swap meal
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        {conflicts.dislikes.map(d => (
+                          <div key={d.dislike + d.ingredientName} className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs text-amber-600 dark:text-amber-400 flex-1">
+                              <span className="font-medium">Disliked</span> — {d.ingredientName}
+                            </span>
+                            <button
+                              onClick={() => removeDislikedIngredient(slot.key, d.removeId)}
+                              className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-2 py-0.5 rounded transition-colors"
+                            >
+                              Remove
+                            </button>
+                            {canSwap && (
+                              <button
+                                onClick={() => autoSwapMeal(slot.key, slot.cat)}
+                                className="text-xs text-amber-700 dark:text-amber-300 hover:underline"
+                              >
+                                Swap meal
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {isExpanded && currentId && (
                       <div className="ml-9 px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
                         <TierIngredientList
@@ -2670,6 +2871,7 @@ export default function CoachClientProfile() {
       current_carbs, current_fat, steps_target, water_target_litres, sleep_target_hours,
       start_date, access_weeks, access_expires_at,
       is_active, is_paused, notes, created_at, tags, collect_measurements, top_lifts,
+      allergies, dislikes,
       profiles!clients_profile_id_fkey(full_name, email)
     `).eq('id', clientId).eq('coach_id', profile.id).single()
     if (err || !data) setError('Client not found or you do not have access.')
