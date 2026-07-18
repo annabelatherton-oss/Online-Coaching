@@ -23,23 +23,79 @@ export default function CoachTrainingList() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const [programs, setPrograms] = useState([])
+  const [standaloneWorkouts, setStandaloneWorkouts] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedBlock, setSelectedBlock] = useState(null)
   const [blockForm, setBlockForm] = useState(null)
   const [addingBlock, setAddingBlock] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   async function load() {
-    const { data, error } = await supabase
-      .from('training_programs')
-      .select('*')
-      .eq('coach_id', profile.id)
-      .order('created_at', { ascending: true })
-    setPrograms(data || [])
+    const [{ data: progsData }, { data: allWorkouts }] = await Promise.all([
+      supabase
+        .from('training_programs')
+        .select('*, training_sessions(id, workout_id)')
+        .eq('coach_id', profile.id)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('workouts')
+        .select('id, name, workout_exercises(id)')
+        .eq('coach_id', profile.id)
+        .eq('is_archived', false)
+        .order('name'),
+    ])
+
+    setPrograms(progsData || [])
+
+    const linkedIds = new Set()
+    for (const prog of progsData || []) {
+      for (const sess of prog.training_sessions || []) {
+        if (sess.workout_id) linkedIds.add(sess.workout_id)
+      }
+    }
+    setStandaloneWorkouts((allWorkouts || []).filter(w => !linkedIds.has(w.id)))
     setLoading(false)
-    if (error) console.error('load error:', error)
   }
 
   useEffect(() => { load() }, [])
+
+  async function createStandaloneWorkout() {
+    const { data } = await supabase
+      .from('workouts')
+      .insert({ coach_id: profile.id, name: 'New Session' })
+      .select('id')
+      .single()
+    if (data) navigate(`/coach/workouts/${data.id}`)
+  }
+
+  async function duplicateWorkout(workout) {
+    const { data: src } = await supabase
+      .from('workouts')
+      .select('*, workout_exercises(*)')
+      .eq('id', workout.id)
+      .single()
+    if (!src) return
+    const { data: newW } = await supabase
+      .from('workouts')
+      .insert({ coach_id: profile.id, name: `${src.name} (copy)`, description: src.description })
+      .select('id')
+      .single()
+    if (!newW) return
+    if (src.workout_exercises?.length) {
+      await supabase.from('workout_exercises').insert(src.workout_exercises.map(ex => ({
+        workout_id: newW.id, exercise_id: ex.exercise_id, order_index: ex.order_index,
+        name: ex.name, sets: ex.sets, reps: ex.reps, tempo: ex.tempo,
+        rest_seconds: ex.rest_seconds, rpe: ex.rpe, notes: ex.notes,
+      })))
+    }
+    navigate(`/coach/workouts/${newW.id}`)
+  }
+
+  async function deleteWorkout(workout) {
+    if (!confirm(`Delete "${workout.name}"? This cannot be undone.`)) return
+    await supabase.from('workouts').delete().eq('id', workout.id)
+    setStandaloneWorkouts(prev => prev.filter(w => w.id !== workout.id))
+  }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
@@ -140,14 +196,17 @@ export default function CoachTrainingList() {
     )
   }
 
-  // Block list view
+  // Main view — blocks + standalone sessions
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Training Programmes</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Select a block to view its training day variations</p>
+    <div className="space-y-8">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Training</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Programmes and standalone sessions</p>
+        </div>
       </div>
 
+      {/* Blocks */}
       <div className="space-y-4">
         {blocks.map((block, bi) => (
           <button
@@ -230,6 +289,58 @@ export default function CoachTrainingList() {
           >
             + Add training block
           </button>
+        )}
+      </div>
+
+      {/* Standalone sessions */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300">Standalone Sessions</h2>
+          <button onClick={createStandaloneWorkout} className="btn-primary py-1.5 px-4 text-sm">
+            + New session
+          </button>
+        </div>
+
+        {standaloneWorkouts.length === 0 ? (
+          <p className="text-sm text-gray-400 dark:text-gray-500">No standalone sessions yet.</p>
+        ) : (
+          <div className="card overflow-hidden p-0">
+            <div className="divide-y divide-gray-50 dark:divide-gray-800">
+              {standaloneWorkouts.map(workout => {
+                const exCount = workout.workout_exercises?.length || 0
+                return (
+                  <div key={workout.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-gray-900 dark:text-white">{workout.name}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{exCount} exercise{exCount !== 1 ? 's' : ''}</p>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                      <button
+                        onClick={() => navigate(`/coach/workouts/${workout.id}`)}
+                        className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => duplicateWorkout(workout)}
+                        className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      >
+                        Duplicate
+                      </button>
+                      <button
+                        onClick={() => deleteWorkout(workout)}
+                        className="text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 transition-colors p-1"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         )}
       </div>
     </div>
