@@ -22,6 +22,7 @@ import ClientCheckin from './pages/client/ClientCheckin'
 import ClientProgress from './pages/client/ClientProgress'
 import CoachReports from './pages/coach/CoachReports'
 import CoachTrainingList from './pages/coach/CoachTrainingList'
+import TrainingHub from './pages/coach/TrainingHub'
 import CoachTrainingEditor from './pages/coach/CoachTrainingEditor'
 import CoachCheckins from './pages/coach/CoachCheckins'
 import CoachMessages from './pages/coach/CoachMessages'
@@ -64,10 +65,10 @@ export default function App() {
             <Route path="meal-templates/:templateId" element={<WeeklyTemplateEditor />} />
             <Route path="settings" element={<CoachSettings />} />
             <Route path="reports" element={<CoachReports />} />
-            <Route path="training" element={<CoachTrainingList />} />
+            <Route path="training" element={<TrainingHub />} />
             <Route path="training/:programId" element={<CoachTrainingEditor />} />
             <Route path="exercises" element={<ExerciseLibrary />} />
-            <Route path="workouts" element={<WorkoutLibrary />} />
+            <Route path="workouts" element={<Navigate to="/coach/training" replace />} />
             <Route path="workouts/:workoutId" element={<WorkoutEditor />} />
             <Route path="cardio" element={<CardioLibrary />} />
             <Route path="hiit" element={<HiitLibrary />} />
