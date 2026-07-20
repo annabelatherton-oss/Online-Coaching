@@ -245,7 +245,6 @@ export default function ClientCheckin() {
   const [personalWeek, setPersonalWeek] = useState(null)
   const [collectMeasurements, setCollectMeasurements] = useState(false)
   const [topLifts, setTopLifts] = useState([])
-  const [blockComplete, setBlockComplete] = useState(false)
   const [allCheckins, setAllCheckins] = useState([])
   const [existing, setExisting] = useState(null)
   const [historyList, setHistoryList] = useState([])
@@ -292,10 +291,6 @@ export default function ClientCheckin() {
       const lifts = trainingLifts.length > 0 ? trainingLifts : clientLifts
       setTopLifts(lifts)
 
-      const blockWeek = trainingAsgn?.week_override ?? 1
-      const blockTotal = trainingAsgn?.training_programs?.weeks_total ?? 12
-      setBlockComplete(!!trainingAsgn && blockWeek >= blockTotal)
-
       // Resolve check-in week number first (needed for pre-population check below)
       const { data: asgn } = await supabase
         .from('client_plan_assignments')
@@ -320,7 +315,8 @@ export default function ClientCheckin() {
       // Load session exercises + this week's training logs → used to pre-fill lift fields
       let trainingPrePop = null
       if (trainingAsgn?.program_id) {
-        const trainingWeek = trainingAsgn.week_override ?? 1
+        const msPerWeek = 7 * 24 * 60 * 60 * 1000
+        const trainingWeek = Math.floor((Date.now() - new Date(trainingAsgn.created_at).getTime()) / msPerWeek) + 1
         // Sessions always live in week 1 (block template)
         const { data: sessRows } = await supabase
           .from('training_sessions')
@@ -582,20 +578,6 @@ export default function ClientCheckin() {
           {existing && <span className="ml-1 text-brand-500">Already submitted — you can update it below.</span>}
         </p>
       </div>
-
-      {blockComplete && (
-        <div className="rounded-xl border border-brand-300 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/10 px-4 py-3 flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <svg className="w-4 h-4 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div>
-            <p className="font-semibold text-brand-700 dark:text-brand-300 text-sm">Training block complete!</p>
-            <p className="text-sm text-brand-600 dark:text-brand-400 mt-0.5">You've finished all 12 weeks of this block. Your coach will set up your next block soon.</p>
-          </div>
-        </div>
-      )}
 
       {showHolidayNote && (
         <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 flex items-start gap-3">

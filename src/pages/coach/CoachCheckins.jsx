@@ -350,7 +350,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       client_id: client.id,
       program_id: nextBlockId,
       active: true,
-      week_override: 1,
     })
     const { data: newAsgn } = await supabase
       .from('client_training_assignments')
@@ -428,17 +427,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           notes: fields.notes || null,
           order_index: baseCount + idx,
         })
-      }
-    }
-
-    // Advance training week counter (per-client progress through the 12-week block)
-    if (training) {
-      const currentBlockWeek = training.week_override ?? 1
-      const blockTotal = training.training_programs?.weeks_total ?? 12
-      if (currentBlockWeek < blockTotal) {
-        await supabase.from('client_training_assignments')
-          .update({ week_override: currentBlockWeek + 1 })
-          .eq('id', training.id)
       }
     }
 
@@ -642,9 +630,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
               )}
             </div>
             {training ? (() => {
-              const blockWeek = training.week_override ?? 1
               const blockTotal = training.training_programs?.weeks_total ?? 12
-              const isComplete = blockWeek >= blockTotal
+              const weeksElapsed = Math.floor((Date.now() - new Date(training.created_at).getTime()) / (7 * 24 * 60 * 60 * 1000))
+              const isComplete = weeksElapsed >= blockTotal
               return (
                 <div className="space-y-2">
                   <div className={`flex items-center gap-3 p-3 rounded-xl ${isComplete ? 'bg-brand-50 dark:bg-brand-900/10 border border-brand-200 dark:border-brand-800' : 'bg-blue-50 dark:bg-blue-900/10'}`}>
@@ -656,8 +644,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 dark:text-white">{training.program_name || training.training_programs?.name}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Week {blockWeek} of {blockTotal}
-                        {isComplete && <span className="ml-1.5 text-brand-600 dark:text-brand-400 font-semibold">· Block complete!</span>}
+                        {blockTotal}-week block
+                        {isComplete && <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-semibold">· Ready for new block</span>}
                       </p>
                     </div>
                   </div>

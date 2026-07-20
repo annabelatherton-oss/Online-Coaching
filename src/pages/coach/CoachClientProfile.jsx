@@ -2318,10 +2318,8 @@ function TrainingTab({ client, coachId }) {
   const [assignedSessions, setAssignedSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ block: '', days: '', week_override: '1' })
+  const [form, setForm] = useState({ block: '', days: '' })
   const [saving, setSaving] = useState(false)
-  const [showOverride, setShowOverride] = useState(false)
-  const [overrideWeek, setOverrideWeek] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
 
   async function load() {
@@ -2371,7 +2369,6 @@ function TrainingTab({ client, coachId }) {
       coach_id: coachId,
       program_id: selectedProgram.id,
       program_name: selectedProgram.name,
-      week_override: form.week_override ? parseInt(form.week_override) : 1,
       active: true,
     })
 
@@ -2405,19 +2402,10 @@ function TrainingTab({ client, coachId }) {
     load()
   }
 
-  async function saveOverride(e) {
-    e.preventDefault()
-    await supabase.from('client_training_assignments').update({
-      week_override: overrideWeek !== '' ? parseInt(overrideWeek) : null,
-    }).eq('id', assignment.id)
-    setShowOverride(false)
-    load()
-  }
 
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
   const prog = assignment?.training_programs
-  const effectiveWeek = assignment?.week_override ?? 1
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -2453,14 +2441,6 @@ function TrainingTab({ client, coachId }) {
               </select>
             </div>
           )}
-          <div>
-            <label className="label">Starting week</label>
-            <select className="input" value={form.week_override} onChange={e => setForm(f => ({ ...f, week_override: e.target.value }))}>
-              {Array.from({ length: selectedProgram?.weeks_total || 12 }, (_, i) => (
-                <option key={i + 1} value={i + 1}>Week {i + 1}</option>
-              ))}
-            </select>
-          </div>
           <div className="flex gap-3">
             <button type="submit" disabled={saving || !selectedProgram} className="btn-primary">{saving ? 'Saving…' : 'Assign'}</button>
             <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
@@ -2473,35 +2453,25 @@ function TrainingTab({ client, coachId }) {
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-semibold text-gray-900 dark:text-white">{assignment.program_name || prog.name}</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{prog.weeks_total} weeks</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{prog.weeks_total ?? 12}-week block · Started {_fmtDate(assignment.created_at.split('T')[0])}</p>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
-              <button onClick={() => { setForm({ block: getProgBlock(assignment.program_name) || '', days: getProgDays(assignment.program_name) || '', week_override: String(assignment.week_override ?? 1) }); setShowForm(true); setShowOverride(false) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Change</button>
+              <button onClick={() => { setForm({ block: getProgBlock(assignment.program_name) || '', days: getProgDays(assignment.program_name) || '' }); setShowForm(true) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Change</button>
               <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
             </div>
           </div>
 
-          <div className="flex items-center gap-5 py-3 px-4 rounded-xl bg-blue-50/60 dark:bg-blue-900/10">
-            <div className="text-center">
-              <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">{effectiveWeek}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 uppercase tracking-wide">Week</p>
-            </div>
-            <div className="flex-1 min-w-0 space-y-1">
-              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Block week {effectiveWeek} of {prog.weeks_total ?? 12}</p>
-              <button onClick={() => { setOverrideWeek(effectiveWeek); setShowOverride(true) }} className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium">Adjust week manually</button>
-            </div>
-          </div>
-
-          {showOverride && (
-            <form onSubmit={saveOverride} className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/20">
-              <span className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">Put on week:</span>
-              <select className="input py-1" value={overrideWeek} onChange={e => setOverrideWeek(e.target.value)}>
-                {Array.from({ length: prog.weeks_total }, (_, i) => <option key={i + 1} value={i + 1}>Week {i + 1}</option>)}
-              </select>
-              <button type="submit" className="btn-primary py-1.5 px-3 text-sm">Save</button>
-              <button type="button" onClick={() => setShowOverride(false)} className="text-sm text-gray-400 hover:text-gray-700">Cancel</button>
-            </form>
-          )}
+          {(() => {
+            const blockTotal = prog.weeks_total ?? 12
+            const weeksElapsed = Math.floor((Date.now() - new Date(assignment.created_at).getTime()) / (7 * 24 * 60 * 60 * 1000))
+            if (weeksElapsed < blockTotal) return null
+            return (
+              <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3">
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Block complete — time to change</p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">This client has completed the {blockTotal}-week block. Assign a new programme when ready.</p>
+              </div>
+            )
+          })()}
 
           {/* Mon–Sun template from the assigned programme */}
           {assignedSessions.length > 0 && (() => {

@@ -77,7 +77,8 @@ export default function ClientTraining() {
       if (!asgn) { setLoading(false); return }
 
       // week_override tracks progress through the 12-week block (display only)
-      const week = asgn.week_override ?? 1
+      const msPerWeek = 7 * 24 * 60 * 60 * 1000
+      const week = Math.floor((Date.now() - new Date(asgn.created_at).getTime()) / msPerWeek) + 1
       setWeekNumber(week)
       setProgramName(asgn.program_name || asgn.training_programs?.name || '')
 
