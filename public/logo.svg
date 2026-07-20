@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200">
+  <!-- Oval border -->
+  <ellipse cx="150" cy="100" rx="142" ry="92" fill="none" stroke="#8B6534" stroke-width="1.8"/>
+
+  <!-- Dumbbell icon -->
+  <!-- Left outer plate -->
+  <rect x="84" y="38" width="15" height="28" rx="3" fill="none" stroke="#8B6534" stroke-width="1.6"/>
+  <!-- Left inner plate -->
+  <rect x="88" y="43" width="7" height="18" rx="1.5" fill="none" stroke="#8B6534" stroke-width="1.2"/>
+  <!-- Left collar -->
+  <rect x="99" y="47" width="7" height="10" rx="1" fill="none" stroke="#8B6534" stroke-width="1.4"/>
+  <!-- Bar -->
+  <rect x="106" y="49" width="88" height="7" rx="2" fill="none" stroke="#8B6534" stroke-width="1.4"/>
+  <!-- Right collar -->
+  <rect x="194" y="47" width="7" height="10" rx="1" fill="none" stroke="#8B6534" stroke-width="1.4"/>
+  <!-- Right inner plate -->
+  <rect x="205" y="43" width="7" height="18" rx="1.5" fill="none" stroke="#8B6534" stroke-width="1.2"/>
+  <!-- Right outer plate -->
+  <rect x="201" y="38" width="15" height="28" rx="3" fill="none" stroke="#8B6534" stroke-width="1.6"/>
+
+  <!-- AAPT -->
+  <text x="150" y="117" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="46" font-weight="bold" fill="#8B6534">AAPT</text>
+
+  <!-- ANNABEL ATHERTON -->
+  <text x="150" y="140" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="11" letter-spacing="2.5" fill="#8B6534">ANNABEL ATHERTON</text>
+
+  <!-- PERSONAL TRAINING -->
+  <text x="150" y="157" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="11" letter-spacing="2.5" fill="#8B6534">PERSONAL TRAINING</text>
+</svg>

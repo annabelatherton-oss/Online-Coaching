@@ -144,11 +144,8 @@ export default function ClientLayout() {
   const Sidebar = () => (
     <aside className="flex flex-col w-64 h-full bg-white border-r border-pink-100 text-gray-700">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-pink-100">
-        <div className="w-8 h-8 rounded-lg bg-brand-400 flex items-center justify-center flex-shrink-0">
-          <span className="text-sm font-bold text-white">C</span>
-        </div>
-        <span className="font-semibold text-gray-800">Annabel Atherton PT</span>
+      <div className="flex items-center justify-center px-6 py-4 border-b border-pink-100">
+        <img src="/logo.svg" alt="Annabel Atherton Personal Training" className="h-14 w-auto" />
       </div>
 
       {/* Nav */}
