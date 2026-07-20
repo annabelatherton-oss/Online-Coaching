@@ -293,6 +293,27 @@ export default function ClientCheckin() {
       const lifts = trainingLifts.length > 0 ? trainingLifts : clientLifts
       setTopLifts(lifts)
 
+      // Resolve check-in week number first (needed for pre-population check below)
+      const { data: asgn } = await supabase
+        .from('client_plan_assignments')
+        .select('id, plan_group_id, week_override')
+        .eq('client_id', clientRow.id)
+        .eq('active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      let week = 1
+      if (asgn) {
+        if (asgn.week_override != null) {
+          week = asgn.week_override
+        } else {
+          const { data: pg } = await supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single()
+          week = pg?.current_week ?? 1
+        }
+      }
+      setWeekNumber(week)
+
       // Load session exercises so lifts can be linked to logged exercises
       if (trainingAsgn?.program_id) {
         const trainingWeek = trainingAsgn.week_override ?? trainingAsgn.training_programs?.current_week ?? 1
@@ -331,8 +352,8 @@ export default function ClientCheckin() {
             .eq('week_number', week)
           if (!count) {
             const prePop = lifts.map(lift => {
-              const ex = exByName[(lift.name || '').toLowerCase()]
-              const log = ex ? logMap[ex.id] : null
+              const liftKey = (lift.name || '').toLowerCase()
+              const log = logMap[liftKey]
               if (!log) return {}
               const best = getBestSet(log.reps_completed, log.weight_kg)
               return best
@@ -345,26 +366,6 @@ export default function ClientCheckin() {
           }
         }
       }
-
-      const { data: asgn } = await supabase
-        .from('client_plan_assignments')
-        .select('id, plan_group_id, week_override')
-        .eq('client_id', clientRow.id)
-        .eq('active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      let week = 1
-      if (asgn) {
-        if (asgn.week_override != null) {
-          week = asgn.week_override
-        } else {
-          const { data: pg } = await supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single()
-          week = pg?.current_week ?? 1
-        }
-      }
-      setWeekNumber(week)
 
       const { data: pauseRow } = await supabase.from('plan_pauses')
         .select('pause_start_date')
