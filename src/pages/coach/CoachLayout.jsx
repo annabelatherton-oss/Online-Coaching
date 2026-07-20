@@ -192,7 +192,7 @@ export default function CoachLayout() {
     <aside className="flex flex-col w-64 h-full bg-white border-r border-pink-100 text-gray-700">
       {/* Logo */}
       <div className="flex items-center justify-center px-6 py-4 border-b border-pink-100">
-        <img src="/logo.svg" alt="Annabel Atherton Personal Training" className="h-14 w-auto" />
+        <img src="/logo.svg" alt="Annabel Atherton Personal Training" className="h-20 w-auto" />
       </div>
 
       {/* Nav */}
