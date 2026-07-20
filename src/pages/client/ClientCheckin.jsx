@@ -279,7 +279,7 @@ export default function ClientCheckin() {
       // Prefer top lifts from active training assignment; fall back to client record
       const { data: trainingAsgn } = await supabase
         .from('client_training_assignments')
-        .select('program_id, week_override, training_programs(top_lifts, weeks_total)')
+        .select('program_id, week_override, created_at, training_programs(top_lifts, weeks_total)')
         .eq('client_id', clientRow.id)
         .eq('active', true)
         .order('created_at', { ascending: false })
