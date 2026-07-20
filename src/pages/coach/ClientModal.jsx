@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase, supabaseAdmin } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
-import { ALLERGENS, ALLERGEN_LABELS } from './CoachClientProfile'
+import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 
 export default function ClientModal({ client, onClose, onSaved, duplicateData }) {
   const { profile } = useAuth()
