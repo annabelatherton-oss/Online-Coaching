@@ -115,6 +115,9 @@ export default function ClientMealPlan() {
     return keys.reduce((acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, tier, ingredientOverrides[key])), { cal: 0, prot: 0, carb: 0, fat: 0 })
   }
 
+  const originalDailyCal = ALL_SLOT_DEFS.reduce((sum, s) => sum + (mealMacros(templateSlots[s.key], mealMap, tier, null)?.cal || 0), 0)
+  const currentDailyCal  = ALL_SLOT_DEFS.reduce((sum, s) => sum + (mealMacros(editedSlots[s.key], mealMap, tier, ingredientOverrides[s.key])?.cal || 0), 0)
+
   const preworkoutM = mealMacros(editedSlots.preworkout, mealMap, tier, ingredientOverrides.preworkout) || { cal: 0, prot: 0, carb: 0, fat: 0 }
   const snackM      = mealMacros(editedSlots.evening_snack, mealMap, tier, ingredientOverrides.evening_snack) || { cal: 0, prot: 0, carb: 0, fat: 0 }
   const opt1Sub     = sumSlotKeys(OPTION_1_KEYS)
@@ -323,6 +326,8 @@ export default function ClientMealPlan() {
           mealMap={mealMap}
           mealsByCategory={mealsByCategory}
           tier={tier}
+          dailyOriginalCal={originalDailyCal}
+          dailyCurrentCal={currentDailyCal}
           onSelect={handleSwapSelect}
           onClose={() => setSwapModal(null)}
         />

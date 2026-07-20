@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import {
-  MEAL_GROUPS, OPTION_1_KEYS, OPTION_2_KEYS,
+  MEAL_GROUPS, ALL_SLOT_DEFS, OPTION_1_KEYS, OPTION_2_KEYS,
   normalizeOverrides, hasAnyOverride,
   mealMacros, addMacros,
   MealCard, RecipeModal, SwapModal,
@@ -444,6 +444,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   }
   const opt1Total = addMacros(addMacros(sumSlotKeys(OPTION_1_KEYS), preworkoutM), snackM)
   const opt2Total = addMacros(addMacros(sumSlotKeys(OPTION_2_KEYS), preworkoutM), snackM)
+  const originalDailyCal = ALL_SLOT_DEFS.reduce((sum, s) => sum + (mealMacros(templateSlots[s.key], mealMap, tier, null)?.cal || 0), 0)
+  const currentDailyCal  = ALL_SLOT_DEFS.reduce((sum, s) => sum + (mealMacros(editedSlots[s.key], mealMap, tier, ingredientOverrides[s.key])?.cal || 0), 0)
 
   const hasMealPlanChanges =
     Object.keys(ingredientOverrides).some(k => hasAnyOverride(ingredientOverrides[k])) ||
@@ -835,6 +837,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           mealMap={mealMap}
           mealsByCategory={mealsByCategory}
           tier={tier}
+          dailyOriginalCal={originalDailyCal}
+          dailyCurrentCal={currentDailyCal}
           onSelect={handleSwapSelect}
           onClose={() => setSwapModal(null)}
         />

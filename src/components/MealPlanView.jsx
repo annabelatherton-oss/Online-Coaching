@@ -440,17 +440,25 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
 
 // ─── Swap modal ───────────────────────────────────────────────────────────────
 
-export function SwapModal({ slotKey, label, cat, currentMealId, mealMap, mealsByCategory, tier, onSelect, onClose }) {
+export function SwapModal({ slotKey, label, cat, currentMealId, mealMap, mealsByCategory, tier, dailyOriginalCal, dailyCurrentCal, onSelect, onClose }) {
   const options = mealsByCategory[cat] || []
   const currentMacros = mealMacros(currentMealId, mealMap, tier, null)
   const currentCal = currentMacros?.cal || 0
   const currentProt = currentMacros?.prot || 0
 
+  // Ceiling 1: swap meal can be at most 10 kcal above the current meal
+  const mealCeiling = currentCal + 10
+  // Ceiling 2: swap must not push daily total more than 10 above original
+  const dailyHeadroom = dailyOriginalCal != null
+    ? dailyOriginalCal + 10 - (dailyCurrentCal - currentCal)
+    : Infinity
+  const maxCandidateCal = Math.min(mealCeiling, dailyHeadroom)
+
   const eligible = options
     .filter(m => m.id !== currentMealId)
     .map(m => ({ ...m, macros: mealMacros(m.id, mealMap, tier, null) }))
     .filter(m =>
-      Math.abs((m.macros?.cal || 0) - currentCal) <= SWAP_CALORIE_TOLERANCE &&
+      (m.macros?.cal || 0) <= maxCandidateCal &&
       Math.abs((m.macros?.prot || 0) - currentProt) <= SWAP_PROTEIN_TOLERANCE &&
       Math.abs((m.macros?.carb || 0) - (currentMacros?.carb || 0)) <= SWAP_CARB_TOLERANCE &&
       Math.abs((m.macros?.fat || 0) - (currentMacros?.fat || 0)) <= SWAP_FAT_TOLERANCE
