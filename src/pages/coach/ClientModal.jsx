@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase, supabaseAdmin } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
+import { ALLERGENS, ALLERGEN_LABELS } from './CoachClientProfile'
 
 export default function ClientModal({ client, onClose, onSaved, duplicateData }) {
   const { profile } = useAuth()
@@ -19,6 +20,8 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
     access_weeks: 4,
     start_date: new Date().toISOString().split('T')[0],
     tags: [],
+    allergies: [],
+    dislikes: '',
   })
   const [tagInput, setTagInput] = useState('')
   const [showOptional, setShowOptional] = useState(false)
@@ -43,6 +46,8 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           ? client.start_date.split('T')[0]
           : new Date().toISOString().split('T')[0],
         tags: client.tags || [],
+        allergies: client.allergies || [],
+        dislikes: (client.dislikes || []).join(', '),
       })
       setSplit(splitPercentFromGrams(
         { protein_g: client.current_protein, carbs_g: client.current_carbs, fat_g: client.current_fat },
@@ -138,6 +143,8 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
             access_weeks: parseInt(form.access_weeks),
             start_date: form.start_date,
             tags: form.tags,
+            allergies: form.allergies,
+            dislikes: form.dislikes ? form.dislikes.split(',').map(s => s.trim()).filter(Boolean) : [],
           })
           .eq('id', client.id)
 
@@ -187,6 +194,8 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           is_active: true,
           is_paused: false,
           tags: form.tags,
+          allergies: form.allergies,
+          dislikes: form.dislikes ? form.dislikes.split(',').map(s => s.trim()).filter(Boolean) : [],
         })
         if (clientErr) throw clientErr
       }
@@ -322,7 +331,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
             <svg className={`w-4 h-4 transition-transform ${showOptional ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            {showOptional ? 'Hide' : 'Add'} macros & tags (optional)
+            {showOptional ? 'Hide' : 'Add'} macros, tags & food restrictions (optional)
           </button>
 
           {showOptional && (
@@ -410,6 +419,40 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
                     ))}
                   </div>
                 )}
+              </div>
+
+              <div>
+                <label className="label">Allergies</label>
+                <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                  {ALLERGENS.map(a => (
+                    <label key={a} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.allergies.includes(a)}
+                        onChange={e => set('allergies', e.target.checked
+                          ? [...form.allergies, a]
+                          : form.allergies.filter(x => x !== a)
+                        )}
+                        className="w-4 h-4 rounded accent-red-500 flex-shrink-0"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">{ALLERGEN_LABELS[a]}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Food dislikes / intolerances</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={form.dislikes}
+                  onChange={e => set('dislikes', e.target.value)}
+                  placeholder="e.g. mushrooms, olives, broccoli (comma-separated)"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Meals containing these ingredients will be flagged on the plan.
+                </p>
               </div>
             </>
           )}
