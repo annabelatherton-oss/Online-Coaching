@@ -314,29 +314,35 @@ export default function ClientCheckin() {
       }
       setWeekNumber(week)
 
-      // Load session exercises so lifts can be linked to logged exercises
+      // Load session exercises and logs for training → hints + pre-population
       if (trainingAsgn?.program_id) {
-        const trainingWeek = trainingAsgn.week_override ?? trainingAsgn.training_programs?.current_week ?? 1
-        const { data: sessData } = await supabase
-          .from('training_sessions')
-          .select('session_exercises(id, name, order_index)')
-          .eq('program_id', trainingAsgn.program_id)
-          .eq('week_number', trainingWeek)
-        const allExs = (sessData || [])
-          .flatMap(s => (s.session_exercises || []).sort((a, b) => a.order_index - b.order_index))
-        // Auto-match lift names to session exercises (coach set both, names should match)
-        const exByName = {}
-        allExs.forEach(e => { exByName[(e.name || '').toLowerCase()] = e })
-        const matchedIds = lifts.map(lift => exByName[(lift.name || '').toLowerCase()]?.id).filter(Boolean)
+        // Try current week first; fall back to week 1 (the block template) if no sessions found
+        const preferredWeek = trainingAsgn.week_override ?? trainingAsgn.training_programs?.current_week ?? 1
+        let sessData = null
+        for (const tryWeek of [...new Set([preferredWeek, 1])]) {
+          const { data } = await supabase
+            .from('training_sessions')
+            .select('session_exercises(id, name, order_index)')
+            .eq('program_id', trainingAsgn.program_id)
+            .eq('week_number', tryWeek)
+          if (data?.length) { sessData = { rows: data, trainingWeek: tryWeek }; break }
+        }
 
-        if (matchedIds.length > 0) {
+        const allExs = sessData
+          ? sessData.rows.flatMap(s => (s.session_exercises || []).sort((a, b) => a.order_index - b.order_index))
+          : []
+        const usedTrainingWeek = sessData?.trainingWeek ?? preferredWeek
+
+        if (allExs.length > 0) {
+          // Fetch logs for every exercise in the plan (not just matched lifts)
+          const allExIds = allExs.map(e => e.id)
           const { data: logs } = await supabase
             .from('client_exercise_logs')
             .select('session_exercise_id, weight_kg, reps_completed')
             .eq('client_id', clientRow.id)
-            .eq('week_number', trainingWeek)
-            .in('session_exercise_id', matchedIds)
-          // Key by exercise name (lowercase) for easy lookup in render
+            .eq('week_number', usedTrainingWeek)
+            .in('session_exercise_id', allExIds)
+
           const logMap = {}
           ;(logs || []).forEach(l => {
             const ex = allExs.find(e => e.id === l.session_exercise_id)
@@ -344,7 +350,7 @@ export default function ClientCheckin() {
           })
           setExerciseLogMap(logMap)
 
-          // Pre-populate if no check-in submitted yet this week
+          // Pre-populate lift fields if no check-in submitted yet this week
           const { count } = await supabase
             .from('client_checkins')
             .select('id', { count: 'exact', head: true })
