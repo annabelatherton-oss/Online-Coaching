@@ -43,7 +43,7 @@ export default function Login() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-500 mb-4">
             <span className="text-2xl font-bold text-white">C</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">CoachHub</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Annabel Atherton Personal Training</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Sign in to your account</p>
         </div>
 

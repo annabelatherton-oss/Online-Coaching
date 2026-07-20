@@ -195,7 +195,7 @@ export default function CoachLayout() {
         <div className="w-8 h-8 rounded-lg bg-brand-400 flex items-center justify-center flex-shrink-0">
           <span className="text-sm font-bold text-white">C</span>
         </div>
-        <span className="font-semibold text-gray-800">CoachHub</span>
+        <span className="font-semibold text-gray-800">Annabel Atherton PT</span>
       </div>
 
       {/* Nav */}
