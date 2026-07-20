@@ -42,7 +42,8 @@ export const MEAL_GROUPS = [
 export const ALL_SLOT_DEFS = MEAL_GROUPS.flatMap(g => g.slots)
 export const OPTION_1_KEYS = ['breakfast1', 'lunch1', 'dinner1']
 export const OPTION_2_KEYS = ['breakfast2', 'lunch2', 'dinner2']
-export const SWAP_CALORIE_TOLERANCE = 50
+export const SWAP_CALORIE_TOLERANCE = 75
+export const SWAP_PROTEIN_TOLERANCE = 10
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -409,9 +410,9 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
             )}
 
             {meal?.instructions && (
-              <div>
+              <div className="mt-4">
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">How to make it</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-line leading-relaxed">{meal.instructions}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-line leading-relaxed">{meal.instructions.trim()}</p>
               </div>
             )}
 
@@ -446,7 +447,10 @@ export function SwapModal({ slotKey, label, cat, currentMealId, mealMap, mealsBy
   const eligible = options
     .filter(m => m.id !== currentMealId)
     .map(m => ({ ...m, macros: mealMacros(m.id, mealMap, tier, null) }))
-    .filter(m => Math.abs((m.macros?.cal || 0) - currentCal) <= SWAP_CALORIE_TOLERANCE)
+    .filter(m =>
+      Math.abs((m.macros?.cal || 0) - currentCal) <= SWAP_CALORIE_TOLERANCE &&
+      Math.abs((m.macros?.prot || 0) - currentProt) <= SWAP_PROTEIN_TOLERANCE
+    )
     .sort((a, b) => Math.abs((a.macros?.prot || 0) - currentProt) - Math.abs((b.macros?.prot || 0) - currentProt))
 
   return (
@@ -455,7 +459,7 @@ export function SwapModal({ slotKey, label, cat, currentMealId, mealMap, mealsBy
         <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Swap {label}</h3>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Within ±{SWAP_CALORIE_TOLERANCE} kcal · closest protein first</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Within ±{SWAP_CALORIE_TOLERANCE} kcal & ±{SWAP_PROTEIN_TOLERANCE}g protein</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
