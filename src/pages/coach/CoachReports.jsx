@@ -106,7 +106,6 @@ export default function CoachReports() {
   const [clients, setClients] = useState([])
   const [allCheckins, setAllCheckins] = useState([])
   const [allWeights, setAllWeights] = useState([])
-  const [allPhotos, setAllPhotos] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
 
@@ -120,35 +119,26 @@ export default function CoachReports() {
           .order('created_at', { ascending: false }),
         supabase
           .from('client_checkins')
-          .select('client_id, week_number, weight_kg, adherence, energy_level, sleep_quality, submitted_at, updated_at')
+          .select('client_id, week_number, weight_kg, adherence, energy_level, sleep_quality, submitted_at, updated_at, progress_photos')
           .eq('coach_id', profile.id)
           .order('week_number', { ascending: true }),
       ])
 
       const clientIds = (clientsData || []).map(c => c.id)
-      let weightsData = [], photosData = []
+      let weightsData = []
 
       if (clientIds.length > 0) {
-        const [{ data: wData }, { data: pData }] = await Promise.all([
-          supabase
-            .from('weight_entries')
-            .select('client_id, weight_kg, recorded_at')
-            .in('client_id', clientIds)
-            .order('recorded_at', { ascending: true }),
-          supabase
-            .from('progress_photos')
-            .select('client_id, photo_url, caption, recorded_at')
-            .in('client_id', clientIds)
-            .order('recorded_at', { ascending: true }),
-        ])
+        const { data: wData } = await supabase
+          .from('weight_entries')
+          .select('client_id, weight_kg, recorded_at')
+          .in('client_id', clientIds)
+          .order('recorded_at', { ascending: true })
         weightsData = wData || []
-        photosData = pData || []
       }
 
       setClients(clientsData || [])
       setAllCheckins(checkinsData || [])
       setAllWeights(weightsData)
-      setAllPhotos(photosData)
       setLoading(false)
     }
     load()
@@ -171,7 +161,6 @@ export default function CoachReports() {
     const client = clients.find(c => c.id === selected)
     const { weights, checkins, startWeight, currentWeight, weeksElapsed, rateOfLoss, lossFlag, avgAdherence, adherenceFlag } =
       computeMetrics(selected, allWeights, allCheckins)
-    const photos = allPhotos.filter(p => p.client_id === selected)
     const { label: statusLabel, cls: statusCls } = clientStatus(client)
     const totalLost = startWeight != null && currentWeight != null ? startWeight - currentWeight : null
     const weightPoints = weights.map(w => ({ y: parseFloat(w.weight_kg) }))
@@ -347,46 +336,73 @@ export default function CoachReports() {
           </div>
         )}
 
-        {/* Progress photos */}
-        <div className="card">
-          <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Progress photos</h2>
-          {photos.length === 0 ? (
-            <p className="text-sm text-gray-400">No progress photos uploaded yet.</p>
-          ) : (
-            <>
-              {photos.length >= 2 && (
-                <div className="mb-6">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-3">Before vs Now</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    {[photos[0], photos[photos.length - 1]].map((photo, i) => (
-                      <div key={i} className="space-y-1.5">
-                        <div className="aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800">
-                          <img src={photo.photo_url} alt={i === 0 ? 'Start' : 'Latest'} className="w-full h-full object-cover" />
-                        </div>
-                        <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-                          {i === 0 ? 'Start' : 'Latest'} — {fmtDate(photo.recorded_at)}
+        {/* Progress photos — first vs current per angle */}
+        {(() => {
+          const ANGLES = ['front', 'back', 'left', 'right']
+          const checkinsWithPhotos = checkins.filter(
+            c => c.progress_photos && Object.values(c.progress_photos).some(Boolean)
+          )
+          const firstP = checkinsWithPhotos[0] ?? null
+          const latestP = checkinsWithPhotos[checkinsWithPhotos.length - 1] ?? null
+          const isComparison = firstP && latestP && firstP.week_number !== latestP.week_number
+          const activeAngles = ANGLES.filter(
+            a => firstP?.progress_photos?.[a] || latestP?.progress_photos?.[a]
+          )
+          const hasAny = activeAngles.length > 0
+
+          return (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-gray-900 dark:text-white">Progress photos</h2>
+                {isComparison && (
+                  <span className="text-xs text-gray-400">Wk {firstP.week_number} → Wk {latestP.week_number}</span>
+                )}
+              </div>
+              {!hasAny ? (
+                <p className="text-sm text-gray-400">No progress photos uploaded yet.</p>
+              ) : (
+                <div className="space-y-5">
+                  {activeAngles.map(angle => {
+                    const firstUrl = firstP?.progress_photos?.[angle]
+                    const latestUrl = latestP?.progress_photos?.[angle]
+                    const ANGLE_LABELS = { front: 'Front', back: 'Back', left: 'Left side', right: 'Right side' }
+                    return (
+                      <div key={angle}>
+                        <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">
+                          {ANGLE_LABELS[angle] || angle}
                         </p>
+                        <div className={`grid gap-3 ${isComparison ? 'grid-cols-2' : 'grid-cols-1 max-w-[200px]'}`}>
+                          {(isComparison ? [
+                            { url: firstUrl, label: `First · Wk ${firstP.week_number}` },
+                            { url: latestUrl, label: `Now · Wk ${latestP.week_number}` },
+                          ] : [
+                            { url: latestUrl || firstUrl, label: `Wk ${(latestP ?? firstP).week_number}` },
+                          ]).map(col => (
+                            <div key={col.label} className="space-y-1">
+                              {col.url ? (
+                                <div className="aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800">
+                                  <img src={col.url} alt={col.label} className="w-full h-full object-cover" />
+                                </div>
+                              ) : (
+                                <div className="aspect-[3/4] rounded-xl bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center">
+                                  <svg className="w-6 h-6 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  </svg>
+                                </div>
+                              )}
+                              <p className="text-xs text-center text-gray-400 dark:text-gray-500">{col.label}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                    )
+                  })}
                 </div>
               )}
-
-              <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-3">All photos</p>
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
-                {photos.map((photo, i) => (
-                  <div key={i} className="space-y-1">
-                    <div className="aspect-square rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
-                      <img src={photo.photo_url} alt={photo.caption || `Photo ${i + 1}`} className="w-full h-full object-cover" />
-                    </div>
-                    <p className="text-xs text-gray-400 text-center">{fmtDate(photo.recorded_at)}</p>
-                    {photo.caption && <p className="text-xs text-gray-400 text-center truncate">{photo.caption}</p>}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+            </div>
+          )
+        })()}
       </div>
     )
   }

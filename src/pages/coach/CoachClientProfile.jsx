@@ -2678,37 +2678,40 @@ function CheckinsTab({ clientId, collectMeasurements }) {
         </div>
       </div>
 
-      {/* ── Photo comparison: first / previous / current ── */}
+      {/* ── Photo comparison: first vs current per angle ── */}
       {showComparison && (
         <div className="card space-y-5">
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Photo Comparison</h3>
-            <p className="text-xs text-gray-400 mt-0.5">
-              First (Wk {firstP.week_number})
-              {prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && ` · Previous (Wk ${prevP.week_number})`}
-              {` · Current (Wk ${newestP.week_number})`}
-            </p>
+            <p className="text-xs text-gray-400 mt-0.5">Week {firstP.week_number} → Week {newestP.week_number}</p>
           </div>
           {compAngles.map(angle => {
-            const cols = [
-              { label: `First · Wk ${firstP.week_number}`, url: firstP.progress_photos[angle] },
-              prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && prevP.progress_photos?.[angle]
-                ? { label: `Prev · Wk ${prevP.week_number}`, url: prevP.progress_photos[angle] }
-                : null,
-              { label: `Now · Wk ${newestP.week_number}`, url: newestP.progress_photos[angle] },
-            ].filter(Boolean)
+            const firstUrl = firstP.progress_photos[angle]
+            const nowUrl = newestP.progress_photos[angle]
             return (
               <div key={angle}>
                 <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2 capitalize">{angle}</p>
-                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols.length}, 1fr)` }}>
-                  {cols.map(col => (
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: `First · Wk ${firstP.week_number}`, url: firstUrl },
+                    { label: `Now · Wk ${newestP.week_number}`, url: nowUrl },
+                  ].map(col => (
                     <div key={col.label} className="space-y-1">
-                      <button
-                        onClick={() => setLightbox(col.url)}
-                        className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity block"
-                      >
-                        <img src={col.url} alt={col.label} className="w-full h-full object-cover" />
-                      </button>
+                      {col.url ? (
+                        <button
+                          onClick={() => setLightbox(col.url)}
+                          className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity block"
+                        >
+                          <img src={col.url} alt={col.label} className="w-full h-full object-cover" />
+                        </button>
+                      ) : (
+                        <div className="w-full aspect-[3/4] rounded-xl bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center">
+                          <svg className="w-6 h-6 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                        </div>
+                      )}
                       <p className="text-xs text-center text-gray-400 dark:text-gray-500">{col.label}</p>
                     </div>
                   ))}
