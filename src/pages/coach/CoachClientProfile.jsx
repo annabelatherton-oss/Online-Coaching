@@ -388,6 +388,31 @@ function OverviewTab({ client, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const [liftOptions, setLiftOptions] = useState([])
+
+  useEffect(() => {
+    async function loadExerciseNames() {
+      const { data: asgn } = await supabase
+        .from('client_training_assignments')
+        .select('program_id')
+        .eq('client_id', client.id)
+        .eq('active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (!asgn?.program_id) return
+      const { data: sessions } = await supabase
+        .from('training_sessions')
+        .select('session_exercises(name)')
+        .eq('program_id', asgn.program_id)
+      const names = [...new Set(
+        (sessions || []).flatMap(s => (s.session_exercises || []).map(e => e.name)).filter(Boolean)
+      )].sort()
+      setLiftOptions(names)
+    }
+    loadExerciseNames()
+  }, [client.id])
+
   // The carbs/protein/fat split (% of calories) driving the gram fields below.
   const [split, setSplit] = useState(splitPercentFromGrams(
     { protein_g: client.current_protein, carbs_g: client.current_carbs, fat_g: client.current_fat },
@@ -496,13 +521,26 @@ function OverviewTab({ client, onSaved }) {
         {[0, 1, 2].map(i => (
           <div key={i}>
             <label className="label">Lift {i + 1}</label>
-            <input
-              className="input"
-              type="text"
-              value={form.top_lifts[i]}
-              onChange={e => set('top_lifts', form.top_lifts.map((v, j) => j === i ? e.target.value : v))}
-              placeholder={['e.g. Squat', 'e.g. Bench Press', 'e.g. Deadlift'][i]}
-            />
+            {liftOptions.length > 0 ? (
+              <select
+                className="input"
+                value={form.top_lifts[i]}
+                onChange={e => set('top_lifts', form.top_lifts.map((v, j) => j === i ? e.target.value : v))}
+              >
+                <option value="">— Select exercise —</option>
+                {liftOptions.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                className="input"
+                type="text"
+                value={form.top_lifts[i]}
+                onChange={e => set('top_lifts', form.top_lifts.map((v, j) => j === i ? e.target.value : v))}
+                placeholder={['e.g. Squat', 'e.g. Bench Press', 'e.g. Deadlift'][i]}
+              />
+            )}
           </div>
         ))}
       </div>
