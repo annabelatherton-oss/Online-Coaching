@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -64,6 +64,7 @@ function PlaceholderCard({ title, subtitle, icon, color, comingSoon }) {
 
 export default function ClientDashboard() {
   const { profile, session } = useAuth()
+  const navigate = useNavigate()
   const [clientData, setClientData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [newDelivery, setNewDelivery] = useState(null)
@@ -73,6 +74,8 @@ export default function ClientDashboard() {
   const [checkinDate, setCheckinDate] = useState('')
   const [pauseCalc, setPauseCalc] = useState(null)
   const [pauseSaving, setPauseSaving] = useState(false)
+  const [checkinDue, setCheckinDue] = useState(false)
+  const [checkinDismissed, setCheckinDismissed] = useState(false)
 
   const earliestMonday = calcPauseStartDate()
 
@@ -143,6 +146,41 @@ export default function ClientDashboard() {
             .then(() => {})
         }
         setActivePause(pause)
+
+        // Check if a check-in is due (window open = any day except Wednesday)
+        const dow = new Date().getDay()
+        if (dow !== 3) {
+          const { data: planAsgn } = await supabase
+            .from('client_plan_assignments')
+            .select('plan_group_id, week_override')
+            .eq('client_id', data.id)
+            .eq('active', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          let checkinWeek = 1
+          if (planAsgn) {
+            if (planAsgn.week_override != null) {
+              checkinWeek = planAsgn.week_override
+            } else {
+              const { data: pg } = await supabase
+                .from('plan_groups')
+                .select('current_week')
+                .eq('id', planAsgn.plan_group_id)
+                .single()
+              checkinWeek = pg?.current_week ?? 1
+            }
+          }
+
+          const { count } = await supabase
+            .from('client_checkins')
+            .select('id', { count: 'exact', head: true })
+            .eq('client_id', data.id)
+            .eq('week_number', checkinWeek)
+
+          if (!count) setCheckinDue(true)
+        }
       }
 
       setLoading(false)
@@ -253,6 +291,38 @@ export default function ClientDashboard() {
             </svg>
           </div>
         </Link>
+      )}
+
+      {/* Check-in reminder */}
+      {checkinDue && !checkinDismissed && (
+        <div className="card border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 flex gap-3 items-center">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm">Weekly check-in due</p>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">Log your progress so your coach can update your plan.</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => navigate('/client/checkin')}
+              className="text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Check in now
+            </button>
+            <button
+              onClick={() => setCheckinDismissed(true)}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              aria-label="Dismiss"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Holiday pause */}

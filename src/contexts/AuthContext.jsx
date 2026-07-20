@@ -6,6 +6,7 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined) // undefined = loading
   const [profile, setProfile] = useState(null)
+  const [profileReady, setProfileReady] = useState(false)
 
   async function fetchProfile(userId) {
     const { data, error } = await supabase
@@ -27,6 +28,7 @@ export function AuthProvider({ children }) {
         const p = await fetchProfile(session.user.id)
         setProfile(p)
       }
+      setProfileReady(true)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -38,6 +40,7 @@ export function AuthProvider({ children }) {
         } else {
           setProfile(null)
         }
+        setProfileReady(true)
       }
     )
 
@@ -58,7 +61,7 @@ export function AuthProvider({ children }) {
   const value = {
     session,
     profile,
-    isLoading: session === undefined,
+    isLoading: session === undefined || !profileReady,
     isCoach: profile?.role === 'coach',
     isClient: profile?.role === 'client',
     signIn,
