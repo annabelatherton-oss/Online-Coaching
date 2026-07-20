@@ -44,6 +44,8 @@ export const OPTION_1_KEYS = ['breakfast1', 'lunch1', 'dinner1']
 export const OPTION_2_KEYS = ['breakfast2', 'lunch2', 'dinner2']
 export const SWAP_CALORIE_TOLERANCE = 75
 export const SWAP_PROTEIN_TOLERANCE = 10
+export const SWAP_CARB_TOLERANCE = 15
+export const SWAP_FAT_TOLERANCE = 8
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -449,7 +451,9 @@ export function SwapModal({ slotKey, label, cat, currentMealId, mealMap, mealsBy
     .map(m => ({ ...m, macros: mealMacros(m.id, mealMap, tier, null) }))
     .filter(m =>
       Math.abs((m.macros?.cal || 0) - currentCal) <= SWAP_CALORIE_TOLERANCE &&
-      Math.abs((m.macros?.prot || 0) - currentProt) <= SWAP_PROTEIN_TOLERANCE
+      Math.abs((m.macros?.prot || 0) - currentProt) <= SWAP_PROTEIN_TOLERANCE &&
+      Math.abs((m.macros?.carb || 0) - (currentMacros?.carb || 0)) <= SWAP_CARB_TOLERANCE &&
+      Math.abs((m.macros?.fat || 0) - (currentMacros?.fat || 0)) <= SWAP_FAT_TOLERANCE
     )
     .sort((a, b) => Math.abs((a.macros?.prot || 0) - currentProt) - Math.abs((b.macros?.prot || 0) - currentProt))
 
@@ -459,7 +463,7 @@ export function SwapModal({ slotKey, label, cat, currentMealId, mealMap, mealsBy
         <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Swap {label}</h3>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Within ±{SWAP_CALORIE_TOLERANCE} kcal & ±{SWAP_PROTEIN_TOLERANCE}g protein</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Matched on calories, protein, carbs &amp; fat</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
