@@ -6,6 +6,23 @@ import ExerciseThumb from '../../components/ExerciseThumb'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
+// Parse day index (0=Mon) from session name like "Monday — Upper Body A"
+function parseDayIndex(name) {
+  for (let i = 0; i < DAYS.length; i++) {
+    if (name?.startsWith(DAYS[i])) return i
+  }
+  return null
+}
+
+// Strip day prefix from session name for display
+function sessionLabel(name) {
+  for (const day of DAYS) {
+    if (name === day) return ''
+    if (name?.startsWith(day)) return name.slice(day.length).replace(/^[\s–—\-]+/, '').trim()
+  }
+  return name || ''
+}
+
 // Parse stored "60x10,60x8,65x6" (or legacy "10,10,8") into per-set array
 function parseSetLogs(reps_completed, weight_kg, numSets) {
   const n = Math.max(numSets || 1, 1)
@@ -161,8 +178,8 @@ export default function ClientTraining() {
 
   const sessionByDay = {}
   sessions.forEach(s => {
-    const dayIdx = Math.min(Math.max(s.order_index, 0), 6)
-    if (!sessionByDay[dayIdx]) sessionByDay[dayIdx] = s
+    const dayIdx = parseDayIndex(s.name)
+    if (dayIdx !== null && !sessionByDay[dayIdx]) sessionByDay[dayIdx] = s
   })
 
   return (
@@ -214,7 +231,7 @@ export default function ClientTraining() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide leading-none mb-0.5">{dayName}</p>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{s.name}</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{sessionLabel(s.name) || dayName}</p>
                 </div>
                 <p className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
                   {s.exercises.length} ex
