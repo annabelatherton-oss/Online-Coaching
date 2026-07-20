@@ -45,13 +45,13 @@ function fmtDate(iso) {
 
 function PlaceholderCard({ title, subtitle, icon, color, comingSoon }) {
   return (
-    <div className={`card flex flex-col gap-3 h-full ${comingSoon ? 'opacity-60' : ''}`}>
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
+    <div className={`card flex flex-col gap-2.5 h-full p-3.5 sm:p-5 ${comingSoon ? 'opacity-60' : ''}`}>
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
         {icon}
       </div>
       <div>
-        <h3 className="font-semibold text-gray-900 dark:text-white">{title}</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{subtitle}</p>
+        <h3 className="font-semibold text-gray-900 dark:text-white text-sm sm:text-base leading-snug">{title}</h3>
+        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{subtitle}</p>
       </div>
       {comingSoon && (
         <span className="self-start badge bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
@@ -201,16 +201,26 @@ export default function ClientDashboard() {
 
       {/* Access info */}
       {daysLeft !== null && (
-        <div className={`card flex items-center gap-4 ${daysLeft <= 7 ? 'border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/10' : ''}`}>
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${daysLeft <= 7 ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600' : 'bg-brand-100 dark:bg-brand-900/30 text-brand-600'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+        <div className={`card flex items-center gap-4 ${
+          daysLeft <= 7
+            ? 'border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/10'
+            : 'border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/10'
+        }`}>
+          <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center flex-shrink-0 ${
+            daysLeft <= 7 ? 'bg-orange-100 dark:bg-orange-900/30' : 'bg-brand-100 dark:bg-brand-900/30'
+          }`}>
+            <span className={`text-2xl font-bold tabular-nums leading-none ${daysLeft <= 7 ? 'text-orange-600 dark:text-orange-400' : 'text-brand-600 dark:text-brand-400'}`}>
+              {daysLeft === 0 ? '!' : weeksLeft}
+            </span>
+            {daysLeft > 0 && (
+              <span className={`text-[10px] font-semibold uppercase tracking-wide leading-none mt-0.5 ${daysLeft <= 7 ? 'text-orange-500 dark:text-orange-400' : 'text-brand-500 dark:text-brand-400'}`}>
+                wks
+              </span>
+            )}
           </div>
           <div>
-            <p className="font-medium text-gray-900 dark:text-white">
-              {daysLeft === 0 ? 'Plan expired' : `${weeksLeft} week${weeksLeft !== 1 ? 's' : ''} remaining on current plan`}
+            <p className={`font-semibold ${daysLeft <= 7 ? 'text-orange-700 dark:text-orange-300' : 'text-gray-900 dark:text-white'}`}>
+              {daysLeft === 0 ? 'Plan expired' : `${weeksLeft} week${weeksLeft !== 1 ? 's' : ''} remaining`}
             </p>
             {expiry && (
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -366,7 +376,7 @@ export default function ClientDashboard() {
       )}
 
       {/* Quick cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <Link to="/client/profile">
           <PlaceholderCard
             title="My Profile"

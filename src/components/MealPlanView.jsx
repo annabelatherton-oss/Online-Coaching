@@ -288,7 +288,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
 
             {ingredients.length > 0 && (
               <div>
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3 pt-1">
                   <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Ingredients</h3>
                   {onRevertIngredients && hasAnyOverride(overrides) && (
                     <button
@@ -412,7 +412,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
             )}
 
             {meal?.instructions && (
-              <div className="mt-4">
+              <div className="mt-4 pt-1">
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">How to make it</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-line leading-relaxed">{meal.instructions.trim()}</p>
               </div>
