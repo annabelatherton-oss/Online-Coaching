@@ -136,11 +136,11 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
   return (
     <div
-      className="flex flex-row rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 cursor-pointer active:opacity-90"
+      className="flex flex-col sm:flex-row rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 cursor-pointer active:opacity-90"
       onClick={() => meal && onViewRecipe(slotKey)}
     >
       {/* Photo */}
-      <div className="relative w-32 aspect-square bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+      <div className="relative w-full aspect-[16/9] sm:w-32 sm:aspect-square bg-gray-100 dark:bg-gray-800 flex-shrink-0">
         {meal?.photo_url ? (
           <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
         ) : (
