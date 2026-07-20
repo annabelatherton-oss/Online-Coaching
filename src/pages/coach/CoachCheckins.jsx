@@ -88,6 +88,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const [addedSessions, setAddedSessions] = useState([])
   const [newSessionForm, setNewSessionForm] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [allPrograms, setAllPrograms] = useState([])
+  const [nextBlockId, setNextBlockId] = useState('')
+  const [assigningBlock, setAssigningBlock] = useState(false)
   const skipTierReload = useRef(true)
 
   const nextTemplateWeek = (current?.week_number ?? 0) + 1
@@ -105,6 +108,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         { data: stdTmplData },
         { data: cwm },
         { data: trainingAsgn },
+        { data: programs },
       ] = await Promise.all([
         supabase.from('meals').select(`
           id, name, category, instructions, photo_url, photo_position,
@@ -118,7 +122,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           : Promise.resolve({ data: null }),
         supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
-        supabase.from('client_training_assignments').select('*, training_programs(name, current_week, weeks_total)').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('client_training_assignments').select('*, training_programs(name, weeks_total)').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('training_programs').select('id, name').eq('coach_id', coachId).order('name'),
       ])
 
       const map = {}, byCat = {}
@@ -138,14 +143,14 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
       if (cwm?.ingredient_overrides) setIngredientOverrides(cwm.ingredient_overrides)
       setTraining(trainingAsgn)
+      setAllPrograms(programs || [])
 
       if (trainingAsgn) {
-        const trainingWeek = trainingAsgn.week_override ?? 1
         const { data: sessionsData } = await supabase
           .from('training_sessions')
           .select('*, session_exercises(*)')
           .eq('program_id', trainingAsgn.program_id)
-          .eq('week_number', trainingWeek)
+          .eq('week_number', 1)
           .order('order_index')
         const sortedSessions = (sessionsData || []).map(s => ({
           ...s,
@@ -337,6 +342,26 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     }))
   }
 
+  async function assignNextBlock() {
+    if (!nextBlockId || !training || !client) return
+    setAssigningBlock(true)
+    await supabase.from('client_training_assignments').update({ active: false }).eq('id', training.id)
+    await supabase.from('client_training_assignments').insert({
+      client_id: client.id,
+      program_id: nextBlockId,
+      active: true,
+      week_override: 1,
+    })
+    const { data: newAsgn } = await supabase
+      .from('client_training_assignments')
+      .select('*, training_programs(name, weeks_total)')
+      .eq('client_id', client.id).eq('active', true)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    setTraining(newAsgn)
+    setNextBlockId('')
+    setAssigningBlock(false)
+  }
+
   function handleRevertTraining() {
     setEditedExercises({})
     setRemovedExerciseIds(new Set())
@@ -406,12 +431,22 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       }
     }
 
-    const trainingWeek = training?.week_override ?? 1
+    // Advance training week counter (per-client progress through the 12-week block)
+    if (training) {
+      const currentBlockWeek = training.week_override ?? 1
+      const blockTotal = training.training_programs?.weeks_total ?? 12
+      if (currentBlockWeek < blockTotal) {
+        await supabase.from('client_training_assignments')
+          .update({ week_override: currentBlockWeek + 1 })
+          .eq('id', training.id)
+      }
+    }
+
     for (const sess of addedSessions) {
       if (!sess.name.trim()) continue
       const { data: newSess } = await supabase.from('training_sessions').insert({
         program_id: training.program_id,
-        week_number: trainingWeek,
+        week_number: 1,
         name: sess.name.trim(),
         order_index: sessions.length + addedSessions.indexOf(sess),
       }).select('id').single()
@@ -606,21 +641,54 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                 </button>
               )}
             </div>
-            {training ? (
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/10">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
+            {training ? (() => {
+              const blockWeek = training.week_override ?? 1
+              const blockTotal = training.training_programs?.weeks_total ?? 12
+              const isComplete = blockWeek >= blockTotal
+              return (
+                <div className="space-y-2">
+                  <div className={`flex items-center gap-3 p-3 rounded-xl ${isComplete ? 'bg-brand-50 dark:bg-brand-900/10 border border-brand-200 dark:border-brand-800' : 'bg-blue-50 dark:bg-blue-900/10'}`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isComplete ? 'bg-brand-100 dark:bg-brand-900/30' : 'bg-blue-500/10 dark:bg-blue-500/20'}`}>
+                      <svg className={`w-5 h-5 ${isComplete ? 'text-brand-600 dark:text-brand-400' : 'text-blue-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{training.program_name || training.training_programs?.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Week {blockWeek} of {blockTotal}
+                        {isComplete && <span className="ml-1.5 text-brand-600 dark:text-brand-400 font-semibold">· Block complete!</span>}
+                      </p>
+                    </div>
+                  </div>
+                  {isComplete && (
+                    <div className="p-3 rounded-xl border border-brand-200 dark:border-brand-800 bg-brand-50/50 dark:bg-brand-900/10 space-y-2">
+                      <p className="text-xs font-semibold text-brand-700 dark:text-brand-300">Assign next block</p>
+                      <div className="flex gap-2">
+                        <select
+                          className="input py-1.5 text-sm flex-1"
+                          value={nextBlockId}
+                          onChange={e => setNextBlockId(e.target.value)}
+                        >
+                          <option value="">Select programme…</option>
+                          {allPrograms.filter(p => p.id !== training.program_id).map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={assignNextBlock}
+                          disabled={!nextBlockId || assigningBlock}
+                          className="btn-primary py-1.5 px-3 text-sm whitespace-nowrap"
+                        >
+                          {assigningBlock ? 'Assigning…' : 'Assign block'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{training.program_name || training.training_programs?.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Week {training.week_override ?? 1} · {training.training_programs?.weeks_total} weeks total
-                  </p>
-                </div>
-              </div>
-            ) : (
+              )
+            })() : (
               <p className="text-sm text-gray-400">No training programme assigned.</p>
             )}
           </div>

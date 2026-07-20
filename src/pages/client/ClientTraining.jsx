@@ -71,18 +71,20 @@ export default function ClientTraining() {
 
       const { data: asgn } = await supabase
         .from('client_training_assignments')
-        .select('*, training_programs(name, current_week)')
+        .select('*, training_programs(name, weeks_total)')
         .eq('client_id', client.id).eq('active', true)
         .order('created_at', { ascending: false }).limit(1).maybeSingle()
       if (!asgn) { setLoading(false); return }
 
-      const week = asgn.week_override ?? asgn.training_programs?.current_week ?? 1
+      // week_override tracks progress through the 12-week block (display only)
+      const week = asgn.week_override ?? 1
       setWeekNumber(week)
       setProgramName(asgn.program_name || asgn.training_programs?.name || '')
 
+      // Sessions are always loaded from week 1 — the block repeats the same plan each week
       const { data: sessData } = await supabase
         .from('training_sessions').select('*, session_exercises(*)')
-        .eq('program_id', asgn.program_id).eq('week_number', week).order('order_index')
+        .eq('program_id', asgn.program_id).eq('week_number', 1).order('order_index')
 
       const sorted = (sessData || []).map(s => ({
         ...s,
@@ -187,7 +189,7 @@ export default function ClientTraining() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">This Week's Training</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          {programName && <span>{programName} · </span>}Week {weekNumber}
+          {programName && <span>{programName} · </span>}Week {weekNumber} of 12
         </p>
       </div>
 

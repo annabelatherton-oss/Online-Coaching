@@ -307,7 +307,6 @@ export default function CoachTrainingEditor() {
   const { profile } = useAuth()
   const [program, setProgram] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [selectedWeek, setSelectedWeek] = useState(1)
   const [sessions, setSessions] = useState([])
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [addingSession, setAddingSession] = useState(false)
@@ -332,7 +331,6 @@ export default function CoachTrainingEditor() {
       .single()
     if (!data) { navigate('/coach/training'); return }
     setProgram(data)
-    setSelectedWeek(data.current_week)
     setNewName(data.name)
     setTopLifts(data.top_lifts || [])
     setLoading(false)
@@ -372,13 +370,13 @@ export default function CoachTrainingEditor() {
     return { reps_min: '', reps_max: '' }
   }
 
-  async function loadSessions(week) {
+  async function loadSessions() {
     setLoadingSessions(true)
     const { data } = await supabase
       .from('training_sessions')
       .select('*, session_exercises(*)')
       .eq('program_id', programId)
-      .eq('week_number', week)
+      .eq('week_number', 1)
       .order('order_index')
     setSessions((data || []).map(s => ({
       ...s,
@@ -388,7 +386,7 @@ export default function CoachTrainingEditor() {
   }
 
   useEffect(() => { loadProgram() }, [programId])
-  useEffect(() => { if (program) { loadSessions(selectedWeek); loadExerciseNames() } }, [selectedWeek, program])
+  useEffect(() => { if (program) { loadSessions(); loadExerciseNames() } }, [program])
 
   function openAddForm(day) {
     setAddDay(day)
@@ -402,7 +400,7 @@ export default function CoachTrainingEditor() {
     setAddingSession(true)
     const { data: newSess } = await supabase
       .from('training_sessions')
-      .insert({ program_id: programId, week_number: selectedWeek, order_index: sessions.length, name })
+      .insert({ program_id: programId, week_number: 1, order_index: sessions.length, name })
       .select('*')
       .single()
 
@@ -442,40 +440,6 @@ export default function CoachTrainingEditor() {
     await supabase.from('training_programs').update({ name: newName.trim() }).eq('id', programId)
     setProgram(p => ({ ...p, name: newName.trim() }))
     setEditingName(false)
-  }
-
-  async function updateCurrentWeek(week) {
-    await supabase.from('training_programs').update({ current_week: week }).eq('id', programId)
-    setProgram(p => ({ ...p, current_week: week }))
-  }
-
-  async function copyFromWeek(sourceWeek) {
-    if (!confirm(`Copy all sessions from Week ${sourceWeek} to Week ${selectedWeek}? Any existing sessions in Week ${selectedWeek} will be replaced.`)) return
-    const { data: source } = await supabase
-      .from('training_sessions')
-      .select('*, session_exercises(*)')
-      .eq('program_id', programId)
-      .eq('week_number', sourceWeek)
-      .order('order_index')
-
-    if (!source?.length) { alert(`Week ${sourceWeek} has no sessions to copy.`); return }
-
-    await supabase.from('training_sessions').delete().eq('program_id', programId).eq('week_number', selectedWeek)
-
-    for (const s of source) {
-      const { data: newSess } = await supabase.from('training_sessions').insert({
-        program_id: programId, week_number: selectedWeek, order_index: s.order_index, name: s.name,
-      }).select('id').single()
-      if (newSess && s.session_exercises?.length) {
-        await supabase.from('session_exercises').insert(
-          s.session_exercises.map(ex => ({
-            session_id: newSess.id, order_index: ex.order_index, name: ex.name, sets: ex.sets,
-            reps: ex.reps, rpe: ex.rpe, rest_seconds: ex.rest_seconds, notes: ex.notes,
-          }))
-        )
-      }
-    }
-    loadSessions(selectedWeek)
   }
 
   function addLift() {
@@ -553,19 +517,7 @@ export default function CoachTrainingEditor() {
         </div>
 
         <div className="text-right flex-shrink-0">
-          <p className="text-sm text-gray-500 dark:text-gray-400">{program.weeks_total} weeks</p>
-          <div className="flex items-center justify-end gap-2 mt-1">
-            <span className="text-xs text-gray-400">Current week:</span>
-            <select
-              className="input py-0.5 text-sm w-24"
-              value={program.current_week}
-              onChange={e => updateCurrentWeek(parseInt(e.target.value))}
-            >
-              {Array.from({ length: program.weeks_total }, (_, i) => (
-                <option key={i + 1} value={i + 1}>Week {i + 1}</option>
-              ))}
-            </select>
-          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{program.weeks_total ?? 12} week block</p>
         </div>
       </div>
 
@@ -631,36 +583,6 @@ export default function CoachTrainingEditor() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             Add lift
-          </button>
-        )}
-      </div>
-
-      {/* Week selector */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {Array.from({ length: program.weeks_total }, (_, i) => i + 1).map(w => (
-            <button
-              key={w}
-              onClick={() => setSelectedWeek(w)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                selectedWeek === w
-                  ? 'bg-brand-500 text-white'
-                  : w === program.current_week
-                    ? 'bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-700'
-                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:border-brand-300'
-              }`}
-            >
-              {w}
-              {w === program.current_week && <span className="ml-1 text-[10px] opacity-60">●</span>}
-            </button>
-          ))}
-        </div>
-        {selectedWeek > 1 && (
-          <button
-            onClick={() => copyFromWeek(selectedWeek - 1)}
-            className="text-xs text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 whitespace-nowrap transition-colors"
-          >
-            ← Copy week {selectedWeek - 1}
           </button>
         )}
       </div>
