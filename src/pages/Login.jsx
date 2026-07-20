@@ -40,7 +40,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <img src="/logo.svg" alt="Annabel Atherton Personal Training" className="h-36 w-auto mx-auto mb-4" />
+          <img src="/logo.svg" alt="Annabel Atherton Personal Training" className="h-28 w-auto mx-auto mb-4" />
           <p className="text-sm text-gray-500 dark:text-gray-400">Sign in to your account</p>
         </div>
 
