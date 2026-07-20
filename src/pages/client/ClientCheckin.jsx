@@ -30,6 +30,22 @@ function nextThursdayLabel() {
   return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
+// Parse "60x10,60x8" log format → best (heaviest) set
+function getBestSet(reps_completed, weight_kg) {
+  if (!reps_completed) return weight_kg != null ? { weight: weight_kg, reps: null } : null
+  let best = null
+  reps_completed.split(',').forEach(p => {
+    const xi = p.indexOf('x')
+    if (xi < 0) return
+    const w = parseFloat(p.slice(0, xi))
+    const r = parseInt(p.slice(xi + 1))
+    if (!isNaN(w) && (!best || w > best.weight || (w === best.weight && r > (best.reps || 0)))) {
+      best = { weight: w, reps: isNaN(r) ? null : r }
+    }
+  })
+  return best || (weight_kg != null ? { weight: weight_kg, reps: null } : null)
+}
+
 function getBestPerformance(liftName, checkins) {
   const results = checkins
     .flatMap(c => c.lift_results || [])
@@ -249,6 +265,10 @@ export default function ClientCheckin() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [sessionExercises, setSessionExercises] = useState([])
+  const [liftLinks, setLiftLinks] = useState({})       // liftName → exerciseId
+  const [showLinkPicker, setShowLinkPicker] = useState(null) // lift index
+  const [exerciseLogMap, setExerciseLogMap] = useState({})   // exerciseId → log row
 
   useEffect(() => {
     async function load() {
@@ -264,7 +284,7 @@ export default function ClientCheckin() {
       // Prefer top lifts from active training assignment; fall back to client record
       const { data: trainingAsgn } = await supabase
         .from('client_training_assignments')
-        .select('program_id, training_programs(top_lifts)')
+        .select('program_id, week_override, training_programs(current_week, top_lifts)')
         .eq('client_id', clientRow.id)
         .eq('active', true)
         .order('created_at', { ascending: false })
@@ -273,7 +293,60 @@ export default function ClientCheckin() {
 
       const trainingLifts = (trainingAsgn?.training_programs?.top_lifts || []).filter(l => l?.name)
       const clientLifts = (clientRow.top_lifts || []).filter(l => l?.name)
-      setTopLifts(trainingLifts.length > 0 ? trainingLifts : clientLifts)
+      const lifts = trainingLifts.length > 0 ? trainingLifts : clientLifts
+      setTopLifts(lifts)
+
+      // Load session exercises so lifts can be linked to logged exercises
+      if (trainingAsgn?.program_id) {
+        const trainingWeek = trainingAsgn.week_override ?? trainingAsgn.training_programs?.current_week ?? 1
+        const { data: sessData } = await supabase
+          .from('training_sessions')
+          .select('session_exercises(id, name, order_index)')
+          .eq('program_id', trainingAsgn.program_id)
+          .eq('week_number', trainingWeek)
+        const allExs = (sessData || [])
+          .flatMap(s => (s.session_exercises || []).sort((a, b) => a.order_index - b.order_index))
+        setSessionExercises(allExs)
+
+        const stored = JSON.parse(localStorage.getItem(`lift-links-${clientRow.id}`) || '{}')
+        setLiftLinks(stored)
+
+        const linkedIds = Object.values(stored).filter(Boolean)
+        if (linkedIds.length > 0) {
+          const { data: logs } = await supabase
+            .from('client_exercise_logs')
+            .select('session_exercise_id, weight_kg, reps_completed')
+            .eq('client_id', clientRow.id)
+            .eq('week_number', trainingWeek)
+            .in('session_exercise_id', linkedIds)
+          const logMap = {}
+          ;(logs || []).forEach(l => { logMap[l.session_exercise_id] = l })
+          setExerciseLogMap(logMap)
+
+          // Pre-populate lift results from logs only when no check-in exists yet
+          const checkinExists = (await supabase
+            .from('client_checkins')
+            .select('id', { count: 'exact', head: true })
+            .eq('client_id', clientRow.id)
+            .eq('week_number', week)
+          ).count > 0
+
+          if (!checkinExists) {
+            const prePop = lifts.map(lift => {
+              const exId = stored[lift.name]
+              const log = exId ? logMap[exId] : null
+              if (!log) return {}
+              const best = getBestSet(log.reps_completed, log.weight_kg)
+              return best
+                ? { name: lift.name, weight_kg: best.weight != null ? String(best.weight) : '', reps: best.reps != null ? String(best.reps) : '' }
+                : {}
+            })
+            if (prePop.some(r => r.weight_kg || r.reps)) {
+              setForm(f => ({ ...f, lift_results: prePop }))
+            }
+          }
+        }
+      }
 
       const { data: asgn } = await supabase
         .from('client_plan_assignments')
@@ -589,26 +662,67 @@ export default function ClientCheckin() {
               const prevCheckins = allCheckins.filter(c => c.week_number !== weekNumber)
               const best = getBestPerformance(lift.name, prevCheckins)
               const target = calcNextTarget(lift, best)
+              const linkedExId = liftLinks[lift.name]
+              const linkedEx = sessionExercises.find(e => e.id === linkedExId)
+              const trainingLog = linkedExId ? exerciseLogMap[linkedExId] : null
+              const trainingBest = trainingLog ? getBestSet(trainingLog.reps_completed, trainingLog.weight_kg) : null
+
               return (
                 <div key={i} className="space-y-2">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{lift.name}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{lift.name}</p>
+                      {showLinkPicker === i ? (
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <select
+                            className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-brand-400"
+                            value={linkedExId || ''}
+                            onChange={e => {
+                              const newLinks = { ...liftLinks, [lift.name]: e.target.value || null }
+                              setLiftLinks(newLinks)
+                              localStorage.setItem(`lift-links-${clientData?.id}`, JSON.stringify(newLinks))
+                              setShowLinkPicker(null)
+                            }}
+                          >
+                            <option value="">— No link —</option>
+                            {sessionExercises.map(ex => (
+                              <option key={ex.id} value={ex.id}>{ex.name}</option>
+                            ))}
+                          </select>
+                          <button type="button" onClick={() => setShowLinkPicker(null)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">Cancel</button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setShowLinkPicker(i)}
+                          className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 transition-colors mt-0.5"
+                        >
+                          {linkedEx ? `⟳ ${linkedEx.name}` : '+ Link to exercise'}
+                        </button>
+                      )}
+                    </div>
                     {target ? (
-                      <span className="text-xs text-brand-600 dark:text-brand-400 font-medium whitespace-nowrap">
-                        Aim for: {target.reps} reps × {target.weight_kg} kg
+                      <span className="text-xs text-brand-600 dark:text-brand-400 font-medium whitespace-nowrap mt-0.5">
+                        Aim: {target.reps}r × {target.weight_kg}kg
                       </span>
                     ) : (lift.reps_min && lift.reps_max) ? (
-                      <span className="text-xs text-gray-400 whitespace-nowrap">Target: {lift.reps_min}–{lift.reps_max} reps</span>
+                      <span className="text-xs text-gray-400 whitespace-nowrap mt-0.5">Target: {lift.reps_min}–{lift.reps_max} reps</span>
                     ) : null}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="label">Weight (kg)</label>
                       <input className="input" type="number" step="0.5" min="0" value={result.weight_kg ?? ''} onChange={e => setLift(i, 'weight_kg', e.target.value)} placeholder="e.g. 80" />
+                      {trainingBest?.weight != null && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">From training: {trainingBest.weight} kg</p>
+                      )}
                     </div>
                     <div>
                       <label className="label">Reps</label>
                       <input className="input" type="number" min="1" value={result.reps ?? ''} onChange={e => setLift(i, 'reps', e.target.value)} placeholder="e.g. 5" />
+                      {trainingBest?.reps != null && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">From training: {trainingBest.reps}</p>
+                      )}
                     </div>
                   </div>
                 </div>
