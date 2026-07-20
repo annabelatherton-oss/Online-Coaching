@@ -188,9 +188,9 @@ export default function ClientTraining() {
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">This Week's Training</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          {programName && <span>{programName} · </span>}Week {weekNumber} of 12
-        </p>
+        {programName && (
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{programName}</p>
+        )}
       </div>
 
       {coachNotes && (

@@ -2318,16 +2318,17 @@ function TrainingTab({ client, coachId }) {
   const [assignedSessions, setAssignedSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ block: '', days: '', week_override: '' })
+  const [form, setForm] = useState({ block: '', days: '', week_override: '1' })
   const [saving, setSaving] = useState(false)
   const [showOverride, setShowOverride] = useState(false)
   const [overrideWeek, setOverrideWeek] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   async function load() {
     const [{ data: progs }, { data: asgn }] = await Promise.all([
       supabase.from('training_programs').select('*').eq('coach_id', coachId).order('name'),
       supabase.from('client_training_assignments')
-        .select('*, training_programs(name, current_week, weeks_total)')
+        .select('*, training_programs(name, weeks_total)')
         .eq('client_id', client.id)
         .eq('active', true)
         .order('created_at', { ascending: false })
@@ -2370,11 +2371,31 @@ function TrainingTab({ client, coachId }) {
       coach_id: coachId,
       program_id: selectedProgram.id,
       program_name: selectedProgram.name,
-      week_override: form.week_override ? parseInt(form.week_override) : null,
+      week_override: form.week_override ? parseInt(form.week_override) : 1,
       active: true,
     })
+
+    // Auto-populate client's weekly schedule from the assigned program.
+    // Only replaces 'workout' type items — cardio, HIIT, and rest entries are preserved.
+    await supabase.from('client_schedule_items')
+      .delete().eq('client_id', client.id).eq('item_type', 'workout')
+    const { data: sessions } = await supabase
+      .from('training_sessions').select('id, name, workout_id')
+      .eq('program_id', selectedProgram.id).eq('week_number', 1)
+    const seenDays = new Set()
+    const toInsert = []
+    for (const s of (sessions || [])) {
+      const day = WEEK_DAYS.find(d => s.name === d || s.name.startsWith(d + ' ') || s.name.startsWith(d + '—') || s.name.startsWith(d + ' —'))
+      if (!day || seenDays.has(day)) continue
+      seenDays.add(day)
+      const label = s.name === day ? day : s.name.slice(day.length).replace(/^[\s–—\-]+/, '').trim() || day
+      toInsert.push({ client_id: client.id, coach_id: coachId, day_of_week: day, item_type: 'workout', workout_id: s.workout_id || null, custom_label: label, order_index: 0 })
+    }
+    if (toInsert.length > 0) await supabase.from('client_schedule_items').insert(toInsert)
+
     setSaving(false)
     setShowForm(false)
+    setReloadKey(k => k + 1)
     load()
   }
 
@@ -2396,8 +2417,7 @@ function TrainingTab({ client, coachId }) {
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
   const prog = assignment?.training_programs
-  const effectiveWeek = assignment?.week_override ?? prog?.current_week ?? '—'
-  const isOverridden = assignment?.week_override != null
+  const effectiveWeek = assignment?.week_override ?? 1
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -2436,8 +2456,7 @@ function TrainingTab({ client, coachId }) {
           <div>
             <label className="label">Starting week</label>
             <select className="input" value={form.week_override} onChange={e => setForm(f => ({ ...f, week_override: e.target.value }))}>
-              <option value="">Follow programme's current week</option>
-              {selectedProgram && Array.from({ length: selectedProgram.weeks_total || 12 }, (_, i) => (
+              {Array.from({ length: selectedProgram?.weeks_total || 12 }, (_, i) => (
                 <option key={i + 1} value={i + 1}>Week {i + 1}</option>
               ))}
             </select>
@@ -2457,7 +2476,7 @@ function TrainingTab({ client, coachId }) {
               <p className="text-sm text-gray-500 dark:text-gray-400">{prog.weeks_total} weeks</p>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
-              <button onClick={() => { setForm({ block: getProgBlock(assignment.program_name) || '', days: getProgDays(assignment.program_name) || '', week_override: '' }); setShowForm(true); setShowOverride(false) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Change</button>
+              <button onClick={() => { setForm({ block: getProgBlock(assignment.program_name) || '', days: getProgDays(assignment.program_name) || '', week_override: String(assignment.week_override ?? 1) }); setShowForm(true); setShowOverride(false) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Change</button>
               <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
             </div>
           </div>
@@ -2468,18 +2487,8 @@ function TrainingTab({ client, coachId }) {
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 uppercase tracking-wide">Week</p>
             </div>
             <div className="flex-1 min-w-0 space-y-1">
-              {isOverridden ? (
-                <>
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Week {assignment.week_override} <span className="text-xs font-normal text-orange-500">(individual override)</span></p>
-                  <p className="text-xs text-gray-400">Programme is on Week {prog.current_week}</p>
-                  <button onClick={async () => { await supabase.from('client_training_assignments').update({ week_override: null }).eq('id', assignment.id); load() }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Clear → follow programme (Week {prog.current_week})</button>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Following programme</p>
-                  <button onClick={() => { setOverrideWeek(prog.current_week); setShowOverride(true) }} className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium">Put on a different week</button>
-                </>
-              )}
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Block week {effectiveWeek} of {prog.weeks_total ?? 12}</p>
+              <button onClick={() => { setOverrideWeek(effectiveWeek); setShowOverride(true) }} className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium">Adjust week manually</button>
             </div>
           </div>
 
@@ -2529,7 +2538,7 @@ function TrainingTab({ client, coachId }) {
       )}
 
       <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
-        <ClientWeeklyPlan clientId={client.id} coachId={coachId} assignment={assignment} />
+        <ClientWeeklyPlan key={reloadKey} clientId={client.id} coachId={coachId} assignment={assignment} />
       </div>
     </div>
   )

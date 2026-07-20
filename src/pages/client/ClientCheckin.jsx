@@ -266,8 +266,6 @@ export default function ClientCheckin() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-  const [exerciseLogMap, setExerciseLogMap] = useState({})   // exerciseId → log row
-
   useEffect(() => {
     async function load() {
       const { data: clientRow } = await supabase
@@ -319,62 +317,41 @@ export default function ClientCheckin() {
       }
       setWeekNumber(week)
 
-      // Load session exercises and logs for training → hints + pre-population
+      // Load session exercises + this week's training logs → used to pre-fill lift fields
+      let trainingPrePop = null
       if (trainingAsgn?.program_id) {
-        // Try current week first; fall back to week 1 (the block template) if no sessions found
-        const preferredWeek = trainingAsgn.week_override ?? trainingAsgn.training_programs?.current_week ?? 1
-        let sessData = null
-        for (const tryWeek of [...new Set([preferredWeek, 1])]) {
-          const { data } = await supabase
-            .from('training_sessions')
-            .select('session_exercises(id, name, order_index)')
-            .eq('program_id', trainingAsgn.program_id)
-            .eq('week_number', tryWeek)
-          if (data?.length) { sessData = { rows: data, trainingWeek: tryWeek }; break }
-        }
-
-        const allExs = sessData
-          ? sessData.rows.flatMap(s => (s.session_exercises || []).sort((a, b) => a.order_index - b.order_index))
-          : []
-        const usedTrainingWeek = sessData?.trainingWeek ?? preferredWeek
+        const trainingWeek = trainingAsgn.week_override ?? 1
+        // Sessions always live in week 1 (block template)
+        const { data: sessRows } = await supabase
+          .from('training_sessions')
+          .select('session_exercises(id, name, order_index)')
+          .eq('program_id', trainingAsgn.program_id)
+          .eq('week_number', 1)
+        const allExs = (sessRows || [])
+          .flatMap(s => (s.session_exercises || []).sort((a, b) => a.order_index - b.order_index))
 
         if (allExs.length > 0) {
-          // Fetch logs for every exercise in the plan (not just matched lifts)
-          const allExIds = allExs.map(e => e.id)
           const { data: logs } = await supabase
             .from('client_exercise_logs')
             .select('session_exercise_id, weight_kg, reps_completed')
             .eq('client_id', clientRow.id)
-            .eq('week_number', usedTrainingWeek)
-            .in('session_exercise_id', allExIds)
+            .eq('week_number', trainingWeek)
+            .in('session_exercise_id', allExs.map(e => e.id))
 
           const logMap = {}
           ;(logs || []).forEach(l => {
             const ex = allExs.find(e => e.id === l.session_exercise_id)
             if (ex) logMap[(ex.name || '').toLowerCase()] = l
           })
-          setExerciseLogMap(logMap)
 
-          // Pre-populate lift fields if no check-in submitted yet this week
-          const { count } = await supabase
-            .from('client_checkins')
-            .select('id', { count: 'exact', head: true })
-            .eq('client_id', clientRow.id)
-            .eq('week_number', week)
-          if (!count) {
-            const prePop = lifts.map(lift => {
-              const liftKey = (lift.name || '').toLowerCase()
-              const log = logMap[liftKey]
-              if (!log) return {}
-              const best = getBestSet(log.reps_completed, log.weight_kg)
-              return best
-                ? { name: lift.name, weight_kg: best.weight != null ? String(best.weight) : '', reps: best.reps != null ? String(best.reps) : '' }
-                : {}
-            })
-            if (prePop.some(r => r.weight_kg || r.reps)) {
-              setForm(f => ({ ...f, lift_results: prePop }))
-            }
-          }
+          trainingPrePop = lifts.map(lift => {
+            const log = logMap[(lift.name || '').toLowerCase()]
+            if (!log) return null
+            const best = getBestSet(log.reps_completed, log.weight_kg)
+            return best
+              ? { name: lift.name, weight_kg: best.weight != null ? String(best.weight) : '', reps: best.reps != null ? String(best.reps) : '' }
+              : null
+          })
         }
       }
 
@@ -414,6 +391,20 @@ export default function ClientCheckin() {
         }))
         if (checkin.progress_photos) setPhotos(prev => ({ ...prev, ...checkin.progress_photos }))
       }
+
+      // Fill lift fields from training logs; skip any field that already has a saved value
+      if (trainingPrePop?.some(Boolean)) {
+        setForm(f => {
+          const saved = f.lift_results || []
+          const merged = lifts.map((lift, i) => {
+            const s = saved[i]
+            if (s?.weight_kg || s?.reps) return s
+            return trainingPrePop[i] || {}
+          })
+          return merged.some(r => r?.weight_kg || r?.reps) ? { ...f, lift_results: merged } : f
+        })
+      }
+
       setLoading(false)
     }
     load()
@@ -686,8 +677,6 @@ export default function ClientCheckin() {
               const prevCheckins = allCheckins.filter(c => c.week_number !== weekNumber)
               const best = getBestPerformance(lift.name, prevCheckins)
               const target = calcNextTarget(lift, best)
-              const trainingLog = exerciseLogMap[(lift.name || '').toLowerCase()]
-              const trainingBest = trainingLog ? getBestSet(trainingLog.reps_completed, trainingLog.weight_kg) : null
 
               return (
                 <div key={i} className="space-y-2">
@@ -705,16 +694,10 @@ export default function ClientCheckin() {
                     <div>
                       <label className="label">Weight (kg)</label>
                       <input className="input" type="number" step="0.5" min="0" value={result.weight_kg ?? ''} onChange={e => setLift(i, 'weight_kg', e.target.value)} placeholder="e.g. 80" />
-                      {trainingBest?.weight != null && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">From training: {trainingBest.weight} kg</p>
-                      )}
                     </div>
                     <div>
                       <label className="label">Reps</label>
                       <input className="input" type="number" min="1" value={result.reps ?? ''} onChange={e => setLift(i, 'reps', e.target.value)} placeholder="e.g. 5" />
-                      {trainingBest?.reps != null && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">From training: {trainingBest.reps}</p>
-                      )}
                     </div>
                   </div>
                 </div>
