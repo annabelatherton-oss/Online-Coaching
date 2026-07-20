@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200">
   <!-- Oval border -->
-  <ellipse cx="150" cy="100" rx="142" ry="92" fill="none" stroke="#8B6534" stroke-width="1.8"/>
+  <ellipse cx="150" cy="100" rx="142" ry="92" fill="#F2EAE0" stroke="#8B6534" stroke-width="1.8"/>
 
   <!-- Dumbbell icon -->
   <!-- Left outer plate -->
