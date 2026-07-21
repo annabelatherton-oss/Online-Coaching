@@ -13,6 +13,26 @@ function InfoRow({ label, value }) {
   )
 }
 
+function buildInfoForm(c) {
+  return {
+    phone: c.phone || '',
+    date_of_birth: c.date_of_birth || '',
+    height_cm: c.height_cm || '',
+    goal: c.goal || '',
+    dislikes: (c.dislikes || []).join(', '),
+    intake_motivators: c.intake_form?.motivators || '',
+    intake_barriers: c.intake_form?.barriers || '',
+    intake_health_history: c.intake_form?.health_history || '',
+    intake_plan_interest: c.intake_form?.plan_interest || '',
+    intake_current_diet: c.intake_form?.current_diet || '',
+    intake_current_training: c.intake_form?.current_training || '',
+    intake_cardio_preferences: c.intake_form?.cardio_preferences || '',
+    intake_food_preferences: c.intake_form?.food_preferences || '',
+    intake_meal_preference: c.intake_form?.meal_preference || '',
+    intake_other_info: c.intake_form?.other_info || '',
+  }
+}
+
 export default function ClientProfile() {
   const { profile, session } = useAuth()
   const [clientData, setClientData] = useState(null)
@@ -28,6 +48,12 @@ export default function ClientProfile() {
   })
   const [savingWeight, setSavingWeight] = useState(false)
 
+  // Info edit form
+  const [showInfoEdit, setShowInfoEdit] = useState(false)
+  const [infoForm, setInfoForm] = useState({})
+  const [savingInfo, setSavingInfo] = useState(false)
+  const [infoSaved, setInfoSaved] = useState(false)
+
   useEffect(() => {
     async function load() {
       // Load client data
@@ -37,6 +63,9 @@ export default function ClientProfile() {
         .eq('profile_id', session.user.id)
         .single()
       setClientData(clientRow)
+      if (clientRow) {
+        setInfoForm(buildInfoForm(clientRow))
+      }
 
       if (clientRow) {
         // Load weight entries
@@ -81,6 +110,34 @@ export default function ClientProfile() {
     setWeightForm({ date: new Date().toISOString().split('T')[0], weight_kg: '' })
   }
 
+  async function saveInfo(e) {
+    e.preventDefault()
+    setSavingInfo(true)
+    await supabase.from('clients').update({
+      phone: infoForm.phone || null,
+      date_of_birth: infoForm.date_of_birth || null,
+      height_cm: infoForm.height_cm ? parseFloat(infoForm.height_cm) : null,
+      goal: infoForm.goal || null,
+      dislikes: infoForm.dislikes ? infoForm.dislikes.split(',').map(s => s.trim()).filter(Boolean) : [],
+      intake_form: {
+        motivators: infoForm.intake_motivators || null,
+        barriers: infoForm.intake_barriers || null,
+        health_history: infoForm.intake_health_history || null,
+        plan_interest: infoForm.intake_plan_interest || null,
+        current_diet: infoForm.intake_current_diet || null,
+        current_training: infoForm.intake_current_training || null,
+        cardio_preferences: infoForm.intake_cardio_preferences || null,
+        food_preferences: infoForm.intake_food_preferences || null,
+        meal_preference: infoForm.intake_meal_preference || null,
+        other_info: infoForm.intake_other_info || null,
+      },
+    }).eq('profile_id', session.user.id)
+    setSavingInfo(false)
+    setInfoSaved(true)
+    setTimeout(() => setInfoSaved(false), 2500)
+    setShowInfoEdit(false)
+  }
+
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
   const expiry = clientData?.access_expires_at
@@ -119,6 +176,78 @@ export default function ClientProfile() {
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">{profile?.email}</p>
         </div>
+      </div>
+
+      {/* My Information — editable intake form */}
+      <div className="card space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">My Information</h3>
+          {!showInfoEdit && (
+            <button onClick={() => { setInfoForm(buildInfoForm(clientData)); setShowInfoEdit(true) }} className="btn-secondary py-1.5 px-3 text-xs">
+              Edit
+            </button>
+          )}
+        </div>
+
+        {showInfoEdit ? (
+          <form onSubmit={saveInfo} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Phone</label>
+                <input className="input" type="tel" value={infoForm.phone} onChange={e => setInfoForm(f => ({ ...f, phone: e.target.value }))} placeholder="07700 900 000" />
+              </div>
+              <div>
+                <label className="label">Date of birth</label>
+                <input className="input" type="date" value={infoForm.date_of_birth} onChange={e => setInfoForm(f => ({ ...f, date_of_birth: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Height (cm)</label>
+                <input className="input" type="number" step="0.1" value={infoForm.height_cm} onChange={e => setInfoForm(f => ({ ...f, height_cm: e.target.value }))} placeholder="e.g. 165" />
+              </div>
+            </div>
+            <div>
+              <label className="label">Main goal</label>
+              <textarea className="input resize-none" rows={2} value={infoForm.goal} onChange={e => setInfoForm(f => ({ ...f, goal: e.target.value }))} placeholder="e.g. Lose weight and feel stronger" />
+            </div>
+            {[
+              { key: 'intake_motivators', label: 'Main motivators' },
+              { key: 'intake_barriers', label: 'Barriers to your goals' },
+              { key: 'intake_health_history', label: 'Health history / concerns' },
+              { key: 'intake_current_diet', label: 'Current diet' },
+              { key: 'intake_current_training', label: 'Current training' },
+              { key: 'intake_cardio_preferences', label: 'Cardio preferences' },
+              { key: 'intake_food_preferences', label: 'Food preferences' },
+              { key: 'dislikes', label: 'Food dislikes (comma-separated)' },
+              { key: 'intake_other_info', label: 'Anything else' },
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="label">{label}</label>
+                <textarea className="input resize-none" rows={2} value={infoForm[key]} onChange={e => setInfoForm(f => ({ ...f, [key]: e.target.value }))} placeholder="—" />
+              </div>
+            ))}
+            <div className="flex items-center gap-3">
+              <button type="submit" disabled={savingInfo} className="btn-primary">{savingInfo ? 'Saving…' : 'Save'}</button>
+              <button type="button" onClick={() => setShowInfoEdit(false)} className="btn-secondary">Cancel</button>
+              {infoSaved && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
+            </div>
+          </form>
+        ) : (
+          <dl>
+            {clientData?.phone && <InfoRow label="Phone" value={clientData.phone} />}
+            {clientData?.date_of_birth && <InfoRow label="Date of birth" value={new Date(clientData.date_of_birth).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} />}
+            {clientData?.height_cm && <InfoRow label="Height" value={`${clientData.height_cm} cm`} />}
+            {clientData?.goal && <InfoRow label="Goal" value={clientData.goal} />}
+            {clientData?.intake_form?.motivators && <InfoRow label="Motivators" value={clientData.intake_form.motivators} />}
+            {clientData?.intake_form?.barriers && <InfoRow label="Barriers" value={clientData.intake_form.barriers} />}
+            {clientData?.intake_form?.health_history && <InfoRow label="Health history" value={clientData.intake_form.health_history} />}
+            {clientData?.dislikes?.length > 0 && <InfoRow label="Food dislikes" value={clientData.dislikes.join(', ')} />}
+            {!clientData?.phone && !clientData?.goal && !clientData?.intake_form?.motivators && (
+              <p className="text-sm text-gray-400 dark:text-gray-500 py-2">No information added yet. Click Edit to fill in your details.</p>
+            )}
+          </dl>
+        )}
       </div>
 
       {/* Programme Details */}

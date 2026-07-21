@@ -384,6 +384,21 @@ function OverviewTab({ client, onSaved }) {
     ],
     allergies: client.allergies || [],
     dislikes: (client.dislikes || []).join(', '),
+    // Personal info
+    phone: client.phone || '',
+    date_of_birth: client.date_of_birth || '',
+    height_cm: client.height_cm || '',
+    // Intake form answers
+    intake_motivators: client.intake_form?.motivators || '',
+    intake_barriers: client.intake_form?.barriers || '',
+    intake_health_history: client.intake_form?.health_history || '',
+    intake_plan_interest: client.intake_form?.plan_interest || '',
+    intake_current_diet: client.intake_form?.current_diet || '',
+    intake_current_training: client.intake_form?.current_training || '',
+    intake_cardio_preferences: client.intake_form?.cardio_preferences || '',
+    intake_food_preferences: client.intake_form?.food_preferences || '',
+    intake_meal_preference: client.intake_form?.meal_preference || '',
+    intake_other_info: client.intake_form?.other_info || '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -469,6 +484,21 @@ function OverviewTab({ client, onSaved }) {
       top_lifts: form.top_lifts.filter(n => n.trim()).map(name => ({ name: name.trim() })),
       allergies: form.allergies,
       dislikes: form.dislikes ? form.dislikes.split(',').map(s => s.trim()).filter(Boolean) : [],
+      phone: form.phone || null,
+      date_of_birth: form.date_of_birth || null,
+      height_cm: form.height_cm ? parseFloat(form.height_cm) : null,
+      intake_form: {
+        motivators: form.intake_motivators || null,
+        barriers: form.intake_barriers || null,
+        health_history: form.intake_health_history || null,
+        plan_interest: form.intake_plan_interest || null,
+        current_diet: form.intake_current_diet || null,
+        current_training: form.intake_current_training || null,
+        cardio_preferences: form.intake_cardio_preferences || null,
+        food_preferences: form.intake_food_preferences || null,
+        meal_preference: form.intake_meal_preference || null,
+        other_info: form.intake_other_info || null,
+      },
     }).eq('id', client.id)
     setSaving(false)
     if (err) { setError(err.message); return }
@@ -484,6 +514,28 @@ function OverviewTab({ client, onSaved }) {
     <div className="space-y-6 max-w-2xl">
     <ClientPauseCard clientId={client.id} />
     <form onSubmit={handleSave} className="space-y-6">
+
+      {/* Personal Info — from intake form */}
+      <div className="card space-y-4">
+        <h3 className="font-semibold text-gray-900 dark:text-white">Personal Information</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Phone number</label>
+            <input className="input" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="e.g. 07700 900 000" />
+          </div>
+          <div>
+            <label className="label">Date of birth</label>
+            <input className="input" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Height (cm)</label>
+            <input className="input" type="number" step="0.1" min="0" value={form.height_cm} onChange={e => set('height_cm', e.target.value)} placeholder="e.g. 165" />
+          </div>
+        </div>
+      </div>
+
       <div className="card space-y-4">
         <h3 className="font-semibold text-gray-900 dark:text-white">Programme Details</h3>
         <div>
@@ -651,6 +703,37 @@ function OverviewTab({ client, onSaved }) {
             Partial ingredient name match — e.g. "mushroom" flags any ingredient containing that word
           </p>
         </div>
+      </div>
+
+      {/* Intake Form Answers */}
+      <div className="card space-y-4">
+        <div>
+          <h3 className="font-semibold text-gray-900 dark:text-white">Intake Form Answers</h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Populated automatically from the client's onboarding form. Editable by you and the client.</p>
+        </div>
+        {[
+          { key: 'intake_motivators', label: 'Main motivators' },
+          { key: 'intake_barriers', label: 'Barriers to achieving goals' },
+          { key: 'intake_health_history', label: 'Health history / concerns' },
+          { key: 'intake_plan_interest', label: 'Interested in (training / diet / both)' },
+          { key: 'intake_current_diet', label: 'Current diet' },
+          { key: 'intake_current_training', label: 'Current training routine' },
+          { key: 'intake_cardio_preferences', label: 'Cardio preferences' },
+          { key: 'intake_food_preferences', label: 'Food preferences' },
+          { key: 'intake_meal_preference', label: 'Meal preference (specific meals / macros)' },
+          { key: 'intake_other_info', label: 'Other information' },
+        ].map(({ key, label }) => (
+          <div key={key}>
+            <label className="label">{label}</label>
+            <textarea
+              className="input resize-none"
+              rows={2}
+              value={form[key]}
+              onChange={e => set(key, e.target.value)}
+              placeholder="—"
+            />
+          </div>
+        ))}
       </div>
 
       {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"><p className="text-sm text-red-700 dark:text-red-400">{error}</p></div>}
@@ -2934,7 +3017,7 @@ export default function CoachClientProfile() {
       current_carbs, current_fat, steps_target, water_target_litres, sleep_target_hours,
       start_date, access_weeks, access_expires_at,
       is_active, is_paused, notes, created_at, tags, collect_measurements, top_lifts,
-      allergies, dislikes,
+      allergies, dislikes, phone, date_of_birth, height_cm, intake_form,
       profiles!clients_profile_id_fkey(full_name, email)
     `).eq('id', clientId).eq('coach_id', profile.id).single()
     if (err || !data) setError('Client not found or you do not have access.')
