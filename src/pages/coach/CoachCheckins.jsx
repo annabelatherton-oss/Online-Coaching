@@ -92,8 +92,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const [nextBlockId, setNextBlockId] = useState('')
   const [assigningBlock, setAssigningBlock] = useState(false)
   const skipTierReload = useRef(true)
+  const skipWeekReload = useRef(true)
 
-  const nextTemplateWeek = (current?.week_number ?? 0) + 1
+  const [nextTemplateWeek, setNextTemplateWeek] = useState((current?.week_number ?? 0) + 1)
   const tier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
 
   // Initial data load
@@ -162,6 +163,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
 
       setLoading(false)
       skipTierReload.current = false
+      skipWeekReload.current = false
     }
     load()
   }, [])
@@ -183,6 +185,26 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     }
     reloadTemplate()
   }, [calorieTarget])
+
+  // Reload template slots + any saved overrides when the meal week changes
+  useEffect(() => {
+    if (skipWeekReload.current || !activeAssignment) return
+    async function reloadWeek() {
+      const currentTier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
+      const [{ data: tierTmplData }, { data: stdTmplData }, { data: cwm }] = await Promise.all([
+        currentTier
+          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', currentTier).maybeSingle()
+          : Promise.resolve({ data: null }),
+        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
+        supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
+      ])
+      const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
+      setTemplateSlots(tSlots)
+      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
+      setIngredientOverrides(cwm?.ingredient_overrides || {})
+    }
+    reloadWeek()
+  }, [nextTemplateWeek])
 
   function buildTemplateSlots(tierTmplData, stdTmplData, asgn) {
     const tmpl = tierTmplData || stdTmplData
@@ -565,11 +587,26 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
 
           {/* Meal plan for next week */}
           <div className="space-y-6">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Week {deliveryPersonalWeek} meal plan
-                <span className="ml-2 text-xs font-normal text-gray-400">Tap a meal to view · Swap to change</span>
-              </h2>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Meal plan
+                  <span className="ml-2 text-xs font-normal text-gray-400">Tap a meal to view · Swap to change</span>
+                </h2>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Client sees this after you submit</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <label className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Template week</label>
+                <select
+                  value={nextTemplateWeek}
+                  onChange={e => setNextTemplateWeek(parseInt(e.target.value))}
+                  className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  {Array.from({ length: 20 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>Week {i + 1}</option>
+                  ))}
+                </select>
+              </div>
               {hasMealPlanChanges && (
                 <button
                   onClick={handleRevertMealPlan}
