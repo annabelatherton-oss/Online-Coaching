@@ -1,47 +1,61 @@
 var WEBHOOK_URL = 'https://rjaduiqakoudnmkjwwdw.supabase.co/functions/v1/intake-form-webhook';
 var WEBHOOK_TOKEN = 'xK9mP2qR7vLn4wJt';
 
-function getField(headers, values, keyword) {
-  var idx = -1;
-  for (var i = 0; i < headers.length; i++) {
-    if (headers[i].toString().toLowerCase().indexOf(keyword.toLowerCase()) >= 0) {
-      idx = i;
-      break;
-    }
-  }
-  return idx >= 0 ? (values[idx] || '').toString().trim() : '';
-}
-
 function onFormSubmit(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var values = e.values;
+  var response = e.response;
+  var itemResponses = response.getItemResponses();
 
-  var payload = {
-    email:              getField(headers, values, 'email'),
-    full_name:          getField(headers, values, 'full name'),
-    phone:              getField(headers, values, 'phone'),
-    date_of_birth:      formatDate(getField(headers, values, 'date of birth')),
-    height_cm:          getField(headers, values, 'height'),
-    weight_kg:          getField(headers, values, 'body weight'),
-    goal:               getField(headers, values, 'main goals'),
-    motivators:         getField(headers, values, 'motivators'),
-    barriers:           getField(headers, values, 'barriers'),
-    health_history:     getField(headers, values, 'health history'),
-    plan_interest:      getField(headers, values, 'most interested'),
-    current_diet:       getField(headers, values, 'current diet'),
-    current_training:   getField(headers, values, 'current training'),
-    cardio_preferences: getField(headers, values, 'cardio'),
-    food_preferences:   getField(headers, values, 'food preferences'),
-    dislikes:           getField(headers, values, 'food dislikes'),
-    meal_preference:    getField(headers, values, 'specific meals'),
-    other_info:         getField(headers, values, 'other information')
-  };
+  // Build a map of lowercase question title -> answer
+  var answers = {};
+  for (var i = 0; i < itemResponses.length; i++) {
+    var item = itemResponses[i];
+    var title = item.getItem().getTitle().toLowerCase();
+    answers[title] = item.getResponse().toString().trim();
+  }
 
-  if (!payload.email) {
-    Logger.log('ERROR: No email in submission');
+  // Find an answer by partial keyword match
+  function get(keyword) {
+    for (var key in answers) {
+      if (key.indexOf(keyword.toLowerCase()) >= 0) {
+        return answers[key] || '';
+      }
+    }
+    return '';
+  }
+
+  // Email: try the question first, then fall back to Google's automatic collection
+  var email = get('email');
+  if (!email) {
+    try { email = response.getRespondentEmail() || ''; } catch (err) {}
+  }
+
+  if (!email) {
+    Logger.log('ERROR: No email found in submission');
     return;
   }
+
+  var payload = {
+    email:              email,
+    full_name:          get('full name'),
+    phone:              get('phone'),
+    date_of_birth:      formatDate(get('date of birth')),
+    height_cm:          get('height'),
+    weight_kg:          get('body weight'),
+    goal:               get('main goals'),
+    motivators:         get('motivators'),
+    barriers:           get('barriers'),
+    health_history:     get('health history'),
+    plan_interest:      get('most interested'),
+    current_diet:       get('current diet'),
+    current_training:   get('current training'),
+    cardio_preferences: get('cardio'),
+    food_preferences:   get('food preferences'),
+    dislikes:           get('food dislikes'),
+    meal_preference:    get('specific meals'),
+    other_info:         get('other information')
+  };
+
+  Logger.log('Sending for email: ' + email);
 
   var options = {
     method: 'post',
@@ -52,8 +66,8 @@ function onFormSubmit(e) {
   };
 
   try {
-    var response = UrlFetchApp.fetch(WEBHOOK_URL, options);
-    Logger.log('Status ' + response.getResponseCode() + ': ' + response.getContentText());
+    var result = UrlFetchApp.fetch(WEBHOOK_URL, options);
+    Logger.log('Status ' + result.getResponseCode() + ': ' + result.getContentText());
   } catch (err) {
     Logger.log('ERROR: ' + err.toString());
   }
