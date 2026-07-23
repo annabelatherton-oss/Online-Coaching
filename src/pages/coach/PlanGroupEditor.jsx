@@ -618,7 +618,10 @@ export default function PlanGroupEditor() {
     // How far a full day total deviates from the tier target — same 4:1:1:1 weighting as the
     // tier solver so the same quality bar applies here.
     function dayScore(weekIdx) {
-      const staticIds = ['preworkout', 'evening_snack'].map(k => currentWeeks[weekIdx].slots[k]).filter(Boolean)
+      const staticIds = [
+        currentWeeks[weekIdx].slots['preworkout']    || defaultPreworkout    || null,
+        currentWeeks[weekIdx].slots['evening_snack'] || defaultEveningSnack  || null,
+      ].filter(Boolean)
       let scoreA = 0, scoreB = 0
       for (const opt of [['breakfast1','lunch1','dinner1'], ['breakfast2','lunch2','dinner2']]) {
         let cal = 0, prot = 0, carbs = 0, fat = 0
