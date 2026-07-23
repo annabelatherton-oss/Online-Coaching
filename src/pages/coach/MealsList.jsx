@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
-import { CALORIE_TIERS, missingTiers, createMissingTiersForMeal } from '../../lib/calorieTierScaling'
+import { CALORIE_TIERS, missingTiers, createMissingTiersForMeal, regenerateAllTiersForMeal } from '../../lib/calorieTierScaling'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 
 const CATEGORIES = ['All', 'Breakfast', 'Lunch', 'Dinner', 'Snack', 'Pre-workout', 'Evening Snack']
@@ -72,6 +72,8 @@ export default function MealsList() {
   const [bulkRunning, setBulkRunning] = useState(false)
   const [bulkProgress, setBulkProgress] = useState(null)
   const [autoRunDone, setAutoRunDone] = useState(false)
+  const [regenRunning, setRegenRunning] = useState(false)
+  const [regenProgress, setRegenProgress] = useState(null)
 
   async function loadMeals() {
     const [{ data, error }, { data: libData }] = await Promise.all([
@@ -164,6 +166,34 @@ export default function MealsList() {
     }
   }
 
+  async function handleBulkRegenerateTiers() {
+    const targets = meals.filter(m => (m.meal_ingredients || []).length > 0 && m.category)
+    if (targets.length === 0) return
+    if (!confirm(`Regenerate calorie tiers for all ${targets.length} meals? This rewrites every tier from scratch using the latest solver settings.`)) return
+    setRegenRunning(true)
+    setRegenProgress({ done: 0, total: targets.length })
+    const failed = []
+    for (const meal of targets) {
+      try {
+        const baseIngs = (meal.meal_ingredients || []).map(ing => ({
+          ...ing,
+          alternatives: (ing.alternative_ingredient_ids || []).map(id => ({ ingredient_id: id })),
+        }))
+        await regenerateAllTiersForMeal(meal.id, meal.category, baseIngs, library, mealSplit)
+      } catch (err) {
+        console.error(`Failed to regenerate tiers for "${meal.name}":`, err)
+        failed.push(meal.name)
+      }
+      setRegenProgress(p => ({ done: p.done + 1, total: p.total }))
+    }
+    setRegenRunning(false)
+    setRegenProgress(null)
+    await loadMeals()
+    if (failed.length > 0) {
+      alert(`Regenerated tiers for ${targets.length - failed.length} of ${targets.length} meals.\n\nFailed: ${failed.join(', ')}`)
+    }
+  }
+
   async function handleDelete(id) {
     setDeleting(true)
     const { error } = await supabase.from('meals').delete().eq('id', id)
@@ -219,7 +249,7 @@ export default function MealsList() {
           {mealsNeedingTiers.length > 0 && (
             <button
               onClick={handleBulkCreateTiers}
-              disabled={bulkRunning}
+              disabled={bulkRunning || regenRunning}
               className="btn-secondary"
               title="Generate any missing calorie-tier versions for every meal in your library, scaled from each meal's base recipe"
             >
@@ -231,6 +261,19 @@ export default function MealsList() {
                 : `Create missing tiers (${mealsNeedingTiers.length})`}
             </button>
           )}
+          <button
+            onClick={handleBulkRegenerateTiers}
+            disabled={bulkRunning || regenRunning}
+            className="btn-secondary"
+            title="Rebuild every meal's calorie-tier versions from scratch using the latest solver settings"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {regenRunning
+              ? `Regenerating… ${regenProgress?.done ?? 0}/${regenProgress?.total ?? 0}`
+              : 'Regenerate all tiers'}
+          </button>
           <button
             onClick={() => navigate('/coach/meals/new')}
             className="btn-primary"

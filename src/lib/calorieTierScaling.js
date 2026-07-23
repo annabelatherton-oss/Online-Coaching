@@ -224,20 +224,25 @@ export function generateTierIngredients(baseIngredients, library, targets) {
     }
     qtyByRow = bestQty
 
-    // Calorie top-up: if still under after the main loop, scale flexible ingredients
-    // proportionally to close the gap — macros may drift but empty calories must be filled.
-    const topUpSnapped = rows.map((r, i) => finalizeQty(r, qtyByRow[i]))
-    const topUpDiff = targetVec.cal - topUpSnapped.reduce((s, r) => s + r.calories, 0)
-    if (topUpDiff > TIER_CONVERGENCE_KCAL) {
-      const flexCal = topUpSnapped.reduce((s, r, i) =>
-        s + ((rows[i].scaling_type === 'fixed' || rows[i].is_static || rows[i].scaling_type === 'optional') ? 0 : r.calories), 0)
-      if (flexCal > 0) {
-        const topUpCorr = Math.min(3, (flexCal + topUpDiff) / flexCal)
-        qtyByRow = qtyByRow.map((q, i) =>
-          (rows[i].scaling_type === 'fixed' || rows[i].is_static || rows[i].scaling_type === 'optional') ? q : q * topUpCorr
-        )
-      }
+    // Calorie top-up: if still under, iterate on snapped quantities directly so that
+    // step-rounding can't undo each correction. Macros may overshoot — calories first.
+    let tuQty = rows.map((r, i) => finalizeQty(r, qtyByRow[i]).quantity_g)
+    for (let t = 0; t < 8; t++) {
+      const cal = rows.reduce((s, r, i) => s + round1(tuQty[i] * r.calPerG), 0)
+      const gap = targetVec.cal - cal
+      if (gap <= TIER_CONVERGENCE_KCAL) break
+      const flexCal = rows.reduce((s, r, i) =>
+        r.scaling_type === 'flexible' && !r.is_static ? s + round1(tuQty[i] * r.calPerG) : s, 0)
+      if (flexCal <= 0) break
+      const corr = Math.min(3, (flexCal + gap) / flexCal)
+      tuQty = rows.map((r, i) => {
+        if (r.scaling_type !== 'flexible' || r.is_static) return tuQty[i]
+        const raw = tuQty[i] * corr
+        const snapped = snapToConstraints(raw, r.libIng, false)
+        return snapped != null ? snapped : raw
+      })
     }
+    qtyByRow = tuQty
   }
 
   return rows.map((r, i) => finalizeRow(r, qtyByRow[i]))
