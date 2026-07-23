@@ -374,7 +374,7 @@ function OverviewTab({ client, onSaved }) {
     water_target_litres: client.water_target_litres ?? 2.5,
     sleep_target_hours: client.sleep_target_hours ?? 8,
     start_date: client.start_date ? client.start_date.split('T')[0] : '',
-    access_weeks: client.access_weeks || 4,
+    access_weeks: client.access_weeks || 12,
     is_paused: client.is_paused || false,
     collect_measurements: client.collect_measurements || false,
     top_lifts: [
@@ -549,7 +549,16 @@ function OverviewTab({ client, onSaved }) {
           </div>
           <div>
             <label className="label">Access (weeks)</label>
-            <input className="input" type="number" min={1} max={52} value={form.access_weeks} onChange={e => set('access_weeks', e.target.value)} />
+            <div className="flex gap-2 items-center">
+              <input className="input" type="number" min={1} max={520} value={form.access_weeks} onChange={e => set('access_weeks', e.target.value)} />
+              <button
+                type="button"
+                className="btn-secondary whitespace-nowrap text-sm py-2 px-3"
+                onClick={() => set('access_weeks', String(parseInt(form.access_weeks || 0) + 12))}
+              >
+                + 12 weeks
+              </button>
+            </div>
           </div>
         </div>
         <div className="text-sm text-gray-500 dark:text-gray-400">

@@ -151,7 +151,7 @@ serve(async (req) => {
       dislikes: dislikesArray,
       intake_form: intakeForm,
       start_date: new Date().toISOString().split('T')[0],
-      access_weeks: 4,
+      access_weeks: 12,
     }).select('id').single()
 
     if (clientErr) {
