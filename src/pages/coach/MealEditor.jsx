@@ -44,6 +44,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
   })
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
+  const [photoRemoved, setPhotoRemoved] = useState(false)
   const [photoPosition, setPhotoPosition] = useState(meal?.photo_position || '50% 50%')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -113,6 +114,9 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
       const { error: uploadErr } = await supabase.storage.from('meal-photos').upload(path, photoFile)
       if (uploadErr) { setError('Photo upload failed: ' + uploadErr.message); setSaving(false); return }
       photoPath = path
+    } else if (photoRemoved) {
+      if (meal?.photo_url) await supabase.storage.from('meal-photos').remove([meal.photo_url])
+      photoPath = null
     }
 
     const payload = {
@@ -176,7 +180,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
 
       <div className="card space-y-4">
         <h3 className="font-semibold text-gray-900 dark:text-white">Photo</h3>
-        {(photoPreview || currentPhotoUrl) && (
+        {(photoPreview || (currentPhotoUrl && !photoRemoved)) && (
           <div className="space-y-1">
             <div
               className="w-full aspect-square rounded-xl overflow-hidden border border-pink-100 cursor-grab active:cursor-grabbing select-none"
@@ -184,7 +188,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
               onTouchStart={handlePhotoDragStart}
             >
               <img
-                src={photoPreview || currentPhotoUrl}
+                src={photoPreview || (photoRemoved ? null : currentPhotoUrl)}
                 alt="Meal photo"
                 className="w-full h-full object-cover pointer-events-none"
                 style={{ objectPosition: photoPosition }}
@@ -194,12 +198,21 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
             <p className="text-xs text-gray-400 dark:text-gray-500 text-center">Drag photo to reposition</p>
           </div>
         )}
-        <div>
+        <div className="flex items-center gap-3 flex-wrap">
           <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary">
-            {(photoPreview || currentPhotoUrl) ? 'Change Photo' : 'Upload Photo'}
+            {(photoPreview || (currentPhotoUrl && !photoRemoved)) ? 'Change Photo' : 'Upload Photo'}
           </button>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
-          {photoFile && <p className="mt-2 text-xs text-gray-500">{photoFile.name}</p>}
+          {(photoPreview || (currentPhotoUrl && !photoRemoved)) && (
+            <button
+              type="button"
+              onClick={() => { setPhotoFile(null); setPhotoPreview(null); setPhotoRemoved(true) }}
+              className="text-sm text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium"
+            >
+              Remove photo
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { setPhotoRemoved(false); handlePhotoChange(e) }} />
+          {photoFile && <p className="mt-2 text-xs text-gray-500 w-full">{photoFile.name}</p>}
         </div>
       </div>
 

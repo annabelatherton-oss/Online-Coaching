@@ -226,6 +226,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
+  const [prepDays, setPrepDays] = useState(null)
 
   const mealId = editedSlots[slotKey]
   const meal = mealId ? mealMap[mealId] : null
@@ -290,15 +291,70 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
               <div>
                 <div className="flex items-center justify-between mb-3 pt-1">
                   <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Ingredients</h3>
-                  {onRevertIngredients && hasAnyOverride(overrides) && (
+                  <div className="flex items-center gap-3">
+                    {onRevertIngredients && hasAnyOverride(overrides) && (
+                      <button
+                        onClick={() => onRevertIngredients(slotKey)}
+                        className="text-xs text-orange-500 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 font-medium"
+                      >
+                        Revert to original
+                      </button>
+                    )}
                     <button
-                      onClick={() => onRevertIngredients(slotKey)}
-                      className="text-xs text-orange-500 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 font-medium"
+                      onClick={() => setPrepDays(d => d === null ? 1 : null)}
+                      className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors ${
+                        prepDays !== null
+                          ? 'bg-brand-500 text-white border-brand-500'
+                          : 'border-brand-300 text-brand-600 dark:text-brand-400 dark:border-brand-700 hover:bg-brand-50 dark:hover:bg-brand-900/20'
+                      }`}
                     >
-                      Revert to original
+                      Meal prep
                     </button>
-                  )}
+                  </div>
                 </div>
+
+                {prepDays !== null && (
+                  <div className="mb-4 space-y-3">
+                    <div className="flex items-center gap-3 p-3 bg-brand-50 dark:bg-brand-900/20 rounded-xl">
+                      <span className="text-sm text-gray-700 dark:text-gray-300 flex-1">Days to prep:</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setPrepDays(d => Math.max(1, d - 1))}
+                          className="w-7 h-7 rounded-full border border-gray-300 dark:border-gray-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 font-bold text-base"
+                        >−</button>
+                        <span className="text-lg font-bold text-gray-900 dark:text-white w-6 text-center tabular-nums">{prepDays}</span>
+                        <button
+                          onClick={() => setPrepDays(d => Math.min(14, d + 1))}
+                          className="w-7 h-7 rounded-full border border-gray-300 dark:border-gray-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 font-bold text-base"
+                        >+</button>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-brand-100 dark:border-brand-900/40 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+                      <div className="px-3 py-2 bg-brand-50/60 dark:bg-brand-900/10 flex items-center justify-between">
+                        <span className="text-xs font-semibold text-brand-700 dark:text-brand-400 uppercase tracking-wide">Shopping list — {prepDays} day{prepDays !== 1 ? 's' : ''}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">{Math.round(macros.cal * prepDays)} kcal total</span>
+                      </div>
+                      {ingredients.map((ing, i) => {
+                        const qty = parseFloat(ing.quantity_g) || 0
+                        const totalQty = qty * prepDays
+                        const libIng = ing.ingredient_id && ingredientLib ? ingredientLib[ing.ingredient_id] : null
+                        const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libIng?.serving_unit && libIng.serving_unit !== 'g') ? libIng.serving_unit : 'g'
+                        const displayQty = unit !== 'g'
+                          ? (Number.isInteger(totalQty) ? totalQty : Math.round(totalQty * 10) / 10)
+                          : Math.round(totalQty)
+                        return (
+                          <div key={ing.id || i} className="flex items-center justify-between px-3 py-2">
+                            <span className="text-sm text-gray-800 dark:text-gray-200">{ing.name}</span>
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 tabular-nums">{displayQty}{unit}</span>
+                          </div>
+                        )
+                      })}
+                      <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                        <span>{Math.round(macros.carb * prepDays)}g carbs · {Math.round(macros.prot * prepDays)}g protein · {Math.round(macros.fat * prepDays)}g fat</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2">
                   {ingredients.map((ing, i) => {
                     const libUnit = ing.ingredient_id && ingredientLib ? ingredientLib[ing.ingredient_id]?.serving_unit : null
