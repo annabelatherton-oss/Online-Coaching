@@ -1862,17 +1862,31 @@ function MealPlanTab({ client, coachId }) {
     e.preventDefault(); setSaving(true); setError('')
     await supabase.from('client_plan_assignments').update({ active: false, ended_at: new Date().toISOString() }).eq('client_id', client.id).eq('active', true)
     const group = planGroups.find(g => g.id === form.plan_group_id)
-    const { error: err } = await supabase.from('client_plan_assignments').insert({
+    const { data: newAssignment, error: err } = await supabase.from('client_plan_assignments').insert({
       client_id: client.id, coach_id: coachId,
       plan_group_id: form.plan_group_id,
       plan_group_name: group?.name || '20 Week Plan',
       calorie_target: form.calorie_target ? parseInt(form.calorie_target) : null,
       start_date: new Date().toISOString().split('T')[0],
       week_override: form.starting_week ? parseInt(form.starting_week) : null,
-    })
-    setSaving(false)
-    if (err) { setError(err.message); return }
-    setShowForm(false); load()
+    }).select('id').single()
+    if (err) { setSaving(false); setError(err.message); return }
+
+    // Auto-apply default static meals configured on the plan group
+    if (newAssignment && (group?.default_preworkout_meal_id || group?.default_evening_snack_meal_id)) {
+      const defaults = {}
+      if (group.default_preworkout_meal_id) {
+        defaults.preworkout_meal_id = group.default_preworkout_meal_id
+        defaults.preworkout_static = true
+      }
+      if (group.default_evening_snack_meal_id) {
+        defaults.evening_snack_meal_id = group.default_evening_snack_meal_id
+        defaults.evening_snack_static = true
+      }
+      await supabase.from('client_plan_assignments').update(defaults).eq('id', newAssignment.id)
+    }
+
+    setSaving(false); setShowForm(false); load()
   }
 
   async function handleSaveOverride(e) {

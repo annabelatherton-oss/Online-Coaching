@@ -324,6 +324,10 @@ export default function PlanGroupEditor() {
   const [optimizing, setOptimizing] = useState(false)
   // `${mealId}:${tier}` of the ingredient editor currently open, or null.
   const [editingIngredients, setEditingIngredients] = useState(null)
+  const [defaultPreworkout, setDefaultPreworkout] = useState('')
+  const [defaultEveningSnack, setDefaultEveningSnack] = useState('')
+  const [savingDefaults, setSavingDefaults] = useState(false)
+  const [savedDefaults, setSavedDefaults] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -346,7 +350,11 @@ export default function PlanGroupEditor() {
           .eq('active', true),
       ])
 
-      if (group) setPlanGroup(group)
+      if (group) {
+        setPlanGroup(group)
+        setDefaultPreworkout(group.default_preworkout_meal_id || '')
+        setDefaultEveningSnack(group.default_evening_snack_meal_id || '')
+      }
 
       const byCategory = {}
       const byId = {}
@@ -506,6 +514,17 @@ export default function PlanGroupEditor() {
   async function updateCurrentWeek(week) {
     await supabase.from('plan_groups').update({ current_week: week }).eq('id', groupId)
     setPlanGroup(prev => ({ ...prev, current_week: week }))
+  }
+
+  async function handleSaveDefaults() {
+    setSavingDefaults(true)
+    setSavedDefaults(false)
+    await supabase.from('plan_groups').update({
+      default_preworkout_meal_id:    defaultPreworkout    || null,
+      default_evening_snack_meal_id: defaultEveningSnack || null,
+    }).eq('id', groupId)
+    setSavingDefaults(false)
+    setSavedDefaults(true)
   }
 
   async function handleSaveDirty() {
@@ -730,6 +749,51 @@ export default function PlanGroupEditor() {
             <span className="text-xs text-gray-400 dark:text-gray-500">
               Advance this each week — all clients update automatically
             </span>
+          </div>
+        </div>
+      )}
+
+      {planGroup && (
+        <div className="card space-y-3">
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Default static meals</h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+              These meals are automatically pinned when this rotation is assigned to a client.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label text-xs">Pre-workout</label>
+              <select
+                className="input text-sm"
+                value={defaultPreworkout}
+                onChange={e => { setDefaultPreworkout(e.target.value); setSavedDefaults(false) }}
+              >
+                <option value="">None</option>
+                {(mealsByCategory['pre_workout'] || []).map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label text-xs">Evening snack</label>
+              <select
+                className="input text-sm"
+                value={defaultEveningSnack}
+                onChange={e => { setDefaultEveningSnack(e.target.value); setSavedDefaults(false) }}
+              >
+                <option value="">None</option>
+                {(mealsByCategory['evening_snack'] || []).map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={handleSaveDefaults} disabled={savingDefaults} className="btn-secondary text-sm">
+              {savingDefaults ? 'Saving…' : 'Save defaults'}
+            </button>
+            {savedDefaults && <span className="text-xs text-green-600 dark:text-green-400 font-medium">Saved</span>}
           </div>
         </div>
       )}
