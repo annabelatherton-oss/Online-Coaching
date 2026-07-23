@@ -519,10 +519,58 @@ export default function PlanGroupEditor() {
   async function handleSaveDefaults() {
     setSavingDefaults(true)
     setSavedDefaults(false)
+
+    // Persist on the plan group record
     await supabase.from('plan_groups').update({
       default_preworkout_meal_id:    defaultPreworkout    || null,
       default_evening_snack_meal_id: defaultEveningSnack || null,
     }).eq('id', groupId)
+
+    // Write into every template in this plan group (master + all calorie-tier forks)
+    const allWeeks = [...weeks, ...Object.values(tierWeeks).flat()]
+    const allTemplateIds = allWeeks.map(w => w.templateId)
+
+    if (allTemplateIds.length) {
+      const slotsToReplace = [
+        ...(defaultPreworkout    ? ['preworkout']    : []),
+        ...(defaultEveningSnack  ? ['evening_snack'] : []),
+      ]
+
+      // Remove old static slots then re-insert so the meal is always current
+      if (slotsToReplace.length) {
+        await supabase.from('template_meal_slots')
+          .delete()
+          .in('template_id', allTemplateIds)
+          .in('slot_type', slotsToReplace)
+
+        const rows = []
+        for (const templateId of allTemplateIds) {
+          if (defaultPreworkout)
+            rows.push({ template_id: templateId, slot_type: 'preworkout',    meal_id: defaultPreworkout,   scaled_version_id: null })
+          if (defaultEveningSnack)
+            rows.push({ template_id: templateId, slot_type: 'evening_snack', meal_id: defaultEveningSnack, scaled_version_id: null })
+        }
+        await supabase.from('template_meal_slots').insert(rows)
+      }
+
+      // Mirror into in-memory state so the editor reflects the change without a full reload
+      const applyDefaults = prev => prev.map(w => ({
+        ...w,
+        slots: {
+          ...w.slots,
+          ...(defaultPreworkout   ? { preworkout:    defaultPreworkout   } : {}),
+          ...(defaultEveningSnack ? { evening_snack: defaultEveningSnack } : {}),
+        },
+      }))
+      setWeeks(applyDefaults)
+      setTierWeeks(prev => {
+        const next = {}
+        for (const [tier, tw] of Object.entries(prev)) next[tier] = applyDefaults(tw)
+        return next
+      })
+      setDirty(new Set())
+    }
+
     setSavingDefaults(false)
     setSavedDefaults(true)
   }
