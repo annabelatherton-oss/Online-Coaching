@@ -250,7 +250,25 @@ export function generateTierIngredients(baseIngredients, library, targets) {
     qtyByRow = tuQty
   }
 
-  return rows.map((r, i) => finalizeRow(r, qtyByRow[i]))
+  // Hard cap: regardless of what the solver found, if final calories exceed
+  // target + MAX_OVER_KCAL, scale flexible ingredients down until within the band.
+  const result = rows.map((r, i) => finalizeRow(r, qtyByRow[i]))
+  const resultCal = result.reduce((s, r) => s + (parseFloat(r.calories) || 0), 0)
+  if (resultCal > targetVec.cal + MAX_OVER_KCAL) {
+    const capTarget = targetVec.cal + MAX_OVER_KCAL
+    const flexResultCal = result.reduce((s, r, i) =>
+      rows[i].scaling_type === 'flexible' && !rows[i].is_static ? s + (parseFloat(r.calories) || 0) : s, 0)
+    const fixedResultCal = resultCal - flexResultCal
+    if (flexResultCal > 0 && capTarget > fixedResultCal) {
+      const downCorr = (capTarget - fixedResultCal) / flexResultCal
+      return rows.map((r, i) => {
+        if (r.scaling_type !== 'flexible' || r.is_static) return result[i]
+        const newQty = snapToConstraints(result[i].quantity_g * downCorr, r.libIng, r.scaling_type === 'optional') ?? result[i].quantity_g * downCorr
+        return finalizeRow(r, newQty)
+      })
+    }
+  }
+  return result
 }
 
 export async function insertTierVersion(mealId, tier, ingredients) {
