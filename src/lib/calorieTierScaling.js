@@ -33,6 +33,8 @@ export function snapToConstraints(amount, libIng, isOptional = false) {
     val = Math.round(val * 10000) / 10000
   }
   if (min != null && val > 0 && val < min) val = isOptional ? 0 : min
+  const max = libIng?.max_amount
+  if (max != null && val > max) val = max
   return val
 }
 
