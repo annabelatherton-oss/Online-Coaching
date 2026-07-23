@@ -21,7 +21,13 @@ export default function Login() {
   useEffect(() => {
     if (!isLoading && session) {
       if (isCoach) navigate('/coach', { replace: true })
-      else if (isClient) navigate('/client', { replace: true })
+      else if (isClient) {
+        if (!session.user.user_metadata?.password_set) {
+          navigate('/set-password', { replace: true })
+        } else {
+          navigate('/client', { replace: true })
+        }
+      }
     }
   }, [isLoading, session, isCoach, isClient, navigate])
 

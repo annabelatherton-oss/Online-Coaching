@@ -15,6 +15,13 @@ export default function SetPassword() {
 
   if (isLoading) return <LoadingSpinner size="lg" className="min-h-screen" />
 
+  // Already set their password — send them to the app
+  if (session?.user?.user_metadata?.password_set) {
+    if (isCoach) navigate('/coach', { replace: true })
+    else navigate('/client', { replace: true })
+    return null
+  }
+
   // No session means the invite link wasn't clicked or has expired
   if (!session) {
     return (
@@ -53,7 +60,10 @@ export default function SetPassword() {
     }
     setSaving(true)
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+        data: { password_set: true },
+      })
       if (error) throw error
       if (isCoach) navigate('/coach', { replace: true })
       else navigate('/client', { replace: true })
