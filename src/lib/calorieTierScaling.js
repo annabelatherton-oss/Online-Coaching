@@ -250,23 +250,28 @@ export function generateTierIngredients(baseIngredients, library, targets) {
     qtyByRow = tuQty
   }
 
-  // Hard cap: regardless of what the solver found, if final calories exceed
-  // target + MAX_OVER_KCAL, scale flexible ingredients down until within the band.
-  const result = rows.map((r, i) => finalizeRow(r, qtyByRow[i]))
-  const resultCal = result.reduce((s, r) => s + (parseFloat(r.calories) || 0), 0)
-  if (resultCal > targetVec.cal + MAX_OVER_KCAL) {
+  // Hard cap: if final calories exceed target + MAX_OVER_KCAL, iteratively scale
+  // flexible ingredients down. Each pass re-snaps and re-measures — step-constrained
+  // ingredients that can't move are accounted for in subsequent iterations.
+  // Exits early if a pass makes no calorie progress (step constraints prevent further reduction).
+  let result = rows.map((r, i) => finalizeRow(r, qtyByRow[i]))
+  for (let capIter = 0; capIter < 10; capIter++) {
+    const resultCal = result.reduce((s, r) => s + (parseFloat(r.calories) || 0), 0)
+    if (resultCal <= targetVec.cal + MAX_OVER_KCAL) break
     const capTarget = targetVec.cal + MAX_OVER_KCAL
     const flexResultCal = result.reduce((s, r, i) =>
       rows[i].scaling_type === 'flexible' && !rows[i].is_static ? s + (parseFloat(r.calories) || 0) : s, 0)
     const fixedResultCal = resultCal - flexResultCal
-    if (flexResultCal > 0 && capTarget > fixedResultCal) {
-      const downCorr = (capTarget - fixedResultCal) / flexResultCal
-      return rows.map((r, i) => {
-        if (r.scaling_type !== 'flexible' || r.is_static) return result[i]
-        const newQty = snapToConstraints(result[i].quantity_g * downCorr, r.libIng, r.scaling_type === 'optional') ?? result[i].quantity_g * downCorr
-        return finalizeRow(r, newQty)
-      })
-    }
+    if (flexResultCal <= 0 || capTarget <= fixedResultCal) break
+    const downCorr = (capTarget - fixedResultCal) / flexResultCal
+    const next = rows.map((r, i) => {
+      if (r.scaling_type !== 'flexible' || r.is_static) return result[i]
+      const newQty = snapToConstraints(result[i].quantity_g * downCorr, r.libIng, r.scaling_type === 'optional') ?? result[i].quantity_g * downCorr
+      return finalizeRow(r, newQty)
+    })
+    const nextCal = next.reduce((s, r) => s + (parseFloat(r.calories) || 0), 0)
+    if (nextCal >= resultCal - 0.1) break  // step constraints blocking further reduction — give up
+    result = next
   }
   return result
 }
