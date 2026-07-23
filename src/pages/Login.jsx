@@ -8,8 +8,11 @@ export default function Login() {
   const { signIn, session, isCoach, isClient, isLoading } = useAuth()
   const navigate = useNavigate()
 
-  // Capture invite flag from hash before Supabase clears it
-  const isInvite = useRef(window.location.hash.includes('type=invite'))
+  // Detect invite: check query param (PKCE flow) or hash (implicit flow)
+  const isInvite = useRef(
+    new URLSearchParams(window.location.search).get('from') === 'invite' ||
+    window.location.hash.includes('type=invite')
+  )
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
