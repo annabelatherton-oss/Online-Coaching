@@ -131,7 +131,7 @@ const DIMS = ['cal', 'prot', 'carb', 'fat']
 // Calories dominate — the solver must fill them first. Macros are secondary: optimised within
 // whatever calorie budget the ingredients can reach, but never at the cost of leaving calories
 // on the table. Ridge (λ) keeps ingredient proportions roughly stable.
-const WEIGHTS = { cal: 16, prot: 1, carb: 1, fat: 1 }
+const WEIGHTS = { cal: 4, prot: 1, carb: 1, fat: 1 }
 // Scaled relative to each ingredient's own row magnitude rather than a flat constant — a flat λ is
 // negligible next to real calorie/macro values (hundreds, squared) and so provided no real anchor
 // in practice, which is what let factors drift to unrealistic, "random-looking" quantities.
