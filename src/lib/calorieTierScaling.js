@@ -128,11 +128,10 @@ function gaussianSolve(A, b) {
 }
 
 const DIMS = ['cal', 'prot', 'carb', 'fat']
-// Calories are a hard requirement (the -50/+20 band); macros are taken into account but weighted
-// more softly, and a ridge term (λ) keeps factors anchored near 1 so a meal's ingredients stay in
-// roughly the same proportion to each other instead of the solver trading one off against another
-// (e.g. doubling the bagel while zeroing out the honey) to chase an exact macro fit.
-const WEIGHTS = { cal: 4, prot: 1, carb: 1, fat: 1 }
+// Calories dominate — the solver must fill them first. Macros are secondary: optimised within
+// whatever calorie budget the ingredients can reach, but never at the cost of leaving calories
+// on the table. Ridge (λ) keeps ingredient proportions roughly stable.
+const WEIGHTS = { cal: 16, prot: 1, carb: 1, fat: 1 }
 // Scaled relative to each ingredient's own row magnitude rather than a flat constant — a flat λ is
 // negligible next to real calorie/macro values (hundreds, squared) and so provided no real anchor
 // in practice, which is what let factors drift to unrealistic, "random-looking" quantities.
@@ -208,11 +207,15 @@ export function generateTierIngredients(baseIngredients, library, targets) {
         rows[i].scaling_type === 'optional' && snapped[i].quantity_g === 0 ? 0 : q
       )
       const achievedCal = snapped.reduce((s, r) => s + r.calories, 0)
-      const diff = targetVec.cal - achievedCal // > 0 = under target, < 0 = over target
-      const score = diff < 0 ? 40 + Math.abs(diff) : diff <= 40 ? diff : 1000 + diff
+      // diff > 0 = under target (bad — don't leave calories unused)
+      // diff < 0 = over target (slightly over is fine; way over is also bad)
+      const diff = targetVec.cal - achievedCal
+      // Scoring: being under is always worst; being over by 0-40 is ideal; over by >40 is bad.
+      const score = diff > 0
+        ? 1000 + diff
+        : Math.abs(diff) <= 40 ? Math.abs(diff) : 500 + Math.abs(diff)
       if (score < bestScore) { bestScore = score; bestQty = qtyByRow }
-      // Only break early when at or under target — keep iterating if over
-      if (diff >= 0 && diff <= TIER_CONVERGENCE_KCAL) break
+      if (Math.abs(diff) <= TIER_CONVERGENCE_KCAL) break
       const flexAchievedCal = snapped.reduce((s, r, i) => s + ((rows[i].scaling_type === 'fixed' || rows[i].is_static) ? 0 : r.calories), 0)
       if (flexAchievedCal <= 0) break
       const desiredFlexCal = targetVec.cal - fixedTotals.cal
@@ -220,6 +223,21 @@ export function generateTierIngredients(baseIngredients, library, targets) {
       qtyByRow = qtyByRow.map((q, i) => (rows[i].scaling_type === 'fixed' || rows[i].is_static) ? q : q * corr)
     }
     qtyByRow = bestQty
+
+    // Calorie top-up: if still under after the main loop, scale flexible ingredients
+    // proportionally to close the gap — macros may drift but empty calories must be filled.
+    const topUpSnapped = rows.map((r, i) => finalizeQty(r, qtyByRow[i]))
+    const topUpDiff = targetVec.cal - topUpSnapped.reduce((s, r) => s + r.calories, 0)
+    if (topUpDiff > TIER_CONVERGENCE_KCAL) {
+      const flexCal = topUpSnapped.reduce((s, r, i) =>
+        s + ((rows[i].scaling_type === 'fixed' || rows[i].is_static || rows[i].scaling_type === 'optional') ? 0 : r.calories), 0)
+      if (flexCal > 0) {
+        const topUpCorr = Math.min(3, (flexCal + topUpDiff) / flexCal)
+        qtyByRow = qtyByRow.map((q, i) =>
+          (rows[i].scaling_type === 'fixed' || rows[i].is_static || rows[i].scaling_type === 'optional') ? q : q * topUpCorr
+        )
+      }
+    }
   }
 
   return rows.map((r, i) => finalizeRow(r, qtyByRow[i]))
