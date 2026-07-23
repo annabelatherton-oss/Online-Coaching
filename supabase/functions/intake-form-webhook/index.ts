@@ -79,7 +79,7 @@ serve(async (req) => {
       email.toLowerCase().trim(),
       {
         data: { full_name, role: 'client' },
-        redirectTo: `${APP_URL}/login?from=invite`,
+        redirectTo: `${APP_URL}/set-password`,
       },
     )
     if (inviteError || !inviteData?.user) {

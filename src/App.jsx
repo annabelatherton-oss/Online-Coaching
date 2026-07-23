@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { CoachRoute, ClientRoute } from './components/ProtectedRoute'
 import Login from './pages/Login'
+import SetPassword from './pages/SetPassword'
 import CoachLayout from './pages/coach/CoachLayout'
 import CoachDashboard from './pages/coach/CoachDashboard'
 import ClientsList from './pages/coach/ClientsList'
@@ -40,6 +41,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/set-password" element={<SetPassword />} />
 
           {/* Coach area */}
           <Route

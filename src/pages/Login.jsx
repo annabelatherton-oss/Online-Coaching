@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -7,25 +7,11 @@ import DarkModeToggle from '../components/DarkModeToggle'
 export default function Login() {
   const { signIn, session, isCoach, isClient, isLoading } = useAuth()
   const navigate = useNavigate()
-
-  // Detect invite: check query param (PKCE flow) or hash (implicit flow)
-  const isInvite = useRef(
-    new URLSearchParams(window.location.search).get('from') === 'invite' ||
-    window.location.hash.includes('type=invite')
-  )
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  // Set-password form (shown after clicking invite link)
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [settingPassword, setSettingPassword] = useState(false)
-  const [passwordError, setPasswordError] = useState('')
-
-  // Magic link mode
   const [mode, setMode] = useState('password') // 'password' | 'magic'
   const [magicEmail, setMagicEmail] = useState('')
   const [magicSent, setMagicSent] = useState(false)
@@ -34,8 +20,6 @@ export default function Login() {
 
   useEffect(() => {
     if (!isLoading && session) {
-      // If this is a fresh invite, show set-password form instead of redirecting
-      if (isInvite.current) return
       if (isCoach) navigate('/coach', { replace: true })
       else if (isClient) navigate('/client', { replace: true })
     }
@@ -51,31 +35,6 @@ export default function Login() {
       setError(err.message || 'Login failed. Please check your email and password.')
     } finally {
       setSubmitting(false)
-    }
-  }
-
-  async function handleSetPassword(e) {
-    e.preventDefault()
-    setPasswordError('')
-    if (newPassword.length < 8) {
-      setPasswordError('Password must be at least 8 characters.')
-      return
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordError('Passwords do not match.')
-      return
-    }
-    setSettingPassword(true)
-    try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword })
-      if (error) throw error
-      isInvite.current = false
-      if (isCoach) navigate('/coach', { replace: true })
-      else navigate('/client', { replace: true })
-    } catch (err) {
-      setPasswordError(err.message || 'Could not set password. Please try again.')
-    } finally {
-      setSettingPassword(false)
     }
   }
 
@@ -97,9 +56,6 @@ export default function Login() {
     }
   }
 
-  // Show set-password screen when the invite link has been processed
-  const showSetPassword = !isLoading && session && isInvite.current
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-rose-50 dark:bg-gray-950 px-4">
       <div className="absolute top-4 right-4">
@@ -109,61 +65,11 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <img src="/logo.svg" alt="Annabel Atherton Personal Training" className="h-28 w-auto mx-auto mb-4" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {showSetPassword ? 'Create your password' : 'Sign in to your account'}
-          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Sign in to your account</p>
         </div>
 
         <div className="card">
-          {showSetPassword ? (
-            <form onSubmit={handleSetPassword} className="space-y-4">
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                Welcome! Set a password so you can log in any time.
-              </p>
-
-              <div>
-                <label className="label" htmlFor="new-password">New password</label>
-                <input
-                  id="new-password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  className="input"
-                  placeholder="At least 8 characters"
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="label" htmlFor="confirm-password">Confirm password</label>
-                <input
-                  id="confirm-password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  className="input"
-                  placeholder="••••••••"
-                  value={confirmPassword}
-                  onChange={e => setConfirmPassword(e.target.value)}
-                />
-              </div>
-
-              {passwordError && (
-                <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-                  <p className="text-sm text-red-700 dark:text-red-400">{passwordError}</p>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={settingPassword}
-                className="btn-primary w-full py-2.5"
-              >
-                {settingPassword ? 'Saving…' : 'Set password & continue'}
-              </button>
-            </form>
-          ) : mode === 'password' ? (
+          {mode === 'password' ? (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="label" htmlFor="email">Email address</label>
