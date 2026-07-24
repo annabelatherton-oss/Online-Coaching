@@ -763,8 +763,19 @@ function WeightTab({ clientId }) {
   const [saving, setSaving] = useState(false)
 
   async function load() {
-    const { data } = await supabase.from('weight_entries').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false })
-    setEntries(data || []); setLoading(false)
+    const [{ data: weightData }, { data: checkinData }] = await Promise.all([
+      supabase.from('weight_entries').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false }),
+      supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', clientId).not('weight_kg', 'is', null),
+    ])
+    const manual = weightData || []
+    const manualDates = new Set(manual.map(e => e.recorded_at))
+    // Add check-in weights only for dates not already covered by a manual entry
+    // (recent check-ins are synced automatically so they'd already be in weight_entries)
+    const fromCheckins = (checkinData || [])
+      .map(c => ({ id: null, weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0], source: 'checkin' }))
+      .filter(c => c.recorded_at && !manualDates.has(c.recorded_at))
+    const combined = [...manual, ...fromCheckins].sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
+    setEntries(combined); setLoading(false)
   }
   useEffect(() => { load() }, [clientId])
 
@@ -798,11 +809,16 @@ function WeightTab({ clientId }) {
           <table className="w-full text-sm">
             <thead><tr className="border-b border-gray-200 dark:border-gray-800">{['Date','Weight',''].map(h => <th key={h} className={`${h === '' ? 'text-right' : 'text-left'} px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>{h}</th>)}</tr></thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {entries.map(e => (
-                <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+              {entries.map((e, i) => (
+                <tr key={e.id ?? `ci-${i}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDate(e.recorded_at)}</td>
                   <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{e.weight_kg} kg</td>
-                  <td className="px-4 py-3 text-right"><button onClick={() => deleteEntry(e.id)} className="text-xs text-red-500 hover:text-red-700">Delete</button></td>
+                  <td className="px-4 py-3 text-right">
+                    {e.source === 'checkin'
+                      ? <span className="text-xs text-gray-400 dark:text-gray-500">Check-in</span>
+                      : <button onClick={() => deleteEntry(e.id)} className="text-xs text-red-500 hover:text-red-700">Delete</button>
+                    }
+                  </td>
                 </tr>
               ))}
             </tbody>
