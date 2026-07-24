@@ -250,6 +250,7 @@ export default function ClientCheckin() {
   const [historyList, setHistoryList] = useState([])
   const [viewingId, setViewingId] = useState(null)
   const [upcomingPause, setUpcomingPause] = useState(null)
+  const [isLateResubmit, setIsLateResubmit] = useState(false)
   const [form, setForm] = useState({
     weight_kg: '',
     waist_cm: '',
@@ -328,7 +329,14 @@ export default function ClientCheckin() {
           week = pg?.current_week ?? 1
         }
       }
-      setWeekNumber(week)
+      // Mon(1) / Tue(2) = late re-submit; the coach has already sent next week's plan
+      // so week_override points to the new week — client is actually checking in for the one
+      // that just ended.
+      const dow = new Date().getDay()
+      const isLate = (dow === 1 || dow === 2) && week > 1
+      const checkinWeek = isLate ? week - 1 : week
+      setWeekNumber(checkinWeek)
+      setIsLateResubmit(isLate)
 
       // Load session exercises + this week's training logs → used to pre-fill lift fields
       let trainingPrePop = null
@@ -381,20 +389,19 @@ export default function ClientCheckin() {
 
       // Load full check-in history (oldest first) for week numbering + sidebar
       const { data: allHistory } = await supabase.from('client_checkins')
-        .select('*').eq('client_id', clientRow.id).order('created_at', { ascending: true })
+        .select('*').eq('client_id', clientRow.id).order('updated_at', { ascending: true })
 
       const histWithWeeks = (allHistory || []).map((c, i) => ({ ...c, personal_week: i + 1 }))
       setAllCheckins(histWithWeeks)
 
-      // Find existing check-in: prefer matching week_number, fall back to the most
-      // recent submission within the last 7 days so a week_override change doesn't
-      // cause a duplicate check-in to be inserted.
+      // Find existing check-in for the calculated checkin week.
+      // Fall back to the most recent within 7 days in case week_number ever drifts.
       const recentCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-      const byWeek = histWithWeeks.find(c => c.week_number === week)
+      const byWeek = histWithWeeks.find(c => c.week_number === checkinWeek)
       const byRecent = !byWeek
         ? histWithWeeks
-            .filter(c => (c.submitted_at || c.created_at || '') >= recentCutoff)
-            .sort((a, b) => (b.submitted_at || b.created_at || '').localeCompare(a.submitted_at || a.created_at || ''))[0]
+            .filter(c => (c.submitted_at || c.updated_at || '') >= recentCutoff)
+            .sort((a, b) => (b.submitted_at || b.updated_at || '').localeCompare(a.submitted_at || a.updated_at || ''))[0]
         : null
       const checkin = byWeek || byRecent || null
 
@@ -566,7 +573,7 @@ export default function ClientCheckin() {
             }`}
           >
             <p className="text-sm font-semibold">Week {c.personal_week}</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{fmtCheckinDate(c.created_at)}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{fmtCheckinDate(c.submitted_at || c.updated_at)}</p>
           </button>
         ))}
       </aside>
@@ -625,6 +632,22 @@ export default function ClientCheckin() {
           {existing && <span className="ml-1 text-brand-500">Already submitted — you can update it below.</span>}
         </p>
       </div>
+
+      {isLateResubmit && (
+        <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 flex items-start gap-3">
+          <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div>
+            <p className="font-medium text-amber-800 dark:text-amber-300 text-sm">
+              {existing ? 'Re-submitting' : 'Submitting'} Week {weekNumber} check-in
+            </p>
+            <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
+              Monday and Tuesday check-ins count for the previous week.
+            </p>
+          </div>
+        </div>
+      )}
 
       {showHolidayNote && (
         <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 flex items-start gap-3">
@@ -751,7 +774,7 @@ export default function ClientCheckin() {
 
         <div className="flex items-center gap-3">
           <button type="submit" disabled={saving || Object.values(uploading).some(Boolean)} className="btn-primary">
-            {saving ? 'Saving…' : existing ? 'Update check-in' : 'Submit check-in'}
+            {saving ? 'Saving…' : existing ? 'Update check-in' : isLateResubmit ? `Submit Week ${weekNumber} check-in` : 'Submit check-in'}
           </button>
           {saved && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
         </div>

@@ -26,6 +26,14 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// Check-in submitted Mon or Tue = late re-submit for the previous week
+function isLateSubmission(checkin) {
+  const iso = checkin?.updated_at || checkin?.submitted_at
+  if (!iso) return false
+  const dow = new Date(iso).getDay()
+  return dow === 1 || dow === 2
+}
+
 function ratingColor(v) {
   if (!v) return 'text-gray-400'
   if (v >= 4) return 'text-green-600 dark:text-green-400'
@@ -1183,7 +1191,12 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         <div className="card space-y-4 border-brand-200 dark:border-brand-800">
           <div className="flex items-start justify-between flex-wrap gap-2">
             <div>
-              <p className="text-xs font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wide">This week — Week {currentPersonalWeek}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wide">This week — Week {currentPersonalWeek}</p>
+                {isLateSubmission(current) && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">Late re-submit</span>
+                )}
+              </div>
               <p className="text-xs text-gray-400 mt-0.5">{fmtDate(current.updated_at || current.submitted_at)}</p>
             </div>
             <div className="flex gap-2 flex-wrap">
@@ -1443,7 +1456,12 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           <div key={c.id} className="card space-y-4">
             <div className="flex items-start justify-between flex-wrap gap-2">
               <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">Week {personalWeekMap[c.id]}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-gray-900 dark:text-white">Week {personalWeekMap[c.id]}</h3>
+                  {isLateSubmission(c) && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">Late</span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-400">{fmtDate(c.updated_at || c.submitted_at)}</p>
               </div>
               {wDelta !== null && (
