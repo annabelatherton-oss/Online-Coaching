@@ -971,8 +971,16 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const [activeAssignment, setActiveAssignment] = useState(null)
   const [showDeliveryPanel, setShowDeliveryPanel] = useState(false)
   const [delivered, setDelivered] = useState(false)
-  const [earlyAccess, setEarlyAccess] = useState(!!client?.checkin_early_access)
+  const [earlyAccess, setEarlyAccess] = useState(false)
   const [togglingEarlyAccess, setTogglingEarlyAccess] = useState(false)
+
+  // Load the early-access flag separately — this column may not exist until the migration runs,
+  // and we don't want a missing column to break the entire clients list query.
+  useEffect(() => {
+    if (!client?.id) return
+    supabase.from('clients').select('checkin_early_access').eq('id', client.id).maybeSingle()
+      .then(({ data }) => { if (data) setEarlyAccess(!!data.checkin_early_access) })
+  }, [client?.id])
 
   async function toggleEarlyAccess() {
     setTogglingEarlyAccess(true)
@@ -1434,7 +1442,7 @@ export default function CoachCheckins() {
 
   async function load() {
     const [{ data: clientData }, { data: checkinData }] = await Promise.all([
-      supabase.from('clients').select('id, collect_measurements, checkin_early_access, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id),
+      supabase.from('clients').select('id, collect_measurements, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id),
       supabase.from('client_checkins').select('*').eq('coach_id', profile.id).order('week_number', { ascending: false }),
     ])
     const mapped = (clientData || []).map(c => ({ ...c, full_name: c.profiles?.full_name }))

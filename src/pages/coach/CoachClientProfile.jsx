@@ -2441,7 +2441,6 @@ function TrainingTab({ client, coachId }) {
     ])
     setPrograms(progs || [])
     setAssignment(asgn || null)
-    setOverrideWeek(asgn?.week_override ?? '')
 
     if (asgn?.program_id) {
       const { data: sessions } = await supabase
