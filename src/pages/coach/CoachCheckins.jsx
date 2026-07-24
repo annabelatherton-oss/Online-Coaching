@@ -14,6 +14,7 @@ import ExerciseThumb from '../../components/ExerciseThumb'
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
 const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 function dayRank(name) {
   const n = (name || '').toLowerCase().substring(0, 3)
   const idx = DAY_ORDER.indexOf(n)
@@ -753,8 +754,37 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
               </div>
             )
 
+            const byDay = {}
+            for (const sess of displaySessions) {
+              const day = WEEK_DAYS.find(d => sess.name === d || sess.name.startsWith(d + ' ') || sess.name.startsWith(d + '—') || sess.name.startsWith(d + ' —'))
+              if (day) byDay[day] = sess
+            }
+
             return (
               <>
+                {/* Week overview — all 7 days, rest days shown */}
+                <div className="space-y-1.5 mb-4">
+                  {WEEK_DAYS.map(day => {
+                    const s = byDay[day]
+                    const label = s
+                      ? (s.name.replace(new RegExp(`^${day}[\\s\\u2013\\u2014\\-]+`), '').trim() || s.name)
+                      : null
+                    return (
+                      <div key={day} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${
+                        s
+                          ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/30'
+                          : 'bg-gray-50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-800'
+                      }`}>
+                        <span className={`text-xs font-bold w-20 flex-shrink-0 ${s ? 'text-brand-600 dark:text-brand-400' : 'text-gray-400 dark:text-gray-600'}`}>{day}</span>
+                        {s
+                          ? <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{label || s.name}</span>
+                          : <span className="text-xs text-gray-300 dark:text-gray-700 italic">Rest</span>
+                        }
+                      </div>
+                    )
+                  })}
+                </div>
+
                 {displaySessions.length > 0 ? (
                   <div className="grid grid-cols-2 gap-4">
                     {displaySessions.map((sess, i) => {
