@@ -982,6 +982,14 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
       .then(({ data }) => { if (data) setEarlyAccess(!!data.checkin_early_access) })
   }, [client?.id])
 
+  const [weightEntries, setWeightEntries] = useState([])
+  useEffect(() => {
+    if (!client?.id) return
+    supabase.from('weight_entries').select('weight_kg, recorded_at')
+      .eq('client_id', client.id).order('recorded_at', { ascending: false })
+      .then(({ data }) => setWeightEntries(data || []))
+  }, [client?.id])
+
   async function toggleEarlyAccess() {
     setTogglingEarlyAccess(true)
     const newVal = !earlyAccess
@@ -1003,8 +1011,23 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const currentPersonalWeek = current ? personalWeekMap[current.id] : 0
   const deliveryPersonalWeek = currentPersonalWeek + 1
 
-  const wDeltaPrev = weightDelta(current, prev)
-  const wDeltaStart = current && first && current.id !== first.id ? weightDelta(current, first) : null
+  // When there's no previous check-in, fall back to the last weight_entries row recorded before
+  // this check-in's submission date so first-time check-ins still show a meaningful delta.
+  const checkinDate = (current?.submitted_at || current?.updated_at || '').split('T')[0]
+  const prevLogEntry = !prev && current?.weight_kg != null && checkinDate
+    ? (weightEntries.find(e => e.recorded_at < checkinDate) ?? null)
+    : null
+  const wDeltaPrev = weightDelta(current, prev ?? (prevLogEntry ? { weight_kg: prevLogEntry.weight_kg } : null))
+  const wDeltaPrevLabel = prev ? 'vs last week' : 'vs prev. log'
+
+  // "since start": use oldest check-in; fall back to oldest weight_entry for first-check-in clients
+  const oldestLog = weightEntries.length > 0 ? weightEntries[weightEntries.length - 1] : null
+  const wDeltaStart = current && first && current.id !== first.id
+    ? weightDelta(current, first)
+    : (current && oldestLog && Math.abs(parseFloat(oldestLog.weight_kg) - parseFloat(current.weight_kg ?? 0)) > 0.05
+        ? weightDelta(current, { weight_kg: oldestLog.weight_kg })
+        : null)
+  const wDeltaStartLabel = (current && first && current.id !== first.id) ? 'since start' : 'since first log'
 
   const withPhotos = sorted.filter(c => c.progress_photos && Object.values(c.progress_photos).some(Boolean))
   const newestP = withPhotos[0]
@@ -1134,12 +1157,12 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             <div className="flex gap-2 flex-wrap">
               {wDeltaPrev !== null && (
                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${wDeltaPrev < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : wDeltaPrev > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
-                  {wDeltaPrev > 0 ? '↑ +' : wDeltaPrev < 0 ? '↓ ' : ''}{wDeltaPrev} kg vs last week
+                  {wDeltaPrev > 0 ? '↑ +' : wDeltaPrev < 0 ? '↓ ' : ''}{wDeltaPrev} kg {wDeltaPrevLabel}
                 </span>
               )}
               {wDeltaStart !== null && (
                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${wDeltaStart < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : wDeltaStart > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
-                  {wDeltaStart > 0 ? '↑ +' : wDeltaStart < 0 ? '↓ ' : ''}{wDeltaStart} kg since start
+                  {wDeltaStart > 0 ? '↑ +' : wDeltaStart < 0 ? '↓ ' : ''}{wDeltaStart} kg {wDeltaStartLabel}
                 </span>
               )}
             </div>

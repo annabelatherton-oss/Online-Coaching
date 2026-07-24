@@ -14,7 +14,7 @@ BEGIN
 
   -- ══ 5 Day — Block 1 (Hypertrophy) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
-    VALUES (coach_id, '5 Day — Block 1 (Hypertrophy)', 1, 1, '[]'::jsonb)
+    VALUES (coach_id, '5 Day — Block 1 (Hypertrophy)', 12, 1, '[]'::jsonb) 
     RETURNING id INTO prog_id;
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
@@ -93,7 +93,7 @@ BEGIN
 
   -- ══ 4 Day — Block 1 (Hypertrophy) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
-    VALUES (coach_id, '4 Day — Block 1 (Hypertrophy)', 1, 1, '[]'::jsonb)
+    VALUES (coach_id, '4 Day — Block 1 (Hypertrophy)', 12, 1, '[]'::jsonb) 
     RETURNING id INTO prog_id;
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
@@ -162,7 +162,7 @@ BEGIN
 
   -- ══ 3 Day — Block 1 (Hypertrophy) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
-    VALUES (coach_id, '3 Day — Block 1 (Hypertrophy)', 1, 1, '[]'::jsonb)
+    VALUES (coach_id, '3 Day — Block 1 (Hypertrophy)', 12, 1, '[]'::jsonb) 
     RETURNING id INTO prog_id;
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
@@ -219,7 +219,7 @@ BEGIN
 
   -- ══ 5 Day — Block 2 (Strength) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
-    VALUES (coach_id, '5 Day — Block 2 (Strength)', 1, 1, '[]'::jsonb)
+    VALUES (coach_id, '5 Day — Block 2 (Strength)', 12, 1, '[]'::jsonb) 
     RETURNING id INTO prog_id;
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
@@ -296,7 +296,7 @@ BEGIN
 
   -- ══ 4 Day — Block 2 (Strength) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
-    VALUES (coach_id, '4 Day — Block 2 (Strength)', 1, 1, '[]'::jsonb)
+    VALUES (coach_id, '4 Day — Block 2 (Strength)', 12, 1, '[]'::jsonb) 
     RETURNING id INTO prog_id;
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
@@ -365,7 +365,7 @@ BEGIN
 
   -- ══ 3 Day — Block 2 (Strength) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
-    VALUES (coach_id, '3 Day — Block 2 (Strength)', 1, 1, '[]'::jsonb)
+    VALUES (coach_id, '3 Day — Block 2 (Strength)', 12, 1, '[]'::jsonb) 
     RETURNING id INTO prog_id;
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
@@ -422,7 +422,7 @@ BEGIN
 
   -- ══ 5 Day — Block 3 (Block 3) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
-    VALUES (coach_id, '5 Day — Block 3 (Block 3)', 1, 1, '[]'::jsonb)
+    VALUES (coach_id, '5 Day — Block 3 (Block 3)', 12, 1, '[]'::jsonb) 
     RETURNING id INTO prog_id;
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
@@ -501,7 +501,7 @@ BEGIN
 
   -- ══ 4 Day — Block 3 (Block 3) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
-    VALUES (coach_id, '4 Day — Block 3 (Block 3)', 1, 1, '[]'::jsonb)
+    VALUES (coach_id, '4 Day — Block 3 (Block 3)', 12, 1, '[]'::jsonb) 
     RETURNING id INTO prog_id;
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
@@ -572,7 +572,7 @@ BEGIN
 
   -- ══ 3 Day — Block 3 (Block 3) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
-    VALUES (coach_id, '3 Day — Block 3 (Block 3)', 1, 1, '[]'::jsonb)
+    VALUES (coach_id, '3 Day — Block 3 (Block 3)', 12, 1, '[]'::jsonb) 
     RETURNING id INTO prog_id;
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)

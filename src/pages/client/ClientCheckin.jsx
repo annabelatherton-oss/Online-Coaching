@@ -265,11 +265,19 @@ export default function ClientCheckin() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  // Kept separate so a missing DB column (migration not yet run) can't break the whole page load.
+  const [earlyAccess, setEarlyAccess] = useState(false)
+  useEffect(() => {
+    supabase.from('clients').select('checkin_early_access')
+      .eq('profile_id', session.user.id).maybeSingle()
+      .then(({ data }) => { if (data?.checkin_early_access) setEarlyAccess(true) })
+  }, [session?.user?.id])
+
   useEffect(() => {
     async function load() {
       const { data: clientRow } = await supabase
         .from('clients')
-        .select('id, coach_id, collect_measurements, top_lifts, checkin_early_access')
+        .select('id, coach_id, collect_measurements, top_lifts')
         .eq('profile_id', session.user.id)
         .single()
       if (!clientRow) { setLoading(false); return }
@@ -456,14 +464,26 @@ export default function ClientCheckin() {
 
     setSaving(false)
     if (err) { setError(err.message || 'Could not save. Please try again.'); return }
+
+    // Mirror weight into weight_entries so all coach views (reports, weight chart, progress)
+    // immediately reflect this check-in's weight without the client needing to log it separately.
+    if (payload.weight_kg != null) {
+      const today = new Date().toISOString().split('T')[0]
+      await supabase.from('weight_entries').insert({
+        client_id: clientData.id,
+        weight_kg: payload.weight_kg,
+        recorded_at: today,
+      })
+    }
+
     setSaved(true)
     if (!existing) {
       const { data } = await supabase.from('client_checkins').select('*').eq('client_id', clientData.id).eq('week_number', weekNumber).maybeSingle()
       setExisting(data)
       // Clear the early-access flag now that the check-in has been submitted
-      if (clientData.checkin_early_access) {
+      if (earlyAccess) {
         await supabase.from('clients').update({ checkin_early_access: false }).eq('id', clientData.id)
-        setClientData(prev => prev ? { ...prev, checkin_early_access: false } : prev)
+        setEarlyAccess(false)
       }
     }
   }
@@ -532,7 +552,7 @@ export default function ClientCheckin() {
   }
 
   // Gate: no check-in submitted yet AND window is closed (Wednesday) AND coach hasn't opened early
-  if (!isCheckinWindowOpen() && !existing && !clientData?.checkin_early_access) {
+  if (!isCheckinWindowOpen() && !existing && !earlyAccess) {
     return (
       <div className="flex gap-6">
         <Sidebar />
