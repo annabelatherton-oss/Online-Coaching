@@ -328,6 +328,8 @@ export default function PlanGroupEditor() {
   const [defaultEveningSnack, setDefaultEveningSnack] = useState('')
   const [savingDefaults, setSavingDefaults] = useState(false)
   const [savedDefaults, setSavedDefaults] = useState(false)
+  // { weekIdx, slotKey } of the swap picker currently open, or null.
+  const [swapPicker, setSwapPicker] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -509,6 +511,21 @@ export default function PlanGroupEditor() {
       else s.add(currentWeeks[weekIdx].templateId)
       return s
     })
+  }
+
+  function handleSwap(weekIdx, slotKey, candidateId) {
+    const originalId = currentWeeks[weekIdx].slots[slotKey] || null
+
+    // Find the week where the candidate currently occupies this same slot
+    let candidateWeekIdx = -1
+    for (let i = 0; i < currentWeeks.length; i++) {
+      if (i === weekIdx) continue
+      if (currentWeeks[i].slots[slotKey] === candidateId) { candidateWeekIdx = i; break }
+    }
+
+    changeSlot(weekIdx, slotKey, candidateId)
+    if (candidateWeekIdx !== -1) changeSlot(candidateWeekIdx, slotKey, originalId)
+    setSwapPicker(null)
   }
 
   async function updateCurrentWeek(week) {
@@ -987,6 +1004,18 @@ export default function PlanGroupEditor() {
                             {isEditingIngredients ? 'Hide' : 'Edit ingredients'}
                           </button>
                         )}
+                        {!isStatic && mealId && (
+                          <button
+                            onClick={() => setSwapPicker(prev =>
+                              prev?.weekIdx === weekIdx && prev?.slotKey === slot.key ? null :
+                              { weekIdx, slotKey: slot.key }
+                            )}
+                            className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 flex-shrink-0 whitespace-nowrap"
+                            title="Swap this meal with one from another week"
+                          >
+                            ⇄ Swap
+                          </button>
+                        )}
                       </div>
                       {isEditingIngredients && (
                         <div className="mx-4 mb-2 bg-gray-50/60 dark:bg-gray-800/30 rounded-lg">
@@ -1002,6 +1031,56 @@ export default function PlanGroupEditor() {
                               refreshMeal(mealId)
                             }}
                           />
+                        </div>
+                      )}
+                      {swapPicker?.weekIdx === weekIdx && swapPicker?.slotKey === slot.key && (
+                        <div className="mx-4 mb-2 border border-brand-100 dark:border-brand-900/30 bg-brand-50/40 dark:bg-brand-900/10 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                              Swap {slot.label} with…
+                            </span>
+                            <button onClick={() => setSwapPicker(null)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                              Cancel
+                            </button>
+                          </div>
+                          <div className="space-y-0.5 max-h-52 overflow-y-auto">
+                            {(mealsByCategory[slot.cat] || [])
+                              .filter(m => m.id !== mealId)
+                              .map(candidate => {
+                                const candMacros = mealMacros(candidate.id, activeTier)
+                                const hasTierVersion = activeTier == null || candMacros != null
+                                let currentLoc = null
+                                for (let wi = 0; wi < currentWeeks.length; wi++) {
+                                  if (currentWeeks[wi].slots[slot.key] === candidate.id) {
+                                    currentLoc = currentWeeks[wi].weekNum; break
+                                  }
+                                }
+                                return (
+                                  <button
+                                    key={candidate.id}
+                                    onClick={() => handleSwap(weekIdx, slot.key, candidate.id)}
+                                    disabled={!hasTierVersion && activeTier != null}
+                                    title={!hasTierVersion && activeTier != null ? `No ${activeTier} kcal version — generate tier ingredients first` : ''}
+                                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left transition-colors ${
+                                      hasTierVersion
+                                        ? 'hover:bg-brand-100/60 dark:hover:bg-brand-900/30 text-gray-800 dark:text-gray-200'
+                                        : 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                                    }`}
+                                  >
+                                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${hasTierVersion ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                                    <span className="flex-1 font-medium truncate">{candidate.name}</span>
+                                    {candMacros && (
+                                      <span className="text-gray-500 dark:text-gray-400 tabular-nums flex-shrink-0">{candMacros.calories} kcal</span>
+                                    )}
+                                    {currentLoc != null ? (
+                                      <span className="text-brand-500 dark:text-brand-400 flex-shrink-0">↔ Week {currentLoc}</span>
+                                    ) : (
+                                      <span className="text-gray-300 dark:text-gray-500 flex-shrink-0">not in rotation</span>
+                                    )}
+                                  </button>
+                                )
+                              })}
+                          </div>
                         </div>
                       )}
                     </div>
