@@ -243,12 +243,12 @@ export default function CoachReports() {
               flag: adherenceFlag,
             },
           ].map(s => (
-            <div key={s.label} className="card py-3 text-center overflow-hidden">
-              <div className="flex items-center justify-center gap-1 min-w-0">
+            <div key={s.label} className="card !px-2 py-3 text-center">
+              <div className="flex items-center justify-center gap-1">
                 {s.flag && <WarnIcon className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
-                <p className={`text-lg font-bold whitespace-nowrap truncate ${s.color}`}>{s.value}</p>
+                <p className={`text-base font-bold whitespace-nowrap ${s.color}`}>{s.value}</p>
               </div>
-              <p className="text-xs text-gray-400 mt-0.5 truncate">{s.label}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>

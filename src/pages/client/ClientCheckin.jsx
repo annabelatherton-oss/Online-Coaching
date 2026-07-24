@@ -294,7 +294,17 @@ export default function ClientCheckin() {
         .limit(1)
         .maybeSingle()
 
-      const trainingLifts = (trainingAsgn?.training_programs?.top_lifts || []).filter(l => l?.name)
+      let trainingLifts = (trainingAsgn?.training_programs?.top_lifts || []).filter(l => l?.name)
+      // PostgREST join can silently return null if RLS on training_programs blocked it —
+      // retry as a direct query to get top_lifts for the assigned program.
+      if (trainingLifts.length === 0 && trainingAsgn?.program_id) {
+        const { data: prog } = await supabase
+          .from('training_programs')
+          .select('top_lifts')
+          .eq('id', trainingAsgn.program_id)
+          .maybeSingle()
+        trainingLifts = (prog?.top_lifts || []).filter(l => l?.name)
+      }
       const clientLifts = (clientRow.top_lifts || []).filter(l => l?.name)
       const lifts = trainingLifts.length > 0 ? trainingLifts : clientLifts
       setTopLifts(lifts)
@@ -375,8 +385,18 @@ export default function ClientCheckin() {
       const histWithWeeks = (allHistory || []).map((c, i) => ({ ...c, personal_week: i + 1 }))
       setAllCheckins(histWithWeeks)
 
-      // Sidebar: past check-ins newest first
-      const checkin = histWithWeeks.find(c => c.week_number === week) || null
+      // Find existing check-in: prefer matching week_number, fall back to the most
+      // recent submission within the last 7 days so a week_override change doesn't
+      // cause a duplicate check-in to be inserted.
+      const recentCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      const byWeek = histWithWeeks.find(c => c.week_number === week)
+      const byRecent = !byWeek
+        ? histWithWeeks
+            .filter(c => (c.submitted_at || c.created_at || '') >= recentCutoff)
+            .sort((a, b) => (b.submitted_at || b.created_at || '').localeCompare(a.submitted_at || a.created_at || ''))[0]
+        : null
+      const checkin = byWeek || byRecent || null
+
       setHistoryList([...histWithWeeks].reverse())
       setPersonalWeek(checkin ? checkin.personal_week : histWithWeeks.length + 1)
 
@@ -445,7 +465,8 @@ export default function ClientCheckin() {
     const payload = {
       client_id:        clientData.id,
       coach_id:         clientData.coach_id,
-      week_number:      weekNumber,
+      // Don't change week_number when updating — keep the week it was first submitted for
+      ...(existing ? {} : { week_number: weekNumber }),
       updated_at:       new Date().toISOString(),
       weight_kg:        form.weight_kg !== '' ? parseFloat(form.weight_kg) : null,
       waist_cm:         collectMeasurements && form.waist_cm !== '' ? parseFloat(form.waist_cm) : null,
