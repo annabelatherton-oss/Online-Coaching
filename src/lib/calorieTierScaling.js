@@ -196,9 +196,17 @@ export function generateTierIngredients(baseIngredients, library, targets) {
 
     let bestQty = qtyByRow
     // Scoring (lower = better):
-    //   within ±TIER_CONVERGENCE_KCAL → nearly perfect
-    //   over by TIER_CONVERGENCE_KCAL–MAX_OVER_KCAL → small penalty (acceptable overshoot)
-    //   over by >MAX_OVER_KCAL OR under by >TIER_CONVERGENCE_KCAL → heavy penalty
+    //   within band [0, MAX_OVER_KCAL] and not too far under → score = overshoot (tiny, 0–4)
+    //   under by > TIER_CONVERGENCE_KCAL → score = how-far-under (positive, prefers closer to target)
+    //   over by > MAX_OVER_KCAL → score = 1e9 + over (catastrophic, always worse than any under)
+    //   "over by 1 after cap" is worse than "under by 10,000" — no over-cap result ever wins.
+    const calcScore = (cal) => {
+      const diff = targetVec.cal - cal  // positive = under
+      const over = -diff                // positive = over
+      return over > MAX_OVER_KCAL ? 1e9 + over
+           : diff > TIER_CONVERGENCE_KCAL ? diff
+           : Math.max(0, over)
+    }
     let bestScore = Infinity
 
     for (let iter = 0; iter < 10; iter++) {
@@ -210,13 +218,7 @@ export function generateTierIngredients(baseIngredients, library, targets) {
         rows[i].scaling_type === 'optional' && snapped[i].quantity_g === 0 ? 0 : q
       )
       const achievedCal = snapped.reduce((s, r) => s + r.calories, 0)
-      const diff = targetVec.cal - achievedCal // positive = under target
-      const over = -diff // positive = over target
-      const score = over > MAX_OVER_KCAL
-        ? 1000 + over                                           // over by >20: very bad
-        : diff > TIER_CONVERGENCE_KCAL
-          ? 1000 + diff                                         // under by >5: very bad
-          : Math.max(0, over)                                   // within band: score = overshoot (0–20)
+      const score = calcScore(achievedCal)
       if (score < bestScore) { bestScore = score; bestQty = qtyByRow }
       if (score < TIER_CONVERGENCE_KCAL) break
       const flexAchievedCal = snapped.reduce((s, r, i) => s + ((rows[i].scaling_type === 'fixed' || rows[i].is_static) ? 0 : r.calories), 0)
@@ -226,6 +228,39 @@ export function generateTierIngredients(baseIngredients, library, targets) {
       qtyByRow = qtyByRow.map((q, i) => (rows[i].scaling_type === 'fixed' || rows[i].is_static) ? q : q * corr)
     }
     qtyByRow = bestQty
+
+    // Greedy step adjustment: the proportional correction above works in continuous space and
+    // often misses optimal discrete combinations for step-constrained ingredients. This pass
+    // works directly in snapped-quantity space, trying ±1 step per ingredient and keeping any
+    // move that improves the score — including preferring under over over-cap.
+    // Runs up to 30 moves; terminates as soon as no single-step move improves the score.
+    {
+      let stepQty = rows.map((r, i) => finalizeQty(r, qtyByRow[i]).quantity_g)
+      let stepCal = rows.reduce((s, r, i) => s + round1(stepQty[i] * r.calPerG), 0)
+      let stepScore = calcScore(stepCal)
+      for (let sIter = 0; sIter < 30; sIter++) {
+        let bestMoveScore = stepScore
+        let bestMoveI = -1
+        let bestMoveNewQty = 0
+        let bestMoveDeltaCal = 0
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i]
+          if (r.scaling_type === 'fixed' || r.is_static || !r.libIng?.serving_step) continue
+          for (const dir of [1, -1]) {
+            const newQ = snapToConstraints(stepQty[i] + dir * r.libIng.serving_step, r.libIng, r.scaling_type === 'optional')
+            if (newQ == null || newQ === stepQty[i] || (newQ <= 0 && r.scaling_type !== 'optional')) continue
+            const deltaCal = round1(newQ * r.calPerG) - round1(stepQty[i] * r.calPerG)
+            const sc = calcScore(stepCal + deltaCal)
+            if (sc < bestMoveScore) { bestMoveScore = sc; bestMoveI = i; bestMoveNewQty = newQ; bestMoveDeltaCal = deltaCal }
+          }
+        }
+        if (bestMoveI === -1) break
+        stepQty[bestMoveI] = bestMoveNewQty
+        stepCal += bestMoveDeltaCal
+        stepScore = bestMoveScore
+      }
+      if (stepScore < bestScore) { bestScore = stepScore; qtyByRow = stepQty }
+    }
 
     // Calorie top-up: if still under, iterate on snapped quantities directly so that
     // step-rounding can't undo each correction. Stops if a step would push more than
