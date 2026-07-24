@@ -269,7 +269,7 @@ export default function ClientCheckin() {
     async function load() {
       const { data: clientRow } = await supabase
         .from('clients')
-        .select('id, coach_id, collect_measurements, top_lifts')
+        .select('id, coach_id, collect_measurements, top_lifts, checkin_early_access')
         .eq('profile_id', session.user.id)
         .single()
       if (!clientRow) { setLoading(false); return }
@@ -460,6 +460,11 @@ export default function ClientCheckin() {
     if (!existing) {
       const { data } = await supabase.from('client_checkins').select('*').eq('client_id', clientData.id).eq('week_number', weekNumber).maybeSingle()
       setExisting(data)
+      // Clear the early-access flag now that the check-in has been submitted
+      if (clientData.checkin_early_access) {
+        await supabase.from('clients').update({ checkin_early_access: false }).eq('id', clientData.id)
+        setClientData(prev => prev ? { ...prev, checkin_early_access: false } : prev)
+      }
     }
   }
 
@@ -526,8 +531,8 @@ export default function ClientCheckin() {
     )
   }
 
-  // Gate: no check-in submitted yet AND window is closed (Wednesday)
-  if (!isCheckinWindowOpen() && !existing) {
+  // Gate: no check-in submitted yet AND window is closed (Wednesday) AND coach hasn't opened early
+  if (!isCheckinWindowOpen() && !existing && !clientData?.checkin_early_access) {
     return (
       <div className="flex gap-6">
         <Sidebar />

@@ -971,6 +971,16 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const [activeAssignment, setActiveAssignment] = useState(null)
   const [showDeliveryPanel, setShowDeliveryPanel] = useState(false)
   const [delivered, setDelivered] = useState(false)
+  const [earlyAccess, setEarlyAccess] = useState(!!client?.checkin_early_access)
+  const [togglingEarlyAccess, setTogglingEarlyAccess] = useState(false)
+
+  async function toggleEarlyAccess() {
+    setTogglingEarlyAccess(true)
+    const newVal = !earlyAccess
+    await supabase.from('clients').update({ checkin_early_access: newVal }).eq('id', client.id)
+    setEarlyAccess(newVal)
+    setTogglingEarlyAccess(false)
+  }
 
   // desc order (most recent first)
   const sorted = [...checkins].sort((a, b) => b.week_number - a.week_number)
@@ -1067,18 +1077,42 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
       )}
 
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-          Back
-        </button>
-        <div className="flex items-center gap-3">
-          <Avatar name={client?.full_name} />
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">{client?.full_name}</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{sorted.length} check-in{sorted.length !== 1 ? 's' : ''}</p>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            Back
+          </button>
+          <div className="flex items-center gap-3">
+            <Avatar name={client?.full_name} />
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">{client?.full_name}</h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{sorted.length} check-in{sorted.length !== 1 ? 's' : ''}</p>
+            </div>
           </div>
         </div>
+        <button
+          onClick={toggleEarlyAccess}
+          disabled={togglingEarlyAccess}
+          title={earlyAccess ? 'Early check-in is open — click to close it' : 'Open the check-in window early for this client'}
+          className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
+            earlyAccess
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
+              : 'btn-secondary'
+          }`}
+        >
+          {earlyAccess ? (
+            <>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>
+              Check-in open early
+            </>
+          ) : (
+            <>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z M17 11V7a5 5 0 00-10 0v4" /></svg>
+              Open check-in early
+            </>
+          )}
+        </button>
       </div>
 
       {/* Current week summary */}
@@ -1400,7 +1434,7 @@ export default function CoachCheckins() {
 
   async function load() {
     const [{ data: clientData }, { data: checkinData }] = await Promise.all([
-      supabase.from('clients').select('id, collect_measurements, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id),
+      supabase.from('clients').select('id, collect_measurements, checkin_early_access, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id),
       supabase.from('client_checkins').select('*').eq('coach_id', profile.id).order('week_number', { ascending: false }),
     ])
     const mapped = (clientData || []).map(c => ({ ...c, full_name: c.profiles?.full_name }))
