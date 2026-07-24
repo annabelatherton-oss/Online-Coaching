@@ -287,7 +287,7 @@ export default function ClientCheckin() {
       // Prefer top lifts from active training assignment; fall back to client record
       const { data: trainingAsgn } = await supabase
         .from('client_training_assignments')
-        .select('program_id, week_override, created_at, training_programs(top_lifts, weeks_total)')
+        .select('program_id, week_override, created_at, start_date, training_programs(top_lifts, weeks_total)')
         .eq('client_id', clientRow.id)
         .eq('active', true)
         .order('created_at', { ascending: false })
@@ -334,7 +334,8 @@ export default function ClientCheckin() {
       let trainingPrePop = null
       if (trainingAsgn?.program_id) {
         const msPerWeek = 7 * 24 * 60 * 60 * 1000
-        const trainingWeek = Math.floor((Date.now() - new Date(trainingAsgn.created_at).getTime()) / msPerWeek) + 1
+        const blockStart = trainingAsgn.start_date || trainingAsgn.created_at.split('T')[0]
+        const trainingWeek = Math.floor((Date.now() - new Date(blockStart).getTime()) / msPerWeek) + 1
         // Sessions always live in week 1 (block template)
         const { data: sessRows } = await supabase
           .from('training_sessions')

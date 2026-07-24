@@ -369,10 +369,12 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     if (!nextBlockId || !training || !client) return
     setAssigningBlock(true)
     await supabase.from('client_training_assignments').update({ active: false }).eq('id', training.id)
+    const today = new Date().toISOString().split('T')[0]
     await supabase.from('client_training_assignments').insert({
       client_id: client.id,
       program_id: nextBlockId,
       active: true,
+      start_date: today,
     })
     const { data: newAsgn } = await supabase
       .from('client_training_assignments')
@@ -1362,44 +1364,76 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         </div>
       )}
 
-      {/* Progress history table */}
-      {sorted.length > 1 && (
-        <div className="card overflow-hidden">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Progress History</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-gray-800">
-                  {['Week', 'Date', 'Weight', 'Change', 'Energy', 'Sleep', 'Adherence'].map(h => (
-                    <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
-                {asc.map((c, i) => {
-                  const p = asc[i - 1] || null
-                  const delta = weightDelta(c, p)
-                  return (
-                    <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                      <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">Wk {personalWeekMap[c.id]}</td>
-                      <td className="py-2.5 pr-4 text-xs text-gray-400 whitespace-nowrap">{fmtDate(c.updated_at || c.submitted_at)}</td>
-                      <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white tabular-nums">{c.weight_kg != null ? `${c.weight_kg} kg` : '—'}</td>
-                      <td className="py-2.5 pr-4 tabular-nums">
-                        {delta !== null
-                          ? <span className={`font-semibold text-xs ${delta < 0 ? 'text-green-600 dark:text-green-400' : delta > 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-400'}`}>{delta > 0 ? '+' : ''}{delta} kg</span>
-                          : <span className="text-gray-300 dark:text-gray-700">—</span>}
-                      </td>
-                      <td className="py-2.5 pr-4"><span className={`text-xs font-semibold ${ratingColor(c.energy_level)}`}>{c.energy_level != null ? `${c.energy_level}/5` : '—'}</span></td>
-                      <td className="py-2.5 pr-4"><span className={`text-xs font-semibold ${ratingColor(c.sleep_quality)}`}>{c.sleep_quality != null ? `${c.sleep_quality}/5` : '—'}</span></td>
-                      <td className="py-2.5"><span className={`text-xs font-semibold ${ratingColor(c.adherence)}`}>{c.adherence != null ? `${c.adherence}/5` : '—'}</span></td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+      {/* Progress history table — check-ins merged with manual weight logs */}
+      {(sorted.length > 0 || weightEntries.length > 0) && (() => {
+        // Build a unified timeline: check-ins + standalone weight_entries (no check-in that date)
+        const checkinDates = new Set(asc.map(c => (c.updated_at || c.submitted_at || '').split('T')[0]))
+        const standaloneEntries = weightEntries
+          .filter(e => e.recorded_at && !checkinDates.has(e.recorded_at))
+          .map(e => ({ _type: 'log', recorded_at: e.recorded_at, weight_kg: e.weight_kg }))
+        const checkinRows = asc.map(c => ({ _type: 'checkin', ...c }))
+        const timeline = [...checkinRows, ...standaloneEntries]
+          .sort((a, b) => {
+            const da = a._type === 'checkin' ? (a.updated_at || a.submitted_at || '') : a.recorded_at
+            const db = b._type === 'checkin' ? (b.updated_at || b.submitted_at || '') : b.recorded_at
+            return da.localeCompare(db)
+          })
+
+        if (timeline.length === 0) return null
+        return (
+          <div className="card overflow-hidden">
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Progress History</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-gray-800">
+                    {['Week', 'Date', 'Weight', 'Change', 'Energy', 'Sleep', 'Adherence'].map(h => (
+                      <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
+                  {timeline.map((row, i) => {
+                    const prevRow = timeline[i - 1] || null
+                    const prevWeight = prevRow ? prevRow.weight_kg : null
+                    const delta = row.weight_kg != null && prevWeight != null
+                      ? parseFloat((parseFloat(row.weight_kg) - parseFloat(prevWeight)).toFixed(1))
+                      : null
+                    const isLog = row._type === 'log'
+                    const date = isLog ? row.recorded_at : (row.updated_at || row.submitted_at || '')
+                    return (
+                      <tr key={isLog ? `log-${row.recorded_at}` : row.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/30 ${isLog ? 'opacity-70' : ''}`}>
+                        <td className="py-2.5 pr-4 whitespace-nowrap">
+                          {isLog
+                            ? <span className="text-xs text-gray-400 italic">Weight log</span>
+                            : <span className="font-semibold text-gray-900 dark:text-white">Wk {personalWeekMap[row.id]}</span>
+                          }
+                        </td>
+                        <td className="py-2.5 pr-4 text-xs text-gray-400 whitespace-nowrap">{fmtDate(date)}</td>
+                        <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white tabular-nums">{row.weight_kg != null ? `${row.weight_kg} kg` : '—'}</td>
+                        <td className="py-2.5 pr-4 tabular-nums">
+                          {delta !== null
+                            ? <span className={`font-semibold text-xs ${delta < 0 ? 'text-green-600 dark:text-green-400' : delta > 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-400'}`}>{delta > 0 ? '+' : ''}{delta} kg</span>
+                            : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                        </td>
+                        {isLog ? (
+                          <><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 text-gray-300 dark:text-gray-700">—</td></>
+                        ) : (
+                          <>
+                            <td className="py-2.5 pr-4"><span className={`text-xs font-semibold ${ratingColor(row.energy_level)}`}>{row.energy_level != null ? `${row.energy_level}/5` : '—'}</span></td>
+                            <td className="py-2.5 pr-4"><span className={`text-xs font-semibold ${ratingColor(row.sleep_quality)}`}>{row.sleep_quality != null ? `${row.sleep_quality}/5` : '—'}</span></td>
+                            <td className="py-2.5"><span className={`text-xs font-semibold ${ratingColor(row.adherence)}`}>{row.adherence != null ? `${row.adherence}/5` : '—'}</span></td>
+                          </>
+                        )}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Previous week cards */}
       {sorted.slice(1).map((c, i) => {

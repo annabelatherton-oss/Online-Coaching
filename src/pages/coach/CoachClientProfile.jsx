@@ -2448,7 +2448,7 @@ function TrainingTab({ client, coachId }) {
     const [{ data: progs }, { data: asgn }] = await Promise.all([
       supabase.from('training_programs').select('*').eq('coach_id', coachId).order('name'),
       supabase.from('client_training_assignments')
-        .select('*, training_programs(name, weeks_total)')
+        .select('*, training_programs(name, weeks_total, top_lifts)')
         .eq('client_id', client.id)
         .eq('active', true)
         .order('created_at', { ascending: false })
@@ -2485,12 +2485,14 @@ function TrainingTab({ client, coachId }) {
     if (!selectedProgram) return
     setSaving(true)
     await supabase.from('client_training_assignments').update({ active: false }).eq('client_id', client.id)
+    const today = new Date().toISOString().split('T')[0]
     await supabase.from('client_training_assignments').insert({
       client_id: client.id,
       coach_id: coachId,
       program_id: selectedProgram.id,
       program_name: selectedProgram.name,
       active: true,
+      start_date: today,
     })
 
     // Auto-populate client's weekly schedule from the assigned program.
@@ -2574,7 +2576,20 @@ function TrainingTab({ client, coachId }) {
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-semibold text-gray-900 dark:text-white">{assignment.program_name || prog.name}</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{prog.weeks_total ?? 12}-week block · Started {_fmtDate(assignment.created_at.split('T')[0])}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-sm text-gray-500 dark:text-gray-400">{prog.weeks_total ?? 12}-week block · Started</p>
+                <input
+                  type="date"
+                  defaultValue={assignment.start_date || assignment.created_at.split('T')[0]}
+                  className="text-sm text-gray-500 dark:text-gray-400 bg-transparent border-b border-gray-300 dark:border-gray-600 focus:outline-none focus:border-brand-500 cursor-pointer"
+                  onChange={async e => {
+                    const val = e.target.value
+                    if (!val) return
+                    await supabase.from('client_training_assignments').update({ start_date: val }).eq('id', assignment.id)
+                    setAssignment(prev => ({ ...prev, start_date: val }))
+                  }}
+                />
+              </div>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
               <button onClick={() => { setForm({ block: getProgBlock(assignment.program_name) || '', days: getProgDays(assignment.program_name) || '' }); setShowForm(true) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Change</button>
@@ -2584,7 +2599,8 @@ function TrainingTab({ client, coachId }) {
 
           {(() => {
             const blockTotal = prog.weeks_total ?? 12
-            const weeksElapsed = Math.floor((Date.now() - new Date(assignment.created_at).getTime()) / (7 * 24 * 60 * 60 * 1000))
+            const blockStart = assignment.start_date || assignment.created_at.split('T')[0]
+            const weeksElapsed = Math.floor((Date.now() - new Date(blockStart).getTime()) / (7 * 24 * 60 * 60 * 1000))
             if (weeksElapsed < blockTotal) return null
             return (
               <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3">

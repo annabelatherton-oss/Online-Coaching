@@ -670,10 +670,26 @@ export default function PlanGroupEditor() {
     const pools = {}
     for (const s of MAIN_SLOTS) pools[s.key] = buildPool(s.key)
 
-    // Round-robin 20-week schedule: cycle through the pool evenly.
+    // Build initial schedule: space meals at least 6 weeks apart where possible.
+    // At each position pick the eligible meal (not used in the last 6 weeks) that
+    // was used longest ago; fall back to the oldest-used if all are still hot.
     function makeRoundRobin(pool) {
       if (!pool.length) return Array(N).fill(null)
-      return Array.from({ length: N }, (_, i) => pool[i % pool.length])
+      const MIN_GAP = 6
+      const result = []
+      const lastUsed = new Map()
+      for (let i = 0; i < N; i++) {
+        let best = null, bestScore = -Infinity
+        for (const meal of pool) {
+          const last = lastUsed.has(meal) ? lastUsed.get(meal) : -Infinity
+          const gap = i - last
+          const score = gap >= MIN_GAP ? gap : (gap - MIN_GAP) * 100
+          if (score > bestScore) { bestScore = score; best = meal }
+        }
+        result.push(best)
+        if (best != null) lastUsed.set(best, i)
+      }
+      return result
     }
 
     // Current schedules — one array of meal IDs per slot, indexed by week position 0..19.
@@ -682,6 +698,9 @@ export default function PlanGroupEditor() {
 
     // How far a full day total deviates from the tier target — same 4:1:1:1 weighting as the
     // tier solver so the same quality bar applies here.
+    // Also penalises: same meal in A and B of the same category (very heavy), and
+    // any meal re-used within MIN_GAP weeks in the same slot (moderate penalty).
+    const MIN_GAP = 6
     function dayScore(weekIdx) {
       const staticIds = [
         currentWeeks[weekIdx].slots['preworkout']    || defaultPreworkout    || null,
@@ -698,7 +717,21 @@ export default function PlanGroupEditor() {
         const s = 4*Math.abs(cal-activeTier) + Math.abs(prot-tgtMacros.protein_g) + Math.abs(carbs-tgtMacros.carbs_g) + Math.abs(fat-tgtMacros.fat_g)
         if (opt[0] === 'breakfast1') scoreA = s; else scoreB = s
       }
-      return scoreA + scoreB
+      // Penalty: A and B same meal in same category this week
+      let penalty = 0
+      for (const cat of ['breakfast', 'lunch', 'dinner']) {
+        const idA = scheds[`${cat}1`][weekIdx], idB = scheds[`${cat}2`][weekIdx]
+        if (idA && idB && idA === idB) penalty += 5000
+      }
+      // Penalty: same meal repeated in same slot within MIN_GAP weeks
+      for (const s of MAIN_SLOTS) {
+        const meal = scheds[s.key][weekIdx]
+        if (!meal) continue
+        for (let k = Math.max(0, weekIdx - MIN_GAP); k < weekIdx; k++) {
+          if (scheds[s.key][k] === meal) { penalty += 500; break }
+        }
+      }
+      return scoreA + scoreB + penalty
     }
 
     // Swap-improve one slot's schedule: try every pair of weeks; keep the swap if it lowers the
