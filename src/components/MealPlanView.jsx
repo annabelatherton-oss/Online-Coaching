@@ -496,30 +496,24 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
 
 // ─── Swap modal ───────────────────────────────────────────────────────────────
 
-export function SwapModal({ slotKey, label, cat, currentMealId, mealMap, mealsByCategory, tier, dailyOriginalCal, dailyCurrentCal, onSelect, onClose }) {
-  const options = mealsByCategory[cat] || []
-  const currentMacros = mealMacros(currentMealId, mealMap, tier, null)
-  const currentCal = currentMacros?.cal || 0
-  const currentProt = currentMacros?.prot || 0
+export function SwapModal({ slotKey, label, currentMealId, mealMap, tier, onSelect, onClose }) {
+  const [search, setSearch] = useState('')
 
-  // Ceiling 1: swap meal can be at most 10 kcal above the current meal
-  const mealCeiling = currentCal + 10
-  // Ceiling 2: swap must not push daily total more than 10 above original
-  const dailyHeadroom = dailyOriginalCal != null
-    ? dailyOriginalCal + 10 - (dailyCurrentCal - currentCal)
-    : Infinity
-  const maxCandidateCal = Math.min(mealCeiling, dailyHeadroom)
+  const currentMacros = mealMacros(currentMealId, mealMap, tier, null) || { cal: 0, prot: 0, carb: 0, fat: 0 }
+  const { cal: curCal, prot: curProt, carb: curCarb, fat: curFat } = currentMacros
 
-  const eligible = options
+  const scored = Object.values(mealMap)
     .filter(m => m.id !== currentMealId)
-    .map(m => ({ ...m, macros: mealMacros(m.id, mealMap, tier, null) }))
-    .filter(m =>
-      (m.macros?.cal || 0) <= maxCandidateCal &&
-      Math.abs((m.macros?.prot || 0) - currentProt) <= SWAP_PROTEIN_TOLERANCE &&
-      Math.abs((m.macros?.carb || 0) - (currentMacros?.carb || 0)) <= SWAP_CARB_TOLERANCE &&
-      Math.abs((m.macros?.fat || 0) - (currentMacros?.fat || 0)) <= SWAP_FAT_TOLERANCE
-    )
-    .sort((a, b) => Math.abs((a.macros?.prot || 0) - currentProt) - Math.abs((b.macros?.prot || 0) - currentProt))
+    .map(m => {
+      const mac = mealMacros(m.id, mealMap, tier, null) || { cal: 0, prot: 0, carb: 0, fat: 0 }
+      const score = Math.abs(mac.cal - curCal) + Math.abs(mac.prot - curProt) * 4 + Math.abs(mac.carb - curCarb) * 2 + Math.abs(mac.fat - curFat) * 3
+      return { ...m, macros: mac, score }
+    })
+    .sort((a, b) => a.score - b.score)
+
+  const visible = search
+    ? scored.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
+    : scored
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60" onClick={onClose}>
@@ -527,7 +521,7 @@ export function SwapModal({ slotKey, label, cat, currentMealId, mealMap, mealsBy
         <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Swap {label}</h3>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Matched on calories, protein, carbs &amp; fat</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Sorted by closest macros</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -535,16 +529,29 @@ export function SwapModal({ slotKey, label, cat, currentMealId, mealMap, mealsBy
             </svg>
           </button>
         </div>
+        <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800">
+          <input
+            type="text"
+            placeholder="Search meals…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            autoFocus
+          />
+        </div>
         <div className="overflow-y-auto flex-1 p-2">
-          {eligible.length === 0 ? (
+          {visible.length === 0 ? (
             <div className="py-10 text-center">
-              <p className="text-sm text-gray-400 dark:text-gray-500">No alternatives within ±{SWAP_CALORIE_TOLERANCE} kcal.</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500">No meals found.</p>
             </div>
           ) : (
             <div className="space-y-1">
-              {eligible.map(m => (
+              {visible.map(m => (
                 <button key={m.id} onClick={() => onSelect(slotKey, m.id)} className="w-full text-left px-4 py-3 rounded-xl hover:bg-pink-50 dark:hover:bg-pink-900/10 transition-colors group">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400">{m.name}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400">{m.name}</p>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5 capitalize">{(m.category || '').replace('_', ' ')}</span>
+                  </div>
                   {m.macros && (
                     <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5 tabular-nums">
                       <span className="font-semibold text-gray-600 dark:text-gray-400">{Math.round(m.macros.cal)} kcal</span>

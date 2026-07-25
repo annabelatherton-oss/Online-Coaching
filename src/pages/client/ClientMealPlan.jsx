@@ -321,13 +321,9 @@ export default function ClientMealPlan() {
         <SwapModal
           slotKey={swapModal.slotKey}
           label={swapModal.label}
-          cat={swapModal.cat}
           currentMealId={editedSlots[swapModal.slotKey] || null}
           mealMap={mealMap}
-          mealsByCategory={mealsByCategory}
           tier={tier}
-          dailyOriginalCal={originalDailyCal}
-          dailyCurrentCal={currentDailyCal}
           onSelect={handleSwapSelect}
           onClose={() => setSwapModal(null)}
         />

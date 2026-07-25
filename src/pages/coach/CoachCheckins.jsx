@@ -103,7 +103,12 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const skipTierReload = useRef(true)
   const skipWeekReload = useRef(true)
 
-  const [nextTemplateWeek, setNextTemplateWeek] = useState((current?.week_number ?? 0) + 1)
+  const [nextTemplateWeek, setNextTemplateWeek] = useState(() => {
+    // If the coach has delivered before, advance to the next template week.
+    // Otherwise fall back to wherever the plan group's rotation currently sits.
+    if (activeAssignment?.week_override != null) return activeAssignment.week_override + 1
+    return activeAssignment?.plan_groups?.current_week ?? 1
+  })
   const tier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
 
   // Initial data load
@@ -149,8 +154,10 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       setIngredientLib(lib)
 
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
+      let draft = {}
+      try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${nextTemplateWeek}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
       setTemplateSlots(tSlots)
-      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
+      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
       if (cwm?.ingredient_overrides) setIngredientOverrides(cwm.ingredient_overrides)
       setTraining(trainingAsgn)
       setAllPrograms(programs || [])
@@ -190,8 +197,10 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
       ])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
+      let draft = {}
+      try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${nextTemplateWeek}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
       setTemplateSlots(tSlots)
-      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
+      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
     }
     reloadTemplate()
   }, [calorieTarget])
@@ -209,8 +218,10 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
       ])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
+      let draft = {}
+      try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${nextTemplateWeek}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
       setTemplateSlots(tSlots)
-      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
+      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
       setIngredientOverrides(cwm?.ingredient_overrides || {})
     }
     reloadWeek()
@@ -225,20 +236,25 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     return slots
   }
 
+  function draftKey(weekNum) {
+    return `meal-draft-${client.id}-${activeAssignment.id}-${weekNum}`
+  }
+  function loadDraftSlots(weekNum) {
+    try { const s = localStorage.getItem(draftKey(weekNum)); return s ? JSON.parse(s) : {} } catch (_) { return {} }
+  }
+  function saveDraftSlots(weekNum, slots) {
+    try { localStorage.setItem(draftKey(weekNum), JSON.stringify(slots)) } catch (_) {}
+  }
+  function clearDraftSlots(weekNum) {
+    try { localStorage.removeItem(draftKey(weekNum)) } catch (_) {}
+  }
+
   function handleSwapOpen(slotKey, label, cat) { setSwapModal({ slotKey, label, cat }) }
-  async function handleSwapSelect(slotKey, newMealId) {
+  function handleSwapSelect(slotKey, newMealId) {
     const newSlots = { ...editedSlots, [slotKey]: newMealId }
     setEditedSlots(newSlots)
     setSwapModal(null)
-    // Persist immediately so the swap survives closing and reopening the panel.
-    await supabase.from('client_week_meals').upsert({
-      client_id: client.id,
-      coach_id: coachId,
-      assignment_id: activeAssignment.id,
-      week_number: nextTemplateWeek,
-      slots: newSlots,
-      ingredient_overrides: ingredientOverrides,
-    }, { onConflict: 'assignment_id,week_number' })
+    saveDraftSlots(nextTemplateWeek, newSlots)
   }
   function handleRevert(slotKey) {
     setEditedSlots(prev => ({ ...prev, [slotKey]: templateSlots[slotKey] || null }))
@@ -306,6 +322,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   function handleRevertMealPlan() {
     setEditedSlots({ ...templateSlots })
     setIngredientOverrides({})
+    clearDraftSlots(nextTemplateWeek)
   }
 
   function handleUpdateExercise(exId, field, value) {
@@ -499,6 +516,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       }
     }
 
+    clearDraftSlots(nextTemplateWeek)
     setSaving(false)
     onDelivered(coachNotes.trim(), newCalTarget)
   }
@@ -976,13 +994,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         <SwapModal
           slotKey={swapModal.slotKey}
           label={swapModal.label}
-          cat={swapModal.cat}
           currentMealId={editedSlots[swapModal.slotKey]}
           mealMap={mealMap}
-          mealsByCategory={mealsByCategory}
           tier={tier}
-          dailyOriginalCal={originalDailyCal}
-          dailyCurrentCal={currentDailyCal}
           onSelect={handleSwapSelect}
           onClose={() => setSwapModal(null)}
         />
@@ -1092,7 +1106,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     if (!client?.id) return
     supabase
       .from('client_plan_assignments')
-      .select('id, calorie_target, week_override, plan_group_id, preworkout_static, preworkout_meal_id, evening_snack_static, evening_snack_meal_id')
+      .select('id, calorie_target, week_override, plan_group_id, plan_groups(current_week), preworkout_static, preworkout_meal_id, evening_snack_static, evening_snack_meal_id')
       .eq('client_id', client.id)
       .eq('active', true)
       .order('created_at', { ascending: false })

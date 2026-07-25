@@ -30,6 +30,16 @@ function nextThursdayLabel() {
   return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
+// Midnight of the most recent Wednesday — marks the start of the current check-in window.
+function lastWednesdayMidnight() {
+  const now = new Date()
+  const daysSince = (now.getDay() - 3 + 7) % 7 || 7 // if today IS Wed, look back 7 days (window just closed)
+  const d = new Date(now)
+  d.setDate(now.getDate() - daysSince)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
 // Parse "60x10,60x8" log format → best (heaviest) set
 function getBestSet(reps_completed, weight_kg) {
   if (!reps_completed) return weight_kg != null ? { weight: weight_kg, reps: null } : null
@@ -310,28 +320,6 @@ export default function ClientCheckin() {
       const lifts = trainingLifts.length > 0 ? trainingLifts : clientLifts
       setTopLifts(lifts)
 
-      // Resolve check-in week number first (needed for pre-population check below)
-      const { data: asgn } = await supabase
-        .from('client_plan_assignments')
-        .select('id, week_override')
-        .eq('client_id', clientRow.id)
-        .eq('active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      // Each client starts at week 1. week_override advances by 1 each time the coach delivers
-      // a plan — so it's null only before the first delivery, in which case default to 1.
-      const week = asgn ? (asgn.week_override ?? 1) : 1
-
-      // Mon(1) / Tue(2) = late re-submit; the coach has already sent next week's plan
-      // so week_override points to the new week — client is actually checking in for the one
-      // that just ended.
-      const dow = new Date().getDay()
-      const isLate = (dow === 1 || dow === 2) && week > 1
-      const checkinWeek = isLate ? week - 1 : week
-      setWeekNumber(checkinWeek)
-      setIsLateResubmit(isLate)
 
       // Load session exercises + this week's training logs → used to pre-fill lift fields
       let trainingPrePop = null
@@ -389,19 +377,20 @@ export default function ClientCheckin() {
       const histWithWeeks = (allHistory || []).map((c, i) => ({ ...c, personal_week: i + 1 }))
       setAllCheckins(histWithWeeks)
 
-      // Find existing check-in for the calculated checkin week.
-      // Fall back to the most recent within 7 days in case week_number ever drifts.
-      const recentCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-      const byWeek = histWithWeeks.find(c => c.week_number === checkinWeek)
-      const byRecent = !byWeek
-        ? histWithWeeks
-            .filter(c => (c.submitted_at || c.updated_at || '') >= recentCutoff)
-            .sort((a, b) => (b.submitted_at || b.updated_at || '').localeCompare(a.submitted_at || a.updated_at || ''))[0]
-        : null
-      const checkin = byWeek || byRecent || null
+      // Find the check-in for this week's window (since last Wednesday midnight).
+      const windowStart = lastWednesdayMidnight().toISOString()
+      const checkin = [...histWithWeeks]
+        .filter(c => (c.updated_at || c.submitted_at || '') >= windowStart)
+        .sort((a, b) => (b.updated_at || b.submitted_at || '').localeCompare(a.updated_at || a.submitted_at || ''))[0] || null
 
+      const nextWeekNumber = histWithWeeks.length + 1
+      const dow = new Date().getDay()
+      const isLate = !checkin && (dow === 1 || dow === 2)
+
+      setWeekNumber(checkin ? checkin.week_number : nextWeekNumber)
+      setIsLateResubmit(isLate)
       setHistoryList([...histWithWeeks].reverse())
-      setPersonalWeek(checkin ? checkin.personal_week : histWithWeeks.length + 1)
+      setPersonalWeek(checkin ? checkin.personal_week : nextWeekNumber)
 
       if (checkin) {
         setExisting(checkin)
