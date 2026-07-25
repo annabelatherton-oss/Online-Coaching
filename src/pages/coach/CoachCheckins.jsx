@@ -103,12 +103,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const skipTierReload = useRef(true)
   const skipWeekReload = useRef(true)
 
-  const [nextTemplateWeek, setNextTemplateWeek] = useState(() => {
-    // If the coach has delivered before, advance to the next template week.
-    // Otherwise fall back to wherever the plan group's rotation currently sits.
-    if (activeAssignment?.week_override != null) return activeAssignment.week_override + 1
-    return activeAssignment?.plan_groups?.current_week ?? 1
-  })
+  const [nextTemplateWeek, setNextTemplateWeek] = useState(
+    activeAssignment?.week_override != null ? activeAssignment.week_override + 1 : 1
+  )
   const tier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
 
   // Initial data load
@@ -116,6 +113,15 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     if (!activeAssignment) { setLoading(false); return }
     async function load() {
       const currentTier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
+
+      // If no prior delivery, look up the plan group's current rotation week so the panel
+      // opens on the right template week without requiring a manual dropdown selection.
+      let weekNum = nextTemplateWeek
+      if (activeAssignment.week_override == null && activeAssignment.plan_group_id) {
+        const { data: pg } = await supabase.from('plan_groups').select('current_week').eq('id', activeAssignment.plan_group_id).maybeSingle()
+        if (pg?.current_week) { weekNum = pg.current_week; setNextTemplateWeek(pg.current_week) }
+      }
+
       const [
         { data: mealsData },
         { data: libData },
@@ -133,10 +139,10 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         `).eq('coach_id', coachId).order('name'),
         supabase.from('ingredients').select('id, name, serving_size, serving_unit, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', coachId),
         currentTier
-          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', currentTier).maybeSingle()
+          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).eq('calorie_tier', currentTier).maybeSingle()
           : Promise.resolve({ data: null }),
-        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
-        supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
+        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
+        supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', weekNum).maybeSingle(),
         supabase.from('client_training_assignments').select('*, training_programs(name, weeks_total)').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('training_programs').select('id, name').eq('coach_id', coachId).order('name'),
       ])
@@ -155,7 +161,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
 
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
       let draft = {}
-      try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${nextTemplateWeek}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
+      try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${weekNum}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
       setTemplateSlots(tSlots)
       setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
       if (cwm?.ingredient_overrides) setIngredientOverrides(cwm.ingredient_overrides)
@@ -1106,7 +1112,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     if (!client?.id) return
     supabase
       .from('client_plan_assignments')
-      .select('id, calorie_target, week_override, plan_group_id, plan_groups(current_week), preworkout_static, preworkout_meal_id, evening_snack_static, evening_snack_meal_id')
+      .select('id, calorie_target, week_override, plan_group_id, preworkout_static, preworkout_meal_id, evening_snack_static, evening_snack_meal_id')
       .eq('client_id', client.id)
       .eq('active', true)
       .order('created_at', { ascending: false })
