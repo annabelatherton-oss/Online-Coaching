@@ -1955,9 +1955,9 @@ function MealPlanTab({ client, coachId }) {
           <div>
             <label className="label">Plan</label>
             <select className="input" required value={form.plan_group_id}
-              onChange={e => { const pg = planGroups.find(g => g.id === e.target.value); setForm(f => ({ ...f, plan_group_id: e.target.value, starting_week: pg?.current_week ?? '' })) }}>
+              onChange={e => setForm(f => ({ ...f, plan_group_id: e.target.value, starting_week: '1' }))}>
               <option value="">Select a plan…</option>
-              {planGroups.map(g => <option key={g.id} value={g.id}>{g.name} (currently Week {g.current_week})</option>)}
+              {planGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-4">

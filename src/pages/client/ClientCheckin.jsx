@@ -313,22 +313,17 @@ export default function ClientCheckin() {
       // Resolve check-in week number first (needed for pre-population check below)
       const { data: asgn } = await supabase
         .from('client_plan_assignments')
-        .select('id, plan_group_id, week_override')
+        .select('id, week_override')
         .eq('client_id', clientRow.id)
         .eq('active', true)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
 
-      let week = 1
-      if (asgn) {
-        if (asgn.week_override != null) {
-          week = asgn.week_override
-        } else {
-          const { data: pg } = await supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single()
-          week = pg?.current_week ?? 1
-        }
-      }
+      // Each client starts at week 1. week_override advances by 1 each time the coach delivers
+      // a plan — so it's null only before the first delivery, in which case default to 1.
+      const week = asgn ? (asgn.week_override ?? 1) : 1
+
       // Mon(1) / Tue(2) = late re-submit; the coach has already sent next week's plan
       // so week_override points to the new week — client is actually checking in for the one
       // that just ended.

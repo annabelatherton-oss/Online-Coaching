@@ -177,20 +177,21 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     load()
   }, [])
 
-  // Reload template slots when calorie tier changes
+  // Reload template slots when calorie tier changes — merge with any saved client overrides
   useEffect(() => {
     if (skipTierReload.current || !activeAssignment) return
     async function reloadTemplate() {
       const newTier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
-      const [{ data: tierTmplData }, { data: stdTmplData }] = await Promise.all([
+      const [{ data: tierTmplData }, { data: stdTmplData }, { data: cwm }] = await Promise.all([
         newTier
           ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', newTier).maybeSingle()
           : Promise.resolve({ data: null }),
         supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
+        supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
       ])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
       setTemplateSlots(tSlots)
-      setEditedSlots(tSlots)
+      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
     }
     reloadTemplate()
   }, [calorieTarget])
@@ -225,9 +226,19 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   }
 
   function handleSwapOpen(slotKey, label, cat) { setSwapModal({ slotKey, label, cat }) }
-  function handleSwapSelect(slotKey, newMealId) {
-    setEditedSlots(prev => ({ ...prev, [slotKey]: newMealId }))
+  async function handleSwapSelect(slotKey, newMealId) {
+    const newSlots = { ...editedSlots, [slotKey]: newMealId }
+    setEditedSlots(newSlots)
     setSwapModal(null)
+    // Persist immediately so the swap survives closing and reopening the panel.
+    await supabase.from('client_week_meals').upsert({
+      client_id: client.id,
+      coach_id: coachId,
+      assignment_id: activeAssignment.id,
+      week_number: nextTemplateWeek,
+      slots: newSlots,
+      ingredient_overrides: ingredientOverrides,
+    }, { onConflict: 'assignment_id,week_number' })
   }
   function handleRevert(slotKey) {
     setEditedSlots(prev => ({ ...prev, [slotKey]: templateSlots[slotKey] || null }))
