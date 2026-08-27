@@ -477,29 +477,18 @@ export default function ExerciseLibrary() {
     setReplacementId('')
     setDeleteCheck({ ex, loading: true })
 
-    const [{ data: sessionRows }, { data: workoutRowsByName }, { data: workoutRowsById }] = await Promise.all([
-      supabase.from('session_exercises').select('id, name, training_sessions(name, training_programs(name))').ilike('name', ex.name),
-      supabase.from('workout_exercises').select('id, name, workouts(name)').ilike('name', ex.name),
-      supabase.from('workout_exercises').select('id, name, workouts(name)').eq('exercise_id', ex.id),
-    ])
+    // Only workout_exercises has a real link (exercise_id) back to a specific library
+    // card — session_exercises is plain text with no selection to check, and matching
+    // by name alone flags coincidental same-named text that was never actually this
+    // exercise, so that's intentionally not checked here.
+    const { data: workoutRows } = await supabase
+      .from('workout_exercises').select('id, name, workouts(name)').eq('exercise_id', ex.id)
 
-    const sessions = [...new Map(
-      (sessionRows || [])
-        .filter(r => r.training_sessions)
-        .map(r => [`${r.training_sessions.training_programs?.name}|${r.training_sessions.name}|${r.name}`,
-          { programme: r.training_sessions.training_programs?.name || 'Untitled programme', session: r.training_sessions.name, name: r.name }])
-    ).values()]
+    const workouts = (workoutRows || [])
+      .filter(r => r.workouts)
+      .map(r => ({ workout: r.workouts.name, name: r.name }))
 
-    const linkedOnlyIds = new Set(
-      (workoutRowsById || []).filter(r => r.name?.toLowerCase() !== ex.name.toLowerCase()).map(r => r.id)
-    )
-    const workouts = [...new Map(
-      [...(workoutRowsByName || []), ...(workoutRowsById || [])]
-        .filter(r => r.workouts)
-        .map(r => [r.id, { workout: r.workouts.name, name: r.name, linkedOnly: linkedOnlyIds.has(r.id) }])
-    ).values()]
-
-    setDeleteCheck({ ex, sessions, workouts })
+    setDeleteCheck({ ex, workouts })
   }
 
   async function confirmDelete() {
@@ -512,9 +501,6 @@ export default function ExerciseLibrary() {
   async function replaceAndDelete(replacement) {
     if (!deleteCheck || !replacement) return
     setDeleteCheck(dc => ({ ...dc, replacing: true }))
-    const oldName = deleteCheck.ex.name
-    await supabase.from('session_exercises').update({ name: replacement.name }).ilike('name', oldName)
-    await supabase.from('workout_exercises').update({ name: replacement.name, exercise_id: replacement.id }).ilike('name', oldName)
     await supabase.from('workout_exercises').update({ name: replacement.name, exercise_id: replacement.id }).eq('exercise_id', deleteCheck.ex.id)
     await supabase.from('exercises').delete().eq('id', deleteCheck.ex.id)
     setDeleteCheck(null)
@@ -722,27 +708,18 @@ export default function ExerciseLibrary() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Delete "{deleteCheck.ex.name}"?</h2>
             {deleteCheck.loading ? (
               <p className="text-sm text-gray-400 py-4">Checking where it's used…</p>
-            ) : (deleteCheck.sessions.length === 0 && deleteCheck.workouts.length === 0) ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Not used in any training programme or workout — safe to delete.</p>
+            ) : deleteCheck.workouts.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Not selected in any workout — safe to delete. (Training programme blocks are plain text, so they can't be checked this way — deleting this card never changes anything already typed into a block.)</p>
             ) : (
               <div className="mt-2 space-y-3">
                 <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
-                  Currently used in {deleteCheck.sessions.length + deleteCheck.workouts.length} place{deleteCheck.sessions.length + deleteCheck.workouts.length !== 1 ? 's' : ''} — deleting it won't remove it from these (they're just text), but you'll want to swap it there yourself:
+                  This exact card is selected in {deleteCheck.workouts.length} workout{deleteCheck.workouts.length !== 1 ? 's' : ''}:
                 </p>
                 <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1 max-h-48 overflow-y-auto">
-                  {deleteCheck.sessions.map((s, i) => (
-                    <li key={`s${i}`} className="flex items-start gap-1.5">
-                      <span className="text-gray-300 dark:text-gray-600">•</span>
-                      <span>{s.programme} — {s.session} (shows as "{s.name}")</span>
-                    </li>
-                  ))}
                   {deleteCheck.workouts.map((w, i) => (
                     <li key={`w${i}`} className="flex items-start gap-1.5">
                       <span className="text-gray-300 dark:text-gray-600">•</span>
-                      <span>
-                        Workout: {w.workout} (shows as "{w.name}")
-                        {w.linkedOnly && <span className="text-amber-500"> — still linked to this card even though the text was changed</span>}
-                      </span>
+                      <span>Workout: {w.workout} (shows as "{w.name}")</span>
                     </li>
                   ))}
                 </ul>
