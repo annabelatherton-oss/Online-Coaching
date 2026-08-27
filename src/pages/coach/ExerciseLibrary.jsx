@@ -465,9 +465,15 @@ export default function ExerciseLibrary() {
     load()
   }
 
-  async function handleDelete(ex) {
+  async function handleArchive(ex) {
     if (!confirm(`Archive "${ex.name}"?`)) return
     await supabase.from('exercises').update({ is_archived: true }).eq('id', ex.id)
+    load()
+  }
+
+  async function handleDelete(ex) {
+    if (!confirm(`Permanently delete "${ex.name}"? This removes it and all its variations for good — it can't be undone. Any workout exercise built from it keeps its name but loses the library link.`)) return
+    await supabase.from('exercises').delete().eq('id', ex.id)
     load()
   }
 
@@ -649,7 +655,8 @@ export default function ExerciseLibrary() {
               </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                 <button onClick={() => setModal(ex)} className="text-xs text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 px-1.5 py-1">Edit</button>
-                <button onClick={() => handleDelete(ex)} className="text-xs text-gray-400 hover:text-red-500 px-1.5 py-1">Archive</button>
+                <button onClick={() => handleArchive(ex)} className="text-xs text-gray-400 hover:text-yellow-600 dark:hover:text-yellow-400 px-1.5 py-1">Archive</button>
+                <button onClick={() => handleDelete(ex)} className="text-xs text-gray-400 hover:text-red-500 px-1.5 py-1">Delete</button>
               </div>
             </div>
           </div>
