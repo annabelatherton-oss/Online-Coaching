@@ -478,22 +478,25 @@ export default function ExerciseLibrary() {
     setDeleteCheck({ ex, loading: true })
 
     const [{ data: sessionRows }, { data: workoutRowsByName }, { data: workoutRowsById }] = await Promise.all([
-      supabase.from('session_exercises').select('id, training_sessions(name, training_programs(name))').ilike('name', ex.name),
-      supabase.from('workout_exercises').select('id, workouts(name)').ilike('name', ex.name),
-      supabase.from('workout_exercises').select('id, workouts(name)').eq('exercise_id', ex.id),
+      supabase.from('session_exercises').select('id, name, training_sessions(name, training_programs(name))').ilike('name', ex.name),
+      supabase.from('workout_exercises').select('id, name, workouts(name)').ilike('name', ex.name),
+      supabase.from('workout_exercises').select('id, name, workouts(name)').eq('exercise_id', ex.id),
     ])
 
     const sessions = [...new Map(
       (sessionRows || [])
         .filter(r => r.training_sessions)
-        .map(r => [`${r.training_sessions.training_programs?.name}|${r.training_sessions.name}`,
-          { programme: r.training_sessions.training_programs?.name || 'Untitled programme', session: r.training_sessions.name }])
+        .map(r => [`${r.training_sessions.training_programs?.name}|${r.training_sessions.name}|${r.name}`,
+          { programme: r.training_sessions.training_programs?.name || 'Untitled programme', session: r.training_sessions.name, name: r.name }])
     ).values()]
 
+    const linkedOnlyIds = new Set(
+      (workoutRowsById || []).filter(r => r.name?.toLowerCase() !== ex.name.toLowerCase()).map(r => r.id)
+    )
     const workouts = [...new Map(
       [...(workoutRowsByName || []), ...(workoutRowsById || [])]
         .filter(r => r.workouts)
-        .map(r => [r.workouts.name, { workout: r.workouts.name }])
+        .map(r => [r.id, { workout: r.workouts.name, name: r.name, linkedOnly: linkedOnlyIds.has(r.id) }])
     ).values()]
 
     setDeleteCheck({ ex, sessions, workouts })
@@ -730,13 +733,16 @@ export default function ExerciseLibrary() {
                   {deleteCheck.sessions.map((s, i) => (
                     <li key={`s${i}`} className="flex items-start gap-1.5">
                       <span className="text-gray-300 dark:text-gray-600">•</span>
-                      <span>{s.programme} — {s.session}</span>
+                      <span>{s.programme} — {s.session} (shows as "{s.name}")</span>
                     </li>
                   ))}
                   {deleteCheck.workouts.map((w, i) => (
                     <li key={`w${i}`} className="flex items-start gap-1.5">
                       <span className="text-gray-300 dark:text-gray-600">•</span>
-                      <span>Workout: {w.workout}</span>
+                      <span>
+                        Workout: {w.workout} (shows as "{w.name}")
+                        {w.linkedOnly && <span className="text-amber-500"> — still linked to this card even though the text was changed</span>}
+                      </span>
                     </li>
                   ))}
                 </ul>
