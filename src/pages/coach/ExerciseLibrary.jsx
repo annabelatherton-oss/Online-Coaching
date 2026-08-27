@@ -421,6 +421,7 @@ export default function ExerciseLibrary() {
   const [importing, setImporting] = useState(false)
   const [variationsByExercise, setVariationsByExercise] = useState({})
   const [deleteCheck, setDeleteCheck] = useState(null) // null | { ex, loading } | { ex, sessions, workouts }
+  const [replacementId, setReplacementId] = useState('')
 
   async function load() {
     const { data } = await supabase.from('exercises').select('*').eq('coach_id', profile.id).eq('is_archived', false).order('name')
@@ -473,6 +474,7 @@ export default function ExerciseLibrary() {
   }
 
   async function handleDelete(ex) {
+    setReplacementId('')
     setDeleteCheck({ ex, loading: true })
 
     const [{ data: sessionRows }, { data: workoutRowsByName }, { data: workoutRowsById }] = await Promise.all([
@@ -499,6 +501,18 @@ export default function ExerciseLibrary() {
 
   async function confirmDelete() {
     if (!deleteCheck) return
+    await supabase.from('exercises').delete().eq('id', deleteCheck.ex.id)
+    setDeleteCheck(null)
+    load()
+  }
+
+  async function replaceAndDelete(replacement) {
+    if (!deleteCheck || !replacement) return
+    setDeleteCheck(dc => ({ ...dc, replacing: true }))
+    const oldName = deleteCheck.ex.name
+    await supabase.from('session_exercises').update({ name: replacement.name }).ilike('name', oldName)
+    await supabase.from('workout_exercises').update({ name: replacement.name, exercise_id: replacement.id }).ilike('name', oldName)
+    await supabase.from('workout_exercises').update({ name: replacement.name, exercise_id: replacement.id }).eq('exercise_id', deleteCheck.ex.id)
     await supabase.from('exercises').delete().eq('id', deleteCheck.ex.id)
     setDeleteCheck(null)
     load()
@@ -726,11 +740,31 @@ export default function ExerciseLibrary() {
                     </li>
                   ))}
                 </ul>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <select
+                    className="input flex-1 text-sm py-1.5"
+                    value={replacementId}
+                    onChange={e => setReplacementId(e.target.value)}
+                  >
+                    <option value="">Replace with…</option>
+                    {exercises.filter(e => e.id !== deleteCheck.ex.id).map(e => (
+                      <option key={e.id} value={e.id}>{e.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => replaceAndDelete(exercises.find(e => e.id === replacementId))}
+                    disabled={!replacementId || deleteCheck.replacing}
+                    className="btn-primary py-1.5 px-3 text-sm flex-shrink-0 disabled:opacity-50"
+                  >
+                    {deleteCheck.replacing ? 'Replacing…' : 'Replace & delete'}
+                  </button>
+                </div>
               </div>
             )}
             <div className="flex items-center justify-end gap-3 mt-6">
               <button onClick={() => setDeleteCheck(null)} className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Cancel</button>
-              <button onClick={confirmDelete} disabled={deleteCheck.loading} className="bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 px-4 text-sm font-medium disabled:opacity-50">
+              <button onClick={confirmDelete} disabled={deleteCheck.loading || deleteCheck.replacing} className="bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 px-4 text-sm font-medium disabled:opacity-50">
                 Delete anyway
               </button>
             </div>
