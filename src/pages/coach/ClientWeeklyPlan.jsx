@@ -79,6 +79,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const [expandedItemId, setExpandedItemId] = useState(null)
   const [exerciseDrafts, setExerciseDrafts] = useState({})   // workoutId → Exercise[]
   const [exerciseSaving, setExerciseSaving] = useState({})
+  const [exerciseSaveError, setExerciseSaveError] = useState({})
 
   // Populate banner "use different block" expander
   const [showAltPopulate, setShowAltPopulate] = useState(false)
@@ -231,10 +232,12 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
 
   async function saveExercises(workoutId) {
     setExerciseSaving(prev => ({ ...prev, [workoutId]: true }))
+    setExerciseSaveError(prev => ({ ...prev, [workoutId]: '' }))
     const draft = exerciseDrafts[workoutId] || []
-    await supabase.from('workout_exercises').delete().eq('workout_id', workoutId)
+    const { error: deleteErr } = await supabase.from('workout_exercises').delete().eq('workout_id', workoutId)
+    let insertErr = null
     if (draft.length > 0) {
-      await supabase.from('workout_exercises').insert(
+      const { error } = await supabase.from('workout_exercises').insert(
         draft.map((ex, i) => ({
           workout_id: workoutId,
           order_index: i,
@@ -247,11 +250,18 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
           notes: ex.notes?.trim() || null,
         }))
       )
+      insertErr = error
+    }
+    const err = deleteErr || insertErr
+    if (err) {
+      setExerciseSaveError(prev => ({ ...prev, [workoutId]: err.message || 'Save failed — nothing was changed.' }))
+      setExerciseSaving(prev => ({ ...prev, [workoutId]: false }))
+      return
     }
     // Re-fetch to get real IDs
     const { data } = await supabase
       .from('workout_exercises')
-      .select('id, name, sets, reps, rpe, rest_seconds, notes, order_index')
+      .select('id, name, equipment, sets, reps, rpe, rest_seconds, notes, order_index')
       .eq('workout_id', workoutId)
       .order('order_index')
     setExerciseDrafts(prev => ({ ...prev, [workoutId]: data || [] }))
@@ -726,13 +736,20 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                       </svg>
                                       Add exercise
                                     </button>
-                                    <button
-                                      onClick={() => saveExercises(item.workout_id)}
-                                      disabled={exerciseSaving[item.workout_id]}
-                                      className="btn-primary py-1 px-3 text-xs"
-                                    >
-                                      {exerciseSaving[item.workout_id] ? 'Saving…' : 'Save'}
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                      {exerciseSaveError[item.workout_id] && (
+                                        <span className="text-xs text-red-500 max-w-[10rem] truncate" title={exerciseSaveError[item.workout_id]}>
+                                          {exerciseSaveError[item.workout_id]}
+                                        </span>
+                                      )}
+                                      <button
+                                        onClick={() => saveExercises(item.workout_id)}
+                                        disabled={exerciseSaving[item.workout_id]}
+                                        className={`py-1 px-3 text-xs rounded-lg font-medium ${exerciseSaveError[item.workout_id] ? 'bg-red-500 hover:bg-red-600 text-white' : 'btn-primary'}`}
+                                      >
+                                        {exerciseSaving[item.workout_id] ? 'Saving…' : exerciseSaveError[item.workout_id] ? 'Retry' : 'Save'}
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
                               )}

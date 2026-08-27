@@ -112,6 +112,7 @@ export default function WorkoutEditor() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [exSearch, setExSearch] = useState('')
   const [showExSearch, setShowExSearch] = useState(false)
   const searchRef = useRef(null)
@@ -180,16 +181,18 @@ export default function WorkoutEditor() {
   async function save() {
     if (!workout) return
     setSaving(true)
-    await supabase.from('workouts').update({
+    setSaveError('')
+    const { error: workoutErr } = await supabase.from('workouts').update({
       name: workout.name.trim() || 'Workout',
       description: workout.description,
       warmup: workout.warmup,
       cooldown: workout.cooldown,
     }).eq('id', workoutId)
 
-    await supabase.from('workout_exercises').delete().eq('workout_id', workoutId)
+    const { error: deleteErr } = await supabase.from('workout_exercises').delete().eq('workout_id', workoutId)
+    let insertErr = null
     if (exercises.length > 0) {
-      await supabase.from('workout_exercises').insert(
+      const { error } = await supabase.from('workout_exercises').insert(
         exercises.map((ex, i) => ({
           workout_id: workoutId,
           exercise_id: ex.exercise_id || null,
@@ -205,9 +208,15 @@ export default function WorkoutEditor() {
           notes: ex.notes?.trim() || null,
         }))
       )
+      insertErr = error
     }
 
     setSaving(false)
+    const err = workoutErr || deleteErr || insertErr
+    if (err) {
+      setSaveError(err.message || 'Save failed — nothing was changed.')
+      return
+    }
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -343,9 +352,10 @@ export default function WorkoutEditor() {
 
       {/* Save */}
       <div className="flex items-center justify-end gap-3">
-        {saved && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
-        <button onClick={save} disabled={saving} className="btn-primary py-2 px-6 text-sm">
-          {saving ? 'Saving…' : 'Save workout'}
+        {saveError && <span className="text-sm text-red-500 max-w-md truncate" title={saveError}>{saveError}</span>}
+        {saved && !saveError && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
+        <button onClick={save} disabled={saving} className={`py-2 px-6 text-sm rounded-lg font-medium ${saveError ? 'bg-red-500 hover:bg-red-600 text-white' : 'btn-primary'}`}>
+          {saving ? 'Saving…' : saveError ? 'Save failed — retry' : 'Save workout'}
         </button>
       </div>
     </div>

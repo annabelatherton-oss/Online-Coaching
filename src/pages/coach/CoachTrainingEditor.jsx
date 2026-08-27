@@ -156,6 +156,7 @@ function SessionCard({ session, onDelete, occupiedDays, library }) {
   const [exercises, setExercises] = useState(session.exercises || [])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [expanded, setExpanded] = useState(true)
 
   function addExercise() {
@@ -184,11 +185,13 @@ function SessionCard({ session, onDelete, occupiedDays, library }) {
 
   async function save() {
     setSaving(true)
+    setSaveError('')
     const name = buildName(day, label)
-    await supabase.from('training_sessions').update({ name }).eq('id', session.id)
-    await supabase.from('session_exercises').delete().eq('session_id', session.id)
+    const { error: sessionErr } = await supabase.from('training_sessions').update({ name }).eq('id', session.id)
+    const { error: deleteErr } = await supabase.from('session_exercises').delete().eq('session_id', session.id)
+    let insertErr = null
     if (exercises.length > 0) {
-      await supabase.from('session_exercises').insert(
+      const { error } = await supabase.from('session_exercises').insert(
         exercises.map((ex, i) => ({
           session_id: session.id,
           order_index: i,
@@ -203,8 +206,14 @@ function SessionCard({ session, onDelete, occupiedDays, library }) {
           video_url: ex.video_url ?? null,
         }))
       )
+      insertErr = error
     }
     setSaving(false)
+    const err = sessionErr || deleteErr || insertErr
+    if (err) {
+      setSaveError(err.message || 'Save failed — nothing was changed.')
+      return
+    }
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -244,10 +253,11 @@ function SessionCard({ session, onDelete, occupiedDays, library }) {
           type="button"
           onClick={save}
           disabled={saving}
-          className="btn-primary py-1.5 px-3 text-sm flex-shrink-0"
+          className={`py-1.5 px-3 text-sm flex-shrink-0 rounded-lg font-medium ${saveError ? 'bg-red-500 hover:bg-red-600 text-white' : 'btn-primary'}`}
         >
-          {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
+          {saving ? 'Saving…' : saveError ? 'Save failed — retry' : saved ? '✓ Saved' : 'Save'}
         </button>
+        {saveError && <span className="text-xs text-red-500 flex-shrink-0 max-w-[16rem] truncate" title={saveError}>{saveError}</span>}
 
         <button
           type="button"
