@@ -6,7 +6,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-const EQUIPMENT_OPTIONS = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'Pec Deck', 'EZ Bar', 'Kettlebell', 'Bodyweight', 'Band', 'Other']
+const EQUIPMENT_OPTIONS = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'Pec Deck', 'EZ Bar', 'Straight Bar', 'Kettlebell', 'Bodyweight', 'Band', 'Other']
 
 function parseDayLabel(name) {
   for (const day of WEEK_DAYS) {

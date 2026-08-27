@@ -82,7 +82,16 @@ WHERE se.session_id = ts.id
   AND se.name = 'Seated Row (Lats)'
   AND tp.name LIKE '%Block 2%';
 
--- ── Still need equipment confirmed (left blank — set from the coach UI or a follow-up UPDATE) ──
--- Hack Squat, Hyperextensions, Lat Pull Down, Leg Extension(s), Leg Press,
--- Leg Press (Quad Focus), Low Row, Lying Hamstring Curl(s), Seated Hamstring Curl,
--- Straight Bar Lat Raises, T-Bar Row, Viking Press
+-- ── Remaining equipment, confirmed by coach ──────────────────────────────────
+
+UPDATE session_exercises SET equipment = 'Machine'      WHERE name = 'Hack Squat';
+UPDATE session_exercises SET equipment = 'Machine'      WHERE name = 'Hyperextensions';
+UPDATE session_exercises SET equipment = 'Cable'        WHERE name = 'Lat Pull Down';
+UPDATE session_exercises SET equipment = 'Machine'      WHERE name IN ('Leg Extension', 'Leg Extensions');
+UPDATE session_exercises SET equipment = 'Machine'      WHERE name IN ('Leg Press', 'Leg Press (Quad Focus)');
+UPDATE session_exercises SET equipment = 'Machine'      WHERE name = 'Low Row';
+UPDATE session_exercises SET equipment = 'Machine'      WHERE name IN ('Lying Hamstring Curl', 'Lying Hamstring Curls');
+UPDATE session_exercises SET equipment = 'Machine'      WHERE name = 'Seated Hamstring Curl';
+UPDATE session_exercises SET equipment = 'Straight Bar' WHERE name = 'Straight Bar Lat Raises';
+UPDATE session_exercises SET equipment = 'Machine'      WHERE name = 'T-Bar Row';
+UPDATE session_exercises SET equipment = 'Machine'      WHERE name = 'Viking Press';

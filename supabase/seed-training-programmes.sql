@@ -21,23 +21,23 @@ BEGIN
     VALUES (prog_id, 1, 0, 'Monday — Quads and Hamstrings')
     RETURNING id INTO sess_id;
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 0, 'Hack Squat', '4'::int, '6-10', NULL, NULL);
+    VALUES (sess_id, 0, 'Hack Squat', '4'::int, '6-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 1, 'Leg Press (Quad Focus)', '3'::int, '8-12', NULL, NULL);
+    VALUES (sess_id, 1, 'Leg Press (Quad Focus)', '3'::int, '8-12', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Leg Extension', '4'::int, '12-15', NULL, NULL);
+    VALUES (sess_id, 2, 'Leg Extension', '4'::int, '12-15', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Straight Leg RDL', '3'::int, '8-10', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-12', NULL, 'Machine');
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
     VALUES (prog_id, 1, 1, 'Friday — Pull')
     RETURNING id INTO sess_id;
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 0, 'T-Bar Row', '4'::int, '8-10', NULL, NULL);
+    VALUES (sess_id, 0, 'T-Bar Row', '4'::int, '8-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 1, 'Lat Pull Down', '3'::int, '8-12', NULL, NULL);
+    VALUES (sess_id, 1, 'Lat Pull Down', '3'::int, '8-12', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 2, 'Seated Row (Lats)', '3'::int, '8-12', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
@@ -67,11 +67,11 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 0, 'Step Ups', '3'::int, '8-10', NULL, 'Smith Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 1, 'Leg Press', '3'::int, '8-10', 'Glute Focussed', NULL);
+    VALUES (sess_id, 1, 'Leg Press', '3'::int, '8-10', 'Glute Focussed', 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Hyperextensions', '3'::int, '12-15', NULL, NULL);
+    VALUES (sess_id, 2, 'Hyperextensions', '3'::int, '12-15', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 3, 'Viking Press', '3'::int, '6-11', NULL, NULL);
+    VALUES (sess_id, 3, 'Viking Press', '3'::int, '6-11', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 4, 'Lat Raises', '3'::int, '12-15', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
@@ -89,7 +89,7 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Glute Focussed RDLs', '3'::int, '8-10', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, 'Machine');
 
   -- ══ 4 Day — Block 1 (Hypertrophy) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
@@ -108,7 +108,7 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Glute Focussed RDLs', '3'::int, '8-10', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, 'Machine');
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
     VALUES (prog_id, 1, 1, 'Friday — Active Rest')
@@ -134,9 +134,9 @@ BEGIN
     VALUES (prog_id, 1, 3, 'Saturday — Pull')
     RETURNING id INTO sess_id;
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 0, 'T-Bar Row', '4'::int, '8-10', NULL, NULL);
+    VALUES (sess_id, 0, 'T-Bar Row', '4'::int, '8-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 1, 'Lat Pull Down', '3'::int, '8-12', NULL, NULL);
+    VALUES (sess_id, 1, 'Lat Pull Down', '3'::int, '8-12', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 2, 'Seated Row (Lats)', '3'::int, '8-12', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
@@ -150,15 +150,15 @@ BEGIN
     VALUES (prog_id, 1, 4, 'Thursday — Quads and Hamstrings')
     RETURNING id INTO sess_id;
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 0, 'Hack Squat', '4'::int, '6-10', NULL, NULL);
+    VALUES (sess_id, 0, 'Hack Squat', '4'::int, '6-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 1, 'Leg Press (Quad Focus)', '3'::int, '8-12', NULL, NULL);
+    VALUES (sess_id, 1, 'Leg Press (Quad Focus)', '3'::int, '8-12', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Leg Extension', '4'::int, '12-15', NULL, NULL);
+    VALUES (sess_id, 2, 'Leg Extension', '4'::int, '12-15', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Straight Leg RDL', '3'::int, '8-10', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-12', NULL, 'Machine');
 
   -- ══ 3 Day — Block 1 (Hypertrophy) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
@@ -173,21 +173,21 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 1, 'Cable Kickbacks', '3'::int, '10-12', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Hack Squat', '3'::int, '6-10', NULL, NULL);
+    VALUES (sess_id, 2, 'Hack Squat', '3'::int, '6-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 3, 'Leg Extension', '3'::int, '12-15', NULL, NULL);
+    VALUES (sess_id, 3, 'Leg Extension', '3'::int, '12-15', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 4, 'Straight Leg RDL', '3'::int, '8-10', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 5, 'Seated Hamstring Curl', '3'::int, '8-12', NULL, NULL);
+    VALUES (sess_id, 5, 'Seated Hamstring Curl', '3'::int, '8-12', NULL, 'Machine');
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
     VALUES (prog_id, 1, 1, 'Saturday — Pull')
     RETURNING id INTO sess_id;
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 0, 'T-Bar Row', '4'::int, '8-10', NULL, NULL);
+    VALUES (sess_id, 0, 'T-Bar Row', '4'::int, '8-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 1, 'Lat Pull Down', '3'::int, '8-12', NULL, NULL);
+    VALUES (sess_id, 1, 'Lat Pull Down', '3'::int, '8-12', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 2, 'Seated Row (Lats)', '3'::int, '8-12', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
@@ -228,13 +228,13 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 0, 'Back Squat', '4'::int, '4-6', 'As heavy as possible', 'Barbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 1, 'Leg Press', '3'::int, '8-10', NULL, NULL);
+    VALUES (sess_id, 1, 'Leg Press', '3'::int, '8-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Leg Extensions', '3'::int, '12-15', 'Last set = drop set', NULL);
+    VALUES (sess_id, 2, 'Leg Extensions', '3'::int, '12-15', 'Last set = drop set', 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Straight Leg RDL', '3'::int, '8-10', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-12', NULL, 'Machine');
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
     VALUES (prog_id, 1, 1, 'Friday — Pull')
@@ -244,7 +244,7 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 1, 'Chest Supported Row', '3'::int, '8-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-10', NULL, NULL);
+    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-10', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Seated Row (Lats)', '3'::int, '8-12', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
@@ -272,9 +272,9 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 0, 'Step Ups', '3'::int, '8-10', NULL, 'Smith Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 1, 'Leg Press', '3'::int, '10-12', 'Glute Focussed - Feet high and wide', NULL);
+    VALUES (sess_id, 1, 'Leg Press', '3'::int, '10-12', 'Glute Focussed - Feet high and wide', 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Hyperextensions', '3'::int, '12-15', NULL, NULL);
+    VALUES (sess_id, 2, 'Hyperextensions', '3'::int, '12-15', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Cable Lateral Raise', '3'::int, '12-15', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
@@ -292,7 +292,7 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Cable Kickbacks', '3'::int, '12-15', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, 'Machine');
 
   -- ══ 4 Day — Block 2 (Strength) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
@@ -305,13 +305,13 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 0, 'Back Squat', '4'::int, '4-6', 'As heavy as possible', 'Barbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 1, 'Leg Press', '3'::int, '8-10', NULL, NULL);
+    VALUES (sess_id, 1, 'Leg Press', '3'::int, '8-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Leg Extensions', '3'::int, '12-15', 'Last set = drop set', NULL);
+    VALUES (sess_id, 2, 'Leg Extensions', '3'::int, '12-15', 'Last set = drop set', 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Straight Leg RDL', '3'::int, '8-10', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-12', NULL, 'Machine');
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
     VALUES (prog_id, 1, 1, 'Friday — Active Rest')
@@ -341,7 +341,7 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 1, 'Chest Supported Row', '3'::int, '8-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-10', NULL, NULL);
+    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-10', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Seated Row (Lats)', '3'::int, '8-12', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
@@ -361,7 +361,7 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Cable Kickbacks', '3'::int, '12-15', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, 'Machine');
 
   -- ══ 3 Day — Block 2 (Strength) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
@@ -380,9 +380,9 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Glute Focussed Bulgarians', '3'::int, '8-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Leg Extension', '3'::int, '12-15', NULL, NULL);
+    VALUES (sess_id, 4, 'Leg Extension', '3'::int, '12-15', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 5, 'Seated Hamstring Curl', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 5, 'Seated Hamstring Curl', '3'::int, '10-12', NULL, 'Machine');
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
     VALUES (prog_id, 1, 1, 'Saturday — Pull')
@@ -392,7 +392,7 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 1, 'Chest Supported Row', '3'::int, '8-10', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-10', NULL, NULL);
+    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-10', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Seated Row (Lats)', '3'::int, '8-12', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
@@ -433,11 +433,11 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 1, 'Quad Bulgarian Split Squat', '3'::int, '8-12', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Leg Extensions', '3'::int, '12-15', 'Last set = drop set', NULL);
+    VALUES (sess_id, 2, 'Leg Extensions', '3'::int, '12-15', 'Last set = drop set', 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Straight Leg RDL', '3'::int, '8-12', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-15', NULL, NULL);
+    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-15', NULL, 'Machine');
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
     VALUES (prog_id, 1, 1, 'Friday — Pull')
@@ -447,9 +447,9 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 1, 'Seated Cable Row', '3'::int, '8-12', 'Upper Back focussed', 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-12', 'Lat Focussed - Underhand grip', NULL);
+    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-12', 'Lat Focussed - Underhand grip', 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 3, 'Low Row', '3'::int, '10-12', 'Lat Focussed', NULL);
+    VALUES (sess_id, 3, 'Low Row', '3'::int, '10-12', 'Lat Focussed', 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 4, 'Rear Delt Cable Flys', '3'::int, '12-15', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
@@ -477,11 +477,11 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 0, 'Hip Thrust - Hold', '4'::int, '8-10', 'Hold for 4 seconds', 'Barbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 1, 'Leg Press', '3'::int, '10-12', 'Glute Focussed - Feet high and wide', NULL);
+    VALUES (sess_id, 1, 'Leg Press', '3'::int, '10-12', 'Glute Focussed - Feet high and wide', 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Hyperextensions', '3'::int, '12-15', NULL, NULL);
+    VALUES (sess_id, 2, 'Hyperextensions', '3'::int, '12-15', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 3, 'Straight Bar Lat Raises', '3'::int, '12-15', NULL, NULL);
+    VALUES (sess_id, 3, 'Straight Bar Lat Raises', '3'::int, '12-15', NULL, 'Straight Bar');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 4, 'Lateral Raise', '4'::int, '10-15', '5s hold at the top - control down', 'Dumbbell');
 
@@ -497,7 +497,7 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Good Mornings', '3'::int, '10-12', NULL, 'Smith Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, 'Machine');
 
   -- ══ 4 Day — Block 3 (Block 3) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
@@ -512,11 +512,11 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 1, 'Quad Bulgarian Split Squat', '3'::int, '8-12', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Leg Extensions', '3'::int, '12-15', 'Last set = drop set', NULL);
+    VALUES (sess_id, 2, 'Leg Extensions', '3'::int, '12-15', 'Last set = drop set', 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Straight Leg RDL', '3'::int, '8-12', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-15', NULL, NULL);
+    VALUES (sess_id, 4, 'Seated Hamstring Curl', '3'::int, '10-15', NULL, 'Machine');
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
     VALUES (prog_id, 1, 1, 'Friday — Active Rest')
@@ -548,9 +548,9 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 1, 'Seated Cable Row', '3'::int, '8-12', 'Upper Back focussed', 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-12', 'Lat Focussed - Underhand grip', NULL);
+    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-12', 'Lat Focussed - Underhand grip', 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 3, 'Low Row', '3'::int, '10-12', 'Lat Focussed', NULL);
+    VALUES (sess_id, 3, 'Low Row', '3'::int, '10-12', 'Lat Focussed', 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 4, 'Rear Delt Cable Flys', '3'::int, '12-15', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
@@ -566,9 +566,9 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 2, 'Goblet Squats', '3'::int, '10-12', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 3, 'Hyperextensions', '3'::int, '12-15', NULL, NULL);
+    VALUES (sess_id, 3, 'Hyperextensions', '3'::int, '12-15', NULL, 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 4, 'Lying Hamstring Curls', '3'::int, '10-12', NULL, 'Machine');
 
   -- ══ 3 Day — Block 3 (Block 3) ══
   INSERT INTO training_programs (coach_id, name, weeks_total, current_week, top_lifts)
@@ -587,7 +587,7 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 3, 'Straight Leg RDL', '3'::int, '8-12', NULL, 'Dumbbell');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 4, 'Lying Hamstring Curl', '3'::int, '10-12', NULL, NULL);
+    VALUES (sess_id, 4, 'Lying Hamstring Curl', '3'::int, '10-12', NULL, 'Machine');
 
   INSERT INTO training_sessions (program_id, week_number, order_index, name)
     VALUES (prog_id, 1, 1, 'Saturday — Pull')
@@ -597,9 +597,9 @@ BEGIN
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 1, 'Seated Cable Row', '3'::int, '8-12', 'Upper Back focussed', 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-12', 'Lat Focussed - Underhand grip', NULL);
+    VALUES (sess_id, 2, 'Lat Pull Down', '3'::int, '8-12', 'Lat Focussed - Underhand grip', 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
-    VALUES (sess_id, 3, 'Low Row', '3'::int, '10-12', 'Lat Focussed', NULL);
+    VALUES (sess_id, 3, 'Low Row', '3'::int, '10-12', 'Lat Focussed', 'Machine');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
     VALUES (sess_id, 4, 'Rear Delt Cable Flys', '3'::int, '12-15', NULL, 'Cable');
   INSERT INTO session_exercises (session_id, order_index, name, sets, reps, notes, equipment)
