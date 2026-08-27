@@ -420,6 +420,7 @@ export default function ExerciseLibrary() {
   const [seeding, setSeeding] = useState(false)
   const [importing, setImporting] = useState(false)
   const [variationsByExercise, setVariationsByExercise] = useState({})
+  const [deleteCheck, setDeleteCheck] = useState(null) // null | { ex, loading } | { ex, sessions, workouts }
 
   async function load() {
     const { data } = await supabase.from('exercises').select('*').eq('coach_id', profile.id).eq('is_archived', false).order('name')
@@ -472,8 +473,34 @@ export default function ExerciseLibrary() {
   }
 
   async function handleDelete(ex) {
-    if (!confirm(`Permanently delete "${ex.name}"? This removes it and all its variations for good — it can't be undone. Any workout exercise built from it keeps its name but loses the library link.`)) return
-    await supabase.from('exercises').delete().eq('id', ex.id)
+    setDeleteCheck({ ex, loading: true })
+
+    const [{ data: sessionRows }, { data: workoutRowsByName }, { data: workoutRowsById }] = await Promise.all([
+      supabase.from('session_exercises').select('id, training_sessions(name, training_programs(name))').ilike('name', ex.name),
+      supabase.from('workout_exercises').select('id, workouts(name)').ilike('name', ex.name),
+      supabase.from('workout_exercises').select('id, workouts(name)').eq('exercise_id', ex.id),
+    ])
+
+    const sessions = [...new Map(
+      (sessionRows || [])
+        .filter(r => r.training_sessions)
+        .map(r => [`${r.training_sessions.training_programs?.name}|${r.training_sessions.name}`,
+          { programme: r.training_sessions.training_programs?.name || 'Untitled programme', session: r.training_sessions.name }])
+    ).values()]
+
+    const workouts = [...new Map(
+      [...(workoutRowsByName || []), ...(workoutRowsById || [])]
+        .filter(r => r.workouts)
+        .map(r => [r.workouts.name, { workout: r.workouts.name }])
+    ).values()]
+
+    setDeleteCheck({ ex, sessions, workouts })
+  }
+
+  async function confirmDelete() {
+    if (!deleteCheck) return
+    await supabase.from('exercises').delete().eq('id', deleteCheck.ex.id)
+    setDeleteCheck(null)
     load()
   }
 
@@ -669,6 +696,46 @@ export default function ExerciseLibrary() {
           onSave={handleSave}
           onClose={() => setModal(null)}
         />
+      )}
+
+      {deleteCheck && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteCheck(null)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Delete "{deleteCheck.ex.name}"?</h2>
+            {deleteCheck.loading ? (
+              <p className="text-sm text-gray-400 py-4">Checking where it's used…</p>
+            ) : (deleteCheck.sessions.length === 0 && deleteCheck.workouts.length === 0) ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Not used in any training programme or workout — safe to delete.</p>
+            ) : (
+              <div className="mt-2 space-y-3">
+                <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+                  Currently used in {deleteCheck.sessions.length + deleteCheck.workouts.length} place{deleteCheck.sessions.length + deleteCheck.workouts.length !== 1 ? 's' : ''} — deleting it won't remove it from these (they're just text), but you'll want to swap it there yourself:
+                </p>
+                <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1 max-h-48 overflow-y-auto">
+                  {deleteCheck.sessions.map((s, i) => (
+                    <li key={`s${i}`} className="flex items-start gap-1.5">
+                      <span className="text-gray-300 dark:text-gray-600">•</span>
+                      <span>{s.programme} — {s.session}</span>
+                    </li>
+                  ))}
+                  {deleteCheck.workouts.map((w, i) => (
+                    <li key={`w${i}`} className="flex items-start gap-1.5">
+                      <span className="text-gray-300 dark:text-gray-600">•</span>
+                      <span>Workout: {w.workout}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <button onClick={() => setDeleteCheck(null)} className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Cancel</button>
+              <button onClick={confirmDelete} disabled={deleteCheck.loading} className="bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 px-4 text-sm font-medium disabled:opacity-50">
+                Delete anyway
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
