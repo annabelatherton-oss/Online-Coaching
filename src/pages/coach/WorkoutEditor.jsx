@@ -3,20 +3,30 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import ExerciseThumb from '../../components/ExerciseThumb'
 
 const EQUIPMENT_OPTIONS = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'Pec Deck', 'EZ Bar', 'Straight Bar', 'Kettlebell', 'Bodyweight', 'Band', 'Other']
 
-function ExRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown, library }) {
+function ExRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown, library, variationsByExerciseId }) {
   const [expanded, setExpanded] = useState(false)
+  const variations = ex.exercise_id ? (variationsByExerciseId[ex.exercise_id] || []) : []
+  const equipmentOptions = variations.length > 0 ? variations.map(v => v.equipment).filter(Boolean) : EQUIPMENT_OPTIONS
 
   function handleNameChange(val) {
     onChange('name', val)
     const match = library.find(l => l.name.toLowerCase() === val.toLowerCase())
     if (match) {
-      if (match.default_rest_seconds && !ex.rest_seconds) onChange('rest_seconds', match.default_rest_seconds)
-      if (match.tempo && !ex.tempo) onChange('tempo', match.tempo)
       if (match.id) onChange('exercise_id', match.id)
-      if (match.equipment && !ex.equipment) onChange('equipment', match.equipment)
+    }
+  }
+
+  function handleEquipmentChange(val) {
+    onChange('equipment', val || null)
+    const variation = variations.find(v => v.equipment === val)
+    if (variation) {
+      if (variation.tempo && !ex.tempo) onChange('tempo', variation.tempo)
+      if (variation.default_rest_seconds && !ex.rest_seconds) onChange('rest_seconds', variation.default_rest_seconds)
+      if (variation.video_url) onChange('video_url', variation.video_url)
     }
   }
 
@@ -45,11 +55,16 @@ function ExRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown, libra
         <select
           className="input py-1.5 text-sm w-32"
           value={ex.equipment ?? ''}
-          onChange={e => onChange('equipment', e.target.value || null)}
+          onChange={e => handleEquipmentChange(e.target.value)}
         >
           <option value="">Variation…</option>
-          {EQUIPMENT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+          {[...new Set(equipmentOptions)].map(opt => <option key={opt} value={opt}>{opt}</option>)}
         </select>
+        {ex.video_url && (
+          <a href={ex.video_url} target="_blank" rel="noopener noreferrer" title="Open variation video" className="flex-shrink-0">
+            <ExerciseThumb videoUrl={ex.video_url} size="sm" />
+          </a>
+        )}
         <input className="input py-1.5 text-sm w-14 text-center" type="number" min={1} placeholder="Sets"
           value={ex.sets ?? ''} onChange={e => onChange('sets', e.target.value ? parseInt(e.target.value) : null)} />
         <input className="input py-1.5 text-sm w-20 text-center" placeholder="Reps"
@@ -93,6 +108,7 @@ export default function WorkoutEditor() {
   const [workout, setWorkout] = useState(null)
   const [exercises, setExercises] = useState([])
   const [library, setLibrary] = useState([])
+  const [variationsByExerciseId, setVariationsByExerciseId] = useState({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -104,12 +120,21 @@ export default function WorkoutEditor() {
     const [{ data: w }, { data: exs }, { data: lib }] = await Promise.all([
       supabase.from('workouts').select('*').eq('id', workoutId).eq('coach_id', profile.id).single(),
       supabase.from('workout_exercises').select('*').eq('workout_id', workoutId).order('order_index'),
-      supabase.from('exercises').select('id, name, primary_muscle, equipment').eq('coach_id', profile.id).eq('is_archived', false).order('name'),
+      supabase.from('exercises').select('id, name, primary_muscle').eq('coach_id', profile.id).eq('is_archived', false).order('name'),
     ])
     if (!w) { navigate('/coach/workouts'); return }
     setWorkout(w)
     setExercises((exs || []).map(ex => ({ ...ex, _key: ex.id })))
     setLibrary(lib || [])
+    const ids = (lib || []).map(l => l.id)
+    if (ids.length > 0) {
+      const { data: vars } = await supabase.from('exercise_variations').select('*').in('exercise_id', ids).order('order_index')
+      const grouped = {}
+      ;(vars || []).forEach(v => { (grouped[v.exercise_id] ||= []).push(v) })
+      setVariationsByExerciseId(grouped)
+    } else {
+      setVariationsByExerciseId({})
+    }
     setLoading(false)
   }
 
@@ -124,7 +149,8 @@ export default function WorkoutEditor() {
       _key: Math.random().toString(36).slice(2),
       exercise_id: libEx?.id || null,
       name: libEx?.name || '',
-      equipment: libEx?.equipment || null,
+      equipment: null,
+      video_url: null,
       sets: null, reps: '', rpe: '', tempo: '', rest_seconds: null, notes: '',
     }])
     setExSearch('')
@@ -170,6 +196,7 @@ export default function WorkoutEditor() {
           order_index: i,
           name: ex.name.trim() || 'Exercise',
           equipment: ex.equipment || null,
+          video_url: ex.video_url || null,
           sets: ex.sets ?? null,
           reps: ex.reps?.trim() || null,
           rpe: ex.rpe?.trim() || null,
@@ -250,6 +277,7 @@ export default function WorkoutEditor() {
             idx={i}
             total={exercises.length}
             library={library}
+            variationsByExerciseId={variationsByExerciseId}
             onChange={(field, value) => updateEx(i, field, value)}
             onRemove={() => removeEx(i)}
             onMoveUp={() => moveUp(i)}
@@ -284,7 +312,11 @@ export default function WorkoutEditor() {
                       className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                       <span className="text-sm font-medium text-gray-900 dark:text-white">{ex.name}</span>
                       {ex.primary_muscle && <span className="text-xs text-gray-400">{ex.primary_muscle}</span>}
-                      {ex.equipment && <span className="text-xs text-gray-400 ml-auto">{ex.equipment}</span>}
+                      {(variationsByExerciseId[ex.id] || []).some(v => v.equipment) && (
+                        <span className="text-xs text-gray-400 ml-auto">
+                          {(variationsByExerciseId[ex.id] || []).map(v => v.equipment).filter(Boolean).join(' · ')}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>

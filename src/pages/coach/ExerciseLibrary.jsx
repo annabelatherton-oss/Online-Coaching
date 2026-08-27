@@ -23,7 +23,11 @@ const MUSCLE_COLOURS = {
 
 const SEED_EXERCISES = [
   // ── GLUTES ──────────────────────────────────────────────────────────────
-  { name: 'Hip Thrust', primary_muscle: 'Glutes', equipment: '', exercise_type: 'Compound', difficulty: 'Intermediate', default_rest_seconds: 120, coaching_cues: 'Shoulders on the bench, push through your heels and squeeze your glutes hard at the top. Keep your chin tucked and your back flat — don\'t arch your lower back. Works with a barbell, Smith machine, or a band around your knees.' },
+  { name: 'Hip Thrust', primary_muscle: 'Glutes', exercise_type: 'Compound', difficulty: 'Intermediate', variations: [
+    { equipment: 'Barbell', default_rest_seconds: 120, coaching_cues: 'Push through your heels and squeeze your glutes hard at the top. Keep your chin tucked and your back flat — don\'t arch your lower back.' },
+    { equipment: 'Smith Machine', default_rest_seconds: 90, coaching_cues: 'Put the bar pad across your hips, keep your feet flat and rest your shoulders on the bench. Push through your heels and squeeze your glutes at the top.' },
+    { equipment: 'Resistance Band', default_rest_seconds: 60, coaching_cues: 'Push your knees outward against the band throughout every rep. Squeeze your glutes hard at the top.' },
+  ] },
   { name: 'Glute Bridge', primary_muscle: 'Glutes', equipment: 'Bodyweight', exercise_type: 'Compound', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Feet flat and hip-width apart. Push through your heels, squeeze your glutes hard at the top, and hold for 1–2 seconds. Keep your stomach tight.' },
   { name: 'Romanian Deadlift', primary_muscle: 'Glutes', secondary_muscles: ['Hamstrings'], equipment: 'Barbell', exercise_type: 'Compound', difficulty: 'Intermediate', default_rest_seconds: 120, coaching_cues: 'Bend forward from the hips with a slight bend in your knees. Keep the bar close to your legs. You should feel a stretch in your hamstrings at the bottom — stand back up by pushing your hips forward.' },
   { name: 'Single Leg Romanian Deadlift', primary_muscle: 'Glutes', secondary_muscles: ['Hamstrings'], equipment: 'Dumbbell', exercise_type: 'Compound', difficulty: 'Advanced', default_rest_seconds: 90, coaching_cues: 'Slight bend in the standing knee. Hinge forward keeping your hips level — don\'t let them rotate. Feel the stretch in the glute of your standing leg.' },
@@ -103,10 +107,20 @@ const SEED_EXERCISES = [
   { name: 'Dips', primary_muscle: 'Chest', secondary_muscles: ['Triceps'], equipment: 'Bodyweight', exercise_type: 'Compound', difficulty: 'Intermediate', default_rest_seconds: 90, coaching_cues: 'For chest: lean forward slightly, wider grip, feel the stretch across your chest at the bottom. For triceps: stay upright. Lower to a deep stretch and drive back up.' },
 
   // ── SHOULDERS ────────────────────────────────────────────────────────────
-  { name: 'Shoulder Press', primary_muscle: 'Shoulders', secondary_muscles: ['Triceps'], equipment: '', exercise_type: 'Compound', difficulty: 'Beginner', default_rest_seconds: 120, coaching_cues: 'Press directly overhead to full extension, whether using a barbell, dumbbells, or a machine. Keep your core tight and don\'t overarch your lower back. Control the lowering phase.' },
+  { name: 'Shoulder Press', primary_muscle: 'Shoulders', secondary_muscles: ['Triceps'], exercise_type: 'Compound', difficulty: 'Beginner', variations: [
+    { equipment: 'Barbell', default_rest_seconds: 150, coaching_cues: 'Grip slightly wider than shoulder-width. Bar rests on the front of your shoulders. Tighten your core and press straight up to full extension. Lower under control.' },
+    { equipment: 'Dumbbell', default_rest_seconds: 120, coaching_cues: 'Dumbbells at ear height with elbows at 90°. Press up close to full extension. Control the return back to ear height.' },
+    { equipment: 'Machine', default_rest_seconds: 90, coaching_cues: 'Adjust the seat so the handles are at shoulder height. Press to full extension and control the return. Great for pressing to failure safely without needing a spotter.' },
+  ] },
   { name: 'Landmine Press', primary_muscle: 'Shoulders', secondary_muscles: ['Triceps', 'Core'], equipment: 'Barbell', exercise_type: 'Compound', difficulty: 'Intermediate', default_rest_seconds: 90, coaching_cues: 'Hold the end of the bar with one hand, stagger your feet, and press upward in an arc. This angle is easier on the shoulder than pressing straight overhead.' },
-  { name: 'Lateral Raise', primary_muscle: 'Shoulders', equipment: '', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Slight lean forward. Lead with your pinky side and elbow (not your hand). Raise to shoulder height and lower slowly under control — whether using dumbbells or a cable.' },
-  { name: 'Rear Delt Fly', primary_muscle: 'Shoulders', secondary_muscles: ['Back'], equipment: '', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Bent over with dumbbells, or cables crossed at face height. Arms slightly bent — drive your elbows up and out, squeezing the back of your shoulders. Don\'t turn it into a row.' },
+  { name: 'Lateral Raise', primary_muscle: 'Shoulders', exercise_type: 'Isolation', difficulty: 'Beginner', variations: [
+    { equipment: 'Dumbbell', default_rest_seconds: 60, coaching_cues: 'Slight lean forward. Lead with your pinky side and elbow (not your hand). Raise arms to shoulder height. Lower slowly over about 4 seconds. Don\'t swing or use momentum.' },
+    { equipment: 'Cable', default_rest_seconds: 60, coaching_cues: 'Cable at hip height from the side. Pull your arm up to parallel with a slight lean forward. Control the return. Keeps tension on the shoulder better than dumbbells.' },
+  ] },
+  { name: 'Rear Delt Fly', primary_muscle: 'Shoulders', secondary_muscles: ['Back'], exercise_type: 'Isolation', difficulty: 'Beginner', variations: [
+    { equipment: 'Dumbbell', default_rest_seconds: 60, coaching_cues: 'Bent over or lying down. Arms slightly bent. Drive your elbows up and out, squeezing the back of your shoulders at the top. Don\'t turn it into a row by bending the elbows too much.' },
+    { equipment: 'Cable', default_rest_seconds: 60, coaching_cues: 'Cables crossed at face height. Pull your arms apart and back with a slight bend in the elbows. Squeeze the back of your shoulders at the end.' },
+  ] },
   { name: 'Lying Rear Delt Raise', primary_muscle: 'Shoulders', equipment: 'Dumbbell', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Lie face down on an incline bench, arms hanging below. Raise your arms out to the sides and up. The bench keeps you from swinging — pure rear shoulder work.' },
   { name: 'Front Raise', primary_muscle: 'Shoulders', equipment: 'Dumbbell', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Raise the dumbbells to eye level, then lower slowly. Keep your core tight and don\'t swing. Note: the front of the shoulder is usually well worked from pressing exercises, so use this sparingly.' },
   { name: 'Band Pull Apart', primary_muscle: 'Shoulders', secondary_muscles: ['Back'], equipment: 'Resistance Band', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 45, coaching_cues: 'Hold the band at shoulder height. Pull it apart squeezing the back of your shoulders and upper back. Great for posture and shoulder health. Use as a warm-up or finisher.' },
@@ -114,7 +128,10 @@ const SEED_EXERCISES = [
   { name: 'Upright Row', primary_muscle: 'Shoulders', secondary_muscles: ['Back', 'Biceps'], equipment: 'Barbell', exercise_type: 'Compound', difficulty: 'Intermediate', default_rest_seconds: 90, coaching_cues: 'Grip shoulder-width or a little wider. Lead with your elbows up and out. Raise the bar to about lower chest height. Use a wider grip to reduce shoulder discomfort. Skip this if your shoulders are sensitive.' },
 
   // ── BICEPS ───────────────────────────────────────────────────────────────
-  { name: 'Barbell Curl', primary_muscle: 'Biceps', equipment: '', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Keep your elbows at your sides. Curl to a full squeeze at the top and lower slowly over 3 seconds. An EZ bar\'s angled grip is easier on the wrists if a straight bar bothers you.' },
+  { name: 'Barbell Curl', primary_muscle: 'Biceps', exercise_type: 'Isolation', difficulty: 'Beginner', variations: [
+    { equipment: 'Barbell', default_rest_seconds: 60, coaching_cues: 'Keep your elbows at your sides. Curl up to a full squeeze at the top and lower slowly over 3 seconds. Don\'t swing or use your back.' },
+    { equipment: 'EZ Bar', default_rest_seconds: 60, coaching_cues: 'Same as a barbell curl but the angled grip is easier on the wrists. Elbows at your sides, full squeeze at the top, slow lowering.' },
+  ] },
   { name: 'Dumbbell Curl', primary_muscle: 'Biceps', equipment: 'Dumbbell', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Rotate your palm to face upward as you curl (palm should face the ceiling at the top). Squeeze the bicep and lower with control. Good for working each arm independently.' },
   { name: 'Hammer Curl', primary_muscle: 'Biceps', secondary_muscles: ['Forearms'], equipment: 'Dumbbell', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Thumbs-up grip throughout. Curl to shoulder height and squeeze at the top. Works the muscles that add thickness to the upper arm, not just the bicep.' },
   { name: 'Cable Curl', primary_muscle: 'Biceps', equipment: 'Cable', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Elbows at your sides. Curl to a full squeeze and lower slowly. The cable keeps tension on the bicep the whole time, unlike a barbell which loses tension at the top.' },
@@ -129,7 +146,10 @@ const SEED_EXERCISES = [
   { name: 'Tricep Pushdown', primary_muscle: 'Triceps', equipment: 'Cable', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Keep your elbows at your sides. Push down to full extension squeezing the tricep. Lower slowly and controlled. Don\'t let your elbows flare out.' },
   { name: 'Rope Pushdown', primary_muscle: 'Triceps', equipment: 'Cable', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Same as a pushdown but pull the rope apart at the bottom for a better squeeze at the end of each rep.' },
   { name: 'Skull Crusher', primary_muscle: 'Triceps', equipment: 'Barbell', exercise_type: 'Isolation', difficulty: 'Intermediate', default_rest_seconds: 90, coaching_cues: 'Elbows pointing toward the ceiling. Lower the bar toward your forehead or behind your head, then extend back to full lockout. Only your elbows should move — keep your upper arms still.' },
-  { name: 'Overhead Tricep Extension', primary_muscle: 'Triceps', equipment: '', exercise_type: 'Isolation', difficulty: 'Beginner', default_rest_seconds: 60, coaching_cues: 'Elbow(s) pointed at the ceiling throughout. Lower behind your head to a full stretch, then extend fully — using a dumbbell, cable, or rope attachment.' },
+  { name: 'Overhead Tricep Extension', primary_muscle: 'Triceps', exercise_type: 'Isolation', difficulty: 'Beginner', variations: [
+    { equipment: 'Cable', default_rest_seconds: 60, coaching_cues: 'Face away from the cable or use a high pulley. Lean slightly forward and extend your arms from behind your head to full lockout. The overhead position gives a better stretch on the tricep.' },
+    { equipment: 'Dumbbell', default_rest_seconds: 60, coaching_cues: 'Hold one dumbbell with both hands overhead. Elbow pointed at the ceiling. Lower behind your head then extend fully. The overhead position gives the tricep a good stretch.' },
+  ] },
   { name: 'Close Grip Bench Press', primary_muscle: 'Triceps', secondary_muscles: ['Chest'], equipment: 'Barbell', exercise_type: 'Compound', difficulty: 'Intermediate', default_rest_seconds: 120, coaching_cues: 'Grip shoulder-width (not too narrow). Elbows at about 45° from your body. Lower to your lower chest and drive through the triceps to full extension. You can go heavier than most isolation tricep exercises.' },
   { name: 'JM Press', primary_muscle: 'Triceps', equipment: 'Barbell', exercise_type: 'Isolation', difficulty: 'Intermediate', default_rest_seconds: 90, coaching_cues: 'A mix between a skull crusher and a close grip press. Lower toward your chin with elbows tucked, then press up and slightly away. Great for loading the triceps heavy.' },
   { name: 'Tricep Dips', primary_muscle: 'Triceps', secondary_muscles: ['Chest'], equipment: 'Bodyweight', exercise_type: 'Compound', difficulty: 'Intermediate', default_rest_seconds: 90, coaching_cues: 'Stay upright to work the triceps more (lean forward for more chest). Elbows point straight behind you. Lower to a deep stretch and drive back up. Add weight when bodyweight becomes easy.' },
@@ -166,7 +186,8 @@ const SEED_EXERCISES = [
   { name: 'Donkey Calf Raise', primary_muscle: 'Calves', equipment: 'Machine', exercise_type: 'Isolation', difficulty: 'Intermediate', coaching_cues: 'Bent forward at the hips with full range of motion. The forward lean gives an extra stretch at the bottom for more muscle stimulus.' },
 ]
 
-const EMPTY_FORM = { name: '', primary_muscle: '', secondary_muscles: [], equipment: '', exercise_type: '', difficulty: '', video_url: '', coaching_cues: '', instructions: '', tempo: '', default_rest_seconds: '', tags: [], notes: '' }
+const EMPTY_FORM = { name: '', primary_muscle: '', secondary_muscles: [], exercise_type: '', difficulty: '', tags: [], notes: '' }
+const EMPTY_VARIATION = { equipment: '', video_url: '', instructions: '', coaching_cues: '', tempo: '', default_rest_seconds: '' }
 
 function Badge({ label, colourClass }) {
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colourClass || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>{label}</span>
@@ -177,13 +198,35 @@ function ExerciseModal({ exercise, onSave, onClose }) {
     ...exercise,
     secondary_muscles: exercise.secondary_muscles || [],
     tags: exercise.tags || [],
-    default_rest_seconds: exercise.default_rest_seconds ?? '',
   } : { ...EMPTY_FORM })
+  const [variations, setVariations] = useState([{ ...EMPTY_VARIATION }])
+  const [activeTab, setActiveTab] = useState(0)
+  const [loadingVariations, setLoadingVariations] = useState(!!exercise)
   const [saving, setSaving] = useState(false)
   const [tagInput, setTagInput] = useState('')
   const [secInput, setSecInput] = useState('')
 
+  useEffect(() => {
+    if (!exercise) return
+    supabase.from('exercise_variations').select('*').eq('exercise_id', exercise.id).order('order_index').then(({ data }) => {
+      setVariations(data && data.length > 0 ? data.map(v => ({ ...v, default_rest_seconds: v.default_rest_seconds ?? '' })) : [{ ...EMPTY_VARIATION }])
+      setLoadingVariations(false)
+    })
+  }, [exercise])
+
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
+  function setVariation(idx, field, value) {
+    setVariations(prev => prev.map((v, i) => i === idx ? { ...v, [field]: value } : v))
+  }
+  function addVariation() {
+    setVariations(prev => [...prev, { ...EMPTY_VARIATION }])
+    setActiveTab(variations.length)
+  }
+  function removeVariation(idx) {
+    if (variations.length <= 1) return
+    setVariations(prev => prev.filter((_, i) => i !== idx))
+    setActiveTab(t => Math.max(0, t >= idx ? t - 1 : t))
+  }
 
   async function handleSave() {
     if (!form.name.trim()) return
@@ -191,8 +234,15 @@ function ExerciseModal({ exercise, onSave, onClose }) {
     await onSave({
       ...form,
       name: form.name.trim(),
-      default_rest_seconds: form.default_rest_seconds !== '' ? parseInt(form.default_rest_seconds) : null,
-    })
+    }, variations.map((v, i) => ({
+      equipment: v.equipment || null,
+      video_url: v.video_url || null,
+      instructions: v.instructions || null,
+      coaching_cues: v.coaching_cues || null,
+      tempo: v.tempo || null,
+      default_rest_seconds: v.default_rest_seconds !== '' && v.default_rest_seconds != null ? parseInt(v.default_rest_seconds) : null,
+      order_index: i,
+    })))
     setSaving(false)
   }
 
@@ -215,13 +265,6 @@ function ExerciseModal({ exercise, onSave, onClose }) {
               <select className="input w-full" value={form.primary_muscle} onChange={e => set('primary_muscle', e.target.value)}>
                 <option value="">Select…</option>
                 {MUSCLE_GROUPS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Equipment</label>
-              <select className="input w-full" value={form.equipment} onChange={e => set('equipment', e.target.value)}>
-                <option value="">Select…</option>
-                {EQUIPMENT_LIST.map(e => <option key={e} value={e}>{e}</option>)}
               </select>
             </div>
             <div>
@@ -260,30 +303,76 @@ function ExerciseModal({ exercise, onSave, onClose }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Default rest (seconds)</label>
-              <input type="number" min={0} className="input w-full" placeholder="e.g. 90" value={form.default_rest_seconds} onChange={e => set('default_rest_seconds', e.target.value)} />
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Variations</label>
+              <button type="button" onClick={addVariation} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">+ Add variation</button>
             </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Tempo</label>
-              <input className="input w-full" placeholder="e.g. 3010" value={form.tempo} onChange={e => set('tempo', e.target.value)} />
-            </div>
-          </div>
 
-          <div>
-            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Video URL (optional)</label>
-            <input type="url" className="input w-full" placeholder="https://…" value={form.video_url} onChange={e => set('video_url', e.target.value)} />
-          </div>
+            {loadingVariations ? (
+              <div className="text-sm text-gray-400 py-4">Loading variations…</div>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {variations.map((v, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setActiveTab(i)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        activeTab === i
+                          ? 'bg-brand-500 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      {v.equipment || `Variation ${i + 1}`}
+                    </button>
+                  ))}
+                </div>
 
-          <div>
-            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Coaching cues</label>
-            <textarea rows={2} className="input w-full resize-none" placeholder="Key cues for the client…" value={form.coaching_cues} onChange={e => set('coaching_cues', e.target.value)} />
-          </div>
+                <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 mr-3">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Equipment *</label>
+                      <select className="input w-full" value={variations[activeTab]?.equipment || ''} onChange={e => setVariation(activeTab, 'equipment', e.target.value)}>
+                        <option value="">Select…</option>
+                        {EQUIPMENT_LIST.map(e => <option key={e} value={e}>{e}</option>)}
+                      </select>
+                    </div>
+                    {variations.length > 1 && (
+                      <button type="button" onClick={() => removeVariation(activeTab)}
+                        className="text-xs text-gray-400 hover:text-red-500 mt-4 flex-shrink-0">Remove variation</button>
+                    )}
+                  </div>
 
-          <div>
-            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Instructions</label>
-            <textarea rows={3} className="input w-full resize-none" placeholder="Step-by-step instructions…" value={form.instructions} onChange={e => set('instructions', e.target.value)} />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Default rest (seconds)</label>
+                      <input type="number" min={0} className="input w-full" placeholder="e.g. 90" value={variations[activeTab]?.default_rest_seconds ?? ''} onChange={e => setVariation(activeTab, 'default_rest_seconds', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Tempo</label>
+                      <input className="input w-full" placeholder="e.g. 3010" value={variations[activeTab]?.tempo || ''} onChange={e => setVariation(activeTab, 'tempo', e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Video URL (optional)</label>
+                    <input type="url" className="input w-full" placeholder="https://…" value={variations[activeTab]?.video_url || ''} onChange={e => setVariation(activeTab, 'video_url', e.target.value)} />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Coaching cues</label>
+                    <textarea rows={2} className="input w-full resize-none" placeholder="Key cues for the client…" value={variations[activeTab]?.coaching_cues || ''} onChange={e => setVariation(activeTab, 'coaching_cues', e.target.value)} />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Instructions</label>
+                    <textarea rows={3} className="input w-full resize-none" placeholder="Step-by-step instructions…" value={variations[activeTab]?.instructions || ''} onChange={e => setVariation(activeTab, 'instructions', e.target.value)} />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           <div>
@@ -330,10 +419,20 @@ export default function ExerciseLibrary() {
   const [modal, setModal] = useState(null) // null | 'new' | exercise object
   const [seeding, setSeeding] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [variationsByExercise, setVariationsByExercise] = useState({})
 
   async function load() {
     const { data } = await supabase.from('exercises').select('*').eq('coach_id', profile.id).eq('is_archived', false).order('name')
     setExercises(data || [])
+    const ids = (data || []).map(e => e.id)
+    if (ids.length > 0) {
+      const { data: vars } = await supabase.from('exercise_variations').select('*').in('exercise_id', ids).order('order_index')
+      const grouped = {}
+      ;(vars || []).forEach(v => { (grouped[v.exercise_id] ||= []).push(v) })
+      setVariationsByExercise(grouped)
+    } else {
+      setVariationsByExercise({})
+    }
     setLoading(false)
   }
 
@@ -341,7 +440,7 @@ export default function ExerciseLibrary() {
 
   const filtered = exercises.filter(ex => {
     if (filterMuscle && ex.primary_muscle !== filterMuscle) return false
-    if (filterEquipment && ex.equipment !== filterEquipment) return false
+    if (filterEquipment && !(variationsByExercise[ex.id] || []).some(v => v.equipment === filterEquipment)) return false
     if (filterType && ex.exercise_type !== filterType) return false
     if (search) {
       const q = search.toLowerCase()
@@ -350,11 +449,17 @@ export default function ExerciseLibrary() {
     return true
   })
 
-  async function handleSave(form) {
+  async function handleSave(form, variations) {
+    let exerciseId = modal === 'new' ? null : modal.id
     if (modal === 'new') {
-      await supabase.from('exercises').insert({ ...form, coach_id: profile.id })
+      const { data } = await supabase.from('exercises').insert({ ...form, coach_id: profile.id }).select('id').single()
+      exerciseId = data?.id
     } else {
       await supabase.from('exercises').update(form).eq('id', modal.id)
+    }
+    if (exerciseId) {
+      await supabase.from('exercise_variations').delete().eq('exercise_id', exerciseId)
+      await supabase.from('exercise_variations').insert(variations.map(v => ({ ...v, exercise_id: exerciseId })))
     }
     setModal(null)
     load()
@@ -364,6 +469,21 @@ export default function ExerciseLibrary() {
     if (!confirm(`Archive "${ex.name}"?`)) return
     await supabase.from('exercises').update({ is_archived: true }).eq('id', ex.id)
     load()
+  }
+
+  // A seed entry either has `.variations` (multi-equipment) or flat equipment/video_url/
+  // instructions/coaching_cues/tempo/default_rest_seconds fields (single implicit variation).
+  function seedVariationRows(ex) {
+    if (ex.variations) return ex.variations
+    if (!ex.equipment && !ex.coaching_cues && !ex.tempo && !ex.default_rest_seconds && !ex.video_url && !ex.instructions) return []
+    return [{
+      equipment: ex.equipment || null,
+      video_url: ex.video_url || null,
+      instructions: ex.instructions || null,
+      coaching_cues: ex.coaching_cues || null,
+      tempo: ex.tempo || null,
+      default_rest_seconds: ex.default_rest_seconds ?? null,
+    }]
   }
 
   async function refreshSeedData() {
@@ -379,24 +499,45 @@ export default function ExerciseLibrary() {
           id: existing.id,
           primary_muscle: ex.primary_muscle || existing.primary_muscle,
           secondary_muscles: ex.secondary_muscles || existing.secondary_muscles || [],
-          equipment: ex.equipment || existing.equipment,
           exercise_type: ex.exercise_type || existing.exercise_type,
           difficulty: ex.difficulty || existing.difficulty,
-          coaching_cues: ex.coaching_cues || existing.coaching_cues,
-          default_rest_seconds: ex.default_rest_seconds ?? existing.default_rest_seconds,
         }
       })
 
     const toInsert = SEED_EXERCISES
       .filter(ex => !existingByName[ex.name.toLowerCase()])
-      .map(ex => ({ ...ex, coach_id: profile.id, secondary_muscles: ex.secondary_muscles || [] }))
+      .map(ex => ({
+        name: ex.name,
+        primary_muscle: ex.primary_muscle || null,
+        secondary_muscles: ex.secondary_muscles || [],
+        exercise_type: ex.exercise_type || null,
+        difficulty: ex.difficulty || null,
+        coach_id: profile.id,
+      }))
 
     if (toUpdate.length > 0) {
       await supabase.from('exercises').upsert(toUpdate, { onConflict: 'id' })
     }
+    let inserted = []
     if (toInsert.length > 0) {
-      await supabase.from('exercises').insert(toInsert)
+      const { data } = await supabase.from('exercises').insert(toInsert).select('id, name')
+      inserted = data || []
     }
+
+    // Only add variation rows where the exercise doesn't already have any —
+    // never overwrite a coach's own edits to an existing exercise's variations.
+    const variationInserts = []
+    for (const ex of SEED_EXERCISES) {
+      const existing = existingByName[ex.name.toLowerCase()]
+      const existingId = existing?.id || inserted.find(i => i.name.toLowerCase() === ex.name.toLowerCase())?.id
+      if (!existingId) continue
+      if (existing && (variationsByExercise[existingId] || []).length > 0) continue
+      seedVariationRows(ex).forEach((v, i) => variationInserts.push({ ...v, exercise_id: existingId, order_index: i }))
+    }
+    if (variationInserts.length > 0) {
+      await supabase.from('exercise_variations').insert(variationInserts)
+    }
+
     await load()
     setSeeding(false)
   }
@@ -485,6 +626,11 @@ export default function ExerciseLibrary() {
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-gray-900 dark:text-white text-sm leading-tight">{ex.name}</p>
+                {(variationsByExercise[ex.id] || []).some(v => v.equipment) && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                    {(variationsByExercise[ex.id] || []).map(v => v.equipment).filter(Boolean).join(' · ')}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-1 mt-2">
                   {ex.primary_muscle && (
                     <Badge label={ex.primary_muscle} colourClass={MUSCLE_COLOURS[ex.primary_muscle]} />
