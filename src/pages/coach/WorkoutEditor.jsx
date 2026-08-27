@@ -4,6 +4,8 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
+const EQUIPMENT_OPTIONS = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'Pec Deck', 'EZ Bar', 'Straight Bar', 'Kettlebell', 'Bodyweight', 'Band', 'Other']
+
 function ExRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown, library }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -14,6 +16,7 @@ function ExRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown, libra
       if (match.default_rest_seconds && !ex.rest_seconds) onChange('rest_seconds', match.default_rest_seconds)
       if (match.tempo && !ex.tempo) onChange('tempo', match.tempo)
       if (match.id) onChange('exercise_id', match.id)
+      if (match.equipment && !ex.equipment) onChange('equipment', match.equipment)
     }
   }
 
@@ -39,6 +42,14 @@ function ExRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown, libra
           value={ex.name}
           onChange={e => handleNameChange(e.target.value)}
         />
+        <select
+          className="input py-1.5 text-sm w-32"
+          value={ex.equipment ?? ''}
+          onChange={e => onChange('equipment', e.target.value || null)}
+        >
+          <option value="">Variation…</option>
+          {EQUIPMENT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
         <input className="input py-1.5 text-sm w-14 text-center" type="number" min={1} placeholder="Sets"
           value={ex.sets ?? ''} onChange={e => onChange('sets', e.target.value ? parseInt(e.target.value) : null)} />
         <input className="input py-1.5 text-sm w-20 text-center" placeholder="Reps"
@@ -113,6 +124,7 @@ export default function WorkoutEditor() {
       _key: Math.random().toString(36).slice(2),
       exercise_id: libEx?.id || null,
       name: libEx?.name || '',
+      equipment: libEx?.equipment || null,
       sets: null, reps: '', rpe: '', tempo: '', rest_seconds: null, notes: '',
     }])
     setExSearch('')
@@ -157,6 +169,7 @@ export default function WorkoutEditor() {
           exercise_id: ex.exercise_id || null,
           order_index: i,
           name: ex.name.trim() || 'Exercise',
+          equipment: ex.equipment || null,
           sets: ex.sets ?? null,
           reps: ex.reps?.trim() || null,
           rpe: ex.rpe?.trim() || null,
@@ -218,6 +231,7 @@ export default function WorkoutEditor() {
         <div className="flex items-center gap-2">
           <div className="flex gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pl-10 flex-1">
             <span className="flex-1">Exercise</span>
+            <span className="w-32 text-center">Variation</span>
             <span className="w-14 text-center">Sets</span>
             <span className="w-20 text-center">Reps</span>
             <span className="w-16 text-center">RPE</span>

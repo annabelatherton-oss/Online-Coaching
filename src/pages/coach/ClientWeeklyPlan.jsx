@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const EQUIPMENT_OPTIONS = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'Pec Deck', 'EZ Bar', 'Straight Bar', 'Kettlebell', 'Bodyweight', 'Band', 'Other']
 
 function parseProgram(name) {
   const m = (name || '').match(/^(\d+)\s*Day\s*[–—\-]\s*Block\s*(\d+)/i)
@@ -200,7 +201,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     if (item.workout_id && exerciseDrafts[item.workout_id] === undefined) {
       const { data } = await supabase
         .from('workout_exercises')
-        .select('id, name, sets, reps, rpe, rest_seconds, notes, order_index')
+        .select('id, name, equipment, sets, reps, rpe, rest_seconds, notes, order_index')
         .eq('workout_id', item.workout_id)
         .order('order_index')
       setExerciseDrafts(prev => ({ ...prev, [item.workout_id]: data || [] }))
@@ -217,7 +218,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   function addExercise(workoutId) {
     setExerciseDrafts(prev => ({
       ...prev,
-      [workoutId]: [...(prev[workoutId] || []), { _key: Math.random().toString(36).slice(2), name: '', sets: null, reps: '', rpe: '', notes: '' }],
+      [workoutId]: [...(prev[workoutId] || []), { _key: Math.random().toString(36).slice(2), name: '', equipment: null, sets: null, reps: '', rpe: '', notes: '' }],
     }))
   }
 
@@ -238,6 +239,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
           workout_id: workoutId,
           order_index: i,
           name: ex.name?.trim() || 'Exercise',
+          equipment: ex.equipment || null,
           sets: ex.sets ? parseInt(ex.sets) : null,
           reps: ex.reps?.trim() || null,
           rpe: ex.rpe?.trim() || null,
@@ -661,6 +663,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                   {exercises.length > 0 && (
                                     <div className="flex gap-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide pb-1 border-b border-brand-100 dark:border-brand-800/30">
                                       <span className="flex-1">Exercise</span>
+                                      <span className="w-20 text-center">Variation</span>
                                       <span className="w-12 text-center">Sets</span>
                                       <span className="w-16 text-center">Reps</span>
                                       <span className="w-12 text-center">RPE</span>
@@ -679,6 +682,14 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                         value={ex.name}
                                         onChange={e => updateExercise(item.workout_id, idx, 'name', e.target.value)}
                                       />
+                                      <select
+                                        className="input py-1 text-xs w-20"
+                                        value={ex.equipment ?? ''}
+                                        onChange={e => updateExercise(item.workout_id, idx, 'equipment', e.target.value || null)}
+                                      >
+                                        <option value="">Variation…</option>
+                                        {EQUIPMENT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                      </select>
                                       <input
                                         className="input py-1 text-xs w-12 text-center"
                                         type="number"
