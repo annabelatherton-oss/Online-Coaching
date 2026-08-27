@@ -202,7 +202,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     if (item.workout_id && exerciseDrafts[item.workout_id] === undefined) {
       const { data } = await supabase
         .from('workout_exercises')
-        .select('id, name, equipment, sets, reps, rpe, rest_seconds, notes, order_index')
+        .select('id, name, equipment, exercise_id, sets, reps, rpe, rest_seconds, notes, order_index')
         .eq('workout_id', item.workout_id)
         .order('order_index')
       setExerciseDrafts(prev => ({ ...prev, [item.workout_id]: data || [] }))
@@ -212,14 +212,22 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   function updateExercise(workoutId, idx, field, value) {
     setExerciseDrafts(prev => ({
       ...prev,
-      [workoutId]: prev[workoutId].map((ex, i) => i === idx ? { ...ex, [field]: value } : ex),
+      [workoutId]: prev[workoutId].map((ex, i) => {
+        if (i !== idx) return ex
+        const updated = { ...ex, [field]: value }
+        if (field === 'name') {
+          const match = exerciseLibrary.find(l => l.name.toLowerCase() === value.toLowerCase())
+          updated.exercise_id = match?.id || null
+        }
+        return updated
+      }),
     }))
   }
 
   function addExercise(workoutId) {
     setExerciseDrafts(prev => ({
       ...prev,
-      [workoutId]: [...(prev[workoutId] || []), { _key: Math.random().toString(36).slice(2), name: '', equipment: null, sets: null, reps: '', rpe: '', notes: '' }],
+      [workoutId]: [...(prev[workoutId] || []), { _key: Math.random().toString(36).slice(2), name: '', equipment: null, exercise_id: null, sets: null, reps: '', rpe: '', notes: '' }],
     }))
   }
 
@@ -243,6 +251,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
           order_index: i,
           name: ex.name?.trim() || 'Exercise',
           equipment: ex.equipment || null,
+          exercise_id: ex.exercise_id || null,
           sets: ex.sets ? parseInt(ex.sets) : null,
           reps: ex.reps?.trim() || null,
           rpe: ex.rpe?.trim() || null,
@@ -261,7 +270,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     // Re-fetch to get real IDs
     const { data } = await supabase
       .from('workout_exercises')
-      .select('id, name, equipment, sets, reps, rpe, rest_seconds, notes, order_index')
+      .select('id, name, equipment, exercise_id, sets, reps, rpe, rest_seconds, notes, order_index')
       .eq('workout_id', workoutId)
       .order('order_index')
     setExerciseDrafts(prev => ({ ...prev, [workoutId]: data || [] }))
