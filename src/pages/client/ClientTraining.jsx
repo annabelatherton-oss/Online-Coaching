@@ -261,7 +261,14 @@ export default function ClientTraining() {
                       <div key={ex.id} className="px-3 py-2.5 flex gap-2.5">
                         <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 dark:text-white leading-tight">{ex.name}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white leading-tight">{ex.name}</p>
+                            {ex.equipment && (
+                              <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full leading-none">
+                                {ex.equipment}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-400 dark:text-gray-500">
                             {numSets} sets{prescription ? ` · ${prescription}` : ''}
                           </p>

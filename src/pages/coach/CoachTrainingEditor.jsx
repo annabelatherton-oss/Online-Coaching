@@ -6,6 +6,8 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
+const EQUIPMENT_OPTIONS = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'Pec Deck', 'EZ Bar', 'Kettlebell', 'Bodyweight', 'Band', 'Other']
+
 function parseDayLabel(name) {
   for (const day of WEEK_DAYS) {
     if (name === day) return { day, label: '' }
@@ -67,6 +69,15 @@ function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFir
           value={exercise.name}
           onChange={e => onChange('name', e.target.value)}
         />
+
+        <select
+          className="input py-1.5 text-sm w-32"
+          value={exercise.equipment ?? ''}
+          onChange={e => onChange('equipment', e.target.value || null)}
+        >
+          <option value="">Variation…</option>
+          {EQUIPMENT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
 
         <input className="input py-1.5 text-sm w-14 text-center" placeholder="Sets" type="number" min={1}
           value={exercise.sets ?? ''} onChange={e => onChange('sets', e.target.value ? parseInt(e.target.value) : null)} />
@@ -148,7 +159,7 @@ function SessionCard({ session, onDelete, occupiedDays, library }) {
   const [expanded, setExpanded] = useState(true)
 
   function addExercise() {
-    setExercises(prev => [...prev, { _key: Math.random().toString(36).slice(2), name: '', sets: null, reps: '', rpe: '', notes: '', illustration_url: null, video_url: null }])
+    setExercises(prev => [...prev, { _key: Math.random().toString(36).slice(2), name: '', sets: null, reps: '', rpe: '', notes: '', equipment: null, illustration_url: null, video_url: null }])
   }
 
   function update(idx, field, value) {
@@ -187,6 +198,7 @@ function SessionCard({ session, onDelete, occupiedDays, library }) {
           rpe: ex.rpe?.trim() || null,
           rest_seconds: ex.rest_seconds || null,
           notes: ex.notes?.trim() || null,
+          equipment: ex.equipment || null,
           illustration_url: ex.illustration_url ?? null,
           video_url: ex.video_url ?? null,
         }))
@@ -256,6 +268,7 @@ function SessionCard({ session, onDelete, occupiedDays, library }) {
             <div className="pt-2">
               <div className="flex gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pb-1 pl-5">
                 <span className="flex-1">Exercise</span>
+                <span className="w-32 text-center">Variation</span>
                 <span className="w-14 text-center">Sets</span>
                 <span className="w-20 text-center">Reps</span>
                 <span className="w-16 text-center">RPE</span>
@@ -412,7 +425,7 @@ export default function CoachTrainingEditor() {
           src.exercises.map((ex, i) => ({
             session_id: newSess.id, order_index: i, name: ex.name, sets: ex.sets,
             reps: ex.reps, rpe: ex.rpe, rest_seconds: ex.rest_seconds, notes: ex.notes,
-            illustration_url: ex.illustration_url, video_url: ex.video_url,
+            equipment: ex.equipment, illustration_url: ex.illustration_url, video_url: ex.video_url,
           }))
         )
         exercises = src.exercises.map(ex => ({ ...ex, _key: Math.random().toString(36).slice(2) }))
