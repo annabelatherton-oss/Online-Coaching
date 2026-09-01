@@ -23,16 +23,28 @@ function buildName(day, label) {
   return label.trim() ? `${day} — ${label.trim()}` : day
 }
 
-function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFirst, isLast, library }) {
+function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFirst, isLast, library, variationsByExerciseId }) {
   const hasMedia = !!(exercise.illustration_url || exercise.video_url)
   const [mediaOpen, setMediaOpen] = useState(hasMedia)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
 
+  const variations = exercise.exercise_id ? (variationsByExerciseId[exercise.exercise_id] || []) : []
+  const equipmentOptions = variations.length > 0 ? [...new Set(variations.map(v => v.equipment).filter(Boolean))] : EQUIPMENT_OPTIONS
+
   function handleNameChange(val) {
     onChange('name', val)
     const match = library.find(l => l.name.toLowerCase() === val.toLowerCase())
     onChange('exercise_id', match?.id || null)
+  }
+
+  function handleEquipmentChange(val) {
+    onChange('equipment', val || null)
+    const variation = variations.find(v => v.equipment === val)
+    if (variation) {
+      if (variation.default_rest_seconds && !exercise.rest_seconds) onChange('rest_seconds', variation.default_rest_seconds)
+      if (variation.video_url) onChange('video_url', variation.video_url)
+    }
   }
 
   async function handleFile(e) {
@@ -79,10 +91,10 @@ function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFir
         <select
           className="input py-1.5 text-sm w-32"
           value={exercise.equipment ?? ''}
-          onChange={e => onChange('equipment', e.target.value || null)}
+          onChange={e => handleEquipmentChange(e.target.value)}
         >
           <option value="">Variation…</option>
-          {EQUIPMENT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+          {equipmentOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
         </select>
 
         <input className="input py-1.5 text-sm w-14 text-center" placeholder="Sets" type="number" min={1}
@@ -155,7 +167,7 @@ function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFir
   )
 }
 
-function SessionCard({ session, onDelete, occupiedDays, library }) {
+function SessionCard({ session, onDelete, occupiedDays, library, variationsByExerciseId }) {
   const parsed = parseDayLabel(session.name)
   const [day, setDay] = useState(parsed.day || '')
   const [label, setLabel] = useState(parsed.label)
@@ -296,6 +308,7 @@ function SessionCard({ session, onDelete, occupiedDays, library }) {
                   key={ex.id || ex._key || i}
                   exercise={ex}
                   library={library}
+                  variationsByExerciseId={variationsByExerciseId}
                   onChange={(field, value) => update(i, field, value)}
                   onRemove={() => remove(i)}
                   onMoveUp={() => moveUp(i)}
@@ -351,6 +364,7 @@ export default function CoachTrainingEditor() {
   const [exerciseNames, setExerciseNames] = useState([])
   const [exerciseRepsMap, setExerciseRepsMap] = useState({})
   const [exerciseLibrary, setExerciseLibrary] = useState([])
+  const [variationsByExerciseId, setVariationsByExerciseId] = useState({})
 
   async function loadProgram() {
     const { data } = await supabase
@@ -376,6 +390,15 @@ export default function CoachTrainingEditor() {
       .eq('is_archived', false)
       .order('name')
     setExerciseLibrary(data || [])
+    const ids = (data || []).map(e => e.id)
+    if (ids.length > 0) {
+      const { data: vars } = await supabase.from('exercise_variations').select('*').in('exercise_id', ids).order('order_index')
+      const grouped = {}
+      ;(vars || []).forEach(v => { (grouped[v.exercise_id] ||= []).push(v) })
+      setVariationsByExerciseId(grouped)
+    } else {
+      setVariationsByExerciseId({})
+    }
   }
 
   async function loadExerciseNames() {
@@ -637,6 +660,7 @@ export default function CoachTrainingEditor() {
                   onDelete={deleteSession}
                   occupiedDays={occupiedDays}
                   library={exerciseLibrary}
+                  variationsByExerciseId={variationsByExerciseId}
                 />
               )
             }

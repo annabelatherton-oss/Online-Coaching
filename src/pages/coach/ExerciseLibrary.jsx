@@ -422,6 +422,7 @@ export default function ExerciseLibrary() {
   const [linking, setLinking] = useState(false)
   const [linkResults, setLinkResults] = useState(null)
   const [manualChoices, setManualChoices] = useState({})
+  const [manualEquipment, setManualEquipment] = useState({})
   const [variationsByExercise, setVariationsByExercise] = useState({})
   const [deleteCheck, setDeleteCheck] = useState(null) // null | { ex, loading } | { ex, sessions, workouts }
   const [replacementId, setReplacementId] = useState('')
@@ -612,7 +613,7 @@ export default function ExerciseLibrary() {
     setLinking(true)
     const { data: rows } = await supabase
       .from('session_exercises')
-      .select('id, name, notes, training_sessions(name)')
+      .select('id, name, notes, equipment, training_sessions(name)')
       .is('exercise_id', null)
 
     const linked = []
@@ -646,7 +647,12 @@ export default function ExerciseLibrary() {
     }
 
     for (const { row, exercise } of linked) {
-      await supabase.from('session_exercises').update({ exercise_id: exercise.id }).eq('id', row.id)
+      const update = { exercise_id: exercise.id }
+      if (!row.equipment) {
+        const variations = (variationsByExercise[exercise.id] || []).filter(v => v.equipment)
+        if (variations.length === 1) update.equipment = variations[0].equipment
+      }
+      await supabase.from('session_exercises').update(update).eq('id', row.id)
     }
 
     const dedupeBy = (list, keyFn) => [...new Map(list.map(item => [keyFn(item), item])).values()]
@@ -671,14 +677,15 @@ export default function ExerciseLibrary() {
     setLinking(false)
   }
 
-  async function resolveManualLink(list, key, exerciseId) {
+  async function resolveManualLink(list, key, exerciseId, equipment) {
     const entry = linkResults[list].find(e => e.key === key)
     if (!entry || !exerciseId) return
     for (const row of entry.rows) {
-      await supabase.from('session_exercises').update({ exercise_id: exerciseId }).eq('id', row.id)
+      await supabase.from('session_exercises').update({ exercise_id: exerciseId, equipment: equipment || null }).eq('id', row.id)
     }
     setLinkResults(lr => ({ ...lr, [list]: lr[list].filter(e => e.key !== key) }))
     setManualChoices(prev => { const next = { ...prev }; delete next[key]; return next })
+    setManualEquipment(prev => { const next = { ...prev }; delete next[key]; return next })
   }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
@@ -893,8 +900,20 @@ export default function ExerciseLibrary() {
                             <option value="">Choose…</option>
                             {a.candidates.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>
+                          {(variationsByExercise[manualChoices[a.key]] || []).some(v => v.equipment) && (
+                            <select
+                              className="input w-28 text-xs py-1 flex-shrink-0"
+                              value={manualEquipment[a.key] || ''}
+                              onChange={e => setManualEquipment(prev => ({ ...prev, [a.key]: e.target.value }))}
+                            >
+                              <option value="">Variant…</option>
+                              {variationsByExercise[manualChoices[a.key]].filter(v => v.equipment).map(v => (
+                                <option key={v.id} value={v.equipment}>{v.equipment}</option>
+                              ))}
+                            </select>
+                          )}
                           <button
-                            onClick={() => resolveManualLink('ambiguous', a.key, manualChoices[a.key])}
+                            onClick={() => resolveManualLink('ambiguous', a.key, manualChoices[a.key], manualEquipment[a.key])}
                             disabled={!manualChoices[a.key]}
                             className="btn-primary py-1 px-2.5 text-xs flex-shrink-0 disabled:opacity-50"
                           >
@@ -927,8 +946,20 @@ export default function ExerciseLibrary() {
                             <option value="">Choose…</option>
                             {exercises.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                           </select>
+                          {(variationsByExercise[manualChoices[u.key]] || []).some(v => v.equipment) && (
+                            <select
+                              className="input w-28 text-xs py-1 flex-shrink-0"
+                              value={manualEquipment[u.key] || ''}
+                              onChange={e => setManualEquipment(prev => ({ ...prev, [u.key]: e.target.value }))}
+                            >
+                              <option value="">Variant…</option>
+                              {variationsByExercise[manualChoices[u.key]].filter(v => v.equipment).map(v => (
+                                <option key={v.id} value={v.equipment}>{v.equipment}</option>
+                              ))}
+                            </select>
+                          )}
                           <button
-                            onClick={() => resolveManualLink('unresolved', u.key, manualChoices[u.key])}
+                            onClick={() => resolveManualLink('unresolved', u.key, manualChoices[u.key], manualEquipment[u.key])}
                             disabled={!manualChoices[u.key]}
                             className="btn-primary py-1 px-2.5 text-xs flex-shrink-0 disabled:opacity-50"
                           >
