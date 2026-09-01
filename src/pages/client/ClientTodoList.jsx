@@ -56,12 +56,9 @@ function buildSystemTasks(client, schedItems) {
   // Cardio — one task per cardio item
   const cardioItems = (schedItems || []).filter(i => i.item_type === 'cardio')
   cardioItems.forEach((item, idx) => {
-    const label = item.custom_label
-      ? `Complete ${item.custom_label}`
-      : item.cardio_sessions?.name
-        ? `Complete ${item.cardio_sessions.name}`
-        : 'Complete your cardio'
-    tasks.push({ key: idx === 0 ? 'cardio' : `cardio_${idx}`, label })
+    const name = item.custom_label || item.cardio_sessions?.name
+    const label = `Complete ${name || 'your cardio'}${item.duration_minutes ? ` (${item.duration_minutes} min)` : ''}`
+    tasks.push({ key: idx === 0 ? 'cardio' : `cardio_${idx}`, label, cardioItem: item.cardio_session_id ? item : null })
   })
 
   return tasks
@@ -138,6 +135,25 @@ export default function ClientTodoList() {
   const [expandedId, setExpandedId] = useState(null)
   const [noteDraft, setNoteDraft] = useState('')
 
+  // Cardio detail card
+  const [cardioDetailItem, setCardioDetailItem] = useState(null)
+  const [cardioDetailData, setCardioDetailData] = useState(null)
+  const [cardioDetailLoading, setCardioDetailLoading] = useState(false)
+
+  async function openCardioDetail(item) {
+    setCardioDetailItem(item)
+    setCardioDetailLoading(true)
+    const { data } = await supabase.from('cardio_sessions').select('*').eq('id', item.cardio_session_id).single()
+    setCardioDetailData(data || null)
+    setCardioDetailLoading(false)
+  }
+
+  function closeCardioDetail() {
+    setCardioDetailItem(null)
+    setCardioDetailData(null)
+    setCardioDetailLoading(false)
+  }
+
   // Add custom task
   const [adding, setAdding] = useState(false)
   const [newLabel, setNewLabel] = useState('')
@@ -168,7 +184,7 @@ export default function ClientTodoList() {
       supabase.from('client_daily_tasks').select('*')
         .eq('client_id', clientId).eq('task_date', dateStr).order('created_at'),
       supabase.from('client_schedule_items')
-        .select('id, item_type, workout_id, custom_label, hiit_circuit_id, cardio_session_id, workouts(name), hiit_circuits(name), cardio_sessions(name)')
+        .select('id, item_type, workout_id, custom_label, hiit_circuit_id, cardio_session_id, duration_minutes, workouts(name), hiit_circuits(name), cardio_sessions(name)')
         .eq('client_id', clientId).eq('day_of_week', dayName),
     ])
     setDbTasks(tasks || [])
@@ -272,9 +288,12 @@ export default function ClientTodoList() {
   const selectedLabel = selectedDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
 
   // --- Task row ---
-  function TaskRow({ uid, completed, label, notes, isPrivate, onToggle, onDelete }) {
+  function TaskRow({ uid, completed, label, notes, isPrivate, onToggle, onDelete, onLabelClick }) {
     const isExpanded = expandedId === uid
     const hasNote = !!notes
+    const labelClasses = `flex-1 text-sm font-medium leading-snug text-left ${
+      completed ? 'line-through text-gray-400 dark:text-gray-600' : 'text-gray-800 dark:text-gray-100'
+    } ${onLabelClick ? 'underline decoration-dotted decoration-gray-300 dark:decoration-gray-600 underline-offset-2' : ''}`
     return (
       <div className={`rounded-xl border transition-colors ${
         completed
@@ -283,11 +302,11 @@ export default function ClientTodoList() {
       }`}>
         <div className="flex items-center gap-3 px-4 py-3">
           <CheckCircle checked={completed} onClick={onToggle} />
-          <span className={`flex-1 text-sm font-medium leading-snug ${
-            completed ? 'line-through text-gray-400 dark:text-gray-600' : 'text-gray-800 dark:text-gray-100'
-          }`}>
-            {label}
-          </span>
+          {onLabelClick ? (
+            <button type="button" onClick={onLabelClick} className={labelClasses}>{label}</button>
+          ) : (
+            <span className={labelClasses}>{label}</span>
+          )}
           {isPrivate && (
             <span className="text-gray-300 dark:text-gray-600 flex-shrink-0" title="Private — only you can see this">
               <LockIcon />
@@ -421,6 +440,7 @@ export default function ClientTodoList() {
                   notes={row?.notes || ''}
                   isPrivate={false}
                   onToggle={() => toggleSystem(task.key)}
+                  onLabelClick={task.cardioItem ? () => openCardioDetail(task.cardioItem) : undefined}
                 />
               )
             })}
@@ -482,6 +502,66 @@ export default function ClientTodoList() {
                       className="btn-primary text-xs py-1.5 px-3">Add</button>
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {cardioDetailItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={closeCardioDetail} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {cardioDetailItem.custom_label || cardioDetailData?.name || 'Cardio'}
+              </h2>
+              <button onClick={closeCardioDetail} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl leading-none">×</button>
+            </div>
+
+            {cardioDetailLoading ? (
+              <div className="p-6"><LoadingSpinner size="md" /></div>
+            ) : !cardioDetailData ? (
+              <p className="p-5 text-sm text-gray-400">No extra details for this session yet.</p>
+            ) : (
+              <div className="p-5 space-y-4">
+                <div className="flex flex-wrap gap-1.5">
+                  {cardioDetailItem.duration_minutes && (
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400">
+                      {cardioDetailItem.duration_minutes} min
+                    </span>
+                  )}
+                  {cardioDetailData.intensity && (
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 capitalize">
+                      {cardioDetailData.intensity}
+                    </span>
+                  )}
+                  {cardioDetailData.heart_rate_zone && (
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                      {cardioDetailData.heart_rate_zone}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-3 text-xs text-gray-400 dark:text-gray-500">
+                  {cardioDetailData.distance_km && <span>{cardioDetailData.distance_km} km</span>}
+                  {cardioDetailData.pace && <span>{cardioDetailData.pace}</span>}
+                  {cardioDetailData.incline && <span>{cardioDetailData.incline}% incline</span>}
+                  {cardioDetailData.speed && <span>{cardioDetailData.speed} km/h</span>}
+                </div>
+
+                {cardioDetailData.notes && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">How to do it</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{cardioDetailData.notes}</p>
+                  </div>
+                )}
+                {cardioDetailData.progression && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Progression</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{cardioDetailData.progression}</p>
+                  </div>
+                )}
               </div>
             )}
           </div>

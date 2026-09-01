@@ -50,7 +50,7 @@ const SEED_CARDIO = [
   { name: 'Recovery Session', cardio_type: 'recovery', duration_minutes: 20, intensity: 'low', notes: 'Light movement, foam rolling, mobility work.' },
 ]
 
-const EMPTY_FORM = { name: '', cardio_type: '', duration_minutes: '', distance_km: '', heart_rate_zone: '', intensity: '', pace: '', incline: '', speed: '', notes: '', progression: '' }
+const EMPTY_FORM = { name: '', cardio_type: '', distance_km: '', heart_rate_zone: '', intensity: '', pace: '', incline: '', speed: '', notes: '', progression: '' }
 
 function CardioModal({ session, onSave, onClose }) {
   const [form, setForm] = useState(session ? { ...session } : { ...EMPTY_FORM })
@@ -64,7 +64,6 @@ function CardioModal({ session, onSave, onClose }) {
     await onSave({
       ...form,
       name: form.name.trim(),
-      duration_minutes: form.duration_minutes !== '' ? parseInt(form.duration_minutes) : null,
       distance_km: form.distance_km !== '' ? parseFloat(form.distance_km) : null,
       incline: form.incline !== '' ? parseFloat(form.incline) : null,
       speed: form.speed !== '' ? parseFloat(form.speed) : null,
@@ -92,10 +91,6 @@ function CardioModal({ session, onSave, onClose }) {
                 <option value="">Select…</option>
                 {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Duration (minutes)</label>
-              <input type="number" min={1} className="input w-full" placeholder="45" value={form.duration_minutes} onChange={e => set('duration_minutes', e.target.value)} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Intensity</label>
@@ -255,7 +250,6 @@ export default function CardioLibrary() {
                     )}
                   </div>
                   <div className="flex gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
-                    {s.duration_minutes && <span>{s.duration_minutes} min</span>}
                     {s.distance_km && <span>{s.distance_km} km</span>}
                     {s.incline && <span>{s.incline}% incline</span>}
                     {s.speed && <span>{s.speed} km/h</span>}
