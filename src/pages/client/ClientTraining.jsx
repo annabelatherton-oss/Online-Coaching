@@ -407,12 +407,6 @@ export default function ClientTraining() {
 
                 {detailData.variations[detailTab] && (
                   <div className="space-y-3">
-                    {detailData.variations[detailTab].description && (
-                      <div>
-                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Description</p>
-                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{detailData.variations[detailTab].description}</p>
-                      </div>
-                    )}
                     {detailData.variations[detailTab].video_url && (
                       <a
                         href={detailData.variations[detailTab].video_url}
