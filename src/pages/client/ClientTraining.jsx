@@ -366,7 +366,9 @@ export default function ClientTraining() {
             ) : (
               <div className="p-5 space-y-4">
                 {(detailData.exercise.primary_muscle || detailData.exercise.secondary_muscles?.length > 0) && (
-                  <div className="flex flex-wrap gap-1.5">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Muscles worked</p>
+                    <div className="flex flex-wrap gap-1.5">
                     {detailData.exercise.primary_muscle && (
                       <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
                         {detailData.exercise.primary_muscle}
@@ -377,11 +379,14 @@ export default function ClientTraining() {
                         {m}
                       </span>
                     ))}
+                    </div>
                   </div>
                 )}
 
                 {detailData.variations.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Variation</p>
+                    <div className="flex flex-wrap gap-1.5">
                     {detailData.variations.map((v, i) => (
                       <button
                         key={v.id}
@@ -396,11 +401,18 @@ export default function ClientTraining() {
                         {v.equipment || 'Variation'}{v.equipment === detailEx.equipment ? ' (assigned)' : ''}
                       </button>
                     ))}
+                    </div>
                   </div>
                 )}
 
                 {detailData.variations[detailTab] && (
                   <div className="space-y-3">
+                    {detailData.variations[detailTab].description && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Description</p>
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{detailData.variations[detailTab].description}</p>
+                      </div>
+                    )}
                     {detailData.variations[detailTab].video_url && (
                       <a
                         href={detailData.variations[detailTab].video_url}

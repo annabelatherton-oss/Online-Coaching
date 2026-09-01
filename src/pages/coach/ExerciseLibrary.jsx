@@ -6,6 +6,42 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 const MUSCLE_GROUPS = ['Glutes', 'Quads', 'Hamstrings', 'Back', 'Chest', 'Shoulders', 'Biceps', 'Triceps', 'Core', 'Calves', 'Full Body', 'Adductors', 'Abductors', 'Hip Flexors']
 const EQUIPMENT_LIST = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'EZ Bar', 'Straight Bar', 'Resistance Band', 'Bodyweight', 'Kettlebell', 'Pull-up Bar', 'Trap Bar', 'Landmine', 'Battle Ropes', 'Sled', 'TRX', 'Medicine Ball']
 const EXERCISE_TYPES = ['Compound', 'Isolation']
+
+const EQUIPMENT_DESCRIPTION_PHRASES = {
+  'Barbell': 'using a barbell, which lets you load heavy and progressively overload the movement',
+  'Dumbbell': 'using dumbbells, which let each side work independently and improve stability',
+  'Cable': 'using a cable, which keeps constant tension on the muscle through the full range of motion',
+  'Machine': 'using a machine, which guides the movement path so you can isolate the target muscle safely',
+  'Smith Machine': "using the Smith machine's fixed bar path, letting you focus purely on the muscle without needing to balance the bar",
+  'EZ Bar': 'using an EZ bar, whose angled grip is easier on the wrists than a straight bar',
+  'Straight Bar': 'using a straight bar attachment',
+  'Resistance Band': 'using a resistance band, which increases tension the further you stretch it',
+  'Bodyweight': 'using just your bodyweight, making it accessible anywhere with no equipment needed',
+  'Kettlebell': 'using a kettlebell, ideal for dynamic, momentum-driven movement',
+  'Pull-up Bar': 'using a pull-up bar',
+  'Trap Bar': 'using a trap bar, which keeps the load centred for a more natural pulling position',
+  'Landmine': 'using a landmine attachment, which presses or pulls along a natural arc that is easier on the joints',
+  'Battle Ropes': 'using battle ropes for a conditioning-focused, high-output movement',
+  'Sled': 'using a sled, which loads the muscle without any eccentric (lowering) stress',
+  'TRX': 'using TRX suspension straps, which add an instability challenge on top of the movement',
+  'Medicine Ball': 'using a medicine ball, well suited to explosive, athletic movement',
+  'Pec Deck': "using the pec deck, which guides your arms through a fixed arc so you can isolate the chest safely",
+}
+
+// Builds a sensible default description from an exercise's muscle focus,
+// compound/isolation type, and the specific variation's equipment — so every
+// variation gets tailored text without needing one hand-written per row.
+function generateDescription(name, equipment, primaryMuscle, secondaryMuscles, exerciseType) {
+  const typeText = exerciseType === 'Isolation'
+    ? 'an isolation exercise that focuses tension on one muscle group with minimal help from surrounding muscles'
+    : 'a compound exercise that works multiple joints and muscle groups together'
+  const equipmentText = equipment ? (EQUIPMENT_DESCRIPTION_PHRASES[equipment] || `using ${equipment.toLowerCase()}`) : ''
+  const secondary = (secondaryMuscles || []).filter(Boolean)
+  const muscleText = primaryMuscle
+    ? `It targets your ${primaryMuscle.toLowerCase()}${secondary.length ? `, with secondary emphasis on your ${secondary.map(m => m.toLowerCase()).join(' and ')}` : ''}.`
+    : ''
+  return `${name} is ${typeText}${equipmentText ? `, performed ${equipmentText}` : ''}.${muscleText ? ` ${muscleText}` : ''}`
+}
 const DIFFICULTIES = ['Beginner', 'Intermediate', 'Advanced']
 
 const MUSCLE_COLOURS = {
@@ -187,7 +223,7 @@ const SEED_EXERCISES = [
 ]
 
 const EMPTY_FORM = { name: '', primary_muscle: '', secondary_muscles: [], exercise_type: '', difficulty: '', tags: [], notes: '' }
-const EMPTY_VARIATION = { equipment: '', video_url: '', instructions: '', coaching_cues: '', tempo: '', default_rest_seconds: '' }
+const EMPTY_VARIATION = { equipment: '', video_url: '', description: '', instructions: '', coaching_cues: '', tempo: '', default_rest_seconds: '' }
 
 function Badge({ label, colourClass }) {
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colourClass || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>{label}</span>
@@ -237,6 +273,7 @@ function ExerciseModal({ exercise, onSave, onClose }) {
     }, variations.map((v, i) => ({
       equipment: v.equipment || null,
       video_url: v.video_url || null,
+      description: v.description || null,
       instructions: v.instructions || null,
       coaching_cues: v.coaching_cues || null,
       tempo: v.tempo || null,
@@ -362,6 +399,22 @@ function ExerciseModal({ exercise, onSave, onClose }) {
                   </div>
 
                   <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Description</label>
+                      <button
+                        type="button"
+                        onClick={() => setVariation(activeTab, 'description', generateDescription(
+                          form.name, variations[activeTab]?.equipment, form.primary_muscle, form.secondary_muscles, form.exercise_type
+                        ))}
+                        className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
+                      >
+                        Generate
+                      </button>
+                    </div>
+                    <textarea rows={2} className="input w-full resize-none" placeholder="What this variation is and what it targets…" value={variations[activeTab]?.description || ''} onChange={e => setVariation(activeTab, 'description', e.target.value)} />
+                  </div>
+
+                  <div>
                     <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Coaching cues</label>
                     <textarea rows={2} className="input w-full resize-none" placeholder="Key cues for the client…" value={variations[activeTab]?.coaching_cues || ''} onChange={e => setVariation(activeTab, 'coaching_cues', e.target.value)} />
                   </div>
@@ -418,6 +471,7 @@ export default function ExerciseLibrary() {
   const [filterType, setFilterType] = useState('')
   const [modal, setModal] = useState(null) // null | 'new' | exercise object
   const [seeding, setSeeding] = useState(false)
+  const [filling, setFilling] = useState(false)
   const [importing, setImporting] = useState(false)
   const [linking, setLinking] = useState(false)
   const [linkResults, setLinkResults] = useState(null)
@@ -505,6 +559,23 @@ export default function ExerciseLibrary() {
     await supabase.from('exercises').delete().eq('id', deleteCheck.ex.id)
     setDeleteCheck(null)
     load()
+  }
+
+  // One-off action: fills in a default description for every variation that
+  // doesn't have one yet, so nothing needs hand-writing for the whole library.
+  // Never touches a variation that already has a description (coach edits stay).
+  async function fillMissingDescriptions() {
+    setFilling(true)
+    const updates = []
+    for (const ex of exercises) {
+      for (const v of variationsByExercise[ex.id] || []) {
+        if (v.description) continue
+        updates.push({ id: v.id, description: generateDescription(ex.name, v.equipment, ex.primary_muscle, ex.secondary_muscles, ex.exercise_type) })
+      }
+    }
+    await Promise.all(updates.map(u => supabase.from('exercise_variations').update({ description: u.description }).eq('id', u.id)))
+    await load()
+    setFilling(false)
   }
 
   async function replaceAndDelete(replacement) {
@@ -711,6 +782,10 @@ export default function ExerciseLibrary() {
             className="text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">
             {seeding ? 'Updating…' : exercises.length === 0 ? 'Initialize library' : 'Refresh library data'}
           </button>
+          <button onClick={fillMissingDescriptions} disabled={filling}
+            className="text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">
+            {filling ? 'Filling…' : 'Fill missing descriptions'}
+          </button>
           <button onClick={() => setModal('new')} className="btn-primary py-1.5 px-4 text-sm">
             + Add exercise
           </button>
@@ -782,6 +857,11 @@ export default function ExerciseLibrary() {
                     } />
                   )}
                 </div>
+                {(variationsByExercise[ex.id] || []).find(v => v.description)?.description && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 line-clamp-2">
+                    {(variationsByExercise[ex.id] || []).find(v => v.description).description}
+                  </p>
+                )}
               </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                 <button onClick={() => setModal(ex)} className="text-xs text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 px-1.5 py-1">Edit</button>
