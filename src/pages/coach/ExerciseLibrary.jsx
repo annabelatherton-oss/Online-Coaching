@@ -421,6 +421,7 @@ export default function ExerciseLibrary() {
   const [importing, setImporting] = useState(false)
   const [linking, setLinking] = useState(false)
   const [linkResults, setLinkResults] = useState(null)
+  const [manualChoices, setManualChoices] = useState({})
   const [variationsByExercise, setVariationsByExercise] = useState({})
   const [deleteCheck, setDeleteCheck] = useState(null) // null | { ex, loading } | { ex, sessions, workouts }
   const [replacementId, setReplacementId] = useState('')
@@ -649,14 +650,35 @@ export default function ExerciseLibrary() {
     }
 
     const dedupeBy = (list, keyFn) => [...new Map(list.map(item => [keyFn(item), item])).values()]
+    // Groups every underlying row sharing the same key so resolving it once fixes
+    // every occurrence, instead of silently dropping the duplicates.
+    const groupBy = (list, keyFn) => {
+      const map = new Map()
+      for (const item of list) {
+        const key = keyFn(item)
+        if (map.has(key)) map.get(key).rows.push(item.row)
+        else map.set(key, { ...item, key, rows: [item.row] })
+      }
+      return [...map.values()]
+    }
 
     setLinkResults({
       linked: dedupeBy(linked, l => `${l.row.name}|${l.exercise.id}`),
-      ambiguous: dedupeBy(ambiguous, a => `${a.row.name}|${a.candidates.map(c => c.id).join(',')}`),
-      unresolved: dedupeBy(unresolved, u => u.row.name),
+      ambiguous: groupBy(ambiguous, a => `${a.row.name}|${a.candidates.map(c => c.id).join(',')}`),
+      unresolved: groupBy(unresolved, u => u.row.name),
       linkedCount: linked.length,
     })
     setLinking(false)
+  }
+
+  async function resolveManualLink(list, key, exerciseId) {
+    const entry = linkResults[list].find(e => e.key === key)
+    if (!entry || !exerciseId) return
+    for (const row of entry.rows) {
+      await supabase.from('session_exercises').update({ exercise_id: exerciseId }).eq('id', row.id)
+    }
+    setLinkResults(lr => ({ ...lr, [list]: lr[list].filter(e => e.key !== key) }))
+    setManualChoices(prev => { const next = { ...prev }; delete next[key]; return next })
   }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
@@ -854,12 +876,31 @@ export default function ExerciseLibrary() {
               {linkResults.ambiguous.length > 0 && (
                 <>
                   <p className="text-amber-600 dark:text-amber-400 font-medium">
-                    {linkResults.ambiguous.length} couldn't be told apart — pick manually in that training session:
+                    {linkResults.ambiguous.length} couldn't be told apart — pick the right one:
                   </p>
-                  <ul className="text-gray-600 dark:text-gray-300 space-y-1.5 max-h-40 overflow-y-auto">
-                    {linkResults.ambiguous.map((a, i) => (
-                      <li key={i}>
-                        <span className="font-medium">"{a.row.name}"</span> ({a.row.training_sessions?.name}) — could be: {a.candidates.map(c => c.name).join(' or ')}
+                  <ul className="text-gray-600 dark:text-gray-300 space-y-2">
+                    {linkResults.ambiguous.map(a => (
+                      <li key={a.key} className="space-y-1">
+                        <div>
+                          <span className="font-medium">"{a.row.name}"</span> ({a.row.training_sessions?.name}{a.rows.length > 1 ? ` + ${a.rows.length - 1} more` : ''})
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            className="input flex-1 text-xs py-1"
+                            value={manualChoices[a.key] || ''}
+                            onChange={e => setManualChoices(prev => ({ ...prev, [a.key]: e.target.value }))}
+                          >
+                            <option value="">Choose…</option>
+                            {a.candidates.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                          <button
+                            onClick={() => resolveManualLink('ambiguous', a.key, manualChoices[a.key])}
+                            disabled={!manualChoices[a.key]}
+                            className="btn-primary py-1 px-2.5 text-xs flex-shrink-0 disabled:opacity-50"
+                          >
+                            Link
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -869,13 +910,31 @@ export default function ExerciseLibrary() {
               {linkResults.unresolved.length > 0 && (
                 <>
                   <p className="text-red-500 font-medium">
-                    {linkResults.unresolved.length} had no match at all:
+                    {linkResults.unresolved.length} had no match at all — pick one, or leave it and create/rename a library exercise instead:
                   </p>
-                  <ul className="text-gray-600 dark:text-gray-300 space-y-1 max-h-32 overflow-y-auto">
-                    {linkResults.unresolved.map((u, i) => (
-                      <li key={i} className="flex items-start gap-1.5">
-                        <span className="text-gray-300 dark:text-gray-600">•</span>
-                        <span>"{u.row.name}" — {u.reason}</span>
+                  <ul className="text-gray-600 dark:text-gray-300 space-y-2">
+                    {linkResults.unresolved.map(u => (
+                      <li key={u.key} className="space-y-1">
+                        <div>
+                          <span className="font-medium">"{u.row.name}"</span>{u.rows.length > 1 ? ` (${u.rows.length} places)` : ''}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            className="input flex-1 text-xs py-1"
+                            value={manualChoices[u.key] || ''}
+                            onChange={e => setManualChoices(prev => ({ ...prev, [u.key]: e.target.value }))}
+                          >
+                            <option value="">Choose…</option>
+                            {exercises.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                          </select>
+                          <button
+                            onClick={() => resolveManualLink('unresolved', u.key, manualChoices[u.key])}
+                            disabled={!manualChoices[u.key]}
+                            className="btn-primary py-1 px-2.5 text-xs flex-shrink-0 disabled:opacity-50"
+                          >
+                            Link
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
