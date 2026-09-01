@@ -647,7 +647,7 @@ export default function ExerciseLibrary() {
     }
 
     for (const { row, exercise } of linked) {
-      const update = { exercise_id: exercise.id }
+      const update = { exercise_id: exercise.id, name: exercise.name }
       if (!row.equipment) {
         const variations = (variationsByExercise[exercise.id] || []).filter(v => v.equipment)
         if (variations.length === 1) update.equipment = variations[0].equipment
@@ -679,9 +679,10 @@ export default function ExerciseLibrary() {
 
   async function resolveManualLink(list, key, exerciseId, equipment) {
     const entry = linkResults[list].find(e => e.key === key)
-    if (!entry || !exerciseId) return
+    const exercise = exercises.find(e => e.id === exerciseId)
+    if (!entry || !exercise) return
     for (const row of entry.rows) {
-      await supabase.from('session_exercises').update({ exercise_id: exerciseId, equipment: equipment || null }).eq('id', row.id)
+      await supabase.from('session_exercises').update({ exercise_id: exercise.id, name: exercise.name, equipment: equipment || null }).eq('id', row.id)
     }
     setLinkResults(lr => ({ ...lr, [list]: lr[list].filter(e => e.key !== key) }))
     setManualChoices(prev => { const next = { ...prev }; delete next[key]; return next })
