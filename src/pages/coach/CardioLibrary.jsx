@@ -146,6 +146,8 @@ export default function CardioLibrary() {
   const [filterType, setFilterType] = useState('')
   const [search, setSearch] = useState('')
   const [seeding, setSeeding] = useState(false)
+  const [deleteCheck, setDeleteCheck] = useState(null) // null | { s, loading } | { s, uses }
+  const [replacementId, setReplacementId] = useState('')
 
   async function load() {
     const { data } = await supabase.from('cardio_sessions').select('*').eq('coach_id', profile.id).eq('is_archived', false).order('name')
@@ -165,9 +167,40 @@ export default function CardioLibrary() {
     load()
   }
 
-  async function handleDelete(s) {
+  async function handleArchive(s) {
     if (!confirm(`Archive "${s.name}"?`)) return
     await supabase.from('cardio_sessions').update({ is_archived: true }).eq('id', s.id)
+    load()
+  }
+
+  async function handleDelete(s) {
+    setReplacementId('')
+    setDeleteCheck({ s, loading: true })
+
+    // Only check the real cardio_session_id link back to this card — a client's
+    // schedule only ever references it by id, never by name text.
+    const { data: rows } = await supabase
+      .from('client_schedule_items')
+      .select('id, day_of_week, clients(profiles!clients_profile_id_fkey(full_name))')
+      .eq('cardio_session_id', s.id)
+
+    const uses = (rows || []).map(r => ({ day: r.day_of_week, client: r.clients?.profiles?.full_name || 'Unknown client' }))
+    setDeleteCheck({ s, uses })
+  }
+
+  async function confirmDelete() {
+    if (!deleteCheck) return
+    await supabase.from('cardio_sessions').delete().eq('id', deleteCheck.s.id)
+    setDeleteCheck(null)
+    load()
+  }
+
+  async function replaceAndDelete(replacement) {
+    if (!deleteCheck || !replacement) return
+    setDeleteCheck(dc => ({ ...dc, replacing: true }))
+    await supabase.from('client_schedule_items').update({ cardio_session_id: replacement.id }).eq('cardio_session_id', deleteCheck.s.id)
+    await supabase.from('cardio_sessions').delete().eq('id', deleteCheck.s.id)
+    setDeleteCheck(null)
     load()
   }
 
@@ -254,7 +287,8 @@ export default function CardioLibrary() {
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                   <button onClick={() => setModal(s)} className="text-xs text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 px-1.5 py-1">Edit</button>
-                  <button onClick={() => handleDelete(s)} className="text-xs text-gray-400 hover:text-red-500 px-1.5 py-1">Archive</button>
+                  <button onClick={() => handleArchive(s)} className="text-xs text-gray-400 hover:text-yellow-600 dark:hover:text-yellow-400 px-1.5 py-1">Archive</button>
+                  <button onClick={() => handleDelete(s)} className="text-xs text-gray-400 hover:text-red-500 px-1.5 py-1">Delete</button>
                 </div>
               </div>
             </div>
@@ -268,6 +302,60 @@ export default function CardioLibrary() {
           onSave={handleSave}
           onClose={() => setModal(null)}
         />
+      )}
+
+      {deleteCheck && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteCheck(null)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Delete "{deleteCheck.s.name}"?</h2>
+            {deleteCheck.loading ? (
+              <p className="text-sm text-gray-400 py-4">Checking where it's used…</p>
+            ) : deleteCheck.uses.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Not assigned to any client's plan — safe to delete.</p>
+            ) : (
+              <div className="mt-2 space-y-3">
+                <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+                  This exact session is assigned in {deleteCheck.uses.length} place{deleteCheck.uses.length !== 1 ? 's' : ''}:
+                </p>
+                <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1 max-h-48 overflow-y-auto">
+                  {deleteCheck.uses.map((u, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <span className="text-gray-300 dark:text-gray-600">•</span>
+                      <span>{u.client} — {u.day}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <select
+                    className="input flex-1 text-sm py-1.5"
+                    value={replacementId}
+                    onChange={e => setReplacementId(e.target.value)}
+                  >
+                    <option value="">Replace with…</option>
+                    {sessions.filter(s => s.id !== deleteCheck.s.id).map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => replaceAndDelete(sessions.find(s => s.id === replacementId))}
+                    disabled={!replacementId || deleteCheck.replacing}
+                    className="btn-primary py-1.5 px-3 text-sm flex-shrink-0 disabled:opacity-50"
+                  >
+                    {deleteCheck.replacing ? 'Replacing…' : 'Replace & delete'}
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <button onClick={() => setDeleteCheck(null)} className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Cancel</button>
+              <button onClick={confirmDelete} disabled={deleteCheck.loading || deleteCheck.replacing} className="bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 px-4 text-sm font-medium disabled:opacity-50">
+                Delete anyway
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
