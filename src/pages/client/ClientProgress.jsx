@@ -7,9 +7,10 @@ import WeightChart from '../../components/WeightChart'
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
 const RATING_LABELS = {
-  energy_level: ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
-  sleep_quality: ['', 'Very poor', 'Poor', 'OK', 'Good', 'Excellent'],
-  adherence:     ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
+  energy_level:   ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
+  sleep_quality:  ['', 'Very poor', 'Poor', 'OK', 'Good', 'Excellent'],
+  food_adherence: ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
+  gym_adherence:  ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
 }
 
 function ratingColor(v) {
@@ -57,7 +58,8 @@ function CheckinCard({ ci, weekNum, onLightbox }) {
             <div className="flex items-center gap-1.5">
               {ci.energy_level != null && <RatingDot value={ci.energy_level} />}
               {ci.sleep_quality != null && <RatingDot value={ci.sleep_quality} />}
-              {ci.adherence != null && <RatingDot value={ci.adherence} />}
+              {ci.food_adherence != null && <RatingDot value={ci.food_adherence} />}
+              {ci.gym_adherence != null && <RatingDot value={ci.gym_adherence} />}
             </div>
             {photos.length > 0 && (
               <span className="text-xs text-gray-400">{photos.length} photo{photos.length !== 1 ? 's' : ''}</span>
@@ -79,12 +81,13 @@ function CheckinCard({ ci, weekNum, onLightbox }) {
       {open && (
         <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-4">
           {/* Ratings */}
-          {(ci.energy_level != null || ci.sleep_quality != null || ci.adherence != null) && (
-            <div className="grid grid-cols-3 gap-2">
+          {(ci.energy_level != null || ci.sleep_quality != null || ci.food_adherence != null || ci.gym_adherence != null) && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
                 { key: 'energy_level', label: 'Energy' },
                 { key: 'sleep_quality', label: 'Sleep' },
-                { key: 'adherence', label: 'Adherence' },
+                { key: 'food_adherence', label: 'Food' },
+                { key: 'gym_adherence', label: 'Gym' },
               ].map(({ key, label }) => ci[key] != null && (
                 <div key={key} className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 text-center">
                   <p className="text-xs text-gray-400 mb-0.5">{label}</p>

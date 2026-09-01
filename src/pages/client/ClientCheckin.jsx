@@ -4,9 +4,10 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
 const RATING_LABELS = {
-  energy_level: ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
-  sleep_quality: ['', 'Very poor', 'Poor', 'OK', 'Good', 'Excellent'],
-  adherence:     ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
+  energy_level:   ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
+  sleep_quality:  ['', 'Very poor', 'Poor', 'OK', 'Good', 'Excellent'],
+  food_adherence: ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
+  gym_adherence:  ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
 }
 
 const PHOTO_ANGLES = [
@@ -207,7 +208,7 @@ function CheckinReadView({ checkin, collectMeasurements }) {
 
       <div className="card space-y-4">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">How was this week?</h2>
-        {['energy_level', 'sleep_quality', 'adherence'].map(field => (
+        {['energy_level', 'sleep_quality', 'food_adherence', 'gym_adherence'].map(field => (
           <div key={field}>
             <label className="label capitalize">{field.replace('_', ' ')}</label>
             <RatingDisplay field={field} value={checkin[field]} />
@@ -267,7 +268,8 @@ export default function ClientCheckin() {
     hips_cm: '',
     energy_level: null,
     sleep_quality: null,
-    adherence: null,
+    food_adherence: null,
+    gym_adherence: null,
     notes: '',
     lift_results: [],
   })
@@ -399,10 +401,11 @@ export default function ClientCheckin() {
           weight_kg:     checkin.weight_kg    ?? '',
           waist_cm:      checkin.waist_cm     ?? '',
           hips_cm:       checkin.hips_cm      ?? '',
-          energy_level:  checkin.energy_level ?? null,
-          sleep_quality: checkin.sleep_quality ?? null,
-          adherence:     checkin.adherence    ?? null,
-          notes:         checkin.notes        ?? '',
+          energy_level:   checkin.energy_level   ?? null,
+          sleep_quality:  checkin.sleep_quality  ?? null,
+          food_adherence: checkin.food_adherence ?? null,
+          gym_adherence:  checkin.gym_adherence  ?? null,
+          notes:          checkin.notes          ?? '',
           lift_results:  checkin.lift_results ?? [],
         }))
         if (checkin.progress_photos) setPhotos(prev => ({ ...prev, ...checkin.progress_photos }))
@@ -465,7 +468,8 @@ export default function ClientCheckin() {
       hips_cm:          collectMeasurements && form.hips_cm  !== '' ? parseFloat(form.hips_cm)  : null,
       energy_level:     form.energy_level,
       sleep_quality:    form.sleep_quality,
-      adherence:        form.adherence,
+      food_adherence:   form.food_adherence,
+      gym_adherence:    form.gym_adherence,
       notes:            form.notes || null,
       lift_results:     form.lift_results?.length ? form.lift_results : null,
       progress_photos:  hasPhotos ? photos : null,
@@ -698,9 +702,14 @@ export default function ClientCheckin() {
             {form.sleep_quality && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 text-center">{RATING_LABELS.sleep_quality[form.sleep_quality]}</p>}
           </div>
           <div>
-            <label className="label">Adherence to your plan</label>
-            <RatingInput field="adherence" value={form.adherence} onChange={set} />
-            {form.adherence && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 text-center">{RATING_LABELS.adherence[form.adherence]}</p>}
+            <label className="label">Food adherence to your plan</label>
+            <RatingInput field="food_adherence" value={form.food_adherence} onChange={set} />
+            {form.food_adherence && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 text-center">{RATING_LABELS.food_adherence[form.food_adherence]}</p>}
+          </div>
+          <div>
+            <label className="label">Gym adherence to your plan</label>
+            <RatingInput field="gym_adherence" value={form.gym_adherence} onChange={set} />
+            {form.gym_adherence && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 text-center">{RATING_LABELS.gym_adherence[form.gym_adherence]}</p>}
           </div>
         </div>
 

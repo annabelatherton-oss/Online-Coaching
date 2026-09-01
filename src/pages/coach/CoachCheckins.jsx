@@ -1244,7 +1244,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {current.weight_kg != null && (
               <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Weight</p>
@@ -1263,10 +1263,16 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                 <p className={`text-lg font-bold ${ratingColor(current.sleep_quality)}`}>{current.sleep_quality}<span className="text-xs font-normal text-gray-400">/5</span></p>
               </div>
             )}
-            {current.adherence != null && (
+            {current.food_adherence != null && (
               <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Adherence</p>
-                <p className={`text-lg font-bold ${ratingColor(current.adherence)}`}>{current.adherence}<span className="text-xs font-normal text-gray-400">/5</span></p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Food adherence</p>
+                <p className={`text-lg font-bold ${ratingColor(current.food_adherence)}`}>{current.food_adherence}<span className="text-xs font-normal text-gray-400">/5</span></p>
+              </div>
+            )}
+            {current.gym_adherence != null && (
+              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gym adherence</p>
+                <p className={`text-lg font-bold ${ratingColor(current.gym_adherence)}`}>{current.gym_adherence}<span className="text-xs font-normal text-gray-400">/5</span></p>
               </div>
             )}
           </div>
@@ -1431,7 +1437,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 dark:border-gray-800">
-                    {['Week', 'Date', 'Weight', 'Change', 'Energy', 'Sleep', 'Adherence'].map(h => (
+                    {['Week', 'Date', 'Weight', 'Change', 'Energy', 'Sleep', 'Food', 'Gym'].map(h => (
                       <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -1461,12 +1467,13 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                             : <span className="text-gray-300 dark:text-gray-700">—</span>}
                         </td>
                         {isLog ? (
-                          <><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 text-gray-300 dark:text-gray-700">—</td></>
+                          <><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 text-gray-300 dark:text-gray-700">—</td></>
                         ) : (
                           <>
                             <td className="py-2.5 pr-4"><span className={`text-xs font-semibold ${ratingColor(row.energy_level)}`}>{row.energy_level != null ? `${row.energy_level}/5` : '—'}</span></td>
                             <td className="py-2.5 pr-4"><span className={`text-xs font-semibold ${ratingColor(row.sleep_quality)}`}>{row.sleep_quality != null ? `${row.sleep_quality}/5` : '—'}</span></td>
-                            <td className="py-2.5"><span className={`text-xs font-semibold ${ratingColor(row.adherence)}`}>{row.adherence != null ? `${row.adherence}/5` : '—'}</span></td>
+                            <td className="py-2.5 pr-4"><span className={`text-xs font-semibold ${ratingColor(row.food_adherence)}`}>{row.food_adherence != null ? `${row.food_adherence}/5` : '—'}</span></td>
+                            <td className="py-2.5"><span className={`text-xs font-semibold ${ratingColor(row.gym_adherence)}`}>{row.gym_adherence != null ? `${row.gym_adherence}/5` : '—'}</span></td>
                           </>
                         )}
                       </tr>
@@ -1502,11 +1509,12 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {c.weight_kg != null && <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800"><p className="text-xs text-gray-400 mb-0.5">Weight</p><p className="font-semibold text-gray-900 dark:text-white text-sm">{c.weight_kg} kg</p></div>}
               {c.energy_level != null && <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800"><p className="text-xs text-gray-400 mb-0.5">Energy</p><p className={`font-semibold text-sm ${ratingColor(c.energy_level)}`}>{c.energy_level}/5</p></div>}
               {c.sleep_quality != null && <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800"><p className="text-xs text-gray-400 mb-0.5">Sleep</p><p className={`font-semibold text-sm ${ratingColor(c.sleep_quality)}`}>{c.sleep_quality}/5</p></div>}
-              {c.adherence != null && <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800"><p className="text-xs text-gray-400 mb-0.5">Adherence</p><p className={`font-semibold text-sm ${ratingColor(c.adherence)}`}>{c.adherence}/5</p></div>}
+              {c.food_adherence != null && <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800"><p className="text-xs text-gray-400 mb-0.5">Food adherence</p><p className={`font-semibold text-sm ${ratingColor(c.food_adherence)}`}>{c.food_adherence}/5</p></div>}
+              {c.gym_adherence != null && <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800"><p className="text-xs text-gray-400 mb-0.5">Gym adherence</p><p className={`font-semibold text-sm ${ratingColor(c.gym_adherence)}`}>{c.gym_adherence}/5</p></div>}
             </div>
 
             {c.lift_results?.filter(l => l?.name).length > 0 && (

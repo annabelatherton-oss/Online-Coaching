@@ -82,13 +82,16 @@ function computeMetrics(clientId, allWeights, allCheckins) {
     }
   }
 
-  const adherenceVals = checkins.filter(c => c.adherence != null).map(c => c.adherence)
-  const avgAdherence = adherenceVals.length > 0
-    ? adherenceVals.reduce((s, v) => s + v, 0) / adherenceVals.length
-    : null
-  const adherenceFlag = avgAdherence != null && avgAdherence < 4
+  const avgOf = field => {
+    const vals = checkins.filter(c => c[field] != null).map(c => c[field])
+    return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : null
+  }
+  const avgFoodAdherence = avgOf('food_adherence')
+  const avgGymAdherence = avgOf('gym_adherence')
+  const foodAdherenceFlag = avgFoodAdherence != null && avgFoodAdherence < 4
+  const gymAdherenceFlag = avgGymAdherence != null && avgGymAdherence < 4
 
-  return { weights, checkins, startWeight, currentWeight, weeksElapsed, rateOfLoss, lossFlag, avgAdherence, adherenceFlag }
+  return { weights, checkins, startWeight, currentWeight, weeksElapsed, rateOfLoss, lossFlag, avgFoodAdherence, avgGymAdherence, foodAdherenceFlag, gymAdherenceFlag }
 }
 
 function fmtDate(d) {
@@ -119,7 +122,7 @@ export default function CoachReports() {
           .order('created_at', { ascending: false }),
         supabase
           .from('client_checkins')
-          .select('client_id, week_number, weight_kg, adherence, energy_level, sleep_quality, submitted_at, updated_at, progress_photos')
+          .select('client_id, week_number, weight_kg, food_adherence, gym_adherence, energy_level, sleep_quality, submitted_at, updated_at, progress_photos')
           .eq('coach_id', profile.id)
           .order('week_number', { ascending: true }),
       ])
@@ -159,12 +162,13 @@ export default function CoachReports() {
   // ── Detail view ─────────────────────────────────────────────────────────────
   if (selected) {
     const client = clients.find(c => c.id === selected)
-    const { weights, checkins, startWeight, currentWeight, weeksElapsed, rateOfLoss, lossFlag, avgAdherence, adherenceFlag } =
+    const { weights, checkins, startWeight, currentWeight, weeksElapsed, rateOfLoss, lossFlag, avgFoodAdherence, avgGymAdherence, foodAdherenceFlag, gymAdherenceFlag } =
       computeMetrics(selected, allWeights, allCheckins)
     const { label: statusLabel, cls: statusCls } = clientStatus(client)
     const totalLost = startWeight != null && currentWeight != null ? startWeight - currentWeight : null
     const weightPoints = weights.map(w => ({ y: parseFloat(w.weight_kg) }))
-    const adherenceBars = checkins.filter(c => c.adherence != null).map(c => ({ y: c.adherence }))
+    const foodAdherenceBars = checkins.filter(c => c.food_adherence != null).map(c => ({ y: c.food_adherence }))
+    const gymAdherenceBars = checkins.filter(c => c.gym_adherence != null).map(c => ({ y: c.gym_adherence }))
 
     return (
       <div className="space-y-6">
@@ -186,7 +190,7 @@ export default function CoachReports() {
         </div>
 
         {/* Flag banners */}
-        {(lossFlag || adherenceFlag) && (
+        {(lossFlag || foodAdherenceFlag || gymAdherenceFlag) && (
           <div className="space-y-2">
             {lossFlag && (
               <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-2.5">
@@ -196,11 +200,19 @@ export default function CoachReports() {
                 </p>
               </div>
             )}
-            {adherenceFlag && (
+            {foodAdherenceFlag && (
               <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-2.5">
                 <WarnIcon className="w-4 h-4 text-amber-500 flex-shrink-0" />
                 <p className="text-sm text-amber-700 dark:text-amber-400">
-                  Average adherence below 4 — {avgAdherence != null ? avgAdherence.toFixed(1) : '—'}/5
+                  Average food adherence below 4 — {avgFoodAdherence != null ? avgFoodAdherence.toFixed(1) : '—'}/5
+                </p>
+              </div>
+            )}
+            {gymAdherenceFlag && (
+              <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-2.5">
+                <WarnIcon className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  Average gym adherence below 4 — {avgGymAdherence != null ? avgGymAdherence.toFixed(1) : '—'}/5
                 </p>
               </div>
             )}
@@ -208,7 +220,7 @@ export default function CoachReports() {
         )}
 
         {/* Stats row */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+        <div className="grid grid-cols-3 sm:grid-cols-7 gap-3">
           {[
             {
               label: 'Weeks',
@@ -237,10 +249,16 @@ export default function CoachReports() {
               flag: lossFlag,
             },
             {
-              label: 'Avg adherence',
-              value: avgAdherence != null ? `${avgAdherence.toFixed(1)}/5` : '—',
-              color: adherenceFlag ? 'text-red-500' : avgAdherence != null ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white',
-              flag: adherenceFlag,
+              label: 'Avg food adherence',
+              value: avgFoodAdherence != null ? `${avgFoodAdherence.toFixed(1)}/5` : '—',
+              color: foodAdherenceFlag ? 'text-red-500' : avgFoodAdherence != null ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white',
+              flag: foodAdherenceFlag,
+            },
+            {
+              label: 'Avg gym adherence',
+              value: avgGymAdherence != null ? `${avgGymAdherence.toFixed(1)}/5` : '—',
+              color: gymAdherenceFlag ? 'text-red-500' : avgGymAdherence != null ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white',
+              flag: gymAdherenceFlag,
             },
           ].map(s => (
             <div key={s.label} className="card !px-2 py-3 text-center">
@@ -272,23 +290,42 @@ export default function CoachReports() {
           )}
         </div>
 
-        {/* Adherence chart */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-gray-900 dark:text-white">Adherence over time</h2>
-            {avgAdherence != null && (
-              <span className={`text-sm font-semibold ${adherenceFlag ? 'text-red-500' : 'text-green-500'}`}>
-                Avg {avgAdherence.toFixed(1)}/5
-              </span>
+        {/* Adherence charts */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="card">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-gray-900 dark:text-white">Food adherence over time</h2>
+              {avgFoodAdherence != null && (
+                <span className={`text-sm font-semibold ${foodAdherenceFlag ? 'text-red-500' : 'text-green-500'}`}>
+                  Avg {avgFoodAdherence.toFixed(1)}/5
+                </span>
+              )}
+            </div>
+            <BarChart bars={foodAdherenceBars} />
+            {checkins.length >= 2 && (
+              <div className="flex justify-between text-xs text-gray-400 mt-1.5">
+                <span>Wk {checkins[0].week_number}</span>
+                <span>Wk {checkins[checkins.length - 1].week_number}</span>
+              </div>
             )}
           </div>
-          <BarChart bars={adherenceBars} />
-          {checkins.length >= 2 && (
-            <div className="flex justify-between text-xs text-gray-400 mt-1.5">
-              <span>Wk {checkins[0].week_number}</span>
-              <span>Wk {checkins[checkins.length - 1].week_number}</span>
+          <div className="card">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-gray-900 dark:text-white">Gym adherence over time</h2>
+              {avgGymAdherence != null && (
+                <span className={`text-sm font-semibold ${gymAdherenceFlag ? 'text-red-500' : 'text-green-500'}`}>
+                  Avg {avgGymAdherence.toFixed(1)}/5
+                </span>
+              )}
             </div>
-          )}
+            <BarChart bars={gymAdherenceBars} />
+            {checkins.length >= 2 && (
+              <div className="flex justify-between text-xs text-gray-400 mt-1.5">
+                <span>Wk {checkins[0].week_number}</span>
+                <span>Wk {checkins[checkins.length - 1].week_number}</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Check-in table */}
@@ -303,7 +340,8 @@ export default function CoachReports() {
                   <tr className="border-b border-gray-50 dark:border-gray-800 text-xs text-gray-400 font-medium">
                     <th className="text-left px-4 py-2">Week</th>
                     <th className="text-right px-4 py-2">Weight</th>
-                    <th className="text-right px-4 py-2">Adherence</th>
+                    <th className="text-right px-4 py-2">Food</th>
+                    <th className="text-right px-4 py-2">Gym</th>
                     <th className="text-right px-4 py-2">Energy</th>
                     <th className="text-right px-4 py-2">Sleep</th>
                     <th className="text-right px-4 py-2">Date</th>
@@ -316,8 +354,11 @@ export default function CoachReports() {
                       <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-300">
                         {ci.weight_kg != null ? `${ci.weight_kg} kg` : '—'}
                       </td>
-                      <td className={`px-4 py-2.5 text-right font-medium ${ci.adherence != null && ci.adherence < 4 ? 'text-red-500' : 'text-green-500'}`}>
-                        {ci.adherence != null ? `${ci.adherence}/5` : '—'}
+                      <td className={`px-4 py-2.5 text-right font-medium ${ci.food_adherence != null && ci.food_adherence < 4 ? 'text-red-500' : 'text-green-500'}`}>
+                        {ci.food_adherence != null ? `${ci.food_adherence}/5` : '—'}
+                      </td>
+                      <td className={`px-4 py-2.5 text-right font-medium ${ci.gym_adherence != null && ci.gym_adherence < 4 ? 'text-red-500' : 'text-green-500'}`}>
+                        {ci.gym_adherence != null ? `${ci.gym_adherence}/5` : '—'}
                       </td>
                       <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-300">
                         {ci.energy_level != null ? `${ci.energy_level}/5` : '—'}
@@ -410,8 +451,8 @@ export default function CoachReports() {
   // ── List view ───────────────────────────────────────────────────────────────
   const activeCount = clients.filter(c => clientStatus(c).label === 'Active').length
   const flaggedCount = clients.filter(c => {
-    const { lossFlag, adherenceFlag } = computeMetrics(c.id, allWeights, allCheckins)
-    return lossFlag || adherenceFlag
+    const { lossFlag, foodAdherenceFlag, gymAdherenceFlag } = computeMetrics(c.id, allWeights, allCheckins)
+    return lossFlag || foodAdherenceFlag || gymAdherenceFlag
   }).length
 
   return (
@@ -450,18 +491,19 @@ export default function CoachReports() {
           </div>
         ) : (
           <>
-            <div className="hidden lg:grid grid-cols-[1fr_150px_120px_130px_130px] gap-3 px-4 py-2 border-b border-gray-50 dark:border-gray-800">
+            <div className="hidden lg:grid grid-cols-[1fr_150px_120px_130px_100px_100px] gap-3 px-4 py-2 border-b border-gray-50 dark:border-gray-800">
               <span className="text-xs text-gray-400 uppercase tracking-wider font-medium">Client</span>
               <span className="text-xs text-gray-400 uppercase tracking-wider font-medium text-right">Start → Current</span>
               <span className="text-xs text-gray-400 uppercase tracking-wider font-medium text-right">Lost</span>
               <span className="text-xs text-gray-400 uppercase tracking-wider font-medium text-right">Rate / wk</span>
-              <span className="text-xs text-gray-400 uppercase tracking-wider font-medium text-right">Avg adherence</span>
+              <span className="text-xs text-gray-400 uppercase tracking-wider font-medium text-right">Food</span>
+              <span className="text-xs text-gray-400 uppercase tracking-wider font-medium text-right">Gym</span>
             </div>
 
             <div className="divide-y divide-gray-50 dark:divide-gray-800">
               {clients.map(client => {
                 const { label: statusLabel, cls: statusCls } = clientStatus(client)
-                const { startWeight, currentWeight, weeksElapsed, rateOfLoss, lossFlag, avgAdherence, adherenceFlag } =
+                const { startWeight, currentWeight, weeksElapsed, rateOfLoss, lossFlag, avgFoodAdherence, avgGymAdherence, foodAdherenceFlag, gymAdherenceFlag } =
                   computeMetrics(client.id, allWeights, allCheckins)
                 const totalLost = startWeight != null && currentWeight != null ? startWeight - currentWeight : null
 
@@ -482,7 +524,7 @@ export default function CoachReports() {
                         <span className="font-medium text-gray-900 dark:text-white text-sm truncate">
                           {client.profiles?.full_name || '—'}
                         </span>
-                        {(lossFlag || adherenceFlag) && <WarnIcon />}
+                        {(lossFlag || foodAdherenceFlag || gymAdherenceFlag) && <WarnIcon />}
                       </div>
                       <span className={`inline-block text-xs px-1.5 py-0.5 rounded-full font-medium mt-0.5 ${statusCls}`}>
                         {statusLabel}
@@ -529,13 +571,27 @@ export default function CoachReports() {
                       )}
                     </div>
 
-                    {/* Avg adherence */}
-                    <div className="text-right hidden lg:block w-32 flex-shrink-0">
-                      {avgAdherence != null ? (
+                    {/* Avg food adherence */}
+                    <div className="text-right hidden lg:block w-24 flex-shrink-0">
+                      {avgFoodAdherence != null ? (
                         <div className="flex items-center justify-end gap-1">
-                          {adherenceFlag && <WarnIcon />}
-                          <p className={`text-sm font-semibold ${adherenceFlag ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
-                            {avgAdherence.toFixed(1)}/5
+                          {foodAdherenceFlag && <WarnIcon />}
+                          <p className={`text-sm font-semibold ${foodAdherenceFlag ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
+                            {avgFoodAdherence.toFixed(1)}/5
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-300 dark:text-gray-600">—</p>
+                      )}
+                    </div>
+
+                    {/* Avg gym adherence */}
+                    <div className="text-right hidden lg:block w-24 flex-shrink-0">
+                      {avgGymAdherence != null ? (
+                        <div className="flex items-center justify-end gap-1">
+                          {gymAdherenceFlag && <WarnIcon />}
+                          <p className={`text-sm font-semibold ${gymAdherenceFlag ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
+                            {avgGymAdherence.toFixed(1)}/5
                           </p>
                         </div>
                       ) : (

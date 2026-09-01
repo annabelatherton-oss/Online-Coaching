@@ -252,9 +252,10 @@ function DailyPlanTab({ client }) {
 }
 
 const CHECKIN_RATING_LABELS = {
-  energy_level:  ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
-  sleep_quality: ['', 'Very poor', 'Poor', 'OK', 'Good', 'Excellent'],
-  adherence:     ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
+  energy_level:     ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
+  sleep_quality:    ['', 'Very poor', 'Poor', 'OK', 'Good', 'Excellent'],
+  food_adherence:   ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
+  gym_adherence:    ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
 }
 
 function checkinRatingColor(v) {
@@ -2798,7 +2799,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">
-                {['Week', 'Date', 'Weight', 'Change', 'Energy', 'Sleep', 'Adherence'].map(h => (
+                {['Week', 'Date', 'Weight', 'Change', 'Energy', 'Sleep', 'Food', 'Gym'].map(h => (
                   <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -2831,9 +2832,14 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                         ? <span className={`font-semibold text-xs ${checkinRatingColor(c.sleep_quality)}`}>{c.sleep_quality}/5</span>
                         : <span className="text-gray-300 dark:text-gray-700">—</span>}
                     </td>
+                    <td className="py-2.5 pr-4">
+                      {c.food_adherence != null
+                        ? <span className={`font-semibold text-xs ${checkinRatingColor(c.food_adherence)}`}>{c.food_adherence}/5</span>
+                        : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                    </td>
                     <td className="py-2.5">
-                      {c.adherence != null
-                        ? <span className={`font-semibold text-xs ${checkinRatingColor(c.adherence)}`}>{c.adherence}/5</span>
+                      {c.gym_adherence != null
+                        ? <span className={`font-semibold text-xs ${checkinRatingColor(c.gym_adherence)}`}>{c.gym_adherence}/5</span>
                         : <span className="text-gray-300 dark:text-gray-700">—</span>}
                     </td>
                   </tr>
@@ -2943,10 +2949,16 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                   <p className="text-base font-semibold text-gray-900 dark:text-white">{c.sleep_quality}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.sleep_quality[c.sleep_quality]}</span></p>
                 </div>
               )}
-              {c.adherence != null && (
+              {c.food_adherence != null && (
                 <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Adherence</p>
-                  <p className="text-base font-semibold text-gray-900 dark:text-white">{c.adherence}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.adherence[c.adherence]}</span></p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Food adherence</p>
+                  <p className="text-base font-semibold text-gray-900 dark:text-white">{c.food_adherence}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.food_adherence[c.food_adherence]}</span></p>
+                </div>
+              )}
+              {c.gym_adherence != null && (
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gym adherence</p>
+                  <p className="text-base font-semibold text-gray-900 dark:text-white">{c.gym_adherence}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.gym_adherence[c.gym_adherence]}</span></p>
                 </div>
               )}
             </div>
