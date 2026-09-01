@@ -404,18 +404,20 @@ function OverviewTab({ client, onSaved }) {
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [liftOptions, setLiftOptions] = useState([])
+  const [blockTopLifts, setBlockTopLifts] = useState([])
 
   useEffect(() => {
     async function loadExerciseNames() {
       const { data: asgn } = await supabase
         .from('client_training_assignments')
-        .select('program_id')
+        .select('program_id, training_programs(top_lifts)')
         .eq('client_id', client.id)
         .eq('active', true)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
       if (!asgn?.program_id) return
+      setBlockTopLifts((asgn.training_programs?.top_lifts || []).filter(l => l?.name).map(l => l.name))
       const { data: sessions } = await supabase
         .from('training_sessions')
         .select('session_exercises(name)')
@@ -579,16 +581,28 @@ function OverviewTab({ client, onSaved }) {
           <h3 className="font-semibold text-gray-900 dark:text-white">Top 3 Lifts</h3>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Client will log weight and reps for these in their weekly check-in.</p>
         </div>
+        {blockTopLifts.length > 0 ? (
+          <div className="rounded-lg bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 px-3 py-2.5">
+            <p className="text-xs text-brand-700 dark:text-brand-300">
+              Pulled automatically from the assigned training block: <span className="font-medium">{blockTopLifts.join(', ')}</span>.
+              {form.top_lifts.some(n => n.trim()) ? ' Overridden below for this client.' : ' No need to set anything below unless you want to override it for this client.'}
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            No top lifts set on the assigned training block yet — set them once on the block itself, or override just for this client below.
+          </p>
+        )}
         {[0, 1, 2].map(i => (
           <div key={i}>
-            <label className="label">Lift {i + 1}</label>
+            <label className="label">Lift {i + 1} override {blockTopLifts.length > 0 && <span className="text-gray-400 font-normal">(optional)</span>}</label>
             {liftOptions.length > 0 ? (
               <select
                 className="input"
                 value={form.top_lifts[i]}
                 onChange={e => set('top_lifts', form.top_lifts.map((v, j) => j === i ? e.target.value : v))}
               >
-                <option value="">— Select exercise —</option>
+                <option value="">{blockTopLifts.length > 0 ? '— Use block default —' : '— Select exercise —'}</option>
                 {liftOptions.map(name => (
                   <option key={name} value={name}>{name}</option>
                 ))}
@@ -604,6 +618,15 @@ function OverviewTab({ client, onSaved }) {
             )}
           </div>
         ))}
+        {blockTopLifts.length > 0 && form.top_lifts.some(n => n.trim()) && (
+          <button
+            type="button"
+            onClick={() => set('top_lifts', ['', '', ''])}
+            className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
+          >
+            Clear override — use the block's default lifts
+          </button>
+        )}
       </div>
 
       <div className="card space-y-4">
