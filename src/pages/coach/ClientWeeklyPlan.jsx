@@ -72,8 +72,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const [addDayVariant, setAddDayVariant] = useState('')
   const [addItemId, setAddItemId] = useState('')
 
-  // Cardio free-text add state
-  const [addCardioText, setAddCardioText] = useState('')
+  // Cardio add state
   const [addCardioDuration, setAddCardioDuration] = useState('')
   const [addCardioZone, setAddCardioZone] = useState('')
 
@@ -865,28 +864,17 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
 
                     {addType === 'cardio' && (
                       <div className="space-y-2">
-                        <input
+                        <select
                           autoFocus
                           className="input w-full"
-                          placeholder="e.g. 10k steps, Zone 2 Stairmaster 30 mins…"
-                          value={addCardioText}
-                          onChange={e => { setAddCardioText(e.target.value); setAddItemId('') }}
-                        />
-                        {cardioSessions.length > 0 && (
-                          <>
-                            <p className="text-xs text-gray-400 text-center">— or pick from library —</p>
-                            <select
-                              className="input w-full"
-                              value={addItemId}
-                              onChange={e => { setAddItemId(e.target.value); setAddCardioText('') }}
-                            >
-                              <option value="">Select cardio session…</option>
-                              {cardioSessions.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                              ))}
-                            </select>
-                          </>
-                        )}
+                          value={addItemId}
+                          onChange={e => setAddItemId(e.target.value)}
+                        >
+                          <option value="">Select cardio session…</option>
+                          {cardioSessions.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
                         <input
                           type="number"
                           min={1}
@@ -917,8 +905,8 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                           if (addType === 'rest') {
                             await addRestItem(day, addRestSubtype)
                           } else if (addType === 'cardio') {
-                            if (!addCardioText && !addItemId) return
-                            await addCardioItem(day, addCardioText || null, addItemId || null, addCardioDuration || null, addCardioZone || null)
+                            if (!addItemId) return
+                            await addCardioItem(day, null, addItemId, addCardioDuration || null, addCardioZone || null)
                           } else {
                             if (!addItemId) return
                             await addItem(day, addType, addItemId)
@@ -927,18 +915,17 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                           setAddBlock('')
                           setAddDayVariant('')
                           setAddItemId('')
-                          setAddCardioText('')
                           setAddCardioDuration('')
                           setAddCardioZone('')
                           setAddRestSubtype('rest')
                         }}
-                        disabled={addType !== 'rest' && (addType === 'cardio' ? (!addCardioText && !addItemId) : !addItemId) || saving}
+                        disabled={addType !== 'rest' && !addItemId || saving}
                         className="btn-primary text-sm"
                       >
                         Add to {day}
                       </button>
                       <button
-                        onClick={() => { setAddingToDay(null); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioText(''); setAddCardioDuration(''); setAddCardioZone(''); setAddRestSubtype('rest') }}
+                        onClick={() => { setAddingToDay(null); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioDuration(''); setAddCardioZone(''); setAddRestSubtype('rest') }}
                         className="btn-secondary text-sm"
                       >
                         Cancel

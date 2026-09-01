@@ -25,12 +25,16 @@ export function maxHeartRate(dateOfBirth) {
   return Math.round(220 - age)
 }
 
+function roundToNearest5(n) {
+  return Math.round(n / 5) * 5
+}
+
 // Returns { min, max } target bpm for a zone label, or null if age/zone unavailable.
 export function zoneBpmRange(dateOfBirth, zoneLabel) {
   const hrMax = maxHeartRate(dateOfBirth)
   const range = ZONE_RANGES[zoneLabel]
   if (!hrMax || !range) return null
-  return { min: Math.round(hrMax * range[0]), max: Math.round(hrMax * range[1]) }
+  return { min: roundToNearest5(hrMax * range[0]), max: roundToNearest5(hrMax * range[1]) }
 }
 
 export function formatZoneBpm(dateOfBirth, zoneLabel) {
