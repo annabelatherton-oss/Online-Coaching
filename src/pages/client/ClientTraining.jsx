@@ -61,6 +61,30 @@ export default function ClientTraining() {
   const [coachNotes, setCoachNotes] = useState('')
   const [prevWeekLogs, setPrevWeekLogs] = useState({})
   const [inputs, setInputs] = useState({}) // exId → [{weight, reps}, …]
+  const [detailEx, setDetailEx] = useState(null)
+  const [detailData, setDetailData] = useState(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailTab, setDetailTab] = useState(0)
+
+  async function openDetail(ex) {
+    setDetailEx(ex)
+    if (!ex.exercise_id) { setDetailData(null); return }
+    setDetailLoading(true)
+    const [{ data: exercise }, { data: variations }] = await Promise.all([
+      supabase.from('exercises').select('*').eq('id', ex.exercise_id).single(),
+      supabase.from('exercise_variations').select('*').eq('exercise_id', ex.exercise_id).order('order_index'),
+    ])
+    setDetailData({ exercise, variations: variations || [] })
+    const assignedIdx = (variations || []).findIndex(v => v.equipment === ex.equipment)
+    setDetailTab(assignedIdx >= 0 ? assignedIdx : 0)
+    setDetailLoading(false)
+  }
+
+  function closeDetail() {
+    setDetailEx(null)
+    setDetailData(null)
+    setDetailLoading(false)
+  }
 
   useEffect(() => {
     async function load() {
@@ -259,16 +283,18 @@ export default function ClientTraining() {
 
                     return (
                       <div key={ex.id} className="px-3 py-2.5 flex gap-2.5">
-                        <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
+                        <button type="button" onClick={() => openDetail(ex)} className="flex-shrink-0">
+                          <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
+                        </button>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white leading-tight">{ex.name}</p>
+                          <button type="button" onClick={() => openDetail(ex)} className="flex items-center gap-1.5 flex-wrap text-left">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white leading-tight underline decoration-dotted decoration-gray-300 dark:decoration-gray-600 underline-offset-2">{ex.name}</p>
                             {ex.equipment && (
                               <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full leading-none">
                                 {ex.equipment}
                               </span>
                             )}
-                          </div>
+                          </button>
                           <p className="text-xs text-gray-400 dark:text-gray-500">
                             {numSets} sets{prescription ? ` · ${prescription}` : ''}
                           </p>
@@ -323,6 +349,98 @@ export default function ClientTraining() {
           )
         })}
       </div>
+
+      {detailEx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={closeDetail} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{detailEx.name}</h2>
+              <button onClick={closeDetail} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl leading-none">×</button>
+            </div>
+
+            {detailLoading ? (
+              <div className="p-6"><LoadingSpinner size="md" /></div>
+            ) : !detailData?.exercise ? (
+              <p className="p-5 text-sm text-gray-400">No extra details for this exercise yet.</p>
+            ) : (
+              <div className="p-5 space-y-4">
+                {(detailData.exercise.primary_muscle || detailData.exercise.secondary_muscles?.length > 0) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {detailData.exercise.primary_muscle && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
+                        {detailData.exercise.primary_muscle}
+                      </span>
+                    )}
+                    {(detailData.exercise.secondary_muscles || []).map(m => (
+                      <span key={m} className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                        {m}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {detailData.variations.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {detailData.variations.map((v, i) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setDetailTab(i)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          detailTab === i
+                            ? 'bg-brand-500 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {v.equipment || 'Variation'}{v.equipment === detailEx.equipment ? ' (assigned)' : ''}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {detailData.variations[detailTab] && (
+                  <div className="space-y-3">
+                    {detailData.variations[detailTab].video_url && (
+                      <a
+                        href={detailData.variations[detailTab].video_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
+                      >
+                        <ExerciseThumb videoUrl={detailData.variations[detailTab].video_url} size="sm" />
+                        Watch video
+                      </a>
+                    )}
+                    {detailData.variations[detailTab].coaching_cues && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Coaching cues</p>
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{detailData.variations[detailTab].coaching_cues}</p>
+                      </div>
+                    )}
+                    {detailData.variations[detailTab].instructions && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">How to perform it</p>
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{detailData.variations[detailTab].instructions}</p>
+                      </div>
+                    )}
+                    {detailData.variations[detailTab].tempo && (
+                      <p className="text-xs text-gray-400">Tempo: {detailData.variations[detailTab].tempo}</p>
+                    )}
+                  </div>
+                )}
+
+                {detailData.exercise.notes && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Notes</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{detailData.exercise.notes}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
