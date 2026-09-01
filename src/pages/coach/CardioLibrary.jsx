@@ -50,7 +50,7 @@ const SEED_CARDIO = [
   { name: 'Recovery Session', cardio_type: 'recovery', duration_minutes: 20, intensity: 'low', notes: 'Light movement, foam rolling, mobility work.' },
 ]
 
-const EMPTY_FORM = { name: '', cardio_type: '', distance_km: '', heart_rate_zone: '', intensity: '', pace: '', incline: '', speed: '', notes: '', progression: '' }
+const EMPTY_FORM = { name: '', cardio_type: '', distance_km: '', intensity: '', pace: '', incline: '', speed: '', notes: '', progression: '' }
 
 function CardioModal({ session, onSave, onClose }) {
   const [form, setForm] = useState(session ? { ...session } : { ...EMPTY_FORM })
@@ -100,10 +100,6 @@ function CardioModal({ session, onSave, onClose }) {
                 <option value="moderate">Moderate</option>
                 <option value="high">High</option>
               </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Heart rate zone</label>
-              <input className="input w-full" placeholder="e.g. Zone 2" value={form.heart_rate_zone} onChange={e => set('heart_rate_zone', e.target.value)} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Distance (km, optional)</label>

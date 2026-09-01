@@ -4,6 +4,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const EQUIPMENT_OPTIONS = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'Pec Deck', 'EZ Bar', 'Straight Bar', 'Kettlebell', 'Bodyweight', 'Band', 'Other']
+const ZONE_OPTIONS = ['Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 'Zone 5']
 
 function parseProgram(name) {
   const m = (name || '').match(/^(\d+)\s*Day\s*[–—\-]\s*Block\s*(\d+)/i)
@@ -72,6 +73,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   // Cardio free-text add state
   const [addCardioText, setAddCardioText] = useState('')
   const [addCardioDuration, setAddCardioDuration] = useState('')
+  const [addCardioZone, setAddCardioZone] = useState('')
 
   // Rest day sub-type
   const [addRestSubtype, setAddRestSubtype] = useState('rest')
@@ -102,7 +104,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     ] = await Promise.all([
       supabase
         .from('client_schedule_items')
-        .select('id, client_id, day_of_week, item_type, workout_id, hiit_circuit_id, cardio_session_id, custom_label, notes, duration_minutes, order_index')
+        .select('id, client_id, day_of_week, item_type, workout_id, hiit_circuit_id, cardio_session_id, custom_label, notes, duration_minutes, heart_rate_zone, order_index')
         .eq('client_id', clientId)
         .order('order_index'),
       supabase
@@ -161,7 +163,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     await load()
   }
 
-  async function addCardioItem(day, customLabel, cardioSessionId, durationMinutes) {
+  async function addCardioItem(day, customLabel, cardioSessionId, durationMinutes, heartRateZone) {
     setSaving(true)
     const existing = items.filter(i => i.day_of_week === day && i.item_type === 'cardio')
     const record = {
@@ -174,6 +176,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     if (cardioSessionId) record.cardio_session_id = cardioSessionId
     if (customLabel) record.custom_label = customLabel
     if (durationMinutes) record.duration_minutes = parseInt(durationMinutes)
+    if (heartRateZone) record.heart_rate_zone = heartRateZone
     await supabase.from('client_schedule_items').insert(record)
     setSaving(false)
     await load()
@@ -582,7 +585,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                       const label = isHiit
                         ? (hiitCircuits.find(h => h.id === item.hiit_circuit_id)?.name || 'HIIT')
                         : isCardio
-                          ? `${item.custom_label || cs?.name || 'Cardio'}${item.duration_minutes ? ` — ${item.duration_minutes} min` : ''}`
+                          ? `${item.custom_label || cs?.name || 'Cardio'}${item.duration_minutes ? ` — ${item.duration_minutes} min` : ''}${item.heart_rate_zone ? ` · ${item.heart_rate_zone}` : ''}`
                           : isRest
                             ? (item.custom_label || 'Rest Day')
                             : (stripDay(wktName) || wktName || item.custom_label || 'Workout')
@@ -887,6 +890,14 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                           value={addCardioDuration}
                           onChange={e => setAddCardioDuration(e.target.value)}
                         />
+                        <select
+                          className="input w-full"
+                          value={addCardioZone}
+                          onChange={e => setAddCardioZone(e.target.value)}
+                        >
+                          <option value="">Heart rate zone (optional)…</option>
+                          {ZONE_OPTIONS.map(z => <option key={z} value={z}>{z}</option>)}
+                        </select>
                       </div>
                     )}
 
@@ -897,7 +908,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                             await addRestItem(day, addRestSubtype)
                           } else if (addType === 'cardio') {
                             if (!addCardioText && !addItemId) return
-                            await addCardioItem(day, addCardioText || null, addItemId || null, addCardioDuration || null)
+                            await addCardioItem(day, addCardioText || null, addItemId || null, addCardioDuration || null, addCardioZone || null)
                           } else {
                             if (!addItemId) return
                             await addItem(day, addType, addItemId)
@@ -908,6 +919,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                           setAddItemId('')
                           setAddCardioText('')
                           setAddCardioDuration('')
+                          setAddCardioZone('')
                           setAddRestSubtype('rest')
                         }}
                         disabled={addType !== 'rest' && (addType === 'cardio' ? (!addCardioText && !addItemId) : !addItemId) || saving}
@@ -916,7 +928,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                         Add to {day}
                       </button>
                       <button
-                        onClick={() => { setAddingToDay(null); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioText(''); setAddRestSubtype('rest') }}
+                        onClick={() => { setAddingToDay(null); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioText(''); setAddCardioDuration(''); setAddCardioZone(''); setAddRestSubtype('rest') }}
                         className="btn-secondary text-sm"
                       >
                         Cancel

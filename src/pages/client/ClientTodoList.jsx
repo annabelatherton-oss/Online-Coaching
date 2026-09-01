@@ -57,7 +57,7 @@ function buildSystemTasks(client, schedItems) {
   const cardioItems = (schedItems || []).filter(i => i.item_type === 'cardio')
   cardioItems.forEach((item, idx) => {
     const name = item.custom_label || item.cardio_sessions?.name
-    const label = `Complete ${name || 'your cardio'}${item.duration_minutes ? ` (${item.duration_minutes} min)` : ''}`
+    const label = `Complete ${name || 'your cardio'}${item.duration_minutes ? ` (${item.duration_minutes} min)` : ''}${item.heart_rate_zone ? ` · ${item.heart_rate_zone}` : ''}`
     tasks.push({ key: idx === 0 ? 'cardio' : `cardio_${idx}`, label, cardioItem: item.cardio_session_id ? item : null })
   })
 
@@ -184,7 +184,7 @@ export default function ClientTodoList() {
       supabase.from('client_daily_tasks').select('*')
         .eq('client_id', clientId).eq('task_date', dateStr).order('created_at'),
       supabase.from('client_schedule_items')
-        .select('id, item_type, workout_id, custom_label, hiit_circuit_id, cardio_session_id, duration_minutes, workouts(name), hiit_circuits(name), cardio_sessions(name)')
+        .select('id, item_type, workout_id, custom_label, hiit_circuit_id, cardio_session_id, duration_minutes, heart_rate_zone, workouts(name), hiit_circuits(name), cardio_sessions(name)')
         .eq('client_id', clientId).eq('day_of_week', dayName),
     ])
     setDbTasks(tasks || [])
@@ -536,9 +536,9 @@ export default function ClientTodoList() {
                       {cardioDetailData.intensity}
                     </span>
                   )}
-                  {cardioDetailData.heart_rate_zone && (
+                  {cardioDetailItem.heart_rate_zone && (
                     <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                      {cardioDetailData.heart_rate_zone}
+                      {cardioDetailItem.heart_rate_zone}
                     </span>
                   )}
                 </div>
