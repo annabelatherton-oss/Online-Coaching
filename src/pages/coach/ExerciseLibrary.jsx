@@ -419,6 +419,8 @@ export default function ExerciseLibrary() {
   const [modal, setModal] = useState(null) // null | 'new' | exercise object
   const [seeding, setSeeding] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [linking, setLinking] = useState(false)
+  const [linkResults, setLinkResults] = useState(null)
   const [variationsByExercise, setVariationsByExercise] = useState({})
   const [deleteCheck, setDeleteCheck] = useState(null) // null | { ex, loading } | { ex, sessions, workouts }
   const [replacementId, setReplacementId] = useState('')
@@ -477,18 +479,23 @@ export default function ExerciseLibrary() {
     setReplacementId('')
     setDeleteCheck({ ex, loading: true })
 
-    // Only workout_exercises has a real link (exercise_id) back to a specific library
-    // card — session_exercises is plain text with no selection to check, and matching
-    // by name alone flags coincidental same-named text that was never actually this
-    // exercise, so that's intentionally not checked here.
-    const { data: workoutRows } = await supabase
-      .from('workout_exercises').select('id, name, workouts(name)').eq('exercise_id', ex.id)
+    // Only check the real exercise_id link back to this card — matching by name
+    // alone would flag coincidental same-named text that was never actually this
+    // exercise.
+    const [{ data: workoutRows }, { data: sessionRows }] = await Promise.all([
+      supabase.from('workout_exercises').select('id, name, workouts(name)').eq('exercise_id', ex.id),
+      supabase.from('session_exercises').select('id, name, training_sessions(name, training_programs(name))').eq('exercise_id', ex.id),
+    ])
 
     const workouts = (workoutRows || [])
       .filter(r => r.workouts)
       .map(r => ({ workout: r.workouts.name, name: r.name }))
 
-    setDeleteCheck({ ex, workouts })
+    const sessions = (sessionRows || [])
+      .filter(r => r.training_sessions)
+      .map(r => ({ programme: r.training_sessions.training_programs?.name || 'Untitled programme', session: r.training_sessions.name, name: r.name }))
+
+    setDeleteCheck({ ex, workouts, sessions })
   }
 
   async function confirmDelete() {
@@ -502,6 +509,7 @@ export default function ExerciseLibrary() {
     if (!deleteCheck || !replacement) return
     setDeleteCheck(dc => ({ ...dc, replacing: true }))
     await supabase.from('workout_exercises').update({ name: replacement.name, exercise_id: replacement.id }).eq('exercise_id', deleteCheck.ex.id)
+    await supabase.from('session_exercises').update({ name: replacement.name, exercise_id: replacement.id }).eq('exercise_id', deleteCheck.ex.id)
     await supabase.from('exercises').delete().eq('id', deleteCheck.ex.id)
     setDeleteCheck(null)
     load()
@@ -593,6 +601,64 @@ export default function ExerciseLibrary() {
     setImporting(false)
   }
 
+  const MUSCLE_WORDS = ['glute', 'quad', 'hamstring', 'chest', 'shoulder', 'back', 'bicep', 'tricep', 'calf', 'core', 'ab', 'adductor', 'abductor']
+  function findMuscleWords(text) {
+    const t = (text || '').toLowerCase()
+    return MUSCLE_WORDS.filter(w => t.includes(w))
+  }
+
+  async function linkTrainingExercises() {
+    setLinking(true)
+    const { data: rows } = await supabase
+      .from('session_exercises')
+      .select('id, name, notes, training_sessions(name)')
+      .is('exercise_id', null)
+
+    const linked = []
+    const ambiguous = []
+    const unresolved = []
+
+    for (const row of rows || []) {
+      const rowName = row.name.trim()
+      const nameLower = rowName.toLowerCase()
+
+      const exact = exercises.find(e => e.name.toLowerCase() === nameLower)
+      if (exact) { linked.push({ row, exercise: exact, via: 'exact match' }); continue }
+
+      const candidates = exercises.filter(e => e.name.toLowerCase().startsWith(nameLower + ' ('))
+      if (candidates.length === 0) { unresolved.push({ row, reason: `No library exercise named "${rowName}" or a variant of it` }); continue }
+      if (candidates.length === 1) { linked.push({ row, exercise: candidates[0], via: 'only variant that matches the base name' }); continue }
+
+      const context = `${row.training_sessions?.name || ''} ${row.notes || ''}`
+      const contextMuscles = findMuscleWords(context)
+      const scored = candidates.map(c => {
+        const suffix = c.name.slice(rowName.length)
+        const overlap = findMuscleWords(suffix).filter(w => contextMuscles.includes(w))
+        return { candidate: c, overlapCount: overlap.length }
+      }).filter(s => s.overlapCount > 0)
+
+      if (scored.length === 1) {
+        linked.push({ row, exercise: scored[0].candidate, via: `matched "${row.training_sessions?.name || ''}"${row.notes ? ` / notes "${row.notes}"` : ''}` })
+      } else {
+        ambiguous.push({ row, candidates, context: context.trim() })
+      }
+    }
+
+    for (const { row, exercise } of linked) {
+      await supabase.from('session_exercises').update({ exercise_id: exercise.id }).eq('id', row.id)
+    }
+
+    const dedupeBy = (list, keyFn) => [...new Map(list.map(item => [keyFn(item), item])).values()]
+
+    setLinkResults({
+      linked: dedupeBy(linked, l => `${l.row.name}|${l.exercise.id}`),
+      ambiguous: dedupeBy(ambiguous, a => `${a.row.name}|${a.candidates.map(c => c.id).join(',')}`),
+      unresolved: dedupeBy(unresolved, u => u.row.name),
+      linkedCount: linked.length,
+    })
+    setLinking(false)
+  }
+
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
   return (
@@ -606,6 +672,10 @@ export default function ExerciseLibrary() {
           <button onClick={importFromProgrammes} disabled={importing}
             className="text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">
             {importing ? 'Importing…' : 'Import from programmes'}
+          </button>
+          <button onClick={linkTrainingExercises} disabled={linking}
+            className="text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">
+            {linking ? 'Linking…' : 'Link training block exercises'}
           </button>
           <button onClick={refreshSeedData} disabled={seeding}
             className="text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">
@@ -708,18 +778,24 @@ export default function ExerciseLibrary() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Delete "{deleteCheck.ex.name}"?</h2>
             {deleteCheck.loading ? (
               <p className="text-sm text-gray-400 py-4">Checking where it's used…</p>
-            ) : deleteCheck.workouts.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Not selected in any workout — safe to delete. (Training programme blocks are plain text, so they can't be checked this way — deleting this card never changes anything already typed into a block.)</p>
+            ) : (deleteCheck.workouts.length === 0 && deleteCheck.sessions.length === 0) ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Not selected in any workout or training block — safe to delete.</p>
             ) : (
               <div className="mt-2 space-y-3">
                 <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
-                  This exact card is selected in {deleteCheck.workouts.length} workout{deleteCheck.workouts.length !== 1 ? 's' : ''}:
+                  This exact card is selected in {deleteCheck.workouts.length + deleteCheck.sessions.length} place{deleteCheck.workouts.length + deleteCheck.sessions.length !== 1 ? 's' : ''}:
                 </p>
                 <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1 max-h-48 overflow-y-auto">
                   {deleteCheck.workouts.map((w, i) => (
                     <li key={`w${i}`} className="flex items-start gap-1.5">
                       <span className="text-gray-300 dark:text-gray-600">•</span>
                       <span>Workout: {w.workout} (shows as "{w.name}")</span>
+                    </li>
+                  ))}
+                  {deleteCheck.sessions.map((s, i) => (
+                    <li key={`s${i}`} className="flex items-start gap-1.5">
+                      <span className="text-gray-300 dark:text-gray-600">•</span>
+                      <span>{s.programme} — {s.session} (shows as "{s.name}")</span>
                     </li>
                   ))}
                 </ul>
@@ -750,6 +826,64 @@ export default function ExerciseLibrary() {
               <button onClick={confirmDelete} disabled={deleteCheck.loading || deleteCheck.replacing} className="bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 px-4 text-sm font-medium disabled:opacity-50">
                 Delete anyway
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {linkResults && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setLinkResults(null)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Training block exercises linked</h2>
+            <div className="space-y-4 text-sm">
+              <p className="text-green-600 dark:text-green-400 font-medium">
+                {linkResults.linkedCount} exercise{linkResults.linkedCount !== 1 ? 's' : ''} linked across your training blocks{linkResults.linked.length > 0 ? ':' : '.'}
+              </p>
+              {linkResults.linked.length > 0 && (
+                <ul className="text-gray-600 dark:text-gray-300 space-y-1 max-h-32 overflow-y-auto">
+                  {linkResults.linked.map((l, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <span className="text-gray-300 dark:text-gray-600">•</span>
+                      <span>"{l.row.name}" → {l.exercise.name} <span className="text-gray-400">({l.via})</span></span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {linkResults.ambiguous.length > 0 && (
+                <>
+                  <p className="text-amber-600 dark:text-amber-400 font-medium">
+                    {linkResults.ambiguous.length} couldn't be told apart — pick manually in that training session:
+                  </p>
+                  <ul className="text-gray-600 dark:text-gray-300 space-y-1.5 max-h-40 overflow-y-auto">
+                    {linkResults.ambiguous.map((a, i) => (
+                      <li key={i}>
+                        <span className="font-medium">"{a.row.name}"</span> ({a.row.training_sessions?.name}) — could be: {a.candidates.map(c => c.name).join(' or ')}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+
+              {linkResults.unresolved.length > 0 && (
+                <>
+                  <p className="text-red-500 font-medium">
+                    {linkResults.unresolved.length} had no match at all:
+                  </p>
+                  <ul className="text-gray-600 dark:text-gray-300 space-y-1 max-h-32 overflow-y-auto">
+                    {linkResults.unresolved.map((u, i) => (
+                      <li key={i} className="flex items-start gap-1.5">
+                        <span className="text-gray-300 dark:text-gray-600">•</span>
+                        <span>"{u.row.name}" — {u.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+            <div className="flex justify-end mt-6">
+              <button onClick={() => setLinkResults(null)} className="btn-primary py-2 px-4 text-sm">Done</button>
             </div>
           </div>
         </div>

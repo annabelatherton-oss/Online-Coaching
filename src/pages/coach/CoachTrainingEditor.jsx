@@ -29,6 +29,12 @@ function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFir
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
 
+  function handleNameChange(val) {
+    onChange('name', val)
+    const match = library.find(l => l.name.toLowerCase() === val.toLowerCase())
+    onChange('exercise_id', match?.id || null)
+  }
+
   async function handleFile(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -67,7 +73,7 @@ function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFir
           placeholder="Exercise name"
           list="cte-exercise-list"
           value={exercise.name}
-          onChange={e => onChange('name', e.target.value)}
+          onChange={e => handleNameChange(e.target.value)}
         />
 
         <select
@@ -160,7 +166,7 @@ function SessionCard({ session, onDelete, occupiedDays, library }) {
   const [expanded, setExpanded] = useState(true)
 
   function addExercise() {
-    setExercises(prev => [...prev, { _key: Math.random().toString(36).slice(2), name: '', sets: null, reps: '', rpe: '', notes: '', equipment: null, illustration_url: null, video_url: null }])
+    setExercises(prev => [...prev, { _key: Math.random().toString(36).slice(2), name: '', sets: null, reps: '', rpe: '', notes: '', equipment: null, exercise_id: null, illustration_url: null, video_url: null }])
   }
 
   function update(idx, field, value) {
@@ -202,6 +208,7 @@ function SessionCard({ session, onDelete, occupiedDays, library }) {
           rest_seconds: ex.rest_seconds || null,
           notes: ex.notes?.trim() || null,
           equipment: ex.equipment || null,
+          exercise_id: ex.exercise_id || null,
           illustration_url: ex.illustration_url ?? null,
           video_url: ex.video_url ?? null,
         }))
@@ -435,7 +442,7 @@ export default function CoachTrainingEditor() {
           src.exercises.map((ex, i) => ({
             session_id: newSess.id, order_index: i, name: ex.name, sets: ex.sets,
             reps: ex.reps, rpe: ex.rpe, rest_seconds: ex.rest_seconds, notes: ex.notes,
-            equipment: ex.equipment, illustration_url: ex.illustration_url, video_url: ex.video_url,
+            equipment: ex.equipment, exercise_id: ex.exercise_id, illustration_url: ex.illustration_url, video_url: ex.video_url,
           }))
         )
         exercises = src.exercises.map(ex => ({ ...ex, _key: Math.random().toString(36).slice(2) }))
