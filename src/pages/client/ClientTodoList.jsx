@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { formatZoneBpm } from '../../lib/heartRateZones'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -57,7 +58,8 @@ function buildSystemTasks(client, schedItems) {
   const cardioItems = (schedItems || []).filter(i => i.item_type === 'cardio')
   cardioItems.forEach((item, idx) => {
     const name = item.custom_label || item.cardio_sessions?.name
-    const label = `Complete ${name || 'your cardio'}${item.duration_minutes ? ` (${item.duration_minutes} min)` : ''}${item.heart_rate_zone ? ` · ${item.heart_rate_zone}` : ''}`
+    const zoneBpm = item.heart_rate_zone ? formatZoneBpm(client?.date_of_birth, item.heart_rate_zone) : null
+    const label = `Complete ${name || 'your cardio'}${item.duration_minutes ? ` (${item.duration_minutes} min)` : ''}${item.heart_rate_zone ? ` · ${item.heart_rate_zone}${zoneBpm ? ` (${zoneBpm})` : ''}` : ''}`
     tasks.push({ key: idx === 0 ? 'cardio' : `cardio_${idx}`, label, cardioItem: item.cardio_session_id ? item : null })
   })
 
@@ -163,7 +165,7 @@ export default function ClientTodoList() {
   // Load client profile + targets once
   useEffect(() => {
     supabase.from('clients')
-      .select('id, current_calories, current_protein, current_carbs, current_fat, steps_target, water_target_litres, sleep_target_hours')
+      .select('id, current_calories, current_protein, current_carbs, current_fat, steps_target, water_target_litres, sleep_target_hours, date_of_birth')
       .eq('profile_id', session.user.id)
       .single()
       .then(({ data }) => {
@@ -539,6 +541,7 @@ export default function ClientTodoList() {
                   {cardioDetailItem.heart_rate_zone && (
                     <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                       {cardioDetailItem.heart_rate_zone}
+                      {formatZoneBpm(clientData?.date_of_birth, cardioDetailItem.heart_rate_zone) && ` · ${formatZoneBpm(clientData?.date_of_birth, cardioDetailItem.heart_rate_zone)}`}
                     </span>
                   )}
                 </div>

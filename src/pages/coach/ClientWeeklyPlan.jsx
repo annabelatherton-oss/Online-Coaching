@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { formatZoneBpm } from '../../lib/heartRateZones'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const EQUIPMENT_OPTIONS = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'Pec Deck', 'EZ Bar', 'Straight Bar', 'Kettlebell', 'Bodyweight', 'Band', 'Other']
@@ -58,6 +59,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const [hiitCircuits, setHiitCircuits] = useState([])
   const [cardioSessions, setCardioSessions] = useState([])
   const [exerciseLibrary, setExerciseLibrary] = useState([])
+  const [clientDob, setClientDob] = useState(null)
   const [loading, setLoading] = useState(true)
   const [populating, setPopulating] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -101,6 +103,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       { data: hiits },
       { data: cardios },
       { data: exLib },
+      { data: clientRow },
     ] = await Promise.all([
       supabase
         .from('client_schedule_items')
@@ -116,6 +119,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       supabase.from('hiit_circuits').select('id, name, circuit_type').eq('coach_id', coachId).eq('is_archived', false).order('name'),
       supabase.from('cardio_sessions').select('id, name, cardio_type, duration_minutes').eq('coach_id', coachId).eq('is_archived', false).order('name'),
       supabase.from('exercises').select('id, name').eq('coach_id', coachId).eq('is_archived', false).order('name'),
+      supabase.from('clients').select('date_of_birth').eq('id', clientId).single(),
     ])
     if (schedErr?.code === '42P01' || schedErr?.message?.includes('does not exist')) {
       setError('migration_needed')
@@ -130,6 +134,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     setHiitCircuits(hiits || [])
     setCardioSessions(cardios || [])
     setExerciseLibrary(exLib || [])
+    setClientDob(clientRow?.date_of_birth || null)
     setLoading(false)
   }
 
@@ -585,7 +590,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                       const label = isHiit
                         ? (hiitCircuits.find(h => h.id === item.hiit_circuit_id)?.name || 'HIIT')
                         : isCardio
-                          ? `${item.custom_label || cs?.name || 'Cardio'}${item.duration_minutes ? ` — ${item.duration_minutes} min` : ''}${item.heart_rate_zone ? ` · ${item.heart_rate_zone}` : ''}`
+                          ? `${item.custom_label || cs?.name || 'Cardio'}${item.duration_minutes ? ` — ${item.duration_minutes} min` : ''}${item.heart_rate_zone ? ` · ${item.heart_rate_zone}${formatZoneBpm(clientDob, item.heart_rate_zone) ? ` (${formatZoneBpm(clientDob, item.heart_rate_zone)})` : ''}` : ''}`
                           : isRest
                             ? (item.custom_label || 'Rest Day')
                             : (stripDay(wktName) || wktName || item.custom_label || 'Workout')
@@ -898,6 +903,11 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                           <option value="">Heart rate zone (optional)…</option>
                           {ZONE_OPTIONS.map(z => <option key={z} value={z}>{z}</option>)}
                         </select>
+                        {addCardioZone && (
+                          formatZoneBpm(clientDob, addCardioZone)
+                            ? <p className="text-xs text-emerald-600 dark:text-emerald-400">Target: {formatZoneBpm(clientDob, addCardioZone)}</p>
+                            : <p className="text-xs text-gray-400">Add this client's date of birth to their profile to show a target heart rate.</p>
+                        )}
                       </div>
                     )}
 
