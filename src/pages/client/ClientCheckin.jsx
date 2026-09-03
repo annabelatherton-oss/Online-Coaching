@@ -10,25 +10,40 @@ const RATING_LABELS = {
   gym_adherence:  ['', 'Off track', 'Mostly off', 'Moderate', 'Mostly on', 'On track'],
 }
 
-const STRUGGLE_OPTIONS = [
-  'Snacking between meals',
-  'Hitting my macros',
-  'Form/technique in the gym',
-  'Finding time to go to the gym',
-  'Meal prepping',
-  'Too many social events',
-  'Feeling restricted / lack of freedom',
-  'Eating all my meals',
-  'Portion sizes',
-  'Cravings / sweet tooth',
-  'Alcohol',
-  'Eating out / restaurants',
-  'Consistency & motivation',
-  'Stress',
-  'Sleep',
-  'Work schedule',
-  'Travel',
-  'Injury or niggle',
+const STRUGGLE_GROUPS = [
+  {
+    label: 'Food',
+    options: [
+      'Snacking between meals',
+      'Hitting my macros',
+      'Meal prepping',
+      'Eating all my meals',
+      'Portion sizes',
+      'Cravings / sweet tooth',
+      'Alcohol',
+      'Eating out / restaurants',
+    ],
+  },
+  {
+    label: 'Gym',
+    options: [
+      'Form/technique in the gym',
+      'Finding time to go to the gym',
+      'Injury or niggle',
+    ],
+  },
+  {
+    label: 'Other',
+    options: [
+      'Too many social events',
+      'Feeling restricted / lack of freedom',
+      'Consistency & motivation',
+      'Stress',
+      'Sleep',
+      'Work schedule',
+      'Travel',
+    ],
+  },
 ]
 
 const PHOTO_ANGLES = [
@@ -768,24 +783,31 @@ export default function ClientCheckin() {
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">What are you most struggling with?</h2>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Select all that apply — this helps your coach know where to focus.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {STRUGGLE_OPTIONS.map(opt => {
-              const active = (form.struggles || []).includes(opt)
-              return (
-                <button
-                  type="button"
-                  key={opt}
-                  onClick={() => toggleStruggle(opt)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                    active
-                      ? 'bg-brand-500 border-brand-500 text-white'
-                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-brand-300'
-                  }`}
-                >
-                  {opt}
-                </button>
-              )
-            })}
+          <div className="space-y-3">
+            {STRUGGLE_GROUPS.map(group => (
+              <div key={group.label}>
+                <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5">{group.label}</p>
+                <div className="flex flex-wrap gap-2">
+                  {group.options.map(opt => {
+                    const active = (form.struggles || []).includes(opt)
+                    return (
+                      <button
+                        type="button"
+                        key={opt}
+                        onClick={() => toggleStruggle(opt)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                          active
+                            ? 'bg-brand-500 border-brand-500 text-white'
+                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-brand-300'
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
           <div>
             <label className="label">Something else? (optional)</label>
