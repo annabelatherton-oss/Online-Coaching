@@ -3175,6 +3175,20 @@ function CheckinsTab({ clientId, collectMeasurements }) {
               </div>
             )}
 
+            {((c.struggles || []).length > 0 || c.struggles_other) && (
+              <div>
+                <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">Struggling with</p>
+                {(c.struggles || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
+                    {c.struggles.map(s => (
+                      <span key={s} className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">{s}</span>
+                    ))}
+                  </div>
+                )}
+                {c.struggles_other && <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{c.struggles_other}</p>}
+              </div>
+            )}
+
             {c.notes && (
               <div>
                 <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">Notes</p>
