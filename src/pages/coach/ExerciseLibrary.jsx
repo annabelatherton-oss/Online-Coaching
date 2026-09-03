@@ -79,7 +79,7 @@ function Badge({ label, colourClass }) {
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colourClass || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>{label}</span>
 }
 
-function ExerciseModal({ exercise, onSave, onClose }) {
+function ExerciseModal({ exercise, allExercises, onSave, onClose }) {
   const [form, setForm] = useState(exercise ? {
     ...exercise,
     secondary_muscles: exercise.secondary_muscles || [],
@@ -91,12 +91,17 @@ function ExerciseModal({ exercise, onSave, onClose }) {
   const [saving, setSaving] = useState(false)
   const [tagInput, setTagInput] = useState('')
   const [secInput, setSecInput] = useState('')
+  const [alternativeIds, setAlternativeIds] = useState([])
+  const [altInput, setAltInput] = useState('')
 
   useEffect(() => {
     if (!exercise) return
     supabase.from('exercise_variations').select('*').eq('exercise_id', exercise.id).order('order_index').then(({ data }) => {
       setVariations(data && data.length > 0 ? data.map(v => ({ ...v, default_rest_seconds: v.default_rest_seconds ?? '' })) : [{ ...EMPTY_VARIATION }])
       setLoadingVariations(false)
+    })
+    supabase.from('exercise_alternatives').select('alternative_exercise_id').eq('exercise_id', exercise.id).order('order_index').then(({ data }) => {
+      setAlternativeIds((data || []).map(r => r.alternative_exercise_id))
     })
   }, [exercise])
 
@@ -128,7 +133,7 @@ function ExerciseModal({ exercise, onSave, onClose }) {
       tempo: v.tempo || null,
       default_rest_seconds: v.default_rest_seconds !== '' && v.default_rest_seconds != null ? parseInt(v.default_rest_seconds) : null,
       order_index: i,
-    })))
+    })), alternativeIds)
     setSaving(false)
   }
 
@@ -273,6 +278,32 @@ function ExerciseModal({ exercise, onSave, onClose }) {
           </div>
 
           <div>
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Alternative exercises</label>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">Shown to clients as a swap option if this exercise's equipment isn't free — for a different movement, not just a different variation.</p>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {alternativeIds.map(id => {
+                const alt = allExercises?.find(e => e.id === id)
+                return (
+                  <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                    {alt?.name || 'Unknown'}
+                    <button onClick={() => setAlternativeIds(prev => prev.filter(x => x !== id))} className="text-gray-400 hover:text-red-500">×</button>
+                  </span>
+                )
+              })}
+            </div>
+            <div className="flex gap-2">
+              <select className="input flex-1 text-sm py-1.5" value={altInput} onChange={e => setAltInput(e.target.value)}>
+                <option value="">Add alternative…</option>
+                {(allExercises || [])
+                  .filter(e => e.id !== exercise?.id && !alternativeIds.includes(e.id))
+                  .map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+              <button onClick={() => { if (altInput) { setAlternativeIds(prev => [...prev, altInput]); setAltInput('') } }}
+                className="btn-primary py-1.5 px-3 text-sm flex-shrink-0">Add</button>
+            </div>
+          </div>
+
+          <div>
             <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Notes</label>
             <textarea rows={2} className="input w-full resize-none" value={form.notes} onChange={e => set('notes', e.target.value)} />
           </div>
@@ -347,7 +378,7 @@ export default function ExerciseLibrary() {
     return true
   })
 
-  async function handleSave(form, variations) {
+  async function handleSave(form, variations, alternativeIds) {
     let exerciseId = modal === 'new' ? null : modal.id
     if (modal === 'new') {
       const { data } = await supabase.from('exercises').insert({ ...form, coach_id: profile.id }).select('id').single()
@@ -358,6 +389,12 @@ export default function ExerciseLibrary() {
     if (exerciseId) {
       await supabase.from('exercise_variations').delete().eq('exercise_id', exerciseId)
       await supabase.from('exercise_variations').insert(variations.map(v => ({ ...v, exercise_id: exerciseId })))
+      await supabase.from('exercise_alternatives').delete().eq('exercise_id', exerciseId)
+      if (alternativeIds?.length > 0) {
+        await supabase.from('exercise_alternatives').insert(
+          alternativeIds.map((id, i) => ({ exercise_id: exerciseId, alternative_exercise_id: id, order_index: i }))
+        )
+      }
     }
     setModal(null)
     load()
@@ -530,6 +567,7 @@ export default function ExerciseLibrary() {
       {modal && (
         <ExerciseModal
           exercise={modal === 'new' ? null : modal}
+          allExercises={exercises}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

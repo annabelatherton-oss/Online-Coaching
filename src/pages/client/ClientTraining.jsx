@@ -65,6 +65,52 @@ export default function ClientTraining() {
   const [detailData, setDetailData] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailTab, setDetailTab] = useState(0)
+  const [swaps, setSwaps] = useState({}) // session_exercise_id → { swapped_exercise_id, equipment }
+  const [swapNames, setSwapNames] = useState({}) // exercise_id → name (for swapped-in exercises)
+  const [swapEx, setSwapEx] = useState(null) // session_exercise row currently being swapped
+  const [swapOptions, setSwapOptions] = useState(null) // { variations, alternatives }
+  const [swapSaving, setSwapSaving] = useState(false)
+
+  async function openSwapPicker(ex) {
+    setSwapEx(ex)
+    setSwapOptions(null)
+    if (!ex.exercise_id) return
+    const [{ data: variations }, { data: alts }] = await Promise.all([
+      supabase.from('exercise_variations').select('*').eq('exercise_id', ex.exercise_id).order('order_index'),
+      supabase.from('exercise_alternatives').select('alternative_exercise_id, exercises:alternative_exercise_id(id, name)').eq('exercise_id', ex.exercise_id).order('order_index'),
+    ])
+    setSwapOptions({
+      variations: variations || [],
+      alternatives: (alts || []).filter(a => a.exercises).map(a => a.exercises),
+    })
+  }
+
+  function closeSwapPicker() {
+    setSwapEx(null)
+    setSwapOptions(null)
+  }
+
+  async function chooseSwap({ swappedExerciseId, equipment, altName }) {
+    if (!swapEx || !clientId) return
+    setSwapSaving(true)
+    await supabase.from('client_exercise_swaps').upsert(
+      { client_id: clientId, session_exercise_id: swapEx.id, swapped_exercise_id: swappedExerciseId || null, equipment: equipment || null },
+      { onConflict: 'client_id,session_exercise_id' }
+    )
+    setSwaps(prev => ({ ...prev, [swapEx.id]: { swapped_exercise_id: swappedExerciseId || null, equipment: equipment || null } }))
+    if (swappedExerciseId && altName) setSwapNames(prev => ({ ...prev, [swappedExerciseId]: altName }))
+    setSwapSaving(false)
+    closeSwapPicker()
+  }
+
+  async function revertSwap(exId) {
+    if (!clientId) return
+    setSwapSaving(true)
+    await supabase.from('client_exercise_swaps').delete().eq('client_id', clientId).eq('session_exercise_id', exId)
+    setSwaps(prev => { const next = { ...prev }; delete next[exId]; return next })
+    setSwapSaving(false)
+    closeSwapPicker()
+  }
 
   async function openDetail(ex) {
     setDetailEx(ex)
@@ -122,6 +168,21 @@ export default function ClientTraining() {
       const exMap = {}
       sorted.forEach(s => s.exercises.forEach(e => { exMap[e.id] = e }))
       const exIds = Object.keys(exMap)
+
+      if (exIds.length > 0) {
+        const { data: swapRows } = await supabase
+          .from('client_exercise_swaps')
+          .select('session_exercise_id, swapped_exercise_id, equipment, exercises:swapped_exercise_id(id, name)')
+          .eq('client_id', client.id)
+          .in('session_exercise_id', exIds)
+        const swapMap = {}, nameMap = {}
+        ;(swapRows || []).forEach(r => {
+          swapMap[r.session_exercise_id] = { swapped_exercise_id: r.swapped_exercise_id, equipment: r.equipment }
+          if (r.exercises) nameMap[r.swapped_exercise_id] = r.exercises.name
+        })
+        setSwaps(swapMap)
+        setSwapNames(nameMap)
+      }
 
       if (exIds.length > 0) {
         const weeksToFetch = week > 1 ? [week, week - 1] : [week]
@@ -280,6 +341,10 @@ export default function ClientTraining() {
                     const prev = prevWeekLogs[ex.id]
                     const prevSets = prev ? parseSetLogs(prev.reps_completed, prev.weight_kg, numSets) : null
                     const prescription = [ex.reps && ex.reps, ex.rpe && `RPE ${ex.rpe}`].filter(Boolean).join(' · ')
+                    const swap = swaps[ex.id]
+                    const isSwapped = !!swap
+                    const displayName = swap?.swapped_exercise_id ? (swapNames[swap.swapped_exercise_id] || ex.name) : ex.name
+                    const displayEquipment = swap?.equipment || ex.equipment
 
                     return (
                       <div key={ex.id} className="px-3 py-2.5 flex gap-2.5">
@@ -287,14 +352,24 @@ export default function ClientTraining() {
                           <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
                         </button>
                         <div className="flex-1 min-w-0">
-                          <button type="button" onClick={() => openDetail(ex)} className="flex items-center gap-1.5 flex-wrap text-left">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white leading-tight underline decoration-dotted decoration-gray-300 dark:decoration-gray-600 underline-offset-2">{ex.name}</p>
-                            {ex.equipment && (
-                              <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full leading-none">
-                                {ex.equipment}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button type="button" onClick={() => openDetail(ex)} className="flex items-center gap-1.5 flex-wrap text-left">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white leading-tight underline decoration-dotted decoration-gray-300 dark:decoration-gray-600 underline-offset-2">{displayName}</p>
+                              {displayEquipment && (
+                                <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full leading-none">
+                                  {displayEquipment}
+                                </span>
+                              )}
+                            </button>
+                            {isSwapped && (
+                              <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded-full leading-none">
+                                Swapped
                               </span>
                             )}
-                          </button>
+                            <button type="button" onClick={() => openSwapPicker(ex)} className="text-[10px] font-medium text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 underline underline-offset-2 flex-shrink-0">
+                              {isSwapped ? 'Change' : "Can't do this?"}
+                            </button>
+                          </div>
                           <p className="text-xs text-gray-400 dark:text-gray-500">
                             {numSets} sets{prescription ? ` · ${prescription}` : ''}
                           </p>
@@ -444,6 +519,82 @@ export default function ClientTraining() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {swapEx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={closeSwapPicker} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Swap "{swapEx.name}"</h2>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Only affects your plan — nothing changes for anyone else.</p>
+              </div>
+              <button onClick={closeSwapPicker} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl leading-none flex-shrink-0">×</button>
+            </div>
+
+            <div className="p-5 space-y-5">
+              {swaps[swapEx.id] && (
+                <button
+                  type="button"
+                  onClick={() => revertSwap(swapEx.id)}
+                  disabled={swapSaving}
+                  className="text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline"
+                >
+                  ← Revert to the planned exercise
+                </button>
+              )}
+
+              {!swapOptions ? (
+                <LoadingSpinner size="md" />
+              ) : (
+                <>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Same exercise, different equipment</p>
+                    {swapOptions.variations.filter(v => v.equipment && v.equipment !== swapEx.equipment).length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {swapOptions.variations.filter(v => v.equipment && v.equipment !== swapEx.equipment).map(v => (
+                          <button
+                            key={v.id}
+                            type="button"
+                            disabled={swapSaving}
+                            onClick={() => chooseSwap({ swappedExerciseId: null, equipment: v.equipment })}
+                            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-brand-50 hover:text-brand-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-brand-900/20 dark:hover:text-brand-400 transition-colors"
+                          >
+                            {v.equipment}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400 dark:text-gray-500">No other equipment options set up for this exercise.</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Different exercise</p>
+                    {swapOptions.alternatives.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {swapOptions.alternatives.map(alt => (
+                          <button
+                            key={alt.id}
+                            type="button"
+                            disabled={swapSaving}
+                            onClick={() => chooseSwap({ swappedExerciseId: alt.id, equipment: null, altName: alt.name })}
+                            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-brand-50 hover:text-brand-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-brand-900/20 dark:hover:text-brand-400 transition-colors"
+                          >
+                            {alt.name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400 dark:text-gray-500">No alternatives set up for this exercise yet — message your coach.</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
