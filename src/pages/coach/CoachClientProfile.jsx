@@ -2863,6 +2863,27 @@ function CheckinsTab({ clientId, collectMeasurements }) {
   // Ascending for the history table
   const ascending = [...checkins].reverse()
 
+  // Flags a rating that's been yellow (3/5) or red (1-2/5) for more than 2
+  // weeks running, counting back from the most recent check-in. checkins
+  // is already most-recent-first; a missing value is skipped (doesn't
+  // break or extend the streak), a rating of 4+ ends it.
+  const RATING_FIELDS = [
+    { key: 'energy_level', label: 'Energy' },
+    { key: 'sleep_quality', label: 'Sleep quality' },
+    { key: 'food_adherence', label: 'Food adherence' },
+    { key: 'gym_adherence', label: 'Gym adherence' },
+  ]
+  const concerns = RATING_FIELDS.map(f => {
+    let streak = 0
+    for (const c of checkins) {
+      const v = c[f.key]
+      if (v == null) continue
+      if (v < 4) streak++
+      else break
+    }
+    return { ...f, streak }
+  }).filter(f => f.streak > 2)
+
   return (
     <div className="space-y-6 max-w-3xl">
       {lightbox && (
@@ -2872,6 +2893,25 @@ function CheckinsTab({ clientId, collectMeasurements }) {
             <button onClick={() => setLightbox(null)} className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Needs-attention banner: yellow/red rating for 3+ weeks running ── */}
+      {concerns.length > 0 && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 p-4">
+          <div className="flex items-start gap-2.5">
+            <svg className="w-5 h-5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            <div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Needs attention</p>
+              <ul className="mt-1 space-y-0.5 text-sm text-amber-700 dark:text-amber-400">
+                {concerns.map(f => (
+                  <li key={f.key}>{f.label} has been 3/5 or below for {f.streak} weeks in a row.</li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
       )}
