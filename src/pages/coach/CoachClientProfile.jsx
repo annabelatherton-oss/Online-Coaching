@@ -2372,6 +2372,17 @@ function stripDayPrefix(name) {
   return name
 }
 
+// If a training block's day label is literally "Rest" or "Active Rest",
+// that day should land on the client's schedule as a rest day (not a
+// workout with zero exercises) — this tells the two apart and, for active
+// rest specifically, flags that cardio still needs picking for that day.
+function restKind(label) {
+  const l = (label || '').trim().toLowerCase()
+  if (l === 'active rest' || l === 'active rest day') return 'active_rest'
+  if (l === 'rest' || l === 'rest day') return 'rest'
+  return null
+}
+
 function TrainingTab({ client, coachId, onSaved }) {
   const [programs, setPrograms] = useState([])
   const [assignment, setAssignment] = useState(null)
@@ -2496,12 +2507,23 @@ function TrainingTab({ client, coachId, onSaved }) {
       .eq('program_id', selectedProgram.id).eq('week_number', 1)
     const seenDays = new Set()
     const toInsert = []
+    const restDays = []
     for (const s of (sessions || [])) {
       const day = WEEK_DAYS.find(d => s.name === d || s.name.startsWith(d + ' ') || s.name.startsWith(d + '—') || s.name.startsWith(d + ' —'))
       if (!day || seenDays.has(day)) continue
       seenDays.add(day)
       const label = s.name === day ? day : s.name.slice(day.length).replace(/^[\s–—\-]+/, '').trim() || day
-      toInsert.push({ client_id: client.id, coach_id: coachId, day_of_week: day, item_type: 'workout', workout_id: s.workout_id || null, custom_label: label, order_index: 0 })
+      const kind = restKind(label)
+      if (kind) {
+        restDays.push(day)
+        toInsert.push({ client_id: client.id, coach_id: coachId, day_of_week: day, item_type: 'rest', custom_label: kind === 'active_rest' ? 'Active Rest Day' : 'Rest Day', order_index: 0 })
+      } else {
+        toInsert.push({ client_id: client.id, coach_id: coachId, day_of_week: day, item_type: 'workout', workout_id: s.workout_id || null, custom_label: label, order_index: 0 })
+      }
+    }
+    if (restDays.length > 0) {
+      await supabase.from('client_schedule_items')
+        .delete().eq('client_id', client.id).eq('item_type', 'rest').in('day_of_week', restDays)
     }
     if (toInsert.length > 0) await supabase.from('client_schedule_items').insert(toInsert)
 

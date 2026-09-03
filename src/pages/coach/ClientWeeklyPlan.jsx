@@ -8,6 +8,17 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 const EQUIPMENT_OPTIONS = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'Pec Deck', 'EZ Bar', 'Straight Bar', 'Kettlebell', 'Bodyweight', 'Band', 'Other']
 const ZONE_OPTIONS = ['Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 'Zone 5']
 
+// If a training block's day label is literally "Rest" or "Active Rest",
+// that day should land on the client's schedule as a rest day (not a
+// workout with zero exercises) — this tells the two apart and, for active
+// rest specifically, flags that cardio still needs picking for that day.
+function restKind(label) {
+  const l = (label || '').trim().toLowerCase()
+  if (l === 'active rest' || l === 'active rest day') return 'active_rest'
+  if (l === 'rest' || l === 'rest day') return 'rest'
+  return null
+}
+
 function parseProgram(name) {
   const m = (name || '').match(/^(\d+)\s*Day\s*[–—\-]\s*Block\s*(\d+)/i)
   if (m) return { days: parseInt(m[1]), block: parseInt(m[2]) }
@@ -341,6 +352,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
 
     const seenDays = new Set()
     const toInsert = []
+    const restDays = []
 
     for (const s of rawSessions) {
       const parsed = parseDaySession(s, workouts)
@@ -348,21 +360,41 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       const { day, label } = parsed
       if (seenDays.has(day)) continue
       seenDays.add(day)
-      toInsert.push({
-        client_id: clientId,
-        coach_id: coachId,
-        day_of_week: day,
-        item_type: 'workout',
-        workout_id: s.workout_id || null,
-        custom_label: label,
-        order_index: 0,
-      })
+      const kind = restKind(label)
+      if (kind) {
+        restDays.push(day)
+        toInsert.push({
+          client_id: clientId,
+          coach_id: coachId,
+          day_of_week: day,
+          item_type: 'rest',
+          custom_label: kind === 'active_rest' ? 'Active Rest Day' : 'Rest Day',
+          order_index: 0,
+        })
+      } else {
+        toInsert.push({
+          client_id: clientId,
+          coach_id: coachId,
+          day_of_week: day,
+          item_type: 'workout',
+          workout_id: s.workout_id || null,
+          custom_label: label,
+          order_index: 0,
+        })
+      }
     }
 
     if (toInsert.length === 0) {
       setError('no_sessions')
       setPopulating(false)
       return
+    }
+
+    // Clear out any existing rest entries for days the block now marks as
+    // rest/active rest, so re-populating doesn't stack duplicates.
+    if (restDays.length > 0) {
+      await supabase.from('client_schedule_items')
+        .delete().eq('client_id', clientId).eq('item_type', 'rest').in('day_of_week', restDays)
     }
 
     const { error: insertErr } = await supabase.from('client_schedule_items').insert(toInsert)
@@ -693,6 +725,23 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                   <p className="text-sm font-semibold leading-tight truncate text-gray-600 dark:text-gray-300">
                                     {label}
                                   </p>
+                                  {item.custom_label === 'Active Rest Day' && !items.some(i => i.day_of_week === item.day_of_week && i.item_type === 'cardio') && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setAddingToDay(item.day_of_week)
+                                        setAddType('cardio')
+                                        setAddBlock('')
+                                        setAddDayVariant('')
+                                        setAddItemId('')
+                                        setAddCardioDuration('')
+                                        setAddCardioZone('')
+                                      }}
+                                      className="text-[11px] font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 mt-0.5"
+                                    >
+                                      Active rest — pick some cardio →
+                                    </button>
+                                  )}
                                 </div>
                               ) : (
                                 <div className="flex-1 min-w-0">

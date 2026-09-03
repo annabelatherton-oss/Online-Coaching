@@ -23,6 +23,17 @@ function buildName(day, label) {
   return label.trim() ? `${day} — ${label.trim()}` : day
 }
 
+// If a training block's day label is literally "Rest" or "Active Rest",
+// that day should land on the client's schedule as a rest day (not a
+// workout with zero exercises) — this tells the two apart and, for active
+// rest specifically, flags that cardio still needs picking for that day.
+function restKind(label) {
+  const l = (label || '').trim().toLowerCase()
+  if (l === 'active rest' || l === 'active rest day') return 'active_rest'
+  if (l === 'rest' || l === 'rest day') return 'rest'
+  return null
+}
+
 function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFirst, isLast, library, variationsByExerciseId }) {
   const hasMedia = !!(exercise.illustration_url || exercise.video_url)
   const [mediaOpen, setMediaOpen] = useState(hasMedia)
@@ -469,24 +480,33 @@ export default function CoachTrainingEditor() {
 
     if (oldParsed.day && oldParsed.day !== newParsed.day) {
       await supabase.from('client_schedule_items')
-        .delete().eq('item_type', 'workout').eq('day_of_week', oldParsed.day)
+        .delete().in('item_type', ['workout', 'rest']).eq('day_of_week', oldParsed.day)
         .in('client_id', clientIds)
     }
 
     if (!newParsed.day) return
-    const customLabel = newParsed.label || newParsed.day
+    const kind = restKind(newParsed.label)
+    const newType = kind ? 'rest' : 'workout'
+    const customLabel = kind ? (kind === 'active_rest' ? 'Active Rest Day' : 'Rest Day') : (newParsed.label || newParsed.day)
+    const staleType = kind ? 'workout' : 'rest'
+
     await Promise.all(clientIds.map(async clientId => {
+      // Clear out the other type for this day, in case it flipped between
+      // rest and workout on the same day.
+      await supabase.from('client_schedule_items')
+        .delete().eq('client_id', clientId).eq('day_of_week', newParsed.day).eq('item_type', staleType)
+
       const { data: existing } = await supabase
         .from('client_schedule_items')
         .select('id')
-        .eq('client_id', clientId).eq('day_of_week', newParsed.day).eq('item_type', 'workout')
+        .eq('client_id', clientId).eq('day_of_week', newParsed.day).eq('item_type', newType)
         .limit(1).maybeSingle()
       if (existing) {
         await supabase.from('client_schedule_items').update({ custom_label: customLabel }).eq('id', existing.id)
       } else {
         await supabase.from('client_schedule_items').insert({
           client_id: clientId, coach_id: profile.id, day_of_week: newParsed.day,
-          item_type: 'workout', custom_label: customLabel, order_index: 0,
+          item_type: newType, custom_label: customLabel, order_index: 0,
         })
       }
     }))
