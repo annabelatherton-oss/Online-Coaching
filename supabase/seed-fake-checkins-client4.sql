@@ -1,42 +1,30 @@
--- Seeds an 8-week fake check-in history for "Client4" (or whichever client
--- matches — see the lookup below) so you can test the check-in review flow
--- end to end, including the new struggle-tracking feature: an ongoing issue
--- with several weeks of comments, one resolved-and-acknowledged issue, one
--- resolved-but-NOT-yet-acknowledged issue (to test the green "they're ok
--- with it now" banner), and a freshly-flagged issue with just one comment.
+-- Seeds an 8-week fake check-in history for Bella Atherton
+-- (id 89427494-645e-4819-8119-73745cb7c15c) so you can test the check-in
+-- review flow end to end, including the struggle-tracking feature: an
+-- ongoing issue with several weeks of comments, one resolved-and-acknowledged
+-- issue, one resolved-but-NOT-yet-acknowledged issue (to test the green
+-- "they're ok with it now" banner), and a freshly-flagged issue with just
+-- one comment.
 --
 -- Safe to re-run — it deletes this client's existing check-ins and struggle
--- tracking rows first.
+-- tracking rows first (including any real check-ins already on the account —
+-- only use this on a client you're happy to overwrite with test data).
 --
 -- Run in Supabase SQL Editor.
 
 do $$
 declare
   v_coach_id   uuid;
-  v_client_id  uuid;
+  v_client_id  uuid := '89427494-645e-4819-8119-73745cb7c15c'; -- Bella Atherton
   v_w1 uuid; v_w2 uuid; v_w3 uuid; v_w4 uuid;
   v_w5 uuid; v_w6 uuid; v_w7 uuid; v_w8 uuid;
 begin
   select id into v_coach_id from profiles where email = 'annabelatherton@gmail.com' limit 1;
   if v_coach_id is null then raise exception 'Coach not found'; end if;
 
-  -- Find "Client4" by name (a few likely spellings), falling back to the
-  -- 4th client created for this coach if no name match is found.
-  select c.id into v_client_id
-    from clients c
-    join profiles p on p.id = c.profile_id
-    where c.coach_id = v_coach_id
-      and (lower(p.full_name) like '%client4%' or lower(p.full_name) like '%client 4%' or lower(p.full_name) like '%client_4%')
-    limit 1;
-
-  if v_client_id is null then
-    select id into v_client_id from (
-      select id, row_number() over (order by created_at) as rn
-      from clients where coach_id = v_coach_id
-    ) ranked where rn = 4;
+  if not exists (select 1 from clients where id = v_client_id and coach_id = v_coach_id) then
+    raise exception 'Client % not found under this coach', v_client_id;
   end if;
-
-  if v_client_id is null then raise exception 'Could not find a "Client4" or 4th client for this coach'; end if;
 
   -- Clean slate so this script is safe to re-run
   delete from client_struggle_tracking where client_id = v_client_id;
