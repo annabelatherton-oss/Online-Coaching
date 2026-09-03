@@ -167,7 +167,7 @@ function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFir
   )
 }
 
-function SessionCard({ session, onDelete, occupiedDays, library, variationsByExerciseId }) {
+function SessionCard({ session, onDelete, onSynced, occupiedDays, library, variationsByExerciseId }) {
   const parsed = parseDayLabel(session.name)
   const [day, setDay] = useState(parsed.day || '')
   const [label, setLabel] = useState(parsed.label)
@@ -176,6 +176,7 @@ function SessionCard({ session, onDelete, occupiedDays, library, variationsByExe
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [expanded, setExpanded] = useState(true)
+  const lastSyncedNameRef = useRef(session.name)
 
   function addExercise() {
     setExercises(prev => [...prev, { _key: Math.random().toString(36).slice(2), name: '', sets: null, reps: '', rpe: '', notes: '', equipment: null, exercise_id: null, illustration_url: null, video_url: null }])
@@ -235,6 +236,8 @@ function SessionCard({ session, onDelete, occupiedDays, library, variationsByExe
     }
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+    onSynced?.(lastSyncedNameRef.current, name)
+    lastSyncedNameRef.current = name
   }
 
   return (
@@ -447,6 +450,48 @@ export default function CoachTrainingEditor() {
     setAddCopyFrom('')
   }
 
+  // Keeps every already-assigned client's weekly schedule label in sync with
+  // this training block whenever a session is renamed, added, moved to a
+  // different day, or removed — so a coach never has to manually "Re-populate"
+  // per client just to pick up a name/day change.
+  async function syncClientDaySchedules(oldName, newName) {
+    const oldParsed = oldName ? parseDayLabel(oldName) : { day: null }
+    const newParsed = newName ? parseDayLabel(newName) : { day: null }
+    if (!oldParsed.day && !newParsed.day) return
+
+    const { data: assignments } = await supabase
+      .from('client_training_assignments')
+      .select('client_id')
+      .eq('program_id', programId)
+      .eq('active', true)
+    if (!assignments?.length) return
+    const clientIds = assignments.map(a => a.client_id)
+
+    if (oldParsed.day && oldParsed.day !== newParsed.day) {
+      await supabase.from('client_schedule_items')
+        .delete().eq('item_type', 'workout').eq('day_of_week', oldParsed.day)
+        .in('client_id', clientIds)
+    }
+
+    if (!newParsed.day) return
+    const customLabel = newParsed.label || newParsed.day
+    await Promise.all(clientIds.map(async clientId => {
+      const { data: existing } = await supabase
+        .from('client_schedule_items')
+        .select('id')
+        .eq('client_id', clientId).eq('day_of_week', newParsed.day).eq('item_type', 'workout')
+        .limit(1).maybeSingle()
+      if (existing) {
+        await supabase.from('client_schedule_items').update({ custom_label: customLabel }).eq('id', existing.id)
+      } else {
+        await supabase.from('client_schedule_items').insert({
+          client_id: clientId, coach_id: profile.id, day_of_week: newParsed.day,
+          item_type: 'workout', custom_label: customLabel, order_index: 0,
+        })
+      }
+    }))
+  }
+
   async function confirmAddSession() {
     if (!addDay) return
     const name = buildName(addDay, addLabel)
@@ -477,6 +522,7 @@ export default function CoachTrainingEditor() {
         [...prev, { ...newSess, exercises }]
           .sort((a, b) => sessionDayRank(a.name) - sessionDayRank(b.name))
       )
+      await syncClientDaySchedules(null, name)
     }
     setAddDay(null)
     setAddingSession(false)
@@ -484,8 +530,10 @@ export default function CoachTrainingEditor() {
 
   async function deleteSession(sessionId) {
     if (!confirm('Delete this session and all its exercises?')) return
+    const deleted = sessions.find(s => s.id === sessionId)
     await supabase.from('training_sessions').delete().eq('id', sessionId)
     setSessions(prev => prev.filter(s => s.id !== sessionId))
+    if (deleted) await syncClientDaySchedules(deleted.name, null)
   }
 
   async function saveName() {
@@ -658,6 +706,7 @@ export default function CoachTrainingEditor() {
                   key={session.id}
                   session={session}
                   onDelete={deleteSession}
+                  onSynced={syncClientDaySchedules}
                   occupiedDays={occupiedDays}
                   library={exerciseLibrary}
                   variationsByExerciseId={variationsByExerciseId}
