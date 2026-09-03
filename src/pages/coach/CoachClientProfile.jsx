@@ -2657,10 +2657,14 @@ function TrainingTab({ client, coachId, onSaved }) {
               </div>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
+              <Link to={`/coach/training/${assignment.program_id}`} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Edit exercises</Link>
               <button onClick={() => { setForm({ block: getProgBlock(assignment.program_name) || '', days: getProgDays(assignment.program_name) || '' }); setShowForm(true) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Change</button>
               <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
             </div>
           </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
+            If more than one block shares this name, use "Edit exercises" here rather than the Training list — it always opens the exact block assigned to this client.
+          </p>
 
           {(() => {
             const blockTotal = prog.weeks_total ?? 12
