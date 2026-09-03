@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -2554,9 +2554,14 @@ function TrainingTab({ client, coachId, onSaved }) {
             </p>
           </div>
         ) : (
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            No top lifts set on the assigned training block yet — set them once on the block itself, or set them just for this client below.
-          </p>
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 px-3 py-2.5 space-y-1.5">
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              This client is assigned to <span className="font-medium">{assignment.program_name || prog?.name}</span>, and that exact block has no top lifts saved on it — set them just for this client below, or fix it at the source:
+            </p>
+            <Link to={`/coach/training/${assignment.program_id}`} className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline">
+              Open "{assignment.program_name || prog?.name}" to set its top lifts →
+            </Link>
+          </div>
         )}
         {[0, 1, 2].map(i => (
           <div key={i}>
