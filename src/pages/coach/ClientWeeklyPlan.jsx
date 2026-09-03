@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { formatZoneBpm } from '../../lib/heartRateZones'
@@ -84,6 +85,11 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const [exerciseDrafts, setExerciseDrafts] = useState({})   // workoutId → Exercise[]
   const [exerciseSaving, setExerciseSaving] = useState({})
   const [exerciseSaveError, setExerciseSaveError] = useState({})
+  // day_of_week → { workout_id, exercises } from the assigned training block's own
+  // session_exercises — days auto-populated from a training programme keep their real
+  // exercises there, not in workout_exercises, even when a (possibly empty) workout_id
+  // got copied across at assignment time.
+  const [programExercisesByDay, setProgramExercisesByDay] = useState({})
 
   // Populate banner "use different block" expander
   const [showAltPopulate, setShowAltPopulate] = useState(false)
@@ -134,6 +140,28 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     setCardioSessions(cardios || [])
     setExerciseLibrary(exLib || [])
     setClientDob(clientRow?.date_of_birth || null)
+
+    if (assignment?.program_id) {
+      const { data: progSessions } = await supabase
+        .from('training_sessions')
+        .select('name, workout_id, session_exercises(id, name, equipment, sets, reps, rpe, notes, order_index)')
+        .eq('program_id', assignment.program_id)
+        .eq('week_number', 1)
+      const byDay = {}
+      ;(progSessions || []).forEach(s => {
+        const day = DAYS.find(d => s.name === d || s.name.startsWith(d + ' ') || s.name.startsWith(d + '—'))
+        if (day) {
+          byDay[day] = {
+            workout_id: s.workout_id || null,
+            exercises: (s.session_exercises || []).sort((a, b) => a.order_index - b.order_index),
+          }
+        }
+      })
+      setProgramExercisesByDay(byDay)
+    } else {
+      setProgramExercisesByDay({})
+    }
+
     setLoading(false)
   }
 
@@ -208,7 +236,9 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       return
     }
     setExpandedItemId(item.id)
-    if (item.workout_id && exerciseDrafts[item.workout_id] === undefined) {
+    const progDay = programExercisesByDay[item.day_of_week]
+    const fromProgram = progDay && progDay.workout_id === (item.workout_id || null)
+    if (!fromProgram && item.workout_id && exerciseDrafts[item.workout_id] === undefined) {
       const { data } = await supabase
         .from('workout_exercises')
         .select('id, name, equipment, exercise_id, sets, reps, rpe, rest_seconds, notes, order_index')
@@ -595,7 +625,9 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                             : (stripDay(wktName) || wktName || item.custom_label || 'Workout')
                       const isDragging = dragItemId === item.id
                       const isExpanded = expandedItemId === item.id
-                      const exercises = item.workout_id ? exerciseDrafts[item.workout_id] : null
+                      const progDay = programExercisesByDay[item.day_of_week]
+                      const fromProgram = progDay && progDay.workout_id === (item.workout_id || null)
+                      const exercises = fromProgram ? progDay.exercises : (item.workout_id ? exerciseDrafts[item.workout_id] : null)
 
                       return (
                         <div key={item.id}>
@@ -684,7 +716,28 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                           {/* Exercise detail panel — editable */}
                           {isExpanded && !isCardio && !isHiit && !isRest && (
                             <div className="mt-1 ml-4 rounded-xl border border-brand-100 dark:border-brand-800/30 bg-brand-50/50 dark:bg-brand-900/10 px-3 py-3">
-                              {exercises === undefined ? (
+                              {fromProgram ? (
+                                <div className="space-y-2">
+                                  <p className="text-xs text-gray-400">
+                                    From the assigned training block — <Link to={`/coach/training/${assignment.program_id}`} className="text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 underline">edit exercises there</Link>.
+                                  </p>
+                                  {exercises.length === 0 ? (
+                                    <p className="text-xs text-gray-400">No exercises added on the block for this day yet.</p>
+                                  ) : (
+                                    <div className="space-y-1">
+                                      {exercises.map(ex => (
+                                        <div key={ex.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                          <span className="flex-1 font-medium truncate">{ex.name}</span>
+                                          {ex.equipment && <span className="text-gray-400">{ex.equipment}</span>}
+                                          <span className="w-10 text-center text-gray-400">{ex.sets ?? '—'}</span>
+                                          <span className="w-14 text-center text-gray-400">{ex.reps || '—'}</span>
+                                          <span className="w-10 text-center text-gray-400">{ex.rpe || '—'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : exercises === undefined ? (
                                 <p className="text-xs text-gray-400">Loading…</p>
                               ) : exercises === null ? (
                                 <p className="text-xs text-gray-400">
