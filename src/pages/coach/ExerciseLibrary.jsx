@@ -206,34 +206,38 @@ function ExerciseModal({ exercise, allExercises, onSave, onClose }) {
               <>
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {variations.map((v, i) => (
-                    <button
+                    <div
                       key={i}
-                      type="button"
-                      onClick={() => setActiveTab(i)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      className={`flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                         activeTab === i
                           ? 'bg-brand-500 text-white'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
                       }`}
                     >
-                      {v.equipment || `Variation ${i + 1}`}
-                    </button>
+                      <button type="button" onClick={() => setActiveTab(i)}>
+                        {v.equipment || `Variation ${i + 1}`}
+                      </button>
+                      {variations.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeVariation(i)}
+                          title="Delete this variation"
+                          className={`leading-none px-0.5 ${activeTab === i ? 'text-brand-100 hover:text-white' : 'text-gray-400 hover:text-red-500'}`}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
 
                 <div className="rounded-xl border border-gray-100 dark:border-gray-800 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 mr-3">
-                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Equipment *</label>
-                      <select className="input w-full" value={variations[activeTab]?.equipment || ''} onChange={e => setVariation(activeTab, 'equipment', e.target.value)}>
-                        <option value="">Select…</option>
-                        {EQUIPMENT_LIST.map(e => <option key={e} value={e}>{e}</option>)}
-                      </select>
-                    </div>
-                    {variations.length > 1 && (
-                      <button type="button" onClick={() => removeVariation(activeTab)}
-                        className="text-xs text-gray-400 hover:text-red-500 mt-4 flex-shrink-0">Remove variation</button>
-                    )}
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Equipment *</label>
+                    <select className="input w-full" value={variations[activeTab]?.equipment || ''} onChange={e => setVariation(activeTab, 'equipment', e.target.value)}>
+                      <option value="">Select…</option>
+                      {EQUIPMENT_LIST.map(e => <option key={e} value={e}>{e}</option>)}
+                    </select>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
