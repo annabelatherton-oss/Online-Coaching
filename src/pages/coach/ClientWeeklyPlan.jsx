@@ -206,6 +206,11 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     await load()
   }
 
+  async function removeItems(ids) {
+    await supabase.from('client_schedule_items').delete().in('id', ids)
+    await load()
+  }
+
   async function moveItem(id, toDay) {
     await supabase.from('client_schedule_items').update({ day_of_week: toDay }).eq('id', id)
     await load()
@@ -647,19 +652,34 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                 {/* Assigned items */}
                 {dayItems.length > 0 && (
                   <div className="px-4 pb-3 space-y-2">
-                    {dayItems.map(item => {
+                    {(() => {
+                      // An Active Rest day with cardio assigned reads as one event, not
+                      // two — fold the cardio item into the rest item's own card
+                      // (styled green) instead of rendering them as separate rows.
+                      const cardioItem = dayItems.find(i => i.item_type === 'cardio')
+                      const activeRestItem = dayItems.find(i => i.item_type === 'rest' && i.custom_label === 'Active Rest Day')
+                      const mergeCardioId = (activeRestItem && cardioItem) ? cardioItem.id : null
+                      const renderItems = mergeCardioId
+                        ? dayItems.filter(i => i.id !== mergeCardioId).map(i => i.id === activeRestItem.id ? { ...i, _cardio: cardioItem } : i)
+                        : dayItems
+                      return renderItems
+                    })().map(item => {
                       const isHiit = item.item_type === 'hiit'
                       const isCardio = item.item_type === 'cardio'
                       const isRest = item.item_type === 'rest'
+                      const mergedCardio = item._cardio
                       const wktName = workouts.find(w => w.id === item.workout_id)?.name
                       const cs = cardioSessions.find(c => c.id === item.cardio_session_id)
-                      const label = isHiit
-                        ? (hiitCircuits.find(h => h.id === item.hiit_circuit_id)?.name || 'HIIT')
-                        : isCardio
-                          ? `${item.custom_label || cs?.name || 'Cardio'}${item.duration_minutes ? ` — ${item.duration_minutes} min` : ''}${item.heart_rate_zone ? ` · ${item.heart_rate_zone}${formatZoneBpm(clientDob, item.heart_rate_zone) ? ` (${formatZoneBpm(clientDob, item.heart_rate_zone)})` : ''}` : ''}`
-                          : isRest
-                            ? (item.custom_label || 'Rest Day')
-                            : (stripDay(wktName) || wktName || item.custom_label || 'Workout')
+                      const mergedCs = mergedCardio && cardioSessions.find(c => c.id === mergedCardio.cardio_session_id)
+                      const label = mergedCardio
+                        ? `${item.custom_label} — ${mergedCardio.custom_label || mergedCs?.name || 'Cardio'}`
+                        : isHiit
+                          ? (hiitCircuits.find(h => h.id === item.hiit_circuit_id)?.name || 'HIIT')
+                          : isCardio
+                            ? `${item.custom_label || cs?.name || 'Cardio'}${item.duration_minutes ? ` — ${item.duration_minutes} min` : ''}${item.heart_rate_zone ? ` · ${item.heart_rate_zone}${formatZoneBpm(clientDob, item.heart_rate_zone) ? ` (${formatZoneBpm(clientDob, item.heart_rate_zone)})` : ''}` : ''}`
+                            : isRest
+                              ? (item.custom_label || 'Rest Day')
+                              : (stripDay(wktName) || wktName || item.custom_label || 'Workout')
                       const isDragging = dragItemId === item.id
                       const isExpanded = expandedItemId === item.id
                       const progDay = programExercisesByDay[item.day_of_week]
@@ -679,13 +699,15 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                             className={`flex items-center justify-between rounded-xl px-3 py-2.5 transition-opacity ${
                               isDragging ? 'opacity-40' : ''
                             } ${!isCardio && !isRest ? 'cursor-grab active:cursor-grabbing' : ''} ${
-                              isHiit
-                                ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800/40'
-                                : isCardio
-                                  ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40'
-                                  : isRest
-                                    ? 'bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700'
-                                    : 'bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40'
+                              mergedCardio
+                                ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40'
+                                : isHiit
+                                  ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800/40'
+                                  : isCardio
+                                    ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40'
+                                    : isRest
+                                      ? 'bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700'
+                                      : 'bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40'
                             }`}
                           >
                             <div className="flex items-center gap-2.5 flex-1 min-w-0">
@@ -696,13 +718,13 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                 </svg>
                               )}
                               {/* Cardio icon */}
-                              {isCardio && (
+                              {(isCardio || mergedCardio) && (
                                 <svg className="w-3.5 h-3.5 flex-shrink-0 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                                 </svg>
                               )}
                               {/* Rest icon */}
-                              {isRest && (
+                              {isRest && !mergedCardio && (
                                 <svg className="w-3.5 h-3.5 flex-shrink-0 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                                 </svg>
@@ -722,10 +744,15 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                 </button>
                               ) : isRest ? (
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold leading-tight truncate text-gray-600 dark:text-gray-300">
+                                  <p className={`text-sm font-semibold leading-tight truncate ${mergedCardio ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-600 dark:text-gray-300'}`}>
                                     {label}
                                   </p>
-                                  {item.custom_label === 'Active Rest Day' && !items.some(i => i.day_of_week === item.day_of_week && i.item_type === 'cardio') && (
+                                  {mergedCardio ? (
+                                    <p className="text-[11px] mt-0.5 text-emerald-500/70">
+                                      {mergedCardio.duration_minutes ? `${mergedCardio.duration_minutes} min` : 'Cardio'}
+                                      {mergedCardio.heart_rate_zone ? ` · ${mergedCardio.heart_rate_zone}${formatZoneBpm(clientDob, mergedCardio.heart_rate_zone) ? ` (${formatZoneBpm(clientDob, mergedCardio.heart_rate_zone)})` : ''}` : ''}
+                                    </p>
+                                  ) : item.custom_label === 'Active Rest Day' && !items.some(i => i.day_of_week === item.day_of_week && i.item_type === 'cardio') && (
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -757,7 +784,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                               )}
                             </div>
                             <button
-                              onClick={() => removeItem(item.id)}
+                              onClick={() => mergedCardio ? removeItems([item.id, mergedCardio.id]) : removeItem(item.id)}
                               className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 transition-colors p-1 flex-shrink-0"
                               title="Remove"
                             >
