@@ -686,6 +686,10 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                             <div className="mt-1 ml-4 rounded-xl border border-brand-100 dark:border-brand-800/30 bg-brand-50/50 dark:bg-brand-900/10 px-3 py-3">
                               {exercises === undefined ? (
                                 <p className="text-xs text-gray-400">Loading…</p>
+                              ) : exercises === null ? (
+                                <p className="text-xs text-gray-400">
+                                  This day comes from the assigned training block, not the Workout Library, so its exercises aren't editable here — use "Edit exercises" on the training block below, or view/log them on the client's Training page.
+                                </p>
                               ) : (
                                 <div className="space-y-2">
                                   {exercises.length > 0 && (
