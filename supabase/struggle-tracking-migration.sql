@@ -29,17 +29,20 @@ create unique index if not exists client_struggle_tracking_open_unique
 
 alter table client_struggle_tracking enable row level security;
 
+drop policy if exists "client_struggle_tracking_client_all" on client_struggle_tracking;
 create policy "client_struggle_tracking_client_all" on client_struggle_tracking
   for all
   using  (client_id in (select id from clients where profile_id = auth.uid()))
   with check (client_id in (select id from clients where profile_id = auth.uid()));
 
+drop policy if exists "client_struggle_tracking_coach_select" on client_struggle_tracking;
 create policy "client_struggle_tracking_coach_select" on client_struggle_tracking
   for select
   using (coach_id = auth.uid());
 
 -- Lets the coach acknowledge a "they're ok with it now" notification
 -- (sets coach_seen_resolved = true).
+drop policy if exists "client_struggle_tracking_coach_update" on client_struggle_tracking;
 create policy "client_struggle_tracking_coach_update" on client_struggle_tracking
   for update
   using (coach_id = auth.uid());
