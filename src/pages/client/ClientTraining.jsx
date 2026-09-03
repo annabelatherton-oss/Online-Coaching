@@ -70,6 +70,7 @@ export default function ClientTraining() {
   const [swapEx, setSwapEx] = useState(null) // session_exercise row currently being swapped
   const [swapOptions, setSwapOptions] = useState(null) // { variations, alternatives }
   const [swapSaving, setSwapSaving] = useState(false)
+  const [allowSwapByExId, setAllowSwapByExId] = useState({}) // exercise_id → allow_swap
 
   async function openSwapPicker(ex) {
     setSwapEx(ex)
@@ -168,6 +169,14 @@ export default function ClientTraining() {
       const exMap = {}
       sorted.forEach(s => s.exercises.forEach(e => { exMap[e.id] = e }))
       const exIds = Object.keys(exMap)
+
+      const libraryExIds = [...new Set(Object.values(exMap).map(e => e.exercise_id).filter(Boolean))]
+      if (libraryExIds.length > 0) {
+        const { data: libEx } = await supabase.from('exercises').select('id, allow_swap').in('id', libraryExIds)
+        const allowMap = {}
+        ;(libEx || []).forEach(e => { allowMap[e.id] = e.allow_swap })
+        setAllowSwapByExId(allowMap)
+      }
 
       if (exIds.length > 0) {
         const { data: swapRows } = await supabase
@@ -366,9 +375,11 @@ export default function ClientTraining() {
                                 Swapped
                               </span>
                             )}
-                            <button type="button" onClick={() => openSwapPicker(ex)} className="text-[10px] font-medium text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 underline underline-offset-2 flex-shrink-0">
-                              {isSwapped ? 'Change' : "Can't do this?"}
-                            </button>
+                            {(isSwapped || allowSwapByExId[ex.exercise_id] !== false) && (
+                              <button type="button" onClick={() => openSwapPicker(ex)} className="text-[10px] font-medium text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 underline underline-offset-2 flex-shrink-0">
+                                {isSwapped ? 'Change' : "Can't do this?"}
+                              </button>
+                            )}
                           </div>
                           <p className="text-xs text-gray-400 dark:text-gray-500">
                             {numSets} sets{prescription ? ` · ${prescription}` : ''}

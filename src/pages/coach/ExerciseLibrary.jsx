@@ -72,7 +72,7 @@ const MUSCLE_COLOURS = {
   Calves: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
 }
 
-const EMPTY_FORM = { name: '', primary_muscle: '', secondary_muscles: [], exercise_type: '', difficulty: '', tags: [], notes: '' }
+const EMPTY_FORM = { name: '', primary_muscle: '', secondary_muscles: [], exercise_type: '', difficulty: '', tags: [], notes: '', allow_swap: true }
 const EMPTY_VARIATION = { equipment: '', video_url: '', instructions: '', coaching_cues: '', tempo: '', default_rest_seconds: '' }
 
 function Badge({ label, colourClass }) {
@@ -279,6 +279,22 @@ function ExerciseModal({ exercise, allExercises, onSave, onClose }) {
                 </div>
               </>
             )}
+          </div>
+
+          <div className="flex items-start gap-2 rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+            <input
+              type="checkbox"
+              id="allow_swap"
+              checked={form.allow_swap !== false}
+              onChange={e => set('allow_swap', e.target.checked)}
+              className="mt-0.5"
+            />
+            <label htmlFor="allow_swap" className="text-sm text-gray-600 dark:text-gray-300">
+              Allow clients to swap this exercise
+              <span className="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                Turn off for lifts you always want tested as programmed, like Back Squat, Bench Press or Deadlift — clients won't see a swap option for it at all.
+              </span>
+            </label>
           </div>
 
           <div>
@@ -550,6 +566,9 @@ export default function ExerciseLibrary() {
                       ex.difficulty === 'Intermediate' ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400' :
                       'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
                     } />
+                  )}
+                  {ex.allow_swap === false && (
+                    <Badge label="No swaps" colourClass="bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400" />
                   )}
                 </div>
                 {(variationsByExercise[ex.id] || []).find(v => v.coaching_cues)?.coaching_cues && (
