@@ -378,11 +378,6 @@ function OverviewTab({ client, onSaved }) {
     access_weeks: client.access_weeks || 12,
     is_paused: client.is_paused || false,
     collect_measurements: client.collect_measurements || false,
-    top_lifts: [
-      client.top_lifts?.[0]?.name || '',
-      client.top_lifts?.[1]?.name || '',
-      client.top_lifts?.[2]?.name || '',
-    ],
     allergies: client.allergies || [],
     dislikes: (client.dislikes || []).join(', '),
     // Personal info
@@ -404,33 +399,6 @@ function OverviewTab({ client, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
-  const [liftOptions, setLiftOptions] = useState([])
-  const [blockTopLifts, setBlockTopLifts] = useState([])
-
-  useEffect(() => {
-    async function loadExerciseNames() {
-      const { data: asgn } = await supabase
-        .from('client_training_assignments')
-        .select('program_id, training_programs(top_lifts)')
-        .eq('client_id', client.id)
-        .eq('active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (!asgn?.program_id) return
-      setBlockTopLifts((asgn.training_programs?.top_lifts || []).filter(l => l?.name).map(l => l.name))
-      const { data: sessions } = await supabase
-        .from('training_sessions')
-        .select('session_exercises(name)')
-        .eq('program_id', asgn.program_id)
-      const names = [...new Set(
-        (sessions || []).flatMap(s => (s.session_exercises || []).map(e => e.name)).filter(Boolean)
-      )].sort()
-      setLiftOptions(names)
-    }
-    loadExerciseNames()
-  }, [client.id])
-
   // The carbs/protein/fat split (% of calories) driving the gram fields below.
   const [split, setSplit] = useState(splitPercentFromGrams(
     { protein_g: client.current_protein, carbs_g: client.current_carbs, fat_g: client.current_fat },
@@ -484,7 +452,6 @@ function OverviewTab({ client, onSaved }) {
       access_weeks: parseInt(form.access_weeks),
       is_paused: form.is_paused,
       collect_measurements: form.collect_measurements,
-      top_lifts: form.top_lifts.filter(n => n.trim()).map(name => ({ name: name.trim() })),
       allergies: form.allergies,
       dislikes: form.dislikes ? form.dislikes.split(',').map(s => s.trim()).filter(Boolean) : [],
       phone: form.phone || null,
@@ -575,59 +542,6 @@ function OverviewTab({ client, onSaved }) {
           <input id="collect_measurements" type="checkbox" checked={form.collect_measurements} onChange={e => set('collect_measurements', e.target.checked)} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
           <label htmlFor="collect_measurements" className="text-sm text-gray-700 dark:text-gray-300">Collect measurements in check-ins (waist, hips)</label>
         </div>
-      </div>
-
-      <div className="card space-y-4">
-        <div>
-          <h3 className="font-semibold text-gray-900 dark:text-white">Top 3 Lifts</h3>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Client will log weight and reps for these in their weekly check-in.</p>
-        </div>
-        {blockTopLifts.length > 0 ? (
-          <div className="rounded-lg bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 px-3 py-2.5">
-            <p className="text-xs text-brand-700 dark:text-brand-300">
-              Pulled automatically from the assigned training block: <span className="font-medium">{blockTopLifts.join(', ')}</span>.
-              {form.top_lifts.some(n => n.trim()) ? ' Overridden below for this client.' : ' No need to set anything below unless you want to override it for this client.'}
-            </p>
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            No top lifts set on the assigned training block yet — set them once on the block itself, or override just for this client below.
-          </p>
-        )}
-        {[0, 1, 2].map(i => (
-          <div key={i}>
-            <label className="label">Lift {i + 1} override {blockTopLifts.length > 0 && <span className="text-gray-400 font-normal">(optional)</span>}</label>
-            {liftOptions.length > 0 ? (
-              <select
-                className="input"
-                value={form.top_lifts[i]}
-                onChange={e => set('top_lifts', form.top_lifts.map((v, j) => j === i ? e.target.value : v))}
-              >
-                <option value="">{blockTopLifts.length > 0 ? '— Use block default —' : '— Select exercise —'}</option>
-                {liftOptions.map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                className="input"
-                type="text"
-                value={form.top_lifts[i]}
-                onChange={e => set('top_lifts', form.top_lifts.map((v, j) => j === i ? e.target.value : v))}
-                placeholder={['e.g. Squat', 'e.g. Bench Press', 'e.g. Deadlift'][i]}
-              />
-            )}
-          </div>
-        ))}
-        {blockTopLifts.length > 0 && form.top_lifts.some(n => n.trim()) && (
-          <button
-            type="button"
-            onClick={() => set('top_lifts', ['', '', ''])}
-            className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
-          >
-            Clear override — use the block's default lifts
-          </button>
-        )}
       </div>
 
       <div className="card space-y-4">
@@ -2458,7 +2372,7 @@ function stripDayPrefix(name) {
   return name
 }
 
-function TrainingTab({ client, coachId }) {
+function TrainingTab({ client, coachId, onSaved }) {
   const [programs, setPrograms] = useState([])
   const [assignment, setAssignment] = useState(null)
   const [assignedSessions, setAssignedSessions] = useState([])
@@ -2467,6 +2381,13 @@ function TrainingTab({ client, coachId }) {
   const [form, setForm] = useState({ block: '', days: '' })
   const [saving, setSaving] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
+  const [liftOptions, setLiftOptions] = useState([])
+  const [topLiftOverride, setTopLiftOverride] = useState([
+    client.top_lifts?.[0]?.name || '',
+    client.top_lifts?.[1]?.name || '',
+    client.top_lifts?.[2]?.name || '',
+  ])
+  const [savingLifts, setSavingLifts] = useState(false)
 
   async function load() {
     const [{ data: progs }, { data: asgn }] = await Promise.all([
@@ -2483,19 +2404,38 @@ function TrainingTab({ client, coachId }) {
     setAssignment(asgn || null)
 
     if (asgn?.program_id) {
-      const { data: sessions } = await supabase
-        .from('training_sessions')
-        .select('id, name, workout_id, workouts(id, name)')
-        .eq('program_id', asgn.program_id)
+      const [{ data: sessions }, { data: exSessions }] = await Promise.all([
+        supabase
+          .from('training_sessions')
+          .select('id, name, workout_id, workouts(id, name)')
+          .eq('program_id', asgn.program_id),
+        supabase
+          .from('training_sessions')
+          .select('session_exercises(name)')
+          .eq('program_id', asgn.program_id),
+      ])
       setAssignedSessions(sessions || [])
+      setLiftOptions([...new Set(
+        (exSessions || []).flatMap(s => (s.session_exercises || []).map(e => e.name)).filter(Boolean)
+      )].sort())
     } else {
       setAssignedSessions([])
+      setLiftOptions([])
     }
 
     setLoading(false)
   }
 
   useEffect(() => { load() }, [client.id])
+
+  async function saveTopLifts() {
+    setSavingLifts(true)
+    await supabase.from('clients').update({
+      top_lifts: topLiftOverride.filter(n => n.trim()).map(name => ({ name: name.trim() })),
+    }).eq('id', client.id)
+    setSavingLifts(false)
+    onSaved?.()
+  }
 
   const selectedProgram = programs.find(p =>
     p.name?.startsWith(form.days) && p.name?.includes(form.block)
@@ -2667,6 +2607,70 @@ function TrainingTab({ client, coachId }) {
           })()}
         </div>
       )}
+
+      {assignment && (() => {
+        const blockTopLifts = (prog?.top_lifts || []).filter(l => l?.name).map(l => l.name)
+        const hasOverride = topLiftOverride.some(n => n.trim())
+        return (
+          <div className="card space-y-4">
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Top 3 Lifts</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Client will log weight and reps for these in their weekly check-in.</p>
+            </div>
+            {blockTopLifts.length > 0 ? (
+              <div className="rounded-lg bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 px-3 py-2.5">
+                <p className="text-xs text-brand-700 dark:text-brand-300">
+                  Pulled automatically from the assigned training block: <span className="font-medium">{blockTopLifts.join(', ')}</span>.
+                  {hasOverride ? ' Overridden below for this client.' : ' No need to set anything below unless you want to override it for this client.'}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                No top lifts set on the assigned training block yet — set them once on the block itself, or override just for this client below.
+              </p>
+            )}
+            {[0, 1, 2].map(i => (
+              <div key={i}>
+                <label className="label">Lift {i + 1} override {blockTopLifts.length > 0 && <span className="text-gray-400 font-normal">(optional)</span>}</label>
+                {liftOptions.length > 0 ? (
+                  <select
+                    className="input"
+                    value={topLiftOverride[i]}
+                    onChange={e => setTopLiftOverride(prev => prev.map((v, j) => j === i ? e.target.value : v))}
+                  >
+                    <option value="">{blockTopLifts.length > 0 ? '— Use block default —' : '— Select exercise —'}</option>
+                    {liftOptions.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="input"
+                    type="text"
+                    value={topLiftOverride[i]}
+                    onChange={e => setTopLiftOverride(prev => prev.map((v, j) => j === i ? e.target.value : v))}
+                    placeholder={['e.g. Squat', 'e.g. Bench Press', 'e.g. Deadlift'][i]}
+                  />
+                )}
+              </div>
+            ))}
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={saveTopLifts} disabled={savingLifts} className="btn-primary py-1.5 px-4 text-sm">
+                {savingLifts ? 'Saving…' : 'Save'}
+              </button>
+              {blockTopLifts.length > 0 && hasOverride && (
+                <button
+                  type="button"
+                  onClick={() => setTopLiftOverride(['', '', ''])}
+                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
+                >
+                  Clear override — use the block's default lifts
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
         <ClientWeeklyPlan key={reloadKey} clientId={client.id} coachId={coachId} assignment={assignment} />
@@ -3157,7 +3161,7 @@ export default function CoachClientProfile() {
       <div>
         {activeTab === 'Overview'    && <OverviewTab client={client} onSaved={loadClient} />}
         {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} />}
-        {activeTab === 'Training'   && <TrainingTab client={client} coachId={profile.id} />}
+        {activeTab === 'Training'   && <TrainingTab client={client} coachId={profile.id} onSaved={loadClient} />}
         {activeTab === 'Daily Plan' && <DailyPlanTab client={client} />}
         {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} />}
         {activeTab === 'Weight'     && <WeightTab clientId={client.id} />}
