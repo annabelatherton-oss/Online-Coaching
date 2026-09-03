@@ -12,9 +12,9 @@ const EQUIPMENT_CUE_PHRASES = {
   'Barbell': 'Keep your grip and stance consistent every set so you can track progress properly.',
   'Dumbbell': "Move both sides evenly — don't let one side rush ahead of the other.",
   'Cable': "Keep tension on the muscle throughout the set — don't let the weight stack rest between reps.",
-  'Machine': "Adjust the seat or pad so the joint lines up with the machine's pivot point before you start.",
+  'Machine': "Let the machine's fixed path do the stabilising so you can focus purely on squeezing at the hardest point of the rep.",
   'Smith Machine': 'Use the fixed bar path to focus on the muscle rather than balancing the bar.',
-  'EZ Bar': 'Grip the angled part of the bar for the most comfortable wrist position.',
+  'EZ Bar': 'Keep your grip even on both angled sections of the bar throughout the set.',
   'Straight Bar': 'Keep your grip even on both sides of the bar.',
   'Resistance Band': "Keep tension on the band throughout — don't let it go slack at any point.",
   'Bodyweight': 'Control the tempo rather than rushing through reps.',
@@ -227,8 +227,8 @@ function generateCoachingCues(name, equipment, primaryMuscle, secondaryMuscles, 
   const setup = (equipment && setupByEquipment[equipment]) || 'Get into the starting position with good posture and your core braced.'
 
   const execution = exerciseType === 'Isolation'
-    ? `Move through a full range of motion, focusing the effort on ${muscleText}, then control the weight back to the start.`
-    : `Perform the movement through a full range of motion, driving through ${muscleText}, then return under control to the start.`
+    ? `Move through a full range of motion on the ${name}, focusing the effort on ${muscleText}, then control the weight back to the start.`
+    : `Perform the ${name} through a full range of motion, driving through ${muscleText}, then return under control to the start.`
 
   const tip = (equipment && EQUIPMENT_CUE_PHRASES[equipment]) || 'Keep the tempo controlled on both the lift and the lower.'
 
