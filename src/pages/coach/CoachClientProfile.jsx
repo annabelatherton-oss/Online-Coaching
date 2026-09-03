@@ -2526,33 +2526,19 @@ function TrainingTab({ client, coachId, onSaved }) {
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Client will log weight and reps for these in their weekly check-in.</p>
         </div>
 
-        {/* Always-visible summary of what's currently set, regardless of source */}
-        <div className="flex flex-wrap gap-2">
-          {[0, 1, 2].map(i => (
-            <span
-              key={i}
-              className={`text-sm font-medium px-3 py-1.5 rounded-full ${
-                topLiftOverride[i]
-                  ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-300 border border-brand-100 dark:border-brand-800/40'
-                  : 'bg-gray-50 text-gray-400 dark:bg-gray-800 dark:text-gray-500 border border-gray-100 dark:border-gray-800'
-              }`}
-            >
-              {topLiftOverride[i] || `Lift ${i + 1} not set`}
-            </span>
-          ))}
-        </div>
-
         {!assignment ? (
           <p className="text-xs text-gray-400 dark:text-gray-500">
             No training block assigned yet — set lifts for this client below, or assign a training block further down that has them configured.
           </p>
         ) : blockTopLifts.length > 0 ? (
-          <div className="rounded-lg bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 px-3 py-2.5">
-            <p className="text-xs text-brand-700 dark:text-brand-300">
-              Pulled automatically from the assigned training block: <span className="font-medium">{blockTopLifts.join(', ')}</span>.
-              {hasSavedOverride ? ' Overridden below for this client.' : ' Shown below — change any of them if you want something different for this client.'}
-            </p>
-          </div>
+          topLiftOverride.some(n => !n) && (
+            <div className="rounded-lg bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 px-3 py-2.5">
+              <p className="text-xs text-brand-700 dark:text-brand-300">
+                Pulled automatically from the assigned training block: <span className="font-medium">{blockTopLifts.join(', ')}</span>.
+                {hasSavedOverride ? ' Overridden below for this client.' : ' Shown below — change any of them if you want something different for this client.'}
+              </p>
+            </div>
+          )
         ) : (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 px-3 py-2.5 space-y-1.5">
             <p className="text-xs text-amber-700 dark:text-amber-400">
