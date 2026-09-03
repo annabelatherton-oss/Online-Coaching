@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -22,10 +22,13 @@ function getDayVariant(name) {
 export default function CoachTrainingList() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [programs, setPrograms] = useState([])
   const [standaloneWorkouts, setStandaloneWorkouts] = useState([])
   const [loading, setLoading] = useState(true)
-  const [selectedBlock, setSelectedBlock] = useState(null)
+  // Kept in the URL (not local state) so hitting Back from a programme editor
+  // returns to this exact block view instead of resetting to the top.
+  const selectedBlock = searchParams.get('block')
   const [blockForm, setBlockForm] = useState(null)
   const [addingBlock, setAddingBlock] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -148,14 +151,15 @@ export default function CoachTrainingList() {
   }
 
   // Day variant view
-  if (selectedBlock) {
-    const block = blocks.find(b => b.key === selectedBlock)
+  const activeBlock = selectedBlock ? blocks.find(b => b.key === selectedBlock) : null
+  if (activeBlock) {
+    const block = activeBlock
     const variants = blockMap[selectedBlock]
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-4 flex-wrap">
           <button
-            onClick={() => setSelectedBlock(null)}
+            onClick={() => navigate(-1)}
             className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex-shrink-0"
           >
             <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -211,7 +215,7 @@ export default function CoachTrainingList() {
         {blocks.map((block, bi) => (
           <button
             key={block.key}
-            onClick={() => setSelectedBlock(block.key)}
+            onClick={() => setSearchParams({ block: block.key })}
             className="w-full card text-left flex items-center gap-4 hover:border-brand-400 dark:hover:border-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors group"
           >
             <div className="w-12 h-12 rounded-xl bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center flex-shrink-0 text-brand-600 dark:text-brand-400 font-bold">

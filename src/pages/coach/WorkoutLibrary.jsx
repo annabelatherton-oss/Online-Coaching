@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -61,11 +61,15 @@ function DeleteBtn({ onClick }) {
 export default function WorkoutLibrary() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [programs, setPrograms] = useState([])
   const [standaloneWorkouts, setStandaloneWorkouts] = useState([])
   const [loading, setLoading] = useState(true)
-  const [selectedBlock, setSelectedBlock] = useState(null)
-  const [selectedDays, setSelectedDays] = useState(null)
+  // Drill-down level is kept in the URL (not local state) so that navigating
+  // into a workout and hitting Back returns to the exact block/day view the
+  // coach was on, instead of resetting to the top of the library.
+  const selectedBlock = searchParams.get('block') ? Number(searchParams.get('block')) : null
+  const selectedDays = searchParams.get('days') ? Number(searchParams.get('days')) : null
 
   // Add block form
   const [showAddBlock, setShowAddBlock] = useState(false)
@@ -178,7 +182,7 @@ export default function WorkoutLibrary() {
       await supabase.from('training_sessions').delete().in('program_id', progIds)
       await supabase.from('training_programs').delete().in('id', progIds)
     }
-    if (selectedBlock === blockNum) setSelectedBlock(null)
+    if (selectedBlock === blockNum) setSearchParams({}, { replace: true })
     setSaving(false)
     await load()
   }
@@ -231,7 +235,7 @@ export default function WorkoutLibrary() {
       await supabase.from('training_sessions').delete().eq('program_id', prog.id)
       await supabase.from('training_programs').delete().eq('id', prog.id)
     }
-    if (selectedDays === days) setSelectedDays(null)
+    if (selectedDays === days) setSearchParams({ block: String(selectedBlock) }, { replace: true })
     setSaving(false)
     await load()
   }
@@ -345,7 +349,7 @@ export default function WorkoutLibrary() {
     return (
       <div className="space-y-6">
         <div className="space-y-1">
-          <BackButton onClick={() => setSelectedDays(null)} label={`Block ${selectedBlock}`} />
+          <BackButton onClick={() => navigate(-1)} label={`Block ${selectedBlock}`} />
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="min-w-0">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">Block {selectedBlock} — {selectedDays} Day</h1>
@@ -503,7 +507,7 @@ export default function WorkoutLibrary() {
     return (
       <div className="space-y-6">
         <div className="space-y-1">
-          <BackButton onClick={() => setSelectedBlock(null)} label="Workout Library" />
+          <BackButton onClick={() => navigate(-1)} label="Workout Library" />
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="min-w-0">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">
@@ -545,7 +549,7 @@ export default function WorkoutLibrary() {
             const linkedCount = sessions.filter(s => s.workout_id).length
             return (
               <div key={days} className="relative group">
-                <button onClick={() => setSelectedDays(days)}
+                <button onClick={() => setSearchParams({ block: String(selectedBlock), days: String(days) })}
                   className="card w-full text-left hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all">
                   <p className="text-2xl font-bold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors pr-6">
                     {days} Day
@@ -637,7 +641,7 @@ export default function WorkoutLibrary() {
             const linkedSessions = Object.values(grouped[block]).reduce((s, { sessions }) => s + sessions.filter(x => x.workout_id).length, 0)
             return (
               <div key={block} className="relative group">
-                <button onClick={() => setSelectedBlock(block)}
+                <button onClick={() => setSearchParams({ block: String(block) })}
                   className="card w-full text-left hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-md transition-all">
                   <p className="text-2xl font-bold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors pr-6">
                     Block {block}
