@@ -9,6 +9,7 @@ import {
   mealMacros, addMacros, getIngredients,
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
+import { snapToConstraints } from '../../lib/calorieTierScaling'
 import ExerciseThumb from '../../components/ExerciseThumb'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
@@ -82,6 +83,10 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const [trainingNotes, setTrainingNotes] = useState('')
   const [editedSlots, setEditedSlots] = useState({})
   const [templateSlots, setTemplateSlots] = useState({})
+  // Slot keys the coach has permanently removed for this client (e.g. "no
+  // evening snack, ever") — persisted onto the assignment on submit so it
+  // stays gone on every future week, not just this one.
+  const [removedMealSlots, setRemovedMealSlots] = useState([])
   const [ingredientOverrides, setIngredientOverrides] = useState({})
   const [mealMap, setMealMap] = useState({})
   const [mealsByCategory, setMealsByCategory] = useState({})
@@ -159,6 +164,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       for (const ing of (libData || [])) lib[ing.id] = ing
       setIngredientLib(lib)
 
+      setRemovedMealSlots(activeAssignment.removed_meal_slots || [])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
       let draft = {}
       try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${weekNum}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
@@ -239,6 +245,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     for (const s of (tmpl?.template_meal_slots || [])) slots[s.slot_type] = s.meal_id
     if (asgn.preworkout_static && asgn.preworkout_meal_id) slots.preworkout = asgn.preworkout_meal_id
     if (asgn.evening_snack_static && asgn.evening_snack_meal_id) slots.evening_snack = asgn.evening_snack_meal_id
+    // Meals the coach has permanently removed for this client stay out of
+    // every future week's template, not just the week they were removed in.
+    for (const key of (asgn.removed_meal_slots || [])) delete slots[key]
     return slots
   }
 
@@ -328,6 +337,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   function handleRevertMealPlan() {
     setEditedSlots({ ...templateSlots })
     setIngredientOverrides({})
+    setRemovedMealSlots(activeAssignment?.removed_meal_slots || [])
     clearDraftSlots(nextTemplateWeek)
   }
 
@@ -335,6 +345,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   // spreads its calories evenly across the day's other assigned meals by
   // scaling up their non-static ingredient quantities — so the client's
   // daily calorie target stays roughly the same instead of just dropping.
+  // The removal is remembered on the assignment (on submit) so it stays
+  // out of every future week too, not just this one.
   function handleRemoveMeal(slotKeyToRemove) {
     const removedCal = mealMacros(editedSlots[slotKeyToRemove], mealMap, tier, ingredientOverrides[slotKeyToRemove])?.cal || 0
 
@@ -345,26 +357,53 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       delete next[slotKeyToRemove]
       return next
     })
+    setRemovedMealSlots(prev => prev.includes(slotKeyToRemove) ? prev : [...prev, slotKeyToRemove])
     saveDraftSlots(nextTemplateWeek, newSlots)
 
     if (removedCal <= 0) return
-    const remainingKeys = ALL_SLOT_DEFS.map(s => s.key).filter(k => k !== slotKeyToRemove && newSlots[k])
-    if (remainingKeys.length === 0) return
-    const share = removedCal / remainingKeys.length
 
-    remainingKeys.forEach(key => {
-      const meal = mealMap[newSlots[key]]
-      if (!meal) return
-      const allIngredients = getIngredients(meal, tier, ingredientOverrides[key])
-      const flexIngredients = allIngredients.filter(ing => !ing.is_static)
-      const flexCal = flexIngredients.reduce((s, ing) => s + (parseFloat(ing.calories) || 0), 0)
-      if (flexCal <= 0) return
-      const scale = (flexCal + share) / flexCal
-      flexIngredients.forEach(ing => {
-        const currentQty = parseFloat(ing.quantity_g) || 0
-        handleUpdateIngredient(key, ing._tempId || ing.id, Math.round(currentQty * scale))
+    // Option A and Option B (breakfast/lunch/dinner 1 vs 2) are separate,
+    // parallel daily totals — redistributing across both at once would
+    // throw both off. Pre-workout/evening-snack are shared by both totals,
+    // so removing one of those tops up each option's own three meals
+    // independently rather than touching the other shared slot (which
+    // would double-count into whichever option still has it).
+    const scopes = OPTION_1_KEYS.includes(slotKeyToRemove) ? [OPTION_1_KEYS]
+      : OPTION_2_KEYS.includes(slotKeyToRemove) ? [OPTION_2_KEYS]
+      : [OPTION_1_KEYS, OPTION_2_KEYS]
+
+    scopes.forEach(optionKeys => {
+      const remainingKeys = optionKeys.filter(k => k !== slotKeyToRemove && newSlots[k])
+      if (remainingKeys.length === 0) return
+      const share = removedCal / remainingKeys.length
+
+      remainingKeys.forEach(key => {
+        const meal = mealMap[newSlots[key]]
+        if (!meal) return
+        const allIngredients = getIngredients(meal, tier, ingredientOverrides[key])
+        const flexIngredients = allIngredients.filter(ing => !ing.is_static)
+        const flexCal = flexIngredients.reduce((s, ing) => s + (parseFloat(ing.calories) || 0), 0)
+        if (flexCal <= 0) return
+        const scale = (flexCal + share) / flexCal
+        flexIngredients.forEach(ing => {
+          const currentQty = parseFloat(ing.quantity_g) || 0
+          const rawQty = currentQty * scale
+          const libIng = ing.ingredient_id ? ingredientLib[ing.ingredient_id] : null
+          const snapped = libIng ? snapToConstraints(rawQty, libIng, ing.scaling_type === 'optional') : null
+          handleUpdateIngredient(key, ing._tempId || ing.id, snapped ?? Math.round(rawQty))
+        })
       })
     })
+  }
+
+  // Brings a removed meal slot back — both locally (this week's plan) and
+  // by clearing it from the permanent removal list so it isn't excluded
+  // from future weeks either. Doesn't undo the calorie redistribution
+  // that was spread onto other meals when it was removed — use "Revert
+  // all" for a full reset if that's what's needed too.
+  function handleRestoreMeal(slotKey) {
+    handleRevert(slotKey)
+    setRemovedMealSlots(prev => prev.filter(k => k !== slotKey))
   }
 
   function handleUpdateExercise(exId, field, value) {
@@ -491,7 +530,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     }, { onConflict: 'assignment_id,week_number' })
 
     await supabase.from('client_plan_assignments')
-      .update({ week_override: nextTemplateWeek, calorie_target: newCalTarget })
+      .update({ week_override: nextTemplateWeek, calorie_target: newCalTarget, removed_meal_slots: removedMealSlots })
       .eq('id', activeAssignment.id)
 
     supabase.from('weekly_deliveries').insert({
@@ -732,7 +771,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                         <div key={slot.key} className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-4 min-h-[6.5rem]">
                           <p className="text-xs text-gray-400 dark:text-gray-500 text-center">{slot.label}{slot.optionLabel ? ` — ${slot.optionLabel}` : ''} removed<br/>its calories were added to the other meals</p>
                           <button
-                            onClick={() => handleRevert(slot.key)}
+                            onClick={() => handleRestoreMeal(slot.key)}
                             className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
                           >
                             Restore
