@@ -10,6 +10,7 @@ import {
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
+import { calcStandardMacros } from '../../lib/macros'
 import ExerciseThumb from '../../components/ExerciseThumb'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
@@ -660,6 +661,11 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const prevCalTarget = activeAssignment?.calorie_target
   const calDiff = calorieTarget && prevCalTarget ? parseInt(calorieTarget) - prevCalTarget : null
 
+  // How far each option's actual daily macros land from the client's
+  // calorie target and the coach's standard macro split for it.
+  const targetCal = parseInt(calorieTarget) || 0
+  const targetMacros = targetCal > 0 ? calcStandardMacros(targetCal) : null
+
   return (
     <div className="space-y-0">
       {/* Sticky header */}
@@ -722,18 +728,33 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                 </div>
               )}
             </div>
-            {/* Daily macro totals */}
+            {/* Daily macro totals, with how far each option lands from the
+                calorie target and the coach's standard macro split for it */}
             <div className="grid grid-cols-2 gap-3">
               {[{ label: 'Option A', macros: opt1Total }, { label: 'Option B', macros: opt2Total }].map(({ label, macros }) => (
                 <div key={label} className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{label} daily total</p>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{label} daily total{targetMacros ? ' vs target' : ''}</p>
                   <div className="grid grid-cols-4 gap-1 text-center">
-                    {[{ val: Math.round(macros.cal), lbl: 'kcal' }, { val: Math.round(macros.carb) + 'g', lbl: 'carbs' }, { val: Math.round(macros.prot) + 'g', lbl: 'prot' }, { val: Math.round(macros.fat) + 'g', lbl: 'fat' }].map(({ val, lbl }) => (
-                      <div key={lbl}>
-                        <p className="text-xs font-bold text-gray-900 dark:text-white tabular-nums">{val}</p>
-                        <p className="text-[10px] text-gray-400">{lbl}</p>
-                      </div>
-                    ))}
+                    {[
+                      { val: Math.round(macros.cal), lbl: 'kcal', target: targetMacros ? targetCal : null, unit: '' },
+                      { val: Math.round(macros.carb), lbl: 'carbs', target: targetMacros?.carbs_g ?? null, unit: 'g' },
+                      { val: Math.round(macros.prot), lbl: 'prot', target: targetMacros?.protein_g ?? null, unit: 'g' },
+                      { val: Math.round(macros.fat), lbl: 'fat', target: targetMacros?.fat_g ?? null, unit: 'g' },
+                    ].map(({ val, lbl, target, unit }) => {
+                      const diff = target != null ? val - target : null
+                      const onTarget = diff !== null && Math.abs(diff) <= (lbl === 'kcal' ? 30 : 5)
+                      return (
+                        <div key={lbl}>
+                          <p className="text-xs font-bold text-gray-900 dark:text-white tabular-nums">{val}{unit}</p>
+                          <p className="text-[10px] text-gray-400">{lbl}</p>
+                          {diff !== null && (
+                            <p className={`text-[10px] font-semibold tabular-nums ${onTarget ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                              {diff > 0 ? `+${diff}` : diff === 0 ? '±0' : diff}{unit}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               ))}
