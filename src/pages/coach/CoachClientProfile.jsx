@@ -3064,6 +3064,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Weight</p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.weight_kg} <span className="text-sm font-normal text-gray-500">kg</span></p>
                   <DeltaTag delta={wDelta} unit=" kg" className="block mt-0.5" />
+                  {p?.weight_kg != null && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Last week: {p.weight_kg} kg</p>}
                 </div>
               )}
               {collectMeasurements && c.waist_cm != null && (
@@ -3071,6 +3072,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Waist</p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.waist_cm} <span className="text-sm font-normal text-gray-500">cm</span></p>
                   <DeltaTag delta={metricDelta(c.waist_cm, p?.waist_cm)} unit=" cm" className="block mt-0.5" />
+                  {p?.waist_cm != null && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Last week: {p.waist_cm} cm</p>}
                 </div>
               )}
               {collectMeasurements && c.hips_cm != null && (
@@ -3078,6 +3080,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hips</p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.hips_cm} <span className="text-sm font-normal text-gray-500">cm</span></p>
                   <DeltaTag delta={metricDelta(c.hips_cm, p?.hips_cm)} unit=" cm" className="block mt-0.5" />
+                  {p?.hips_cm != null && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Last week: {p.hips_cm} cm</p>}
                 </div>
               )}
               {c.energy_level != null && (
@@ -3085,6 +3088,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Energy</p>
                   <p className="text-base font-semibold text-gray-900 dark:text-white">{c.energy_level}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.energy_level[c.energy_level]}</span></p>
                   <DeltaTag delta={metricDelta(c.energy_level, p?.energy_level, 0)} higherIsBetter className="block mt-0.5" />
+                  {p?.energy_level != null && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Last week: {p.energy_level}/5</p>}
                 </div>
               )}
               {c.sleep_quality != null && (
@@ -3092,6 +3096,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Sleep</p>
                   <p className="text-base font-semibold text-gray-900 dark:text-white">{c.sleep_quality}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.sleep_quality[c.sleep_quality]}</span></p>
                   <DeltaTag delta={metricDelta(c.sleep_quality, p?.sleep_quality, 0)} higherIsBetter className="block mt-0.5" />
+                  {p?.sleep_quality != null && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Last week: {p.sleep_quality}/5</p>}
                 </div>
               )}
               {c.food_adherence != null && (
@@ -3099,6 +3104,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Food adherence</p>
                   <p className="text-base font-semibold text-gray-900 dark:text-white">{c.food_adherence}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.food_adherence[c.food_adherence]}</span></p>
                   <DeltaTag delta={metricDelta(c.food_adherence, p?.food_adherence, 0)} higherIsBetter className="block mt-0.5" />
+                  {p?.food_adherence != null && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Last week: {p.food_adherence}/5</p>}
                 </div>
               )}
               {c.gym_adherence != null && (
@@ -3106,6 +3112,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gym adherence</p>
                   <p className="text-base font-semibold text-gray-900 dark:text-white">{c.gym_adherence}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.gym_adherence[c.gym_adherence]}</span></p>
                   <DeltaTag delta={metricDelta(c.gym_adherence, p?.gym_adherence, 0)} higherIsBetter className="block mt-0.5" />
+                  {p?.gym_adherence != null && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Last week: {p.gym_adherence}/5</p>}
                 </div>
               )}
             </div>
