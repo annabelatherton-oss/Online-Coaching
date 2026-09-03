@@ -2430,6 +2430,10 @@ function TrainingTab({ client, coachId, onSaved }) {
 
   const hasSavedOverride = (client.top_lifts || []).some(l => l?.name)
   const blockTopLifts = (assignment?.training_programs?.top_lifts || []).filter(l => l?.name).map(l => l.name)
+  const blockDefaults = [blockTopLifts[0] || '', blockTopLifts[1] || '', blockTopLifts[2] || '']
+  // True whenever the fields currently differ from the block's own lifts —
+  // whether that's a saved override or just an unsaved edit in progress.
+  const hasLocalOverride = blockTopLifts.length > 0 && topLiftOverride.some((v, i) => v !== blockDefaults[i])
 
   // Keep the fields showing something meaningful even without an override:
   // the client's saved override if there is one, otherwise the block's own
@@ -2438,7 +2442,7 @@ function TrainingTab({ client, coachId, onSaved }) {
     if (loading) return
     setTopLiftOverride(hasSavedOverride
       ? [client.top_lifts?.[0]?.name || '', client.top_lifts?.[1]?.name || '', client.top_lifts?.[2]?.name || '']
-      : [blockTopLifts[0] || '', blockTopLifts[1] || '', blockTopLifts[2] || '']
+      : blockDefaults
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, hasSavedOverride, JSON.stringify(client.top_lifts), JSON.stringify(blockTopLifts)])
@@ -2453,6 +2457,8 @@ function TrainingTab({ client, coachId, onSaved }) {
   }
 
   async function revertTopLifts() {
+    setTopLiftOverride(blockDefaults)
+    if (!hasSavedOverride) return
     setSavingLifts(true)
     await supabase.from('clients').update({ top_lifts: [] }).eq('id', client.id)
     setSavingLifts(false)
@@ -2578,7 +2584,7 @@ function TrainingTab({ client, coachId, onSaved }) {
           <button type="button" onClick={saveTopLifts} disabled={savingLifts} className="btn-primary py-1.5 px-4 text-sm">
             {savingLifts ? 'Saving…' : 'Save'}
           </button>
-          {hasSavedOverride && (
+          {hasLocalOverride && (
             <button
               type="button"
               onClick={revertTopLifts}
