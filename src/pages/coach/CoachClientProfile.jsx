@@ -2820,6 +2820,27 @@ function CheckinsTab({ clientId, collectMeasurements }) {
     }
   }
 
+  // Generic week-on-week delta for any numeric check-in field.
+  function metricDelta(cur, prev, decimals = 1) {
+    if (cur == null || prev == null) return null
+    const mult = Math.pow(10, decimals)
+    return Math.round((parseFloat(cur) - parseFloat(prev)) * mult) / mult
+  }
+
+  // Small inline "+2 / -3 (no change)" tag, coloured green/red depending on
+  // whether a higher or lower number is the desirable direction for that
+  // particular metric (e.g. weight down is good, energy up is good).
+  function DeltaTag({ delta, unit = '', higherIsBetter = false, className = '' }) {
+    if (delta === null) return null
+    if (delta === 0) return <span className={`text-[10px] font-medium text-gray-400 dark:text-gray-500 ${className}`}>(no change)</span>
+    const good = higherIsBetter ? delta > 0 : delta < 0
+    return (
+      <span className={`text-[10px] font-semibold ${good ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'} ${className}`}>
+        {delta > 0 ? `↑ +${delta}` : `↓ ${delta}`}{unit}
+      </span>
+    )
+  }
+
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
   if (checkins.length === 0) {
@@ -2862,7 +2883,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">
-                {['Week', 'Date', 'Weight', 'Change', 'Energy', 'Sleep', 'Food', 'Gym'].map(h => (
+                {['Week', 'Date', 'Weight', ...(collectMeasurements ? ['Waist', 'Hips'] : []), 'Energy', 'Sleep', 'Food', 'Gym'].map(h => (
                   <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -2871,39 +2892,55 @@ function CheckinsTab({ clientId, collectMeasurements }) {
               {ascending.map((c, i) => {
                 const p = ascending[i - 1] || null
                 const delta = weightDelta(c, p)
+                const waistD = metricDelta(c.waist_cm, p?.waist_cm)
+                const hipsD = metricDelta(c.hips_cm, p?.hips_cm)
+                const energyD = metricDelta(c.energy_level, p?.energy_level, 0)
+                const sleepD = metricDelta(c.sleep_quality, p?.sleep_quality, 0)
+                const foodD = metricDelta(c.food_adherence, p?.food_adherence, 0)
+                const gymD = metricDelta(c.gym_adherence, p?.gym_adherence, 0)
                 return (
                   <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                     <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">Wk {c.week_number}</td>
                     <td className="py-2.5 pr-4 text-xs text-gray-400 whitespace-nowrap">{fmtDate(c.updated_at || c.submitted_at)}</td>
-                    <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">
-                      {c.weight_kg != null ? `${c.weight_kg} kg` : '—'}
+                    <td className="py-2.5 pr-4 whitespace-nowrap">
+                      <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{c.weight_kg != null ? `${c.weight_kg} kg` : '—'}</span>
+                      {delta !== null && <DeltaTag delta={delta} unit=" kg" className="block" />}
                     </td>
-                    <td className="py-2.5 pr-4 tabular-nums whitespace-nowrap">
-                      {delta !== null ? (
-                        <span className={`font-semibold text-xs ${delta < 0 ? 'text-green-600 dark:text-green-400' : delta > 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-400'}`}>
-                          {delta > 0 ? '+' : ''}{delta} kg
-                        </span>
-                      ) : <span className="text-gray-300 dark:text-gray-700">—</span>}
-                    </td>
-                    <td className="py-2.5 pr-4">
+                    {collectMeasurements && (
+                      <>
+                        <td className="py-2.5 pr-4 whitespace-nowrap">
+                          <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{c.waist_cm != null ? `${c.waist_cm} cm` : '—'}</span>
+                          {waistD !== null && <DeltaTag delta={waistD} unit=" cm" className="block" />}
+                        </td>
+                        <td className="py-2.5 pr-4 whitespace-nowrap">
+                          <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{c.hips_cm != null ? `${c.hips_cm} cm` : '—'}</span>
+                          {hipsD !== null && <DeltaTag delta={hipsD} unit=" cm" className="block" />}
+                        </td>
+                      </>
+                    )}
+                    <td className="py-2.5 pr-4 whitespace-nowrap">
                       {c.energy_level != null
                         ? <span className={`font-semibold text-xs ${checkinRatingColor(c.energy_level)}`}>{c.energy_level}/5</span>
                         : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                      {energyD !== null && <DeltaTag delta={energyD} higherIsBetter className="block" />}
                     </td>
-                    <td className="py-2.5 pr-4">
+                    <td className="py-2.5 pr-4 whitespace-nowrap">
                       {c.sleep_quality != null
                         ? <span className={`font-semibold text-xs ${checkinRatingColor(c.sleep_quality)}`}>{c.sleep_quality}/5</span>
                         : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                      {sleepD !== null && <DeltaTag delta={sleepD} higherIsBetter className="block" />}
                     </td>
-                    <td className="py-2.5 pr-4">
+                    <td className="py-2.5 pr-4 whitespace-nowrap">
                       {c.food_adherence != null
                         ? <span className={`font-semibold text-xs ${checkinRatingColor(c.food_adherence)}`}>{c.food_adherence}/5</span>
                         : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                      {foodD !== null && <DeltaTag delta={foodD} higherIsBetter className="block" />}
                     </td>
-                    <td className="py-2.5">
+                    <td className="py-2.5 whitespace-nowrap">
                       {c.gym_adherence != null
                         ? <span className={`font-semibold text-xs ${checkinRatingColor(c.gym_adherence)}`}>{c.gym_adherence}/5</span>
                         : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                      {gymD !== null && <DeltaTag delta={gymD} higherIsBetter className="block" />}
                     </td>
                   </tr>
                 )
@@ -2986,42 +3023,49 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                 <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Weight</p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.weight_kg} <span className="text-sm font-normal text-gray-500">kg</span></p>
+                  <DeltaTag delta={wDelta} unit=" kg" className="block mt-0.5" />
                 </div>
               )}
               {collectMeasurements && c.waist_cm != null && (
                 <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Waist</p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.waist_cm} <span className="text-sm font-normal text-gray-500">cm</span></p>
+                  <DeltaTag delta={metricDelta(c.waist_cm, p?.waist_cm)} unit=" cm" className="block mt-0.5" />
                 </div>
               )}
               {collectMeasurements && c.hips_cm != null && (
                 <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hips</p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.hips_cm} <span className="text-sm font-normal text-gray-500">cm</span></p>
+                  <DeltaTag delta={metricDelta(c.hips_cm, p?.hips_cm)} unit=" cm" className="block mt-0.5" />
                 </div>
               )}
               {c.energy_level != null && (
                 <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Energy</p>
                   <p className="text-base font-semibold text-gray-900 dark:text-white">{c.energy_level}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.energy_level[c.energy_level]}</span></p>
+                  <DeltaTag delta={metricDelta(c.energy_level, p?.energy_level, 0)} higherIsBetter className="block mt-0.5" />
                 </div>
               )}
               {c.sleep_quality != null && (
                 <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Sleep</p>
                   <p className="text-base font-semibold text-gray-900 dark:text-white">{c.sleep_quality}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.sleep_quality[c.sleep_quality]}</span></p>
+                  <DeltaTag delta={metricDelta(c.sleep_quality, p?.sleep_quality, 0)} higherIsBetter className="block mt-0.5" />
                 </div>
               )}
               {c.food_adherence != null && (
                 <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Food adherence</p>
                   <p className="text-base font-semibold text-gray-900 dark:text-white">{c.food_adherence}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.food_adherence[c.food_adherence]}</span></p>
+                  <DeltaTag delta={metricDelta(c.food_adherence, p?.food_adherence, 0)} higherIsBetter className="block mt-0.5" />
                 </div>
               )}
               {c.gym_adherence != null && (
                 <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gym adherence</p>
                   <p className="text-base font-semibold text-gray-900 dark:text-white">{c.gym_adherence}<span className="text-xs font-normal text-gray-400">/5</span> <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{CHECKIN_RATING_LABELS.gym_adherence[c.gym_adherence]}</span></p>
+                  <DeltaTag delta={metricDelta(c.gym_adherence, p?.gym_adherence, 0)} higherIsBetter className="block mt-0.5" />
                 </div>
               )}
             </div>
