@@ -297,20 +297,21 @@ export default function ClientCheckin() {
       setClientData(clientRow)
       setCollectMeasurements(!!clientRow.collect_measurements)
 
-      // Prefer top lifts from active training assignment; fall back to client record
+      // Prefer top lifts from active training assignment; fall back to client record.
+      // Fetched as a plain direct query (not a nested embed) — an embedded join through
+      // client_training_assignments can silently return null under some RLS evaluation
+      // orders, even when the policy itself would allow a direct select.
       const { data: trainingAsgn } = await supabase
         .from('client_training_assignments')
-        .select('program_id, week_override, created_at, start_date, training_programs(top_lifts, weeks_total)')
+        .select('program_id, week_override, created_at, start_date')
         .eq('client_id', clientRow.id)
         .eq('active', true)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
 
-      let trainingLifts = (trainingAsgn?.training_programs?.top_lifts || []).filter(l => l?.name)
-      // PostgREST join can silently return null if RLS on training_programs blocked it —
-      // retry as a direct query to get top_lifts for the assigned program.
-      if (trainingLifts.length === 0 && trainingAsgn?.program_id) {
+      let trainingLifts = []
+      if (trainingAsgn?.program_id) {
         const { data: prog } = await supabase
           .from('training_programs')
           .select('top_lifts')
