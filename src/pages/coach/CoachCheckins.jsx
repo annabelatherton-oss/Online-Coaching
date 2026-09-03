@@ -96,6 +96,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const [recipeModal, setRecipeModal] = useState(null)
   const [sessions, setSessions] = useState([])
   const [originalSessions, setOriginalSessions] = useState([])
+  const [exerciseLibrary, setExerciseLibrary] = useState([])
+  const [expandedDays, setExpandedDays] = useState(new Set())
   const [editedExercises, setEditedExercises] = useState({})
   const [removedExerciseIds, setRemovedExerciseIds] = useState(new Set())
   const [addedExercises, setAddedExercises] = useState({})
@@ -135,6 +137,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         { data: cwm },
         { data: trainingAsgn },
         { data: programs },
+        { data: exercisesData },
       ] = await Promise.all([
         supabase.from('meals').select(`
           id, name, category, instructions, photo_url, photo_position,
@@ -150,7 +153,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', weekNum).maybeSingle(),
         supabase.from('client_training_assignments').select('*, training_programs(name, weeks_total)').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('training_programs').select('id, name').eq('coach_id', coachId).order('name'),
+        supabase.from('exercises').select('id, name').eq('coach_id', coachId).eq('is_archived', false).order('name'),
       ])
+      setExerciseLibrary(exercisesData || [])
 
       const map = {}, byCat = {}
       for (const m of (mealsData || [])) {
@@ -187,6 +192,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         })).sort((a, b) => dayRank(a.name) - dayRank(b.name))
         setSessions(sortedSessions)
         setOriginalSessions(JSON.parse(JSON.stringify(sortedSessions)))
+        const firstDay = WEEK_DAYS.find(d => sortedSessions.some(s => s.name === d || s.name.startsWith(d + ' ') || s.name.startsWith(d + '—') || s.name.startsWith(d + ' —')))
+        if (firstDay) setExpandedDays(new Set([firstDay]))
       }
 
       setLoading(false)
@@ -262,6 +269,14 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   }
   function clearDraftSlots(weekNum) {
     try { localStorage.removeItem(draftKey(weekNum)) } catch (_) {}
+  }
+
+  function toggleDay(day) {
+    setExpandedDays(prev => {
+      const next = new Set(prev)
+      next.has(day) ? next.delete(day) : next.add(day)
+      return next
+    })
   }
 
   function handleSwapOpen(slotKey, label, cat) { setSwapModal({ slotKey, label, cat }) }
@@ -418,7 +433,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     const tempId = `new-${sessionId}-${Date.now()}`
     setAddedExercises(prev => ({
       ...prev,
-      [sessionId]: [...(prev[sessionId] || []), { _tempId: tempId, name: '', sets: null, reps: '', rpe: '', notes: '' }],
+      [sessionId]: [...(prev[sessionId] || []), { _tempId: tempId, exercise_id: null, name: '', sets: null, reps: '', rpe: '', notes: '' }],
     }))
   }
 
@@ -446,7 +461,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           .filter(ex => !removedExerciseIds.has(ex.id))
           .map(ex => ({
             _tempId: `cp-${ex.id}-${Date.now()}`,
-            name: ex.name, sets: ex.sets, reps: ex.reps, rpe: ex.rpe, notes: ex.notes,
+            exercise_id: ex.exercise_id || null, name: ex.name, sets: ex.sets, reps: ex.reps, rpe: ex.rpe, notes: ex.notes,
           }))
       : []
     setAddedSessions(prev => [...prev, {
@@ -464,7 +479,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   function handleAddExToAddedSession(sessTempId) {
     setAddedSessions(prev => prev.map(s => s._tempId !== sessTempId ? s : {
       ...s,
-      exercises: [...s.exercises, { _tempId: `nex-${Date.now()}`, name: '', sets: null, reps: '', rpe: '', notes: '' }],
+      exercises: [...s.exercises, { _tempId: `nex-${Date.now()}`, exercise_id: null, name: '', sets: null, reps: '', rpe: '', notes: '' }],
     }))
   }
 
@@ -863,30 +878,62 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
               ...addedSessions.map(s => ({ ...s, _kind: 'added' })),
             ].sort((a, b) => dayRank(a.name) - dayRank(b.name))
 
+            // Exercise name is picked from the coach's Exercise Library only —
+            // no free-typed names — matching how exercises are chosen
+            // everywhere else in the app.
             const ExRow = ({ ex, onUpdate, onRemove, autoF }) => (
-              <div className="px-3 py-2 space-y-1">
-                <div className="flex items-center gap-1.5">
-                  {ex.illustration_url != null || ex.video_url != null
-                    ? <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
-                    : <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                        <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                      </div>
-                  }
-                  <input autoFocus={autoF} type="text" value={ex.name ?? ''} onChange={e => onUpdate('name', e.target.value)}
-                    className="input flex-1 text-xs py-0.5 px-2 font-medium min-w-0" placeholder="Exercise name…" />
-                  <input type="number" min="0" value={ex.sets ?? ''} onChange={e => onUpdate('sets', e.target.value ? parseInt(e.target.value) : null)}
-                    className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
-                  <input type="text" value={ex.reps ?? ''} onChange={e => onUpdate('reps', e.target.value || null)}
-                    className="w-12 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
-                  <input type="text" value={ex.rpe ?? ''} onChange={e => onUpdate('rpe', e.target.value || null)}
-                    className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
-                  <button onClick={onRemove} className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-                <div className="pl-12">
+              <div className="px-3 py-2.5 flex gap-2.5">
+                {ex.illustration_url != null || ex.video_url != null
+                  ? <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
+                  : <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    </div>
+                }
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      autoFocus={autoF}
+                      value={ex.exercise_id || (ex.name ? '__unlinked__' : '')}
+                      onChange={e => {
+                        if (e.target.value === '__unlinked__') return
+                        const picked = exerciseLibrary.find(lib => lib.id === e.target.value)
+                        onUpdate('exercise_id', picked?.id || null)
+                        onUpdate('name', picked?.name || '')
+                      }}
+                      className="input flex-1 text-xs py-1 px-2 font-medium min-w-0"
+                    >
+                      <option value="">Select exercise…</option>
+                      {!ex.exercise_id && ex.name && (
+                        <option value="__unlinked__">{ex.name} (pick to replace)</option>
+                      )}
+                      {ex.exercise_id && !exerciseLibrary.some(lib => lib.id === ex.exercise_id) && (
+                        <option value={ex.exercise_id}>{ex.name}</option>
+                      )}
+                      {exerciseLibrary.map(lib => <option key={lib.id} value={lib.id}>{lib.name}</option>)}
+                    </select>
+                    <button onClick={onRemove} className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <div>
+                      <label className="block text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Sets</label>
+                      <input type="number" min="0" value={ex.sets ?? ''} onChange={e => onUpdate('sets', e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full input text-xs py-1 px-1 text-center tabular-nums" />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Reps</label>
+                      <input type="text" value={ex.reps ?? ''} onChange={e => onUpdate('reps', e.target.value || null)}
+                        className="w-full input text-xs py-1 px-1 text-center tabular-nums" />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">RPE</label>
+                      <input type="text" value={ex.rpe ?? ''} onChange={e => onUpdate('rpe', e.target.value || null)}
+                        className="w-full input text-xs py-1 px-1 text-center tabular-nums" />
+                    </div>
+                  </div>
                   <input type="text" value={ex.notes ?? ''} onChange={e => onUpdate('notes', e.target.value || null)}
-                    className="input w-full text-xs py-0.5 px-2 text-gray-500 dark:text-gray-400" placeholder="Notes…" />
+                    className="input w-full text-xs py-1 px-2 text-gray-500 dark:text-gray-400" placeholder="Notes…" />
                 </div>
               </div>
             )
@@ -899,90 +946,84 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
 
             return (
               <>
-                {/* Week overview — all 7 days, rest days shown */}
-                <div className="space-y-1.5 mb-4">
+                {/* Day-by-day accordion — matches the client's own Training tab
+                    layout exactly, with the same brand-coloured header for a
+                    training day and grey "Rest Day" card for days off. */}
+                <div className="space-y-2">
                   {WEEK_DAYS.map(day => {
-                    const s = byDay[day]
-                    const label = s
-                      ? (s.name.replace(new RegExp(`^${day}[\\s\\u2013\\u2014\\-]+`), '').trim() || s.name)
-                      : null
-                    return (
-                      <div key={day} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${
-                        s
-                          ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/30'
-                          : 'bg-gray-50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-800'
-                      }`}>
-                        <span className={`text-xs font-bold w-20 flex-shrink-0 ${s ? 'text-brand-600 dark:text-brand-400' : 'text-gray-400 dark:text-gray-600'}`}>{day}</span>
-                        {s
-                          ? <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{label || s.name}</span>
-                          : <span className="text-xs text-gray-300 dark:text-gray-700 italic">Rest</span>
-                        }
-                      </div>
-                    )
-                  })}
-                </div>
+                    const sess = byDay[day]
 
-                {displaySessions.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    {displaySessions.map((sess, i) => {
-                      const isAdded = sess._kind === 'added'
-                      const dbExercises = isAdded ? [] : (sess.session_exercises || []).filter(ex => !removedExerciseIds.has(ex.id))
-                      const newExercises = isAdded ? sess.exercises : (addedExercises[sess.id] || [])
-                      const hasExercises = dbExercises.length > 0 || newExercises.length > 0
-
-                      const onUpdateNew = (exTempId, field, value) => isAdded
-                        ? handleUpdateAddedSessionExercise(sess._tempId, exTempId, field, value)
-                        : handleUpdateAddedExercise(sess.id, exTempId, field, value)
-                      const onRemoveNew = exTempId => isAdded
-                        ? handleRemoveExFromAddedSession(sess._tempId, exTempId)
-                        : handleRemoveAddedExercise(sess.id, exTempId)
-                      const onAddNew = () => isAdded
-                        ? handleAddExToAddedSession(sess._tempId)
-                        : handleAddExercise(sess.id)
-
+                    if (!sess) {
                       return (
-                        <div key={isAdded ? sess._tempId : sess.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
-                          {/* Session header */}
-                          <div className={`px-3 py-2.5 flex items-center gap-2 flex-shrink-0 ${isAdded ? 'bg-green-50 dark:bg-green-900/20' : 'bg-blue-50 dark:bg-blue-900/20'}`}>
-                            <span className={`w-6 h-6 rounded-full text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 ${isAdded ? 'bg-green-500' : 'bg-blue-500'}`}>
-                              {i + 1}
-                            </span>
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white leading-snug flex-1 min-w-0 truncate">{sess.name}</p>
-                            {isAdded && (
-                              <>
-                                <span className="text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full flex-shrink-0">New</span>
-                                <button onClick={() => handleRemoveAddedSession(sess._tempId)} className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
-                                </button>
-                              </>
-                            )}
-                          </div>
-
-                          {/* Column header */}
-                          {hasExercises && (
-                            <div className="px-3 py-1 flex items-center gap-1.5 bg-gray-50/60 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 text-[9px] font-semibold text-gray-400 uppercase tracking-wider flex-shrink-0">
-                              <div className="w-10 flex-shrink-0" />
-                              <span className="flex-1 min-w-0">Exercise</span>
-                              <span className="w-10 text-center flex-shrink-0">Sets</span>
-                              <span className="w-12 text-center flex-shrink-0">Reps</span>
-                              <span className="w-10 text-center flex-shrink-0">RPE</span>
-                              <div className="w-6 flex-shrink-0" />
+                        <div key={day} className="card px-3 py-2.5 flex items-center justify-between gap-2.5">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+                              <svg className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                              </svg>
                             </div>
-                          )}
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">{day}</p>
+                              <p className="text-xs text-gray-400 dark:text-gray-500">Rest Day</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setNewSessionForm({ name: day, copyFromId: '' })}
+                            className="text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium flex-shrink-0"
+                          >
+                            + Add session
+                          </button>
+                        </div>
+                      )
+                    }
 
-                          {/* Exercise rows */}
-                          <div className="flex-1 flex flex-col">
-                            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                    const isAdded = sess._kind === 'added'
+                    const dbExercises = isAdded ? [] : (sess.session_exercises || []).filter(ex => !removedExerciseIds.has(ex.id))
+                    const newExercises = isAdded ? sess.exercises : (addedExercises[sess.id] || [])
+                    const exCount = dbExercises.length + newExercises.length
+                    const isOpen = expandedDays.has(day)
+                    const label = sess.name.replace(new RegExp(`^${day}[\\s\\u2013\\u2014\\-]+`), '').trim() || sess.name
+
+                    const onUpdateNew = (exTempId, field, value) => isAdded
+                      ? handleUpdateAddedSessionExercise(sess._tempId, exTempId, field, value)
+                      : handleUpdateAddedExercise(sess.id, exTempId, field, value)
+                    const onRemoveNew = exTempId => isAdded
+                      ? handleRemoveExFromAddedSession(sess._tempId, exTempId)
+                      : handleRemoveAddedExercise(sess.id, exTempId)
+                    const onAddNew = () => isAdded
+                      ? handleAddExToAddedSession(sess._tempId)
+                      : handleAddExercise(sess.id)
+
+                    return (
+                      <div key={day} className="card overflow-hidden p-0">
+                        <button
+                          onClick={() => toggleDay(day)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide leading-none mb-0.5">{day}</p>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight truncate">{label}</p>
+                          </div>
+                          {isAdded && (
+                            <span className="text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full flex-shrink-0">New</span>
+                          )}
+                          <p className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{exCount} ex</p>
+                          <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+
+                        {isOpen && (
+                          <div className="border-t border-gray-100 dark:border-gray-800">
+                            <div className="divide-y divide-gray-50 dark:divide-gray-800">
                               {dbExercises.map(ex => {
                                 const edits = editedExercises[ex.id] || {}
-                                const merged = {
-                                  ...ex,
-                                  name:  edits.name  !== undefined ? edits.name  : ex.name,
-                                  sets:  edits.sets  !== undefined ? edits.sets  : ex.sets,
-                                  reps:  edits.reps  !== undefined ? edits.reps  : ex.reps,
-                                  rpe:   edits.rpe   !== undefined ? edits.rpe   : ex.rpe,
-                                  notes: edits.notes !== undefined ? edits.notes : ex.notes,
-                                }
+                                const merged = { ...ex, ...edits }
                                 return <ExRow key={ex.id} ex={merged}
                                   onUpdate={(f, v) => handleUpdateExercise(ex.id, f, v)}
                                   onRemove={() => handleRemoveExercise(ex.id)} />
@@ -993,19 +1034,23 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                                   onRemove={() => onRemoveNew(ex._tempId)} />
                               ))}
                             </div>
-
-                            <button onClick={onAddNew} className="mt-auto py-2 flex items-center justify-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium hover:bg-blue-50/60 dark:hover:bg-blue-900/10 transition-colors border-t border-gray-100 dark:border-gray-800">
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                              Add exercise
-                            </button>
+                            <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 dark:border-gray-800">
+                              <button onClick={onAddNew} className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                Add exercise
+                              </button>
+                              {isAdded && (
+                                <button onClick={() => handleRemoveAddedSession(sess._tempId)} className="text-xs text-gray-400 hover:text-red-500 font-medium">
+                                  Remove day
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-400 px-1">No sessions found for this training week.</p>
-                )}
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
 
                 {/* Add training day */}
                 {newSessionForm ? (
