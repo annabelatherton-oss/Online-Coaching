@@ -131,7 +131,7 @@ export function formatAmount(ing, ingredientLib) {
 
 // ─── Meal card ────────────────────────────────────────────────────────────────
 
-export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, mealMap, mealsByCategory, tier, overrides, onSwap, onViewRecipe, ingredientLib }) {
+export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, mealMap, mealsByCategory, tier, overrides, onSwap, onViewRecipe, ingredientLib, onRevert, onRemove }) {
   const meal = mealId ? mealMap[mealId] : null
   const ingredients = meal ? getIngredients(meal, tier, overrides) : []
   const macros = mealMacros(mealId, mealMap, tier, overrides)
@@ -206,15 +206,33 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
         )}
 
         {mealId && (
-          <button
-            onClick={e => { e.stopPropagation(); onSwap(slotKey, label, cat) }}
-            className="text-[10px] text-gray-400 dark:text-gray-500 hover:text-brand-500 flex items-center gap-1 self-start"
-          >
-            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-            </svg>
-            Swap
-          </button>
+          <div className="flex items-center gap-3 self-start">
+            <button
+              onClick={e => { e.stopPropagation(); onSwap(slotKey, label, cat) }}
+              className="text-[10px] text-gray-400 dark:text-gray-500 hover:text-brand-500 flex items-center gap-1"
+            >
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+              Swap
+            </button>
+            {isCustom && onRevert && (
+              <button
+                onClick={e => { e.stopPropagation(); onRevert(slotKey) }}
+                className="text-[10px] text-orange-400 dark:text-orange-500 hover:text-orange-600 dark:hover:text-orange-400"
+              >
+                Revert
+              </button>
+            )}
+            {onRemove && (
+              <button
+                onClick={e => { e.stopPropagation(); onRemove(slotKey) }}
+                className="text-[10px] text-gray-400 dark:text-gray-500 hover:text-red-500"
+              >
+                Remove
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -223,7 +241,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
   const [prepDays, setPrepDays] = useState(null)
@@ -484,6 +502,14 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
               {isCustom && onRevert && (
                 <button onClick={() => { onRevert(slotKey); onClose() }} className="btn-secondary">
                   Revert
+                </button>
+              )}
+              {onRemove && (
+                <button
+                  onClick={() => { onRemove(slotKey); onClose() }}
+                  className="text-sm font-medium text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 px-3"
+                >
+                  Remove meal
                 </button>
               )}
             </div>

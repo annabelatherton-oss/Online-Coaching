@@ -6,7 +6,7 @@ import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import {
   MEAL_GROUPS, ALL_SLOT_DEFS, OPTION_1_KEYS, OPTION_2_KEYS,
   normalizeOverrides, hasAnyOverride,
-  mealMacros, addMacros,
+  mealMacros, addMacros, getIngredients,
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
 import ExerciseThumb from '../../components/ExerciseThumb'
@@ -329,6 +329,42 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     setEditedSlots({ ...templateSlots })
     setIngredientOverrides({})
     clearDraftSlots(nextTemplateWeek)
+  }
+
+  // Removes a meal the client doesn't want (e.g. an evening snack) and
+  // spreads its calories evenly across the day's other assigned meals by
+  // scaling up their non-static ingredient quantities — so the client's
+  // daily calorie target stays roughly the same instead of just dropping.
+  function handleRemoveMeal(slotKeyToRemove) {
+    const removedCal = mealMacros(editedSlots[slotKeyToRemove], mealMap, tier, ingredientOverrides[slotKeyToRemove])?.cal || 0
+
+    const newSlots = { ...editedSlots, [slotKeyToRemove]: null }
+    setEditedSlots(newSlots)
+    setIngredientOverrides(prev => {
+      const next = { ...prev }
+      delete next[slotKeyToRemove]
+      return next
+    })
+    saveDraftSlots(nextTemplateWeek, newSlots)
+
+    if (removedCal <= 0) return
+    const remainingKeys = ALL_SLOT_DEFS.map(s => s.key).filter(k => k !== slotKeyToRemove && newSlots[k])
+    if (remainingKeys.length === 0) return
+    const share = removedCal / remainingKeys.length
+
+    remainingKeys.forEach(key => {
+      const meal = mealMap[newSlots[key]]
+      if (!meal) return
+      const allIngredients = getIngredients(meal, tier, ingredientOverrides[key])
+      const flexIngredients = allIngredients.filter(ing => !ing.is_static)
+      const flexCal = flexIngredients.reduce((s, ing) => s + (parseFloat(ing.calories) || 0), 0)
+      if (flexCal <= 0) return
+      const scale = (flexCal + share) / flexCal
+      flexIngredients.forEach(ing => {
+        const currentQty = parseFloat(ing.quantity_g) || 0
+        handleUpdateIngredient(key, ing._tempId || ing.id, Math.round(currentQty * scale))
+      })
+    })
   }
 
   function handleUpdateExercise(exId, field, value) {
@@ -663,35 +699,52 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
               )}
             </div>
             {MEAL_GROUPS.map(group => {
-              const visibleSlots = group.slots.filter(s => editedSlots[s.key])
-              if (visibleSlots.length === 0) return null
+              // Show a slot if it currently has a meal, or if it originally
+              // had one from the template and has since been removed (so
+              // there's still a card to restore it from).
+              const relevantSlots = group.slots.filter(s => editedSlots[s.key] || templateSlots[s.key])
+              if (relevantSlots.length === 0) return null
               return (
                 <section key={group.label}>
                   <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{group.label}</h3>
                   <div className="grid grid-cols-2 gap-3">
-                    {visibleSlots.map(slot => (
-                      <MealCard
-                        key={slot.key}
-                        slotKey={slot.key}
-                        label={slot.label}
-                        optionLabel={slot.optionLabel}
-                        cat={slot.cat}
-                        mealId={editedSlots[slot.key]}
-                        templateMealId={templateSlots[slot.key]}
-                        mealMap={mealMap}
-                        mealsByCategory={mealsByCategory}
-                        tier={tier}
-                        overrides={ingredientOverrides[slot.key]}
-                        onSwap={handleSwapOpen}
-                        onViewRecipe={setRecipeModal}
-                        ingredientLib={ingredientLib}
-                      />
+                    {relevantSlots.map(slot => (
+                      editedSlots[slot.key] ? (
+                        <MealCard
+                          key={slot.key}
+                          slotKey={slot.key}
+                          label={slot.label}
+                          optionLabel={slot.optionLabel}
+                          cat={slot.cat}
+                          mealId={editedSlots[slot.key]}
+                          templateMealId={templateSlots[slot.key]}
+                          mealMap={mealMap}
+                          mealsByCategory={mealsByCategory}
+                          tier={tier}
+                          overrides={ingredientOverrides[slot.key]}
+                          onSwap={handleSwapOpen}
+                          onViewRecipe={setRecipeModal}
+                          ingredientLib={ingredientLib}
+                          onRevert={handleRevert}
+                          onRemove={handleRemoveMeal}
+                        />
+                      ) : (
+                        <div key={slot.key} className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-4 min-h-[6.5rem]">
+                          <p className="text-xs text-gray-400 dark:text-gray-500 text-center">{slot.label}{slot.optionLabel ? ` — ${slot.optionLabel}` : ''} removed<br/>its calories were added to the other meals</p>
+                          <button
+                            onClick={() => handleRevert(slot.key)}
+                            className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
+                          >
+                            Restore
+                          </button>
+                        </div>
+                      )
                     ))}
                   </div>
                 </section>
               )
             })}
-            {Object.values(editedSlots).every(v => !v) && (
+            {Object.values(templateSlots).every(v => !v) && (
               <div className="card text-center py-10">
                 <p className="text-sm text-gray-400">No meal plan template set for this week.</p>
                 <p className="text-xs text-gray-400 mt-1">Set up weekly templates in the plan editor first.</p>
@@ -1025,6 +1078,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           onRevertIngredients={handleRevertIngredients}
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
+          onRemove={handleRemoveMeal}
         />
       )}
     </div>
