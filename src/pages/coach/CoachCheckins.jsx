@@ -349,6 +349,26 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     })
   }
 
+  // snapToConstraints only rounds when the ingredient has an explicit
+  // serving_step configured in the library — most don't (it's an optional
+  // per-ingredient field), so without a fallback here the redistribution
+  // could land on a raw, unrounded figure like 4.7 crumpets or a
+  // not-quite-round 41g of something. When there's no step: discrete/
+  // counted units (crumpets, eggs, scoops, slices…) round to a whole
+  // number, and weight/volume amounts round to the nearest 5.
+  function roundIngredientQty(rawQty, ing, libIng) {
+    if (libIng?.serving_step > 0) {
+      const snapped = snapToConstraints(rawQty, libIng, false)
+      return (snapped != null && !isNaN(snapped)) ? snapped : Math.round(rawQty)
+    }
+    const unit = ((ing.unit && ing.unit !== 'g') ? ing.unit : (libIng?.serving_unit || 'g')).trim().toLowerCase()
+    const isWeightOrVolume = ['g', 'gram', 'grams', 'ml', 'millilitre', 'millilitres', 'l', 'litre', 'litres'].includes(unit)
+    let rounded = isWeightOrVolume ? Math.round(rawQty / 5) * 5 : Math.max(1, Math.round(rawQty))
+    if (libIng?.min_amount != null && rounded < libIng.min_amount) rounded = libIng.min_amount
+    if (libIng?.max_amount != null && rounded > libIng.max_amount) rounded = libIng.max_amount
+    return rounded
+  }
+
   function handleRevertMealPlan() {
     setEditedSlots({ ...templateSlots })
     setIngredientOverrides({})
@@ -404,8 +424,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           const currentQty = parseFloat(ing.quantity_g) || 0
           const rawQty = currentQty * scale
           const libIng = ing.ingredient_id ? ingredientLib[ing.ingredient_id] : null
-          const snapped = libIng ? snapToConstraints(rawQty, libIng, ing.scaling_type === 'optional') : null
-          handleUpdateIngredient(key, ing._tempId || ing.id, snapped ?? Math.round(rawQty))
+          handleUpdateIngredient(key, ing._tempId || ing.id, roundIngredientQty(rawQty, ing, libIng))
         })
       })
     })
@@ -882,58 +901,47 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
             // no free-typed names — matching how exercises are chosen
             // everywhere else in the app.
             const ExRow = ({ ex, onUpdate, onRemove, autoF }) => (
-              <div className="px-3 py-2.5 flex gap-2.5">
-                {ex.illustration_url != null || ex.video_url != null
-                  ? <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
-                  : <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                      <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                    </div>
-                }
-                <div className="flex-1 min-w-0 space-y-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <select
-                      autoFocus={autoF}
-                      value={ex.exercise_id || (ex.name ? '__unlinked__' : '')}
-                      onChange={e => {
-                        if (e.target.value === '__unlinked__') return
-                        const picked = exerciseLibrary.find(lib => lib.id === e.target.value)
-                        onUpdate('exercise_id', picked?.id || null)
-                        onUpdate('name', picked?.name || '')
-                      }}
-                      className="input flex-1 text-xs py-1 px-2 font-medium min-w-0"
-                    >
-                      <option value="">Select exercise…</option>
-                      {!ex.exercise_id && ex.name && (
-                        <option value="__unlinked__">{ex.name} (pick to replace)</option>
-                      )}
-                      {ex.exercise_id && !exerciseLibrary.some(lib => lib.id === ex.exercise_id) && (
-                        <option value={ex.exercise_id}>{ex.name}</option>
-                      )}
-                      {exerciseLibrary.map(lib => <option key={lib.id} value={lib.id}>{lib.name}</option>)}
-                    </select>
-                    <button onClick={onRemove} className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0">
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <div>
-                      <label className="block text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Sets</label>
-                      <input type="number" min="0" value={ex.sets ?? ''} onChange={e => onUpdate('sets', e.target.value ? parseInt(e.target.value) : null)}
-                        className="w-full input text-xs py-1 px-1 text-center tabular-nums" />
-                    </div>
-                    <div>
-                      <label className="block text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Reps</label>
-                      <input type="text" value={ex.reps ?? ''} onChange={e => onUpdate('reps', e.target.value || null)}
-                        className="w-full input text-xs py-1 px-1 text-center tabular-nums" />
-                    </div>
-                    <div>
-                      <label className="block text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">RPE</label>
-                      <input type="text" value={ex.rpe ?? ''} onChange={e => onUpdate('rpe', e.target.value || null)}
-                        className="w-full input text-xs py-1 px-1 text-center tabular-nums" />
-                    </div>
-                  </div>
+              <div className="px-3 py-2 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  {ex.illustration_url != null || ex.video_url != null
+                    ? <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
+                    : <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
+                        <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                      </div>
+                  }
+                  <select
+                    autoFocus={autoF}
+                    value={ex.exercise_id || (ex.name ? '__unlinked__' : '')}
+                    onChange={e => {
+                      if (e.target.value === '__unlinked__') return
+                      const picked = exerciseLibrary.find(lib => lib.id === e.target.value)
+                      onUpdate('exercise_id', picked?.id || null)
+                      onUpdate('name', picked?.name || '')
+                    }}
+                    className="input flex-1 text-xs py-0.5 px-2 font-medium min-w-0"
+                  >
+                    <option value="">Select exercise…</option>
+                    {!ex.exercise_id && ex.name && (
+                      <option value="__unlinked__">{ex.name} (pick to replace)</option>
+                    )}
+                    {ex.exercise_id && !exerciseLibrary.some(lib => lib.id === ex.exercise_id) && (
+                      <option value={ex.exercise_id}>{ex.name}</option>
+                    )}
+                    {exerciseLibrary.map(lib => <option key={lib.id} value={lib.id}>{lib.name}</option>)}
+                  </select>
+                  <input type="number" min="0" value={ex.sets ?? ''} onChange={e => onUpdate('sets', e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
+                  <input type="text" value={ex.reps ?? ''} onChange={e => onUpdate('reps', e.target.value || null)}
+                    className="w-12 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
+                  <input type="text" value={ex.rpe ?? ''} onChange={e => onUpdate('rpe', e.target.value || null)}
+                    className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
+                  <button onClick={onRemove} className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div className="pl-12">
                   <input type="text" value={ex.notes ?? ''} onChange={e => onUpdate('notes', e.target.value || null)}
-                    className="input w-full text-xs py-1 px-2 text-gray-500 dark:text-gray-400" placeholder="Notes…" />
+                    className="input w-full text-xs py-0.5 px-2 text-gray-500 dark:text-gray-400" placeholder="Notes…" />
                 </div>
               </div>
             )
@@ -1020,6 +1028,16 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
 
                         {isOpen && (
                           <div className="border-t border-gray-100 dark:border-gray-800">
+                            {exCount > 0 && (
+                              <div className="px-3 pt-2 pb-1 flex items-center gap-1.5 text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
+                                <div className="w-10 flex-shrink-0" />
+                                <span className="flex-1 min-w-0">Exercise</span>
+                                <span className="w-10 text-center flex-shrink-0">Sets</span>
+                                <span className="w-12 text-center flex-shrink-0">Reps</span>
+                                <span className="w-10 text-center flex-shrink-0">RPE</span>
+                                <div className="w-6 flex-shrink-0" />
+                              </div>
+                            )}
                             <div className="divide-y divide-gray-50 dark:divide-gray-800">
                               {dbExercises.map(ex => {
                                 const edits = editedExercises[ex.id] || {}
