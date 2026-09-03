@@ -840,7 +840,10 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
             </div>
             {training ? (() => {
               const blockTotal = training.training_programs?.weeks_total ?? 12
-              const weeksElapsed = Math.floor((Date.now() - new Date(training.created_at).getTime()) / (7 * 24 * 60 * 60 * 1000))
+              const blockStart = training.start_date || training.created_at
+              const weeksElapsed = Math.floor((Date.now() - new Date(blockStart).getTime()) / (7 * 24 * 60 * 60 * 1000))
+              const currentWeek = Math.min(weeksElapsed + 1, blockTotal)
+              const weeksLeft = Math.max(0, blockTotal - weeksElapsed)
               const isComplete = weeksElapsed >= blockTotal
               return (
                 <div className="space-y-2">
@@ -853,8 +856,14 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 dark:text-white">{training.program_name || training.training_programs?.name}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {blockTotal}-week block
-                        {isComplete && <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-semibold">· Ready for new block</span>}
+                        {isComplete ? (
+                          <>
+                            {blockTotal}-week block
+                            <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-semibold">· Ready for new block</span>
+                          </>
+                        ) : (
+                          <>Week {currentWeek} of {blockTotal} · {weeksLeft} week{weeksLeft !== 1 ? 's' : ''} left</>
+                        )}
                       </p>
                     </div>
                   </div>
