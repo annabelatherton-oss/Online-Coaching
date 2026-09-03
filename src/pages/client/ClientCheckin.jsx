@@ -42,6 +42,7 @@ const STRUGGLE_GROUPS = [
       'Sleep',
       'Work schedule',
       'Travel',
+      'Other',
     ],
   },
 ]
@@ -909,13 +910,19 @@ export default function ClientCheckin() {
             ))}
           </div>
           <div>
-            <label className="label">Something else? (optional)</label>
+            <label className="label">
+              {(form.struggles || []).includes('Other') ? "What's the 'Other' issue? (optional)" : 'Add more detail (optional)'}
+            </label>
             <textarea
               className="input resize-none"
               rows={2}
               value={form.struggles_other}
               onChange={e => set('struggles_other', e.target.value)}
-              placeholder="Tell your coach if it's not one of the options above…"
+              placeholder={
+                (form.struggles || []).includes('Other')
+                  ? "Tell your coach what it is…"
+                  : 'More detail on what you selected above, if you want to add any…'
+              }
             />
           </div>
         </div>
