@@ -165,7 +165,12 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [clientId])
+  // Also re-run when the assigned programme itself changes — right after a
+  // coach assigns a new training plan, the parent's `assignment` prop lands
+  // a moment after this component mounts (its remount and the fresh
+  // assignment resolve independently), so without this the exercises never
+  // load for that day, even though the assignment succeeded.
+  useEffect(() => { load() }, [clientId, assignment?.program_id])
 
   async function addItem(day, type, entityId) {
     setSaving(true)
