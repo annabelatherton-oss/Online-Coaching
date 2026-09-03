@@ -2428,11 +2428,33 @@ function TrainingTab({ client, coachId, onSaved }) {
 
   useEffect(() => { load() }, [client.id])
 
+  const hasSavedOverride = (client.top_lifts || []).some(l => l?.name)
+  const blockTopLifts = (assignment?.training_programs?.top_lifts || []).filter(l => l?.name).map(l => l.name)
+
+  // Keep the fields showing something meaningful even without an override:
+  // the client's saved override if there is one, otherwise the block's own
+  // defaults — so the coach always sees what will actually be used.
+  useEffect(() => {
+    if (loading) return
+    setTopLiftOverride(hasSavedOverride
+      ? [client.top_lifts?.[0]?.name || '', client.top_lifts?.[1]?.name || '', client.top_lifts?.[2]?.name || '']
+      : [blockTopLifts[0] || '', blockTopLifts[1] || '', blockTopLifts[2] || '']
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, hasSavedOverride, JSON.stringify(client.top_lifts), JSON.stringify(blockTopLifts)])
+
   async function saveTopLifts() {
     setSavingLifts(true)
     await supabase.from('clients').update({
       top_lifts: topLiftOverride.filter(n => n.trim()).map(name => ({ name: name.trim() })),
     }).eq('id', client.id)
+    setSavingLifts(false)
+    onSaved?.()
+  }
+
+  async function revertTopLifts() {
+    setSavingLifts(true)
+    await supabase.from('clients').update({ top_lifts: [] }).eq('id', client.id)
     setSavingLifts(false)
     onSaved?.()
   }
@@ -2496,6 +2518,69 @@ function TrainingTab({ client, coachId, onSaved }) {
 
   return (
     <div className="space-y-5 max-w-2xl">
+      <ClientWeeklyPlan key={reloadKey} clientId={client.id} coachId={coachId} assignment={assignment} />
+
+      {assignment && (
+        <div className="card space-y-4">
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-white">Top 3 Lifts</h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Client will log weight and reps for these in their weekly check-in.</p>
+          </div>
+          {blockTopLifts.length > 0 ? (
+            <div className="rounded-lg bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 px-3 py-2.5">
+              <p className="text-xs text-brand-700 dark:text-brand-300">
+                Pulled automatically from the assigned training block: <span className="font-medium">{blockTopLifts.join(', ')}</span>.
+                {hasSavedOverride ? ' Overridden below for this client.' : ' Shown below — change any of them if you want something different for this client.'}
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              No top lifts set on the assigned training block yet — set them once on the block itself, or set them just for this client below.
+            </p>
+          )}
+          {[0, 1, 2].map(i => (
+            <div key={i}>
+              <label className="label">Lift {i + 1} {blockTopLifts.length > 0 && <span className="text-gray-400 font-normal">(override)</span>}</label>
+              {liftOptions.length > 0 ? (
+                <select
+                  className="input"
+                  value={topLiftOverride[i]}
+                  onChange={e => setTopLiftOverride(prev => prev.map((v, j) => j === i ? e.target.value : v))}
+                >
+                  <option value="">— Select exercise —</option>
+                  {liftOptions.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="input"
+                  type="text"
+                  value={topLiftOverride[i]}
+                  onChange={e => setTopLiftOverride(prev => prev.map((v, j) => j === i ? e.target.value : v))}
+                  placeholder={['e.g. Squat', 'e.g. Bench Press', 'e.g. Deadlift'][i]}
+                />
+              )}
+            </div>
+          ))}
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={saveTopLifts} disabled={savingLifts} className="btn-primary py-1.5 px-4 text-sm">
+              {savingLifts ? 'Saving…' : 'Save'}
+            </button>
+            {hasSavedOverride && (
+              <button
+                type="button"
+                onClick={revertTopLifts}
+                disabled={savingLifts}
+                className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
+              >
+                Revert to the training block's original lifts
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {!assignment && !showForm && (
         <div className="card text-center py-12">
           <p className="text-gray-400 dark:text-gray-500 text-sm mb-4">No training programme assigned.</p>
@@ -2607,74 +2692,6 @@ function TrainingTab({ client, coachId, onSaved }) {
           })()}
         </div>
       )}
-
-      {assignment && (() => {
-        const blockTopLifts = (prog?.top_lifts || []).filter(l => l?.name).map(l => l.name)
-        const hasOverride = topLiftOverride.some(n => n.trim())
-        return (
-          <div className="card space-y-4">
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">Top 3 Lifts</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Client will log weight and reps for these in their weekly check-in.</p>
-            </div>
-            {blockTopLifts.length > 0 ? (
-              <div className="rounded-lg bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 px-3 py-2.5">
-                <p className="text-xs text-brand-700 dark:text-brand-300">
-                  Pulled automatically from the assigned training block: <span className="font-medium">{blockTopLifts.join(', ')}</span>.
-                  {hasOverride ? ' Overridden below for this client.' : ' No need to set anything below unless you want to override it for this client.'}
-                </p>
-              </div>
-            ) : (
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                No top lifts set on the assigned training block yet — set them once on the block itself, or override just for this client below.
-              </p>
-            )}
-            {[0, 1, 2].map(i => (
-              <div key={i}>
-                <label className="label">Lift {i + 1} override {blockTopLifts.length > 0 && <span className="text-gray-400 font-normal">(optional)</span>}</label>
-                {liftOptions.length > 0 ? (
-                  <select
-                    className="input"
-                    value={topLiftOverride[i]}
-                    onChange={e => setTopLiftOverride(prev => prev.map((v, j) => j === i ? e.target.value : v))}
-                  >
-                    <option value="">{blockTopLifts.length > 0 ? '— Use block default —' : '— Select exercise —'}</option>
-                    {liftOptions.map(name => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    className="input"
-                    type="text"
-                    value={topLiftOverride[i]}
-                    onChange={e => setTopLiftOverride(prev => prev.map((v, j) => j === i ? e.target.value : v))}
-                    placeholder={['e.g. Squat', 'e.g. Bench Press', 'e.g. Deadlift'][i]}
-                  />
-                )}
-              </div>
-            ))}
-            <div className="flex items-center gap-3">
-              <button type="button" onClick={saveTopLifts} disabled={savingLifts} className="btn-primary py-1.5 px-4 text-sm">
-                {savingLifts ? 'Saving…' : 'Save'}
-              </button>
-              {blockTopLifts.length > 0 && hasOverride && (
-                <button
-                  type="button"
-                  onClick={() => setTopLiftOverride(['', '', ''])}
-                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
-                >
-                  Clear override — use the block's default lifts
-                </button>
-              )}
-            </div>
-          </div>
-        )
-      })()}
-
-      <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
-        <ClientWeeklyPlan key={reloadKey} clientId={client.id} coachId={coachId} assignment={assignment} />
-      </div>
     </div>
   )
 }
