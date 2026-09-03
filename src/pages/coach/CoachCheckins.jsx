@@ -28,6 +28,38 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// Quick-reply starters for the coach response box — warm and encouraging,
+// not a full message on their own (the coach edits/adds to them before sending).
+const QUICK_REPLIES = [
+  { label: 'Great week 🌟', text: "You're doing amazing this week! ✨ So proud of how consistent you've been — keep this energy going." },
+  { label: 'Tough week 💗', text: "Rough week, but you still showed up — that says everything about you. Let's tighten things up together next week. 💗" },
+  { label: 'Progress! 🌸', text: "Look at that progress! 🌸 Every week you're proving what you're capable of. Keep going, you've got this." },
+  { label: 'Plateau pep talk 🌷', text: "Plateaus just mean your body's catching its breath before the next breakthrough — stay patient, you're closer than you think." },
+  { label: 'Consistency win 🤍', text: 'Your consistency this week did not go unnoticed. This is exactly how real results are built! 🤍' },
+  { label: 'Resolved a struggle 🎉', text: "So glad to hear you're feeling on top of this now — that's a genuine win, well done! 🎉" },
+]
+
+function QuickReplies({ onPick }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {QUICK_REPLIES.map(q => (
+        <button
+          type="button"
+          key={q.label}
+          onClick={() => onPick(q.text)}
+          className="px-2.5 py-1 rounded-full text-xs font-medium bg-pink-50 dark:bg-pink-900/20 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800 hover:bg-pink-100 dark:hover:bg-pink-900/30 transition-colors"
+        >
+          {q.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function appendQuickReply(current, text) {
+  return current?.trim() ? `${current.trim()}\n\n${text}` : text
+}
+
 // Check-in submitted Mon or Tue = late re-submit for the previous week
 function isLateSubmission(checkin) {
   const iso = checkin?.updated_at || checkin?.submitted_at
@@ -696,6 +728,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           {/* Coach notes */}
           <div className="card space-y-3">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Message to client</h2>
+            <QuickReplies onPick={text => setCoachNotes(v => appendQuickReply(v, text))} />
             <textarea
               autoFocus
               className="input w-full text-sm resize-none"
@@ -1845,6 +1878,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             )}
             {responding === c.id ? (
               <div className="space-y-2">
+                <QuickReplies onPick={text => setResponseText(v => appendQuickReply(v, text))} />
                 <textarea autoFocus className="input w-full text-sm resize-none" rows={3} value={responseText} onChange={e => setResponseText(e.target.value)} placeholder="Write your response…" />
                 <div className="flex gap-2">
                   <button onClick={() => sendResponse(c.id)} disabled={saving || !responseText.trim()} className="btn-primary py-1.5 px-4 text-sm">{saving ? 'Sending…' : 'Send'}</button>

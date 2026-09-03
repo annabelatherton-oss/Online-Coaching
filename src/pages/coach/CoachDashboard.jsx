@@ -25,12 +25,31 @@ function fmtDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// Check-in window: opens Thursday, runs through Tuesday, closed Wednesday —
+// mirrors the client-side window in ClientCheckin.jsx.
+function lastWednesdayMidnight() {
+  const now = new Date()
+  const daysSince = (now.getDay() - 3 + 7) % 7 || 7
+  const d = new Date(now)
+  d.setDate(now.getDate() - daysSince)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+const RATING_FIELDS = [
+  { key: 'energy_level', label: 'Energy low' },
+  { key: 'sleep_quality', label: 'Sleep quality low' },
+  { key: 'food_adherence', label: 'Food adherence low' },
+  { key: 'gym_adherence', label: 'Gym adherence low' },
+]
+
 export default function CoachDashboard() {
   const { profile } = useAuth()
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [recentClients, setRecentClients] = useState([])
   const [pendingPauses, setPendingPauses] = useState([])
+  const [attention, setAttention] = useState([]) // [{ clientId, name, reasons: [{text, tone}] }]
 
   useEffect(() => {
     async function load() {
@@ -73,6 +92,65 @@ export default function CoachDashboard() {
           pauses = (pauseData || []).map(p => ({ ...p, client_name: clientMap[p.client_id] }))
         }
         setPendingPauses(pauses)
+
+        // ── "Needs attention today" — merges three signals per active client:
+        // missed this week's check-in, a rating stuck low 3+ weeks running,
+        // and a struggle the client marked resolved that hasn't been
+        // acknowledged yet.
+        const attentionMap = {}
+        function flag(clientId, text, tone) {
+          if (!attentionMap[clientId]) attentionMap[clientId] = { clientId, name: clientMap[clientId], reasons: [] }
+          attentionMap[clientId].reasons.push({ text, tone })
+        }
+
+        if (clientIds.length > 0) {
+          const [{ data: checkinRows }, { data: resolvedRows }] = await Promise.all([
+            supabase
+              .from('client_checkins')
+              .select('client_id, week_number, energy_level, sleep_quality, food_adherence, gym_adherence, submitted_at, updated_at')
+              .in('client_id', clientIds)
+              .order('week_number', { ascending: false }),
+            supabase
+              .from('client_struggle_tracking')
+              .select('id, client_id, label')
+              .in('client_id', clientIds)
+              .eq('status', 'resolved')
+              .eq('coach_seen_resolved', false),
+          ])
+
+          const checkinsByClient = {}
+          ;(checkinRows || []).forEach(c => { (checkinsByClient[c.client_id] ||= []).push(c) })
+
+          // Missed check-in: only flag from Monday through Wednesday, giving
+          // Thu/Fri/weekend as normal submission grace period.
+          const dow = now.getDay()
+          if (dow === 1 || dow === 2 || dow === 3) {
+            const windowStartISO = lastWednesdayMidnight().toISOString()
+            active.forEach(client => {
+              const rows = checkinsByClient[client.id] || []
+              const hasCurrent = rows.some(c => (c.submitted_at || c.updated_at) >= windowStartISO)
+              if (!hasCurrent) flag(client.id, "Hasn't checked in this week", 'gray')
+            })
+          }
+
+          active.forEach(client => {
+            const rows = checkinsByClient[client.id] || []
+            RATING_FIELDS.forEach(f => {
+              let streak = 0
+              for (const c of rows) {
+                const v = c[f.key]
+                if (v == null) continue
+                if (v < 4) streak++
+                else break
+              }
+              if (streak > 2) flag(client.id, `${f.label} ${streak} weeks running`, 'amber')
+            })
+          })
+
+          ;(resolvedRows || []).forEach(r => flag(r.client_id, `Says they're ok with "${r.label}" now`, 'green'))
+        }
+
+        setAttention(Object.values(attentionMap))
 
         setStats({
           total: clients.length,
@@ -161,6 +239,44 @@ export default function CoachDashboard() {
           }
         />
       </div>
+
+      {/* Needs attention today */}
+      {attention.length > 0 && (
+        <div className="card space-y-3">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white">Needs attention today</h2>
+            <span className="badge bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">{attention.length}</span>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {attention.map(a => (
+              <Link
+                key={a.clientId}
+                to={`/coach/clients/${a.clientId}?tab=Check-ins`}
+                className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 -mx-2 px-2 rounded-lg transition-colors"
+              >
+                <p className="font-medium text-sm text-gray-900 dark:text-white flex-shrink-0">{a.name}</p>
+                <div className="flex flex-wrap gap-1.5 justify-end">
+                  {a.reasons.map((r, i) => (
+                    <span
+                      key={i}
+                      className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${
+                        r.tone === 'green'  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                        r.tone === 'amber'  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                              'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                      }`}
+                    >
+                      {r.text}
+                    </span>
+                  ))}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Pause requests */}
       {pendingPauses.length > 0 && (
