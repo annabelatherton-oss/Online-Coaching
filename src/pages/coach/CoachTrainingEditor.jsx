@@ -607,10 +607,10 @@ export default function CoachTrainingEditor() {
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <button
-            onClick={() => navigate('/coach/training')}
+            onClick={() => navigate(-1)}
             className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white mb-2 transition-colors"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back to programmes
@@ -628,8 +628,8 @@ export default function CoachTrainingEditor() {
               <button onClick={() => setEditingName(false)} className="text-sm text-gray-400">Cancel</button>
             </div>
           ) : (
-            <button onClick={() => setEditingName(true)} className="text-left group">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
+            <button onClick={() => setEditingName(true)} className="text-left group max-w-full block">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors truncate">
                 {program.name}
               </h1>
               <p className="text-xs text-gray-400 mt-0.5">Click to rename</p>

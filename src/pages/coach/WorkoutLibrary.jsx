@@ -38,11 +38,11 @@ function getBlockLabel(programs, blockNum) {
 
 function BackButton({ onClick, label }) {
   return (
-    <button onClick={onClick} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 transition-colors">
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <button onClick={onClick} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 transition-colors flex-shrink-0 max-w-full">
+      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
       </svg>
-      {label}
+      <span className="truncate">{label}</span>
     </button>
   )
 }
@@ -346,13 +346,13 @@ export default function WorkoutLibrary() {
       <div className="space-y-6">
         <div className="space-y-1">
           <BackButton onClick={() => setSelectedDays(null)} label={`Block ${selectedBlock}`} />
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Block {selectedBlock} — {selectedDays} Day</h1>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">Block {selectedBlock} — {selectedDays} Day</h1>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</p>
             </div>
             <button onClick={() => deleteDayVariant(selectedDays)} disabled={saving}
-              className="text-sm text-red-400 hover:text-red-600 dark:hover:text-red-300 border border-red-200 dark:border-red-800/50 rounded-lg px-3 py-1.5 transition-colors">
+              className="text-sm text-red-400 hover:text-red-600 dark:hover:text-red-300 border border-red-200 dark:border-red-800/50 rounded-lg px-3 py-1.5 transition-colors flex-shrink-0">
               Delete {selectedDays} Day variant
             </button>
           </div>
@@ -504,14 +504,14 @@ export default function WorkoutLibrary() {
       <div className="space-y-6">
         <div className="space-y-1">
           <BackButton onClick={() => setSelectedBlock(null)} label="Workout Library" />
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">
                 Block {selectedBlock}{blockLabel ? ` — ${blockLabel}` : ''}
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{dayVariants.length} day variant{dayVariants.length !== 1 ? 's' : ''}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
               {availableDays.length > 0 && (
                 <button onClick={() => setShowAddDayVariant(v => !v)}
                   className="text-sm text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 transition-colors">

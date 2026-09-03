@@ -1052,24 +1052,24 @@ export default function MealEditor() {
         <button
           onClick={() => {
             if (ingredientsDirty && !window.confirm('You have unsaved ingredient changes that will be lost if you leave. Continue anyway?')) return
-            navigate('/coach/meals')
+            navigate(-1)
           }}
-          className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex-shrink-0"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
           Back to Meals
         </button>
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">{isNew ? 'New Meal' : (meal?.name || 'Edit Meal')}</h1>
+        <div className="flex items-center gap-3 flex-wrap min-w-0">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">{isNew ? 'New Meal' : (meal?.name || 'Edit Meal')}</h1>
           {meal?.category && (
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${CATEGORY_BADGE_COLOURS[meal.category] || 'bg-gray-100 text-gray-600'}`}>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${CATEGORY_BADGE_COLOURS[meal.category] || 'bg-gray-100 text-gray-600'}`}>
               {CATEGORY_OPTIONS.find(o => o.value === meal.category)?.label || meal.category}
             </span>
           )}
           {meal && !meal.active && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">Inactive</span>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 flex-shrink-0">Inactive</span>
           )}
         </div>
       </div>

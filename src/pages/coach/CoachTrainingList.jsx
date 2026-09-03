@@ -153,19 +153,19 @@ export default function CoachTrainingList() {
     const variants = blockMap[selectedBlock]
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <button
             onClick={() => setSelectedBlock(null)}
-            className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+            className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex-shrink-0"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back
           </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{block.label}</h1>
-            {block.subtitle && <p className="text-sm text-gray-500 dark:text-gray-400">{block.subtitle}</p>}
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">{block.label}</h1>
+            {block.subtitle && <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{block.subtitle}</p>}
           </div>
         </div>
 

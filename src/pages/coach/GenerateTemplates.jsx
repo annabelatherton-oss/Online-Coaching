@@ -537,15 +537,15 @@ export default function GenerateTemplates() {
       <div className="space-y-6 max-w-3xl">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/coach/meal-templates')}
-            className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex-shrink-0"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back
           </button>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Generate 50 Weeks</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">Generate 50 Weeks</h1>
         </div>
 
         <div className="card bg-pink-50/60 dark:bg-pink-900/10 border-pink-100 dark:border-pink-900/30">
@@ -690,14 +690,14 @@ export default function GenerateTemplates() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setPhase('setup')}
-            className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex-shrink-0"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back to Setup
           </button>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Review 50 Weeks</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">Review 50 Weeks</h1>
         </div>
         <div className="flex items-center gap-3">
           <button

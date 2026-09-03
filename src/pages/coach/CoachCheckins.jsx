@@ -669,15 +669,15 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   return (
     <div className="space-y-0">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-gray-950 border-b border-gray-100 dark:border-gray-800 px-0 py-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <button onClick={onCancel} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+      <div className="sticky top-0 z-10 bg-white dark:bg-gray-950 border-b border-gray-100 dark:border-gray-800 px-0 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <button onClick={onCancel} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors flex-shrink-0">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             Cancel
           </button>
-          <div>
-            <h1 className="text-base font-bold text-gray-900 dark:text-white leading-tight">Submit Week {deliveryPersonalWeek} Plan</h1>
-            <p className="text-xs text-gray-400 leading-tight">{client?.full_name}</p>
+          <div className="min-w-0">
+            <h1 className="text-base font-bold text-gray-900 dark:text-white leading-tight truncate">Submit Week {deliveryPersonalWeek} Plan</h1>
+            <p className="text-xs text-gray-400 leading-tight truncate">{client?.full_name}</p>
           </div>
         </div>
         <button
@@ -1366,15 +1366,15 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
 
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        <div className="flex items-center gap-4 min-w-0">
+          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex-shrink-0">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             Back
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <Avatar name={client?.full_name} />
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-white">{client?.full_name}</h1>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">{client?.full_name}</h1>
               <p className="text-xs text-gray-500 dark:text-gray-400">{sorted.length} check-in{sorted.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
@@ -1383,7 +1383,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           onClick={toggleEarlyAccess}
           disabled={togglingEarlyAccess}
           title={earlyAccess ? 'Early check-in is open — click to close it' : 'Open the check-in window early for this client'}
-          className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
+          className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 flex-shrink-0 ${
             earlyAccess
               ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
               : 'btn-secondary'
