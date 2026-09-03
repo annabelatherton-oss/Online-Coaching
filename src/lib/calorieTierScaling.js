@@ -135,7 +135,12 @@ const WEIGHTS = { cal: 4, prot: 1, carb: 1, fat: 1 }
 // Scaled relative to each ingredient's own row magnitude rather than a flat constant — a flat λ is
 // negligible next to real calorie/macro values (hundreds, squared) and so provided no real anchor
 // in practice, which is what let factors drift to unrealistic, "random-looking" quantities.
-const LAMBDA_REL = 0.5
+// Raised from 0.5 — a meal's ingredients should still read as the same recipe after scaling, not
+// have one ingredient balloon to hit a macro sub-target while the rest barely move. Calories are
+// still hit exactly (the later top-up/cap passes scale every flexible ingredient by the same
+// factor, so they're unaffected by this), and macros are still optimised within whatever room
+// this tighter anchor leaves — just no longer at the cost of distorting the recipe's proportions.
+const LAMBDA_REL = 2.5
 
 function solveFactors(flexRows, fixedTotals, targets) {
   const n = flexRows.length
@@ -190,7 +195,11 @@ export function generateTierIngredients(baseIngredients, library, targets) {
 
   if (flexRows.length > 0) {
     let factors = solveFactors(flexRows, fixedTotals, targetVec)
-    factors = factors.map(f => Math.min(3, Math.max(0.1, f)))
+    // Tightened from [0.1, 3] — a single ingredient could previously shrink to a tenth or
+    // triple in size on its own to chase a macro sub-target, which is what read as the recipe
+    // changing rather than just scaling. Capping the per-ingredient swing to [0.5, 2] keeps
+    // every flexible ingredient recognisably close to its original amount.
+    factors = factors.map(f => Math.min(2, Math.max(0.5, f)))
     let flexIdx = 0
     qtyByRow = rows.map(r => (r.scaling_type === 'fixed' || r.is_static) ? r.origQty : r.origQty * factors[flexIdx++])
 
