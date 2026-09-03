@@ -1247,6 +1247,32 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
       .then(({ data }) => setWeightEntries(data || []))
   }, [client?.id])
 
+  // Struggle tracking — open issues carried across check-ins, plus any the
+  // client has just marked resolved that the coach hasn't acknowledged yet.
+  const [struggleTracking, setStruggleTracking] = useState([])
+  useEffect(() => {
+    if (!client?.id) return
+    supabase.from('client_struggle_tracking').select('*')
+      .eq('client_id', client.id).order('created_at', { ascending: true })
+      .then(({ data }) => setStruggleTracking(data || []))
+  }, [client?.id])
+
+  async function acknowledgeResolvedStruggle(id) {
+    await supabase.from('client_struggle_tracking').update({ coach_seen_resolved: true }).eq('id', id)
+    setStruggleTracking(prev => prev.map(s => s.id === id ? { ...s, coach_seen_resolved: true } : s))
+  }
+
+  const openStruggleRows = struggleTracking.filter(s => s.status === 'open')
+  const unseenResolvedStruggles = struggleTracking.filter(s => s.status === 'resolved' && !s.coach_seen_resolved)
+
+  // Chronological comment trail for one struggle label, pulled from every
+  // check-in that recorded an update against it.
+  function struggleHistory(label) {
+    return asc
+      .filter(c => c.struggle_comments?.[label])
+      .map(c => ({ week: personalWeekMap[c.id], comment: c.struggle_comments[label] }))
+  }
+
   async function toggleEarlyAccess() {
     setTogglingEarlyAccess(true)
     const newVal = !earlyAccess
@@ -1403,6 +1429,24 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         </button>
       </div>
 
+      {unseenResolvedStruggles.length > 0 && (
+        <div className="rounded-xl border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/10 px-4 py-3 space-y-2">
+          {unseenResolvedStruggles.map(row => (
+            <div key={row.id} className="flex items-center justify-between gap-3">
+              <p className="text-sm text-green-800 dark:text-green-300">
+                <span className="font-semibold">{client?.full_name}</span> says they're now ok with "{row.label}"
+              </p>
+              <button
+                onClick={() => acknowledgeResolvedStruggle(row.id)}
+                className="text-xs font-medium text-green-700 dark:text-green-400 hover:text-green-900 dark:hover:text-green-200 whitespace-nowrap flex-shrink-0"
+              >
+                Got it
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Current week summary */}
       {current && (
         <div className="card space-y-4 border-brand-200 dark:border-brand-800">
@@ -1534,9 +1578,37 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             ))}
           </div>
 
+          {openStruggleRows.filter(row => row.first_checkin_id !== current.id).length > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-3 space-y-3">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Ongoing issues</p>
+              {openStruggleRows.filter(row => row.first_checkin_id !== current.id).map(row => {
+                const history = struggleHistory(row.label)
+                const firstWeekCheckin = asc.find(c => c.id === row.first_checkin_id)
+                const sinceWeek = firstWeekCheckin ? personalWeekMap[firstWeekCheckin.id] : null
+                return (
+                  <div key={row.id} className="bg-white dark:bg-gray-900 rounded-lg p-2.5 border border-amber-200 dark:border-amber-800 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{row.label}</p>
+                      {sinceWeek && <span className="text-xs text-gray-400 whitespace-nowrap">Since Wk {sinceWeek}</span>}
+                    </div>
+                    {history.length > 0 ? (
+                      <div className="space-y-0.5">
+                        {history.map((h, i) => (
+                          <p key={i} className="text-xs text-gray-600 dark:text-gray-300"><span className="font-medium text-gray-400">Wk {h.week}:</span> {h.comment}</p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">No update yet</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           {((current.struggles || []).length > 0 || current.struggles_other) && (
             <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-3 space-y-2">
-              <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Struggling with</p>
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Struggling with (this week)</p>
               {(current.struggles || []).length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {current.struggles.map(s => (
@@ -1757,6 +1829,9 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                   </div>
                 )}
                 {c.struggles_other && <p className="text-sm text-gray-600 dark:text-gray-300 italic">"{c.struggles_other}"</p>}
+                {c.struggle_comments && Object.entries(c.struggle_comments).filter(([, v]) => v).map(([label, comment]) => (
+                  <p key={label} className="text-xs text-gray-500 dark:text-gray-400"><span className="font-medium">{label}:</span> {comment}</p>
+                ))}
               </div>
             )}
 

@@ -264,6 +264,13 @@ function CheckinReadView({ checkin, collectMeasurements }) {
             </div>
           )}
           {checkin.struggles_other && <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{checkin.struggles_other}</p>}
+          {checkin.struggle_comments && Object.entries(checkin.struggle_comments).filter(([, v]) => v).length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              {Object.entries(checkin.struggle_comments).filter(([, v]) => v).map(([label, comment]) => (
+                <p key={label} className="text-sm text-gray-700 dark:text-gray-300"><span className="font-medium">{label}:</span> {comment}</p>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -322,11 +329,13 @@ export default function ClientCheckin() {
     gym_adherence: null,
     struggles: [],
     struggles_other: '',
+    struggle_comments: {},
     notes: '',
     lift_results: [],
   })
   const [photos, setPhotos] = useState({ front: null, back: null, left: null, right: null })
   const [uploading, setUploading] = useState({})
+  const [openStruggles, setOpenStruggles] = useState([]) // rows from client_struggle_tracking with status 'open'
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -348,6 +357,14 @@ export default function ClientCheckin() {
       if (!clientRow) { setLoading(false); return }
       setClientData(clientRow)
       setCollectMeasurements(!!clientRow.collect_measurements)
+
+      const { data: struggleRows } = await supabase
+        .from('client_struggle_tracking')
+        .select('*')
+        .eq('client_id', clientRow.id)
+        .eq('status', 'open')
+        .order('created_at', { ascending: true })
+      setOpenStruggles(struggleRows || [])
 
       // Prefer top lifts from active training assignment; fall back to client record.
       // Fetched as a plain direct query (not a nested embed) — an embedded join through
@@ -460,6 +477,7 @@ export default function ClientCheckin() {
           gym_adherence:  checkin.gym_adherence  ?? null,
           struggles:      checkin.struggles       ?? [],
           struggles_other: checkin.struggles_other ?? '',
+          struggle_comments: checkin.struggle_comments ?? {},
           notes:          checkin.notes          ?? '',
           lift_results:  checkin.lift_results ?? [],
         }))
@@ -493,6 +511,28 @@ export default function ClientCheckin() {
     })
   }
 
+  function setStruggleComment(label, value) {
+    setForm(f => ({ ...f, struggle_comments: { ...(f.struggle_comments || {}), [label]: value } }))
+  }
+
+  // A struggle only needs a progress comment once it's carried over from an
+  // earlier check-in — the very first week it's flagged, there's nothing to
+  // report on yet.
+  const currentCheckinId = existing?.id || null
+  const ongoingStruggles = openStruggles.filter(row => row.first_checkin_id !== currentCheckinId)
+
+  async function resolveStruggle(row) {
+    await supabase.from('client_struggle_tracking')
+      .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+      .eq('id', row.id)
+    setOpenStruggles(prev => prev.filter(s => s.id !== row.id))
+    setForm(f => {
+      const comments = { ...(f.struggle_comments || {}) }
+      delete comments[row.label]
+      return { ...f, struggles: (f.struggles || []).filter(s => s !== row.label), struggle_comments: comments }
+    })
+  }
+
   function setLift(index, key, value) {
     setForm(f => {
       const results = [...(f.lift_results || [])]
@@ -516,6 +556,13 @@ export default function ClientCheckin() {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!clientData) return
+
+    const missingComment = ongoingStruggles.find(row => !(form.struggle_comments?.[row.label] || '').trim())
+    if (missingComment) {
+      setError(`Please add a quick update on "${missingComment.label}" before submitting — or use "I'm ok with this now" if it's resolved.`)
+      return
+    }
+
     setSaving(true); setError(''); setSaved(false)
 
     const hasPhotos = Object.values(photos).some(Boolean)
@@ -534,6 +581,7 @@ export default function ClientCheckin() {
       gym_adherence:    form.gym_adherence,
       struggles:        form.struggles?.length ? form.struggles : [],
       struggles_other:  form.struggles_other || null,
+      struggle_comments: form.struggle_comments || {},
       notes:            form.notes || null,
       lift_results:     form.lift_results?.length ? form.lift_results : null,
       progress_photos:  hasPhotos ? photos : null,
@@ -558,14 +606,32 @@ export default function ClientCheckin() {
     }
 
     setSaved(true)
+    let checkinId = existing?.id
     if (!existing) {
       const { data } = await supabase.from('client_checkins').select('*').eq('client_id', clientData.id).eq('week_number', weekNumber).maybeSingle()
       setExisting(data)
+      checkinId = data?.id
       // Clear the early-access flag now that the check-in has been submitted
       if (earlyAccess) {
         await supabase.from('clients').update({ checkin_early_access: false }).eq('id', clientData.id)
         setEarlyAccess(false)
       }
+    }
+
+    // Start tracking any newly-flagged struggle so next week's check-in
+    // knows it has history and should ask for a progress update.
+    const openLabels = new Set(openStruggles.map(s => s.label))
+    const newLabels = (payload.struggles || []).filter(label => !openLabels.has(label))
+    if (newLabels.length && checkinId) {
+      const { data: created } = await supabase.from('client_struggle_tracking')
+        .insert(newLabels.map(label => ({
+          client_id: clientData.id,
+          coach_id: clientData.coach_id,
+          label,
+          first_checkin_id: checkinId,
+        })))
+        .select('*')
+      if (created?.length) setOpenStruggles(prev => [...prev, ...created])
     }
   }
 
@@ -776,6 +842,39 @@ export default function ClientCheckin() {
             {form.gym_adherence && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 text-center">{RATING_LABELS.gym_adherence[form.gym_adherence]}</p>}
           </div>
         </div>
+
+        {/* Ongoing struggles — carried over from a previous check-in */}
+        {ongoingStruggles.length > 0 && (
+          <div className="card space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">How's it going with these?</h2>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">You flagged these before — give your coach a quick update, or let them know if you've got on top of it.</p>
+            </div>
+            <div className="space-y-3">
+              {ongoingStruggles.map(row => (
+                <div key={row.id} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{row.label}</p>
+                    <button
+                      type="button"
+                      onClick={() => resolveStruggle(row)}
+                      className="text-xs font-medium text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 whitespace-nowrap flex-shrink-0"
+                    >
+                      I'm ok with this now →
+                    </button>
+                  </div>
+                  <textarea
+                    className="input resize-none"
+                    rows={2}
+                    value={form.struggle_comments?.[row.label] ?? ''}
+                    onChange={e => setStruggleComment(row.label, e.target.value)}
+                    placeholder="How's it going with this one?"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Struggles */}
         <div className="card space-y-4">

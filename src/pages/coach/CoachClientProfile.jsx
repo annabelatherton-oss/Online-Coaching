@@ -2798,6 +2798,32 @@ function CheckinsTab({ clientId, collectMeasurements }) {
     load()
   }, [clientId])
 
+  const [struggleTracking, setStruggleTracking] = useState([])
+  useEffect(() => {
+    supabase.from('client_struggle_tracking').select('*')
+      .eq('client_id', clientId).order('created_at', { ascending: true })
+      .then(({ data }) => setStruggleTracking(data || []))
+  }, [clientId])
+
+  async function acknowledgeResolvedStruggle(id) {
+    await supabase.from('client_struggle_tracking').update({ coach_seen_resolved: true }).eq('id', id)
+    setStruggleTracking(prev => prev.map(s => s.id === id ? { ...s, coach_seen_resolved: true } : s))
+  }
+
+  const openStruggleRows = struggleTracking.filter(s => s.status === 'open')
+  const unseenResolvedStruggles = struggleTracking.filter(s => s.status === 'resolved' && !s.coach_seen_resolved)
+
+  // checkins is newest-first; ascending order for a chronological comment trail
+  const ascCheckins = [...checkins].reverse()
+  const checkinPersonalWeekMap = {}
+  ascCheckins.forEach((c, i) => { checkinPersonalWeekMap[c.id] = i + 1 })
+
+  function struggleHistory(label) {
+    return ascCheckins
+      .filter(c => c.struggle_comments?.[label])
+      .map(c => ({ week: checkinPersonalWeekMap[c.id], comment: c.struggle_comments[label] }))
+  }
+
   function fmtDate(d) {
     if (!d) return '—'
     return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -2913,6 +2939,52 @@ function CheckinsTab({ clientId, collectMeasurements }) {
               </ul>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Resolved struggles the coach hasn't acknowledged yet ── */}
+      {unseenResolvedStruggles.length > 0 && (
+        <div className="rounded-xl border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/10 px-4 py-3 space-y-2">
+          {unseenResolvedStruggles.map(row => (
+            <div key={row.id} className="flex items-center justify-between gap-3">
+              <p className="text-sm text-green-800 dark:text-green-300">They say they're now ok with "{row.label}"</p>
+              <button
+                onClick={() => acknowledgeResolvedStruggle(row.id)}
+                className="text-xs font-medium text-green-700 dark:text-green-400 hover:text-green-900 dark:hover:text-green-200 whitespace-nowrap flex-shrink-0"
+              >
+                Got it
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Ongoing (unresolved) struggles with their week-by-week comments ── */}
+      {openStruggleRows.length > 0 && (
+        <div className="card space-y-3">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Ongoing issues</h3>
+          {openStruggleRows.map(row => {
+            const history = struggleHistory(row.label)
+            const firstWeekCheckin = ascCheckins.find(c => c.id === row.first_checkin_id)
+            const sinceWeek = firstWeekCheckin ? checkinPersonalWeekMap[firstWeekCheckin.id] : null
+            return (
+              <div key={row.id} className="rounded-lg p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{row.label}</p>
+                  {sinceWeek && <span className="text-xs text-gray-400 whitespace-nowrap">Since Wk {sinceWeek}</span>}
+                </div>
+                {history.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {history.map((h, i) => (
+                      <p key={i} className="text-xs text-gray-600 dark:text-gray-300"><span className="font-medium text-gray-400">Wk {h.week}:</span> {h.comment}</p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 italic">No update yet</p>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -3186,6 +3258,9 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                   </div>
                 )}
                 {c.struggles_other && <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{c.struggles_other}</p>}
+                {c.struggle_comments && Object.entries(c.struggle_comments).filter(([, v]) => v).map(([label, comment]) => (
+                  <p key={label} className="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><span className="font-medium">{label}:</span> {comment}</p>
+                ))}
               </div>
             )}
 
