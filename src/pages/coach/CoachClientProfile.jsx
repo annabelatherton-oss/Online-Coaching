@@ -596,7 +596,9 @@ function OverviewTab({ client, onSaved }) {
     // sex/activity_level/goal_type are new columns — if the database migration adding them
     // hasn't been run yet, PostgREST rejects the whole update and NOTHING gets saved, not
     // just those three fields. Retry without them so the rest of the form isn't silently lost.
-    if (err && /column ["']?(sex|activity_level|goal_type)["']?/i.test(err.message || '')) {
+    // PostgREST phrases this as "Could not find the 'sex' column of 'clients' in the schema
+    // cache" — the field name comes before the word "column", not after — so match either order.
+    if (err && /column/i.test(err.message || '') && /(sex|activity_level|goal_type)/i.test(err.message || '')) {
       const { sex, activity_level, goal_type, ...rest } = payload
       const retry = await supabase.from('clients').update(rest).eq('id', client.id)
       err = retry.error

@@ -35,6 +35,8 @@ serve(async (req) => {
     height_cm,
     weight_kg,
     goal,
+    gender,
+    sex,
     motivators,
     barriers,
     health_history,
@@ -47,6 +49,17 @@ serve(async (req) => {
     meal_preference,
     other_info,
   } = body
+
+  // The intake form's gender question may come through as "gender" or "sex", and as
+  // "Male"/"Female", "M"/"F", etc. — normalize to the app's own male/female value.
+  function normalizeSex(value: unknown): 'male' | 'female' | null {
+    if (typeof value !== 'string') return null
+    const v = value.trim().toLowerCase()
+    if (['male', 'm', 'man'].includes(v)) return 'male'
+    if (['female', 'f', 'woman'].includes(v)) return 'female'
+    return null
+  }
+  const normalizedSex = normalizeSex(gender) ?? normalizeSex(sex)
 
   if (!email || !full_name) {
     return new Response(JSON.stringify({ error: 'email and full_name are required' }), { status: 400 })
@@ -127,6 +140,7 @@ serve(async (req) => {
       date_of_birth: date_of_birth || null,
       height_cm: height_cm ? parseFloat(height_cm) : null,
       goal: goal || null,
+      sex: normalizedSex,
       dislikes: dislikesArray,
       intake_form: intakeForm,
     }).eq('id', existingClient.id)
@@ -148,6 +162,8 @@ serve(async (req) => {
       date_of_birth: date_of_birth || null,
       height_cm: height_cm ? parseFloat(height_cm) : null,
       goal: goal || null,
+      sex: normalizedSex,
+      activity_level: 'moderate',
       dislikes: dislikesArray,
       intake_form: intakeForm,
       start_date: new Date().toISOString().split('T')[0],

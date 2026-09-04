@@ -182,7 +182,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
 
         // Create client row (delete any orphaned previous attempt first)
         await supabase.from('clients').delete().eq('profile_id', newUserId)
-        const { error: clientErr } = await supabase.from('clients').insert({
+        const newClientPayload = {
           coach_id: profile.id,
           profile_id: newUserId,
           goal: form.goal,
@@ -197,7 +197,15 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           tags: form.tags,
           allergies: form.allergies,
           dislikes: form.dislikes || [],
-        })
+          activity_level: 'moderate',
+        }
+        let { error: clientErr } = await supabase.from('clients').insert(newClientPayload)
+        // activity_level is a newer column — if the migration adding it hasn't been run yet,
+        // don't let that block creating the client entirely.
+        if (clientErr && /column/i.test(clientErr.message || '') && /activity_level/i.test(clientErr.message || '')) {
+          const { activity_level, ...rest } = newClientPayload
+          clientErr = (await supabase.from('clients').insert(rest)).error
+        }
         if (clientErr) throw clientErr
       }
       onSaved()
