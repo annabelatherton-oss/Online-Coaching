@@ -76,3 +76,9 @@ select id, 'Dumbbell', 'Hold one dumbbell with both hands overhead. Elbow pointe
 -- ── Workout Library: let a picked variation's video travel with the workout exercise ──
 alter table workout_exercises
   add column if not exists video_url text;
+
+-- workout_exercises never actually had an equipment column, even though the Workout Editor's
+-- save() has always tried to write one — every save of a standalone workout has been failing
+-- with "Could not find the 'equipment' column of 'workout_exercises' in the schema cache".
+alter table workout_exercises
+  add column if not exists equipment text;

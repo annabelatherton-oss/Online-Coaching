@@ -558,7 +558,7 @@ function OverviewTab({ client, onSaved }) {
   async function handleSave(e) {
     e.preventDefault()
     setSaving(true); setError(''); setSaved(false)
-    const { error: err } = await supabase.from('clients').update({
+    const payload = {
       goal: form.goal,
       current_calories: form.current_calories ? parseInt(form.current_calories) : null,
       current_protein: form.current_protein ? parseInt(form.current_protein) : null,
@@ -591,7 +591,22 @@ function OverviewTab({ client, onSaved }) {
         meal_preference: form.intake_meal_preference || null,
         other_info: form.intake_other_info || null,
       },
-    }).eq('id', client.id)
+    }
+    let { error: err } = await supabase.from('clients').update(payload).eq('id', client.id)
+    // sex/activity_level/goal_type are new columns — if the database migration adding them
+    // hasn't been run yet, PostgREST rejects the whole update and NOTHING gets saved, not
+    // just those three fields. Retry without them so the rest of the form isn't silently lost.
+    if (err && /column ["']?(sex|activity_level|goal_type)["']?/i.test(err.message || '')) {
+      const { sex, activity_level, goal_type, ...rest } = payload
+      const retry = await supabase.from('clients').update(rest).eq('id', client.id)
+      err = retry.error
+      if (!err) {
+        setSaving(false)
+        setError("Saved everything except Sex/Activity level/Goal phase — those need a database update first (ask your developer to run the latest SQL migration).")
+        onSaved()
+        return
+      }
+    }
     setSaving(false)
     if (err) { setError(err.message); return }
     setSaved(true); setTimeout(() => setSaved(false), 2500)
