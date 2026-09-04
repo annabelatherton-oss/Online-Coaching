@@ -363,8 +363,8 @@ function ExerciseModal({ exercise, allExercises, onSave, onClose }) {
                 </span>
               ))}
             </div>
-            <div className="flex gap-2">
-              <select className="input flex-1 text-sm py-1.5" value={secInput} onChange={e => setSecInput(e.target.value)}>
+            <div className="flex gap-2 min-w-0">
+              <select className="input flex-1 min-w-0 text-sm py-1.5" value={secInput} onChange={e => setSecInput(e.target.value)}>
                 <option value="">Add secondary muscle…</option>
                 {MUSCLE_GROUPS.filter(m => !form.secondary_muscles.includes(m)).map(m => <option key={m} value={m}>{m}</option>)}
               </select>
@@ -490,8 +490,8 @@ function ExerciseModal({ exercise, allExercises, onSave, onClose }) {
                 )
               })}
             </div>
-            <div className="flex gap-2">
-              <select className="input flex-1 text-sm py-1.5" value={altInput} onChange={e => setAltInput(e.target.value)}>
+            <div className="flex gap-2 min-w-0">
+              <select className="input flex-1 min-w-0 text-sm py-1.5" value={altInput} onChange={e => setAltInput(e.target.value)}>
                 <option value="">Add alternative…</option>
                 {(allExercises || [])
                   .filter(e => e.id !== exercise?.id && !alternativeIds.includes(e.id))

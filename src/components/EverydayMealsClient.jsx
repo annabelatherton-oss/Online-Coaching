@@ -86,10 +86,10 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
           const isExpanded = expanded === slot.key
           return (
             <div key={slot.key} className="rounded-xl border border-gray-100 dark:border-gray-800 p-3 space-y-2">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 <span className="w-20 flex-shrink-0 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{slot.label}</span>
                 <select
-                  className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5"
+                  className="flex-1 min-w-0 w-full text-sm text-gray-800 dark:text-gray-200 bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5"
                   value={mealId}
                   disabled={saving === slot.key}
                   onChange={e => pickDirect(slot.key, e.target.value)}
@@ -99,9 +99,9 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
                 </select>
               </div>
               {mealId && (
-                <div className="pl-[5.75rem] flex items-center justify-between">
+                <div className="sm:pl-[5.75rem] flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                   {macros && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+                    <p className="text-xs text-gray-400 dark:text-gray-500 tabular-nums min-w-0 break-words">
                       {Math.round(macros.cal)} kcal · {Math.round(macros.carb)}g C · {Math.round(macros.prot)}g P · {Math.round(macros.fat)}g F
                     </p>
                   )}
@@ -111,11 +111,11 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
                 </div>
               )}
               {isExpanded && (
-                <div className="pl-[5.75rem] space-y-1">
+                <div className="sm:pl-[5.75rem] space-y-1">
                   {ingredients.map((ing, i) => (
-                    <div key={ing.id || i} className="flex items-baseline justify-between text-xs">
-                      <span className="text-gray-600 dark:text-gray-400">{ing.name}</span>
-                      <span className="text-gray-400 dark:text-gray-500 tabular-nums">{formatAmount(ing, ingredientLib)}</span>
+                    <div key={ing.id || i} className="flex items-baseline justify-between gap-2 text-xs">
+                      <span className="text-gray-600 dark:text-gray-400 min-w-0 break-words">{ing.name}</span>
+                      <span className="text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">{formatAmount(ing, ingredientLib)}</span>
                     </div>
                   ))}
                 </div>
@@ -149,8 +149,8 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
                 </div>
               )}
               {requesting === slot.key && (
-                <div className="flex items-center gap-2">
-                  <select className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5" value={requestPick} onChange={e => setRequestPick(e.target.value)}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <select className="flex-1 min-w-0 w-full text-sm text-gray-800 dark:text-gray-200 bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5" value={requestPick} onChange={e => setRequestPick(e.target.value)}>
                     <option value="">— Choose a meal —</option>
                     {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
