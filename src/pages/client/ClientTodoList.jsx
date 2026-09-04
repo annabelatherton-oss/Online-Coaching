@@ -178,6 +178,33 @@ export default function ClientTodoList() {
     loadForDate()
   }, [clientId, selectedDate])
 
+  // History for the day-streak badge — fetched once, separately from the
+  // selected-day view above. Covers the last 60 days of schedule + tasks.
+  const [scheduleByDay, setScheduleByDay] = useState({})
+  const [histTasksByDate, setHistTasksByDate] = useState({})
+  useEffect(() => {
+    if (!clientId) return
+    async function loadHistory() {
+      const cutoff = addDays(today, -60)
+      const [{ data: allSched }, { data: histTasks }] = await Promise.all([
+        supabase.from('client_schedule_items')
+          .select('id, item_type, workout_id, custom_label, hiit_circuit_id, cardio_session_id, duration_minutes, heart_rate_zone, day_of_week, workouts(name), hiit_circuits(name), cardio_sessions(name)')
+          .eq('client_id', clientId),
+        supabase.from('client_daily_tasks')
+          .select('task_date, task_type, task_key, completed')
+          .eq('client_id', clientId)
+          .gte('task_date', toISO(cutoff)),
+      ])
+      const byDay = {}
+      ;(allSched || []).forEach(item => { (byDay[item.day_of_week] ||= []).push(item) })
+      setScheduleByDay(byDay)
+      const byDate = {}
+      ;(histTasks || []).forEach(t => { (byDate[t.task_date] ||= []).push(t) })
+      setHistTasksByDate(byDate)
+    }
+    loadHistory()
+  }, [clientId])
+
   async function loadForDate() {
     setLoading(true)
     const dateStr = toISO(selectedDate)
@@ -202,6 +229,40 @@ export default function ClientTodoList() {
     systemTasks.filter(t => dbTasks.find(r => r.task_type === 'system' && r.task_key === t.key)?.completed).length +
     customTasks.filter(t => t.completed).length
   const totalTasks = systemTasks.length + customTasks.length
+
+  // Day streak — consecutive fully-completed days working backward from
+  // today. Today's own tasks use the live (currently-editing) state so
+  // ticking your last box updates the streak immediately; other days use
+  // the fetched history snapshot.
+  const todayISO = toISO(today)
+  function dayCompletion(dateISO) {
+    if (dateISO === todayISO && toISO(selectedDate) === todayISO) {
+      return { total: totalTasks, completed: completedCount }
+    }
+    const dayName = DAY_NAMES[new Date(dateISO + 'T00:00:00').getDay()]
+    const daySystemTasks = buildSystemTasks(clientData, scheduleByDay[dayName] || [])
+    const dayTasks = histTasksByDate[dateISO] || []
+    const dayCustomTasks = dayTasks.filter(t => t.task_type === 'custom')
+    const completed =
+      daySystemTasks.filter(t => dayTasks.find(r => r.task_type === 'system' && r.task_key === t.key)?.completed).length +
+      dayCustomTasks.filter(t => t.completed).length
+    return { total: daySystemTasks.length + dayCustomTasks.length, completed }
+  }
+  let dayStreak = 0
+  {
+    let cursor = new Date(today)
+    while (dayStreak < 400) {
+      const dateISO = toISO(cursor)
+      const { total, completed } = dayCompletion(dateISO)
+      const complete = total > 0 && completed === total
+      if (!complete) {
+        if (dateISO === todayISO) { cursor = addDays(cursor, -1); continue }
+        break
+      }
+      dayStreak++
+      cursor = addDays(cursor, -1)
+    }
+  }
 
   function getSystemRow(key) {
     return dbTasks.find(t => t.task_type === 'system' && t.task_key === key)
@@ -357,19 +418,27 @@ export default function ClientTodoList() {
     <div className="space-y-6 max-w-2xl">
 
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Daily Plan</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             {isSelectedToday ? 'Today — ' : ''}{selectedLabel}
           </p>
         </div>
-        {!isSelectedToday && (
-          <button onClick={goToday}
-            className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium mt-1">
-            Back to today
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {dayStreak > 1 && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+              <span className="text-base leading-none">🔥</span>
+              <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{dayStreak} day streak</span>
+            </div>
+          )}
+          {!isSelectedToday && (
+            <button onClick={goToday}
+              className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium">
+              Back to today
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Week strip */}

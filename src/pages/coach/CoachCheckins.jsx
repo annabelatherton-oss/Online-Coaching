@@ -28,6 +28,37 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// Check-in window: opens Thursday, runs through Tuesday, closed Wednesday —
+// mirrors the client-side window in ClientCheckin.jsx.
+function lastWednesdayMidnight() {
+  const now = new Date()
+  const daysSince = (now.getDay() - 3 + 7) % 7 || 7
+  const d = new Date(now)
+  d.setDate(now.getDate() - daysSince)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+function checkinStreak(checkins) {
+  let cursor = lastWednesdayMidnight()
+  const dow = new Date().getDay()
+  const hasCurrent = checkins.some(c => new Date(c.submitted_at || c.updated_at) >= cursor)
+  if (!hasCurrent && dow !== 3) cursor.setDate(cursor.getDate() - 7)
+  let streak = 0
+  while (streak < 520) {
+    const windowStart = new Date(cursor)
+    const windowEnd = new Date(cursor)
+    windowEnd.setDate(windowEnd.getDate() + 7)
+    const hit = checkins.some(c => {
+      const t = new Date(c.submitted_at || c.updated_at)
+      return t >= windowStart && t < windowEnd
+    })
+    if (!hit) break
+    streak++
+    cursor.setDate(cursor.getDate() - 7)
+  }
+  return streak
+}
+
 // Quick-reply starters for the coach response box — warm and encouraging,
 // not a full message on their own (the coach edits/adds to them before sending).
 const QUICK_REPLIES = [
@@ -1437,6 +1468,12 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               <p className="text-xs text-gray-500 dark:text-gray-400">{sorted.length} check-in{sorted.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
+          {checkinStreak(sorted) > 1 && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 flex-shrink-0">
+              <span className="text-base leading-none">🔥</span>
+              <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{checkinStreak(sorted)} week streak</span>
+            </div>
+          )}
         </div>
         <button
           onClick={toggleEarlyAccess}

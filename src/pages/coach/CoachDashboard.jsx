@@ -37,10 +37,10 @@ function lastWednesdayMidnight() {
 }
 
 const RATING_FIELDS = [
-  { key: 'energy_level', label: 'Energy low' },
-  { key: 'sleep_quality', label: 'Sleep quality low' },
-  { key: 'food_adherence', label: 'Food adherence low' },
-  { key: 'gym_adherence', label: 'Gym adherence low' },
+  { key: 'energy_level', label: 'Low energy' },
+  { key: 'sleep_quality', label: 'Low sleep quality' },
+  { key: 'food_adherence', label: 'Low food adherence' },
+  { key: 'gym_adherence', label: 'Low gym adherence' },
 ]
 
 export default function CoachDashboard() {
@@ -98,9 +98,9 @@ export default function CoachDashboard() {
         // and a struggle the client marked resolved that hasn't been
         // acknowledged yet.
         const attentionMap = {}
-        function flag(clientId, text, tone) {
+        function flag(clientId, reason) {
           if (!attentionMap[clientId]) attentionMap[clientId] = { clientId, name: clientMap[clientId], reasons: [] }
-          attentionMap[clientId].reasons.push({ text, tone })
+          attentionMap[clientId].reasons.push(reason)
         }
 
         if (clientIds.length > 0) {
@@ -129,7 +129,7 @@ export default function CoachDashboard() {
             active.forEach(client => {
               const rows = checkinsByClient[client.id] || []
               const hasCurrent = rows.some(c => (c.submitted_at || c.updated_at) >= windowStartISO)
-              if (!hasCurrent) flag(client.id, "Hasn't checked in this week", 'gray')
+              if (!hasCurrent) flag(client.id, { text: "Hasn't checked in this week", tone: 'gray' })
             })
           }
 
@@ -143,11 +143,11 @@ export default function CoachDashboard() {
                 if (v < 4) streak++
                 else break
               }
-              if (streak > 2) flag(client.id, `${f.label} ${streak} weeks running`, 'amber')
+              if (streak > 2) flag(client.id, { text: f.label, badge: `${streak}wks`, tone: 'amber' })
             })
           })
 
-          ;(resolvedRows || []).forEach(r => flag(r.client_id, `Says they're ok with "${r.label}" now`, 'green'))
+          ;(resolvedRows || []).forEach(r => flag(r.client_id, { text: r.label, icon: 'check', tone: 'green' }))
         }
 
         setAttention(Object.values(attentionMap))
@@ -262,12 +262,20 @@ export default function CoachDashboard() {
                   {a.reasons.map((r, i) => (
                     <span
                       key={i}
-                      className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${
+                      className={`inline-flex items-center gap-1.5 text-xs font-medium pl-1 pr-2 py-0.5 rounded-full whitespace-nowrap ${
                         r.tone === 'green'  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                         r.tone === 'amber'  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
                                               'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
                       }`}
                     >
+                      {r.badge && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-black/25 font-semibold">{r.badge}</span>
+                      )}
+                      {r.icon === 'check' && (
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
                       {r.text}
                     </span>
                   ))}

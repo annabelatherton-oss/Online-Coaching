@@ -65,6 +65,37 @@ function _weekEndFor(weekStartISO) {
   return _planISO(d)
 }
 
+// Check-in window: opens Thursday, runs through Tuesday, closed Wednesday —
+// mirrors the client-side window in ClientCheckin.jsx.
+function _lastWednesdayMidnight() {
+  const now = new Date()
+  const daysSince = (now.getDay() - 3 + 7) % 7 || 7
+  const d = new Date(now)
+  d.setDate(now.getDate() - daysSince)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+function _checkinStreak(checkins) {
+  let cursor = _lastWednesdayMidnight()
+  const dow = new Date().getDay()
+  const hasCurrent = checkins.some(c => new Date(c.submitted_at || c.updated_at) >= cursor)
+  if (!hasCurrent && dow !== 3) cursor.setDate(cursor.getDate() - 7)
+  let streak = 0
+  while (streak < 520) {
+    const windowStart = new Date(cursor)
+    const windowEnd = new Date(cursor)
+    windowEnd.setDate(windowEnd.getDate() + 7)
+    const hit = checkins.some(c => {
+      const t = new Date(c.submitted_at || c.updated_at)
+      return t >= windowStart && t < windowEnd
+    })
+    if (!hit) break
+    streak++
+    cursor.setDate(cursor.getDate() - 7)
+  }
+  return streak
+}
+
 // ── DailyPlanTab ─────────────────────────────────────────────────────────────
 function DailyPlanTab({ client }) {
   const todayD = new Date(); todayD.setHours(0,0,0,0)
@@ -75,6 +106,33 @@ function DailyPlanTab({ client }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { loadForDate() }, [selectedDate])
+
+  // History for the day-streak badge — fetched once, covering the last 60
+  // days of schedule + tasks (completion counts only, same data already
+  // shown in aggregate on the Check-ins tab's weekly task summary).
+  const [streakScheduleByDay, setStreakScheduleByDay] = useState({})
+  const [streakTasksByDate, setStreakTasksByDate] = useState({})
+  useEffect(() => {
+    async function loadHistory() {
+      const cutoff = _planAddDays(todayD, -60)
+      const [{ data: allSched }, { data: histTasks }] = await Promise.all([
+        supabase.from('client_schedule_items')
+          .select('id, item_type, custom_label, day_of_week, workouts(name), hiit_circuits(name), cardio_sessions(name)')
+          .eq('client_id', client.id),
+        supabase.from('client_daily_tasks')
+          .select('task_date, task_type, task_key, completed')
+          .eq('client_id', client.id)
+          .gte('task_date', _planISO(cutoff)),
+      ])
+      const byDay = {}
+      ;(allSched || []).forEach(item => { (byDay[item.day_of_week] ||= []).push(item) })
+      setStreakScheduleByDay(byDay)
+      const byDate = {}
+      ;(histTasks || []).forEach(t => { (byDate[t.task_date] ||= []).push(t) })
+      setStreakTasksByDate(byDate)
+    }
+    loadHistory()
+  }, [client.id])
 
   async function loadForDate() {
     setLoading(true)
@@ -103,6 +161,37 @@ function DailyPlanTab({ client }) {
   const isSelectedToday = _planISO(selectedDate) === _planISO(todayD)
   const weekDates = Array.from({ length:7 }, (_, i) => _planAddDays(weekStart, i))
   const selectedLabel = selectedDate.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })
+
+  // Day streak — mirrors the client-facing calculation in ClientTodoList.jsx.
+  const todayISO = _planISO(todayD)
+  function dayCompletion(dateISO) {
+    if (dateISO === todayISO && _planISO(selectedDate) === todayISO) {
+      return { total: totalTasks, completed: totalCompleted }
+    }
+    const dayName = _PLAN_DAYS[new Date(dateISO + 'T00:00:00').getDay()]
+    const daySystemTasks = _buildCoachSystemTasks(client, streakScheduleByDay[dayName] || [])
+    const dayTasks = streakTasksByDate[dateISO] || []
+    const dayCustomTasks = dayTasks.filter(t => t.task_type === 'custom')
+    const completed =
+      daySystemTasks.filter(t => dayTasks.find(r => r.task_type === 'system' && r.task_key === t.key)?.completed).length +
+      dayCustomTasks.filter(t => t.completed).length
+    return { total: daySystemTasks.length + dayCustomTasks.length, completed }
+  }
+  let dayStreak = 0
+  {
+    let cursor = new Date(todayD)
+    while (dayStreak < 400) {
+      const dateISO = _planISO(cursor)
+      const { total, completed } = dayCompletion(dateISO)
+      const complete = total > 0 && completed === total
+      if (!complete) {
+        if (dateISO === todayISO) { cursor = _planAddDays(cursor, -1); continue }
+        break
+      }
+      dayStreak++
+      cursor = _planAddDays(cursor, -1)
+    }
+  }
 
   function selectDate(date) {
     const d = new Date(date); d.setHours(0,0,0,0); setSelectedDate(d)
@@ -155,18 +244,26 @@ function DailyPlanTab({ client }) {
   return (
     <div className="space-y-6 max-w-2xl">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {isSelectedToday ? 'Today — ' : ''}{selectedLabel}
           </p>
         </div>
-        {!isSelectedToday && (
-          <button onClick={() => { selectDate(todayD); setWeekStart(_planWeekStart(todayD)) }}
-            className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium">
-            Today
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {dayStreak > 1 && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+              <span className="text-base leading-none">🔥</span>
+              <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{dayStreak} day streak</span>
+            </div>
+          )}
+          {!isSelectedToday && (
+            <button onClick={() => { selectDate(todayD); setWeekStart(_planWeekStart(todayD)) }}
+              className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium">
+              Today
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Week strip */}
@@ -2910,8 +3007,17 @@ function CheckinsTab({ clientId, collectMeasurements }) {
     return { ...f, streak }
   }).filter(f => f.streak > 2)
 
+  const checkinStreakCount = _checkinStreak(checkins)
+
   return (
     <div className="space-y-6 max-w-3xl">
+      {checkinStreakCount > 1 && (
+        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+          <span className="text-base leading-none">🔥</span>
+          <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{checkinStreakCount} week check-in streak</span>
+        </div>
+      )}
+
       {lightbox && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightbox(null)}>
           <div className="relative max-w-lg w-full" onClick={e => e.stopPropagation()}>

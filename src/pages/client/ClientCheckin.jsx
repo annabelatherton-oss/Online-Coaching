@@ -78,6 +78,30 @@ function lastWednesdayMidnight() {
   return d
 }
 
+// Consecutive weekly check-in windows (Thu-Wed) with a submission, walking
+// backward from today. The current, still-open window isn't counted against
+// the streak until it actually closes (Wednesday) without a submission.
+function checkinStreak(checkins) {
+  let cursor = lastWednesdayMidnight()
+  const dow = new Date().getDay()
+  const hasCurrent = checkins.some(c => new Date(c.submitted_at || c.updated_at) >= cursor)
+  if (!hasCurrent && dow !== 3) cursor.setDate(cursor.getDate() - 7)
+  let streak = 0
+  while (streak < 520) {
+    const windowStart = new Date(cursor)
+    const windowEnd = new Date(cursor)
+    windowEnd.setDate(windowEnd.getDate() + 7)
+    const hit = checkins.some(c => {
+      const t = new Date(c.submitted_at || c.updated_at)
+      return t >= windowStart && t < windowEnd
+    })
+    if (!hit) break
+    streak++
+    cursor.setDate(cursor.getDate() - 7)
+  }
+  return streak
+}
+
 // Parse "60x10,60x8" log format → best (heaviest) set
 function getBestSet(reps_completed, weight_kg) {
   if (!reps_completed) return weight_kg != null ? { weight: weight_kg, reps: null } : null
@@ -650,6 +674,7 @@ export default function ClientCheckin() {
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
   const viewingCheckin = viewingId ? historyList.find(c => c.id === viewingId) : null
+  const streak = checkinStreak(allCheckins)
 
   // Show holiday note if approved pause starts next Monday
   const nextMondayISO = (() => {
@@ -705,9 +730,17 @@ export default function ClientCheckin() {
       <div className="flex gap-6">
         <Sidebar />
         <div className="flex-1 min-w-0 space-y-6 max-w-lg">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
-            {personalWeek != null && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Week {personalWeek}</p>}
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
+              {personalWeek != null && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Week {personalWeek}</p>}
+            </div>
+            {streak > 1 && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 flex-shrink-0">
+                <span className="text-base leading-none">🔥</span>
+                <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{streak} week streak</span>
+              </div>
+            )}
           </div>
           {viewingCheckin ? (
             <CheckinReadView checkin={viewingCheckin} collectMeasurements={collectMeasurements} />
@@ -744,12 +777,20 @@ export default function ClientCheckin() {
         </>
       ) : (
       <>
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          {personalWeek != null ? `Week ${personalWeek}` : 'Your weekly progress update.'}
-          {existing && <span className="ml-1 text-brand-500">Already submitted — you can update it below.</span>}
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {personalWeek != null ? `Week ${personalWeek}` : 'Your weekly progress update.'}
+            {existing && <span className="ml-1 text-brand-500">Already submitted — you can update it below.</span>}
+          </p>
+        </div>
+        {streak > 1 && (
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 flex-shrink-0">
+            <span className="text-base leading-none">🔥</span>
+            <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{streak} week streak</span>
+          </div>
+        )}
       </div>
 
       {isLateResubmit && (
