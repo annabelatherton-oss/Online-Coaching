@@ -10,6 +10,8 @@ import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import { getMealConflicts, findSafeMeal, findSafeAlternative } from '../../lib/mealSwaps'
+import { ACTIVITY_LABELS, GOAL_LABELS } from '../../lib/calorieSuggestion'
+import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import DislikePicker from '../../components/DislikePicker'
 import SwapRulePicker from '../../components/SwapRulePicker'
 
@@ -485,6 +487,9 @@ function OverviewTab({ client, onSaved }) {
     phone: client.phone || '',
     date_of_birth: client.date_of_birth || '',
     height_cm: client.height_cm || '',
+    sex: client.sex || '',
+    activity_level: client.activity_level || '',
+    goal_type: client.goal_type || '',
     // Intake form answers
     intake_motivators: client.intake_form?.motivators || '',
     intake_barriers: client.intake_form?.barriers || '',
@@ -558,6 +563,9 @@ function OverviewTab({ client, onSaved }) {
       phone: form.phone || null,
       date_of_birth: form.date_of_birth || null,
       height_cm: form.height_cm ? parseFloat(form.height_cm) : null,
+      sex: form.sex || null,
+      activity_level: form.activity_level || null,
+      goal_type: form.goal_type || null,
       intake_form: {
         motivators: form.intake_motivators || null,
         barriers: form.intake_barriers || null,
@@ -604,6 +612,22 @@ function OverviewTab({ client, onSaved }) {
             <label className="label">Height (cm)</label>
             <input className="input" type="number" step="0.1" min="0" value={form.height_cm} onChange={e => set('height_cm', e.target.value)} placeholder="e.g. 165" />
           </div>
+          <div>
+            <label className="label">Sex</label>
+            <select className="input" value={form.sex} onChange={e => set('sex', e.target.value)}>
+              <option value="">—</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="label">Activity level</label>
+          <select className="input" value={form.activity_level} onChange={e => set('activity_level', e.target.value)}>
+            <option value="">—</option>
+            {Object.entries(ACTIVITY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Used with height, DOB and sex to estimate a calorie target on the Meal Plan tab.</p>
         </div>
       </div>
 
@@ -612,6 +636,14 @@ function OverviewTab({ client, onSaved }) {
         <div>
           <label className="label">Goal</label>
           <textarea className="input resize-none" rows={3} value={form.goal} onChange={e => set('goal', e.target.value)} placeholder="e.g. Lose 10kg, build lean muscle" />
+        </div>
+        <div>
+          <label className="label">Current phase</label>
+          <select className="input" value={form.goal_type} onChange={e => set('goal_type', e.target.value)}>
+            <option value="">—</option>
+            {Object.entries(GOAL_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Drives the calorie-target suggestion on the Meal Plan tab based on their recent weigh-ins.</p>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -1544,6 +1576,9 @@ function MealPlanTab({ client, coachId }) {
   const [pastAssignments, setPastAssignments] = useState([])
   const [mealSwapAcks, setMealSwapAcks] = useState([])
   const [everydayReviews, setEverydayReviews] = useState([])
+  const [editingCalorie, setEditingCalorie] = useState(false)
+  const [calorieDraft, setCalorieDraft] = useState('')
+  const [savingCalorie, setSavingCalorie] = useState(false)
   const [everydayRows, setEverydayRows] = useState({})
   const [everydayOverrides, setEverydayOverrides] = useState({})
   const [everydayDirty, setEverydayDirty] = useState(false)
@@ -1963,6 +1998,18 @@ function MealPlanTab({ client, coachId }) {
     load()
   }
 
+  // A direct, minimal update — unlike the "Change" flow above (which ends this
+  // assignment and starts a fresh one), this only touches calorie_target so the
+  // client's week_override, static meals and this week's saved swaps aren't reset.
+  async function saveCalorieTarget() {
+    const value = calorieDraft ? parseInt(calorieDraft) : null
+    setSavingCalorie(true)
+    await supabase.from('client_plan_assignments').update({ calorie_target: value }).eq('id', assignment.id)
+    setAssignment(prev => prev ? { ...prev, calorie_target: value } : prev)
+    setSavingCalorie(false)
+    setEditingCalorie(false)
+  }
+
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
   return (
@@ -2067,13 +2114,40 @@ function MealPlanTab({ client, coachId }) {
             <div className="flex items-start justify-between gap-2">
               <div>
                 <h3 className="font-semibold text-gray-900 dark:text-white">{assignment.plan_group_name || planGroup.name}</h3>
-                {assignment.calorie_target && <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{assignment.calorie_target} kcal / day</p>}
+                {!editingCalorie && (
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{assignment.calorie_target ? `${assignment.calorie_target} kcal / day` : 'No calorie target set'}</p>
+                    <button onClick={() => { setCalorieDraft(assignment.calorie_target || ''); setEditingCalorie(true) }} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">Edit</button>
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
-                <button onClick={() => { setForm({ plan_group_id: assignment.plan_group_id, calorie_target: assignment.calorie_target || '', starting_week: '' }); setShowForm(true); setShowOverride(false) }} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">Change</button>
+                <button onClick={() => { setForm({ plan_group_id: assignment.plan_group_id, calorie_target: assignment.calorie_target || '', starting_week: '' }); setShowForm(true); setShowOverride(false) }} className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium">Change plan</button>
                 <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
               </div>
             </div>
+
+            {editingCalorie && (
+              <div className="space-y-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/40">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number" min="0" step="25" autoFocus
+                    className="input py-1.5 w-32"
+                    value={calorieDraft}
+                    onChange={e => setCalorieDraft(e.target.value)}
+                    placeholder="e.g. 1800"
+                  />
+                  <span className="text-sm text-gray-400">kcal/day</span>
+                  <button onClick={saveCalorieTarget} disabled={savingCalorie} className="btn-primary py-1.5 px-3 text-xs">{savingCalorie ? 'Saving…' : 'Save'}</button>
+                  <button onClick={() => setEditingCalorie(false)} className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+                </div>
+                <CalorieSuggestionPanel
+                  client={client}
+                  currentTarget={assignment.calorie_target}
+                  onApply={v => setCalorieDraft(String(v))}
+                />
+              </div>
+            )}
 
             <div className="flex items-center gap-5 py-3 px-4 rounded-xl bg-pink-50/60 dark:bg-pink-900/10">
               <div className="text-center">

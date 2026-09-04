@@ -13,6 +13,7 @@ import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { calcStandardMacros } from '../../lib/macros'
 import ExerciseThumb from '../../components/ExerciseThumb'
 import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
+import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
@@ -793,6 +794,11 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                 </div>
               )}
             </div>
+            <CalorieSuggestionPanel
+              client={client}
+              currentTarget={prevCalTarget}
+              onApply={v => setCalorieTarget(String(v))}
+            />
             {/* Daily macro totals, with how far each option lands from the
                 calorie target and the coach's standard macro split for it */}
             <div className="grid grid-cols-2 gap-3">
@@ -1293,6 +1299,9 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const [activeAssignment, setActiveAssignment] = useState(null)
   const [showDeliveryPanel, setShowDeliveryPanel] = useState(false)
   const [delivered, setDelivered] = useState(false)
+  const [editingCalorie, setEditingCalorie] = useState(false)
+  const [calorieDraft, setCalorieDraft] = useState('')
+  const [savingCalorie, setSavingCalorie] = useState(false)
   const [earlyAccess, setEarlyAccess] = useState(false)
   const [togglingEarlyAccess, setTogglingEarlyAccess] = useState(false)
 
@@ -1402,6 +1411,16 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   function openRespond(c) {
     setResponseText(c.coach_response || '')
     setResponding(c.id)
+  }
+
+  async function saveCalorieTarget() {
+    if (!activeAssignment) return
+    const value = calorieDraft ? parseInt(calorieDraft) : null
+    setSavingCalorie(true)
+    await supabase.from('client_plan_assignments').update({ calorie_target: value }).eq('id', activeAssignment.id)
+    setActiveAssignment(prev => prev ? { ...prev, calorie_target: value } : prev)
+    setSavingCalorie(false)
+    setEditingCalorie(false)
   }
 
   async function sendResponse(checkinId) {
@@ -1699,6 +1718,38 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             </div>
           )}
 
+          {/* Quick calorie-target adjustment, without opening the full weekly plan */}
+          {activeAssignment && (
+            <div className="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-3 space-y-2">
+              {editingCalorie ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min="0" step="25" autoFocus
+                      className="input py-1.5 w-28 text-sm"
+                      value={calorieDraft}
+                      onChange={e => setCalorieDraft(e.target.value)}
+                      placeholder="e.g. 1800"
+                    />
+                    <span className="text-xs text-gray-400">kcal/day</span>
+                    <button onClick={saveCalorieTarget} disabled={savingCalorie} className="btn-primary py-1.5 px-3 text-xs">{savingCalorie ? 'Saving…' : 'Save'}</button>
+                    <button onClick={() => setEditingCalorie(false)} className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+                  </div>
+                  <CalorieSuggestionPanel client={client} currentTarget={activeAssignment.calorie_target} onApply={v => setCalorieDraft(String(v))} compact />
+                </>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    {activeAssignment.calorie_target ? `${activeAssignment.calorie_target} kcal / day` : 'No calorie target set'}
+                  </p>
+                  <button onClick={() => { setCalorieDraft(activeAssignment.calorie_target || ''); setEditingCalorie(true) }} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">
+                    Edit calorie target
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Submit week plan / respond to current week */}
           {current.coach_response && (
             <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl p-3">
@@ -1950,7 +2001,7 @@ export default function CoachCheckins() {
 
   async function load() {
     const [{ data: clientData }, { data: checkinData }] = await Promise.all([
-      supabase.from('clients').select('id, collect_measurements, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id),
+      supabase.from('clients').select('id, collect_measurements, height_cm, date_of_birth, sex, activity_level, goal_type, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id),
       supabase.from('client_checkins').select('*').eq('coach_id', profile.id).order('week_number', { ascending: false }),
     ])
     const mapped = (clientData || []).map(c => ({ ...c, full_name: c.profiles?.full_name }))
