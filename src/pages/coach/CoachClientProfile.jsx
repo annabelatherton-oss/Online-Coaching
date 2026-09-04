@@ -3790,7 +3790,7 @@ export default function CoachClientProfile() {
       current_carbs, current_fat, steps_target, water_target_litres, sleep_target_hours,
       start_date, access_weeks, access_expires_at,
       is_active, is_paused, notes, created_at, tags, collect_measurements, top_lifts,
-      allergies, dislikes, phone, date_of_birth, height_cm, intake_form,
+      allergies, dislikes, phone, date_of_birth, height_cm, sex, activity_level, goal_type, intake_form,
       profiles!clients_profile_id_fkey(full_name, email)
     `).eq('id', clientId).eq('coach_id', profile.id).single()
     if (err || !data) setError('Client not found or you do not have access.')
