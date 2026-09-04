@@ -12,6 +12,7 @@ import {
 import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { calcStandardMacros } from '../../lib/macros'
 import ExerciseThumb from '../../components/ExerciseThumb'
+import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
@@ -1382,6 +1383,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const firstP = withPhotos[withPhotos.length - 1]
   const compAngles = PHOTO_ANGLES.filter(a => newestP?.progress_photos?.[a])
   const showComparison = newestP && firstP && newestP.id !== firstP.id && compAngles.length > 0
+  const photoUrlsByCheckin = useSignedProgressPhotosForCheckins(sorted)
 
   // Load active plan assignment for calorie target
   useEffect(() => {
@@ -1617,8 +1619,8 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           {/* Photos — current week + first week below for comparison */}
           <div className="space-y-3">
             {[
-              { label: `Now — Week ${personalWeekMap[current.id]}`, photos: current.progress_photos },
-              first && first.id !== current.id ? { label: `Start — Week ${personalWeekMap[first.id]}`, photos: first.progress_photos } : null,
+              { label: `Now — Week ${personalWeekMap[current.id]}`, photos: photoUrlsByCheckin[current.id] },
+              first && first.id !== current.id ? { label: `Start — Week ${personalWeekMap[first.id]}`, photos: photoUrlsByCheckin[first.id] } : null,
             ].filter(Boolean).map(row => (
               <div key={row.label}>
                 <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{row.label}</p>
@@ -1731,11 +1733,11 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           </div>
           {compAngles.map(angle => {
             const cols = [
-              { label: `Start · Wk ${personalWeekMap[firstP.id]}`, url: firstP.progress_photos[angle] },
+              { label: `Start · Wk ${personalWeekMap[firstP.id]}`, url: photoUrlsByCheckin[firstP.id]?.[angle] },
               prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && prevP.progress_photos?.[angle]
-                ? { label: `Last week · Wk ${personalWeekMap[prevP.id]}`, url: prevP.progress_photos[angle] }
+                ? { label: `Last week · Wk ${personalWeekMap[prevP.id]}`, url: photoUrlsByCheckin[prevP.id]?.[angle] }
                 : null,
-              { label: `Now · Wk ${personalWeekMap[newestP.id]}`, url: newestP.progress_photos[angle] },
+              { label: `Now · Wk ${personalWeekMap[newestP.id]}`, url: photoUrlsByCheckin[newestP.id]?.[angle] },
             ].filter(Boolean)
             return (
               <div key={angle}>
@@ -1881,11 +1883,14 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
 
             {c.progress_photos && Object.values(c.progress_photos).some(Boolean) && (
               <div className="flex gap-2">
-                {PHOTO_ANGLES.filter(a => c.progress_photos[a]).map(angle => (
-                  <button key={angle} onClick={() => setLightbox(c.progress_photos[angle])} className="w-14 h-14 rounded-xl overflow-hidden bg-gray-100 hover:opacity-90">
-                    <img src={c.progress_photos[angle]} alt={angle} className="w-full h-full object-cover" />
-                  </button>
-                ))}
+                {PHOTO_ANGLES.filter(a => c.progress_photos[a]).map(angle => {
+                  const url = photoUrlsByCheckin[c.id]?.[angle]
+                  return (
+                    <button key={angle} onClick={() => url && setLightbox(url)} className="w-14 h-14 rounded-xl overflow-hidden bg-gray-100 hover:opacity-90">
+                      {url && <img src={url} alt={angle} className="w-full h-full object-cover" />}
+                    </button>
+                  )
+                })}
               </div>
             )}
 

@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
+import { useSignedProgressPhotos, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
@@ -34,6 +35,7 @@ function fmtDate(d) {
 
 function CheckinCard({ ci, weekNum, onLightbox }) {
   const [open, setOpen] = useState(false)
+  const photoUrls = useSignedProgressPhotos(ci.progress_photos)
   const photos = ci.progress_photos ? PHOTO_ANGLES.filter(a => ci.progress_photos[a]) : []
   const lifts = (ci.lift_results || []).filter(l => l?.name)
 
@@ -149,10 +151,10 @@ function CheckinCard({ ci, weekNum, onLightbox }) {
                 {photos.map(angle => (
                   <button
                     key={angle}
-                    onClick={() => onLightbox(ci.progress_photos[angle])}
+                    onClick={() => photoUrls[angle] && onLightbox(photoUrls[angle])}
                     className="aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity"
                   >
-                    <img src={ci.progress_photos[angle]} alt={angle} className="w-full h-full object-cover" />
+                    {photoUrls[angle] && <img src={photoUrls[angle]} alt={angle} className="w-full h-full object-cover" />}
                   </button>
                 ))}
               </div>
@@ -179,6 +181,7 @@ export default function ClientProgress() {
   const [checkins, setCheckins] = useState([])
   const [loading, setLoading] = useState(true)
   const [lightbox, setLightbox] = useState(null)
+  const photoUrlsByCheckin = useSignedProgressPhotosForCheckins(checkins)
 
   useEffect(() => {
     async function load() {
@@ -348,8 +351,8 @@ export default function ClientProgress() {
           }
         }
 
-        const firstSlot = PhotoSlot({ photos: first.progress_photos, pw: firstPersonalWeek })
-        const latestSlot = PhotoSlot({ photos: latest.progress_photos, pw: latestPersonalWeek })
+        const firstSlot = PhotoSlot({ photos: photoUrlsByCheckin[first.id], pw: firstPersonalWeek })
+        const latestSlot = PhotoSlot({ photos: photoUrlsByCheckin[latest.id], pw: latestPersonalWeek })
 
         return (
           <div className="card">

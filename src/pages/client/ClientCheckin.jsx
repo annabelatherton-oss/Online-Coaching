@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { compressImage, useSignedProgressPhotos } from '../../lib/progressPhotos'
 
 const RATING_LABELS = {
   energy_level:   ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
@@ -229,8 +230,9 @@ function RatingDisplay({ field, value }) {
 }
 
 function CheckinReadView({ checkin, collectMeasurements }) {
-  const photos = checkin.progress_photos || {}
-  const hasPhotos = Object.values(photos).some(Boolean)
+  const photoPaths = checkin.progress_photos || {}
+  const photos = useSignedProgressPhotos(photoPaths)
+  const hasPhotos = Object.values(photoPaths).some(Boolean)
   return (
     <div className="space-y-5">
       <div className="card space-y-4">
@@ -257,9 +259,11 @@ function CheckinReadView({ checkin, collectMeasurements }) {
         <div className="card space-y-3">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Progress photos</h2>
           <div className="grid grid-cols-4 gap-2">
-            {PHOTO_ANGLES.map(angle => photos[angle.key] ? (
+            {PHOTO_ANGLES.map(angle => photoPaths[angle.key] ? (
               <div key={angle.key} className="flex flex-col gap-1">
-                <img src={photos[angle.key]} alt={angle.label} className="w-full aspect-[3/4] object-cover rounded-xl" />
+                {photos[angle.key]
+                  ? <img src={photos[angle.key]} alt={angle.label} className="w-full aspect-[3/4] object-cover rounded-xl" />
+                  : <div className="w-full aspect-[3/4] rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />}
                 <p className="text-xs text-center text-gray-400">{angle.label}</p>
               </div>
             ) : null)}
@@ -359,6 +363,7 @@ export default function ClientCheckin() {
     lift_results: [],
   })
   const [photos, setPhotos] = useState({ front: null, back: null, left: null, right: null })
+  const photoUrls = useSignedProgressPhotos(photos)
   const [uploading, setUploading] = useState({})
   const [openStruggles, setOpenStruggles] = useState([]) // rows from client_struggle_tracking with status 'open'
   const [saving, setSaving] = useState(false)
@@ -569,12 +574,12 @@ export default function ClientCheckin() {
   async function handlePhotoUpload(angleKey, file) {
     if (!clientData || weekNumber == null) return
     setUploading(u => ({ ...u, [angleKey]: true }))
-    const ext = file.name.split('.').pop()
-    const path = `checkins/${clientData.id}/week-${weekNumber}/${angleKey}-${Date.now()}.${ext}`
-    const { error: uploadErr } = await supabase.storage.from('progress-photos').upload(path, file, { upsert: true })
+    const compressed = await compressImage(file)
+    const path = `checkins/${clientData.id}/week-${weekNumber}/${angleKey}-${Date.now()}.jpg`
+    const { error: uploadErr } = await supabase.storage.from('progress-photos')
+      .upload(path, compressed, { upsert: true, contentType: 'image/jpeg' })
     if (uploadErr) { setUploading(u => ({ ...u, [angleKey]: false })); return }
-    const { data: urlData } = supabase.storage.from('progress-photos').getPublicUrl(path)
-    setPhotos(p => ({ ...p, [angleKey]: urlData.publicUrl }))
+    setPhotos(p => ({ ...p, [angleKey]: path }))
     setUploading(u => ({ ...u, [angleKey]: false }))
   }
 
@@ -852,7 +857,7 @@ export default function ClientCheckin() {
               <PhotoSlot
                 key={angle.key}
                 angle={angle}
-                url={photos[angle.key]}
+                url={photoUrls[angle.key]}
                 uploading={!!uploading[angle.key]}
                 onUpload={handlePhotoUpload}
               />

@@ -8,6 +8,7 @@ import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../l
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
+import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 
 const TABS = ['Overview', 'Meal Plan', 'Training', 'Daily Plan', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
 
@@ -950,6 +951,7 @@ function PhotosTab({ clientId }) {
   const [storageError, setStorageError] = useState(false)
   const [lightbox, setLightbox] = useState(null)
   const fileRef = useRef()
+  const urlMap = useSignedUrls(photos.map(p => p.photo_url))
 
   async function load() {
     const { data } = await supabase.from('progress_photos').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false })
@@ -962,19 +964,17 @@ function PhotosTab({ clientId }) {
     if (!files.length) return
     setUploading(true); setStorageError(false)
     for (const file of files) {
-      const path = `${clientId}/${Date.now()}-${file.name}`
-      const { error: uploadErr } = await supabase.storage.from('progress-photos').upload(path, file)
+      const compressed = await compressImage(file)
+      const path = `${clientId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+      const { error: uploadErr } = await supabase.storage.from('progress-photos').upload(path, compressed, { contentType: 'image/jpeg' })
       if (uploadErr) { setStorageError(true); setUploading(false); return }
-      const { data: urlData } = supabase.storage.from('progress-photos').getPublicUrl(path)
-      await supabase.from('progress_photos').insert({ client_id: clientId, photo_url: urlData.publicUrl, recorded_at: new Date().toISOString().split('T')[0] })
+      await supabase.from('progress_photos').insert({ client_id: clientId, photo_url: path, recorded_at: new Date().toISOString().split('T')[0] })
     }
     setUploading(false); if (fileRef.current) fileRef.current.value = ''; load()
   }
 
   async function deletePhoto(photo) {
-    const url = photo.photo_url
-    const idx = url.indexOf('/progress-photos/')
-    if (idx !== -1) await supabase.storage.from('progress-photos').remove([decodeURIComponent(url.slice(idx + '/progress-photos/'.length))])
+    await supabase.storage.from('progress-photos').remove([photo.photo_url])
     await supabase.from('progress_photos').delete().eq('id', photo.id)
     if (lightbox?.id === photo.id) setLightbox(null)
     load()
@@ -997,7 +997,7 @@ function PhotosTab({ clientId }) {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {photos.map(photo => (
             <div key={photo.id} className="group relative rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-              <img src={photo.photo_url} alt="" className="w-full aspect-square object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightbox(photo)} />
+              <img src={urlMap[photo.photo_url]} alt="" className="w-full aspect-square object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightbox(photo)} />
               <div className="p-2"><p className="text-xs text-gray-500 dark:text-gray-400">{fmtDate(photo.recorded_at)}</p></div>
               <button onClick={() => deletePhoto(photo)} className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1009,7 +1009,7 @@ function PhotosTab({ clientId }) {
       {lightbox && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightbox(null)}>
           <div className="relative max-w-4xl max-h-full" onClick={e => e.stopPropagation()}>
-            <img src={lightbox.photo_url} alt="" className="max-w-full max-h-[85vh] object-contain rounded-xl" />
+            <img src={urlMap[lightbox.photo_url]} alt="" className="max-w-full max-h-[85vh] object-contain rounded-xl" />
             <button onClick={() => setLightbox(null)} className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
@@ -2848,6 +2848,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
   const [lightbox, setLightbox] = useState(null)
   // Map of weekStartISO → { ticked, total, tasksWithNotes }
   const [weekSummaries, setWeekSummaries] = useState({})
+  const photoUrlsByCheckin = useSignedProgressPhotosForCheckins(checkins)
 
   useEffect(() => {
     async function load() {
@@ -3176,8 +3177,8 @@ function CheckinsTab({ clientId, collectMeasurements }) {
             <p className="text-xs text-gray-400 mt-0.5">Week {firstP.week_number} → Week {newestP.week_number}</p>
           </div>
           {compAngles.map(angle => {
-            const firstUrl = firstP.progress_photos[angle]
-            const nowUrl = newestP.progress_photos[angle]
+            const firstUrl = photoUrlsByCheckin[firstP.id]?.[angle]
+            const nowUrl = photoUrlsByCheckin[newestP.id]?.[angle]
             return (
               <div key={angle}>
                 <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2 capitalize">{angle}</p>
@@ -3338,17 +3339,21 @@ function CheckinsTab({ clientId, collectMeasurements }) {
               <div>
                 <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Photos</p>
                 <div className="grid grid-cols-4 gap-2">
-                  {CHECKIN_PHOTO_ANGLES.map(angle => c.progress_photos[angle.key] && (
-                    <div key={angle.key} className="flex flex-col gap-1">
-                      <button
-                        onClick={() => setLightbox(c.progress_photos[angle.key])}
-                        className="aspect-[3/4] rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity"
-                      >
-                        <img src={c.progress_photos[angle.key]} alt={angle.label} className="w-full h-full object-cover" />
-                      </button>
-                      <p className="text-xs text-center text-gray-400 dark:text-gray-500">{angle.label}</p>
-                    </div>
-                  ))}
+                  {CHECKIN_PHOTO_ANGLES.map(angle => {
+                    if (!c.progress_photos[angle.key]) return null
+                    const url = photoUrlsByCheckin[c.id]?.[angle.key]
+                    return (
+                      <div key={angle.key} className="flex flex-col gap-1">
+                        <button
+                          onClick={() => url && setLightbox(url)}
+                          className="aspect-[3/4] rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity"
+                        >
+                          {url && <img src={url} alt={angle.label} className="w-full h-full object-cover" />}
+                        </button>
+                        <p className="text-xs text-center text-gray-400 dark:text-gray-500">{angle.label}</p>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}

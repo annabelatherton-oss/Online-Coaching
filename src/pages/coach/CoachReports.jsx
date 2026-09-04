@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 
 function WarnIcon({ className = 'w-4 h-4 text-red-400 flex-shrink-0' }) {
   return (
@@ -122,7 +123,7 @@ export default function CoachReports() {
           .order('created_at', { ascending: false }),
         supabase
           .from('client_checkins')
-          .select('client_id, week_number, weight_kg, food_adherence, gym_adherence, energy_level, sleep_quality, submitted_at, updated_at, progress_photos')
+          .select('id, client_id, week_number, weight_kg, food_adherence, gym_adherence, energy_level, sleep_quality, submitted_at, updated_at, progress_photos')
           .eq('coach_id', profile.id)
           .order('week_number', { ascending: true }),
       ])
@@ -148,6 +149,8 @@ export default function CoachReports() {
   }, [profile.id])
 
   const now = new Date()
+  const clientCheckinsForPhotos = selected ? allCheckins.filter(c => c.client_id === selected) : []
+  const photoUrlsByCheckin = useSignedProgressPhotosForCheckins(clientCheckinsForPhotos)
 
   function clientStatus(c) {
     const exp = c.access_expires_at ? new Date(c.access_expires_at) : null
@@ -404,8 +407,8 @@ export default function CoachReports() {
               ) : (
                 <div className="space-y-5">
                   {activeAngles.map(angle => {
-                    const firstUrl = firstP?.progress_photos?.[angle]
-                    const latestUrl = latestP?.progress_photos?.[angle]
+                    const firstUrl = firstP && photoUrlsByCheckin[firstP.id]?.[angle]
+                    const latestUrl = latestP && photoUrlsByCheckin[latestP.id]?.[angle]
                     const ANGLE_LABELS = { front: 'Front', back: 'Back', left: 'Left side', right: 'Right side' }
                     return (
                       <div key={angle}>
