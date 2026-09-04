@@ -88,13 +88,36 @@ serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-  const { data: subscriptions, error } = await supabase
+  const { data: allSubscriptions, error } = await supabase
     .from('push_subscriptions')
     .select('client_id, subscription')
 
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), { status: 500 })
   }
+
+  // Skip anyone who doesn't yet have a full week's grace since their first
+  // plan was assigned — a client onboarded this week shouldn't be nagged to
+  // check in before they've had a chance to follow the plan for a week.
+  const clientIds = (allSubscriptions ?? []).map(row => row.client_id)
+  const { data: assignments } = clientIds.length
+    ? await supabase
+        .from('client_plan_assignments')
+        .select('client_id, created_at')
+        .in('client_id', clientIds)
+    : { data: [] }
+
+  const firstPlanAt: Record<string, number> = {}
+  ;(assignments ?? []).forEach(a => {
+    const t = new Date(a.created_at).getTime()
+    if (!(a.client_id in firstPlanAt) || t < firstPlanAt[a.client_id]) firstPlanAt[a.client_id] = t
+  })
+
+  const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const subscriptions = (allSubscriptions ?? []).filter(row => {
+    const first = firstPlanAt[row.client_id]
+    return first != null && first <= oneWeekAgo
+  })
 
   const results = await Promise.all(
     (subscriptions ?? []).map(async row => {

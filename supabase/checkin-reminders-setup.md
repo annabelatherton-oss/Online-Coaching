@@ -63,7 +63,11 @@ Change to `'0 6 * * 5'` during winter when the UK is UTC+0.
 1. When a client logs into the app, they're asked for notification permission.
 2. Their browser push subscription is stored in `push_subscriptions`.
 3. Every Friday at 6am UK time, the cron job calls the Edge Function.
-4. The Edge Function sends a push notification to every subscribed client.
+4. The Edge Function sends a push notification to every subscribed client —
+   except anyone whose first plan assignment (`client_plan_assignments`) is
+   less than 7 days old, or who has no plan assigned yet. A client onboarded
+   this week gets their first reminder the following Friday, not the same
+   week their first plan goes out.
 5. The notification says "It's Friday — time to log your check-in! 💪" and links to the check-in page.
 
 ## Check-in window
