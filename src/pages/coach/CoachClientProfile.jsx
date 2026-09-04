@@ -1455,7 +1455,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
                     </svg>
                   </span>
                 )}
-                <span className={`flex-1 truncate ${ing._isAdded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`}>{ing.name}</span>
+                <span className={`flex-1 min-w-0 break-words ${ing._isAdded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`}>{ing.name}</span>
                 <input
                   type="number"
                   min={libIng?.min_amount ?? 0}
@@ -2086,8 +2086,8 @@ function MealPlanTab({ client, coachId }) {
     const canSwap = hasConflicts && !!findSafeMeal(cat, currentId, clientAllergies, clientDislikes, mealMap, mealsByCategory, tier)
 
     return (
-      <div key={slotKey} className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
-        <div className="relative w-full aspect-[16/9] bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+      <div key={slotKey} className="flex flex-col sm:flex-row rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
+        <div className="relative w-full sm:w-40 aspect-[16/9] sm:aspect-square bg-gray-100 dark:bg-gray-800 flex-shrink-0">
           {meal?.photo_url ? (
             <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
           ) : (
@@ -2105,7 +2105,7 @@ function MealPlanTab({ client, coachId }) {
           )}
         </div>
 
-        <div className="p-3 space-y-2">
+        <div className="p-3 space-y-2 flex-1 min-w-0">
           <select
             className="w-full text-sm font-medium text-gray-900 dark:text-white bg-transparent border-0 p-0 focus:ring-0 cursor-pointer"
             value={currentId}
@@ -2265,7 +2265,7 @@ function MealPlanTab({ client, coachId }) {
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
   return (
-    <div className="space-y-5 max-w-2xl">
+    <div className="space-y-5 max-w-4xl">
 
       {(mealSwapAcks.length > 0 || everydayReviews.length > 0) && (
         <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 space-y-2">
@@ -2457,7 +2457,7 @@ function MealPlanTab({ client, coachId }) {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-3">
               {MEAL_SLOTS.map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
               {renderSlotCard('preworkout', 'Pre-workout', 'pre_workout', 'preworkout_static', 'preworkout_meal_id')}
               {renderSlotCard('evening_snack', 'Evening snack', 'evening_snack', 'evening_snack_static', 'evening_snack_meal_id')}
