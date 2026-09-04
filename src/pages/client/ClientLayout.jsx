@@ -89,6 +89,43 @@ const navItems = [
   },
 ]
 
+function AddToHomeScreenBanner() {
+  const [show, setShow] = useState(false)
+
+  useEffect(() => {
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+    const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches
+    const dismissed = localStorage.getItem('hideAddToHomeScreenBanner') === 'true'
+    setShow(isIOS && !isStandalone && !dismissed)
+  }, [])
+
+  if (!show) return null
+
+  function dismiss() {
+    localStorage.setItem('hideAddToHomeScreenBanner', 'true')
+    setShow(false)
+  }
+
+  return (
+    <div className="mb-4 rounded-xl border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/20 px-4 py-3 flex items-start gap-3">
+      <span className="text-xl flex-shrink-0">📲</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-gray-900 dark:text-white">Get check-in reminders on your phone</p>
+        <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">
+          iPhones only send reminders to apps added to your Home Screen. Tap the <strong>Share</strong> icon in Safari, then <strong>"Add to Home Screen"</strong>, to make sure you don't miss your Friday check-in.
+        </p>
+      </div>
+      <button
+        onClick={dismiss}
+        className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
+        aria-label="Dismiss"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+      </button>
+    </div>
+  )
+}
+
 export default function ClientLayout() {
   const { profile, session, signOut } = useAuth()
   const navigate = useNavigate()
@@ -252,6 +289,7 @@ export default function ClientLayout() {
 
         {/* Page content */}
         <main ref={mainRef} className="flex-1 overflow-y-auto p-4 lg:p-6">
+          <AddToHomeScreenBanner />
           <Outlet />
         </main>
       </div>
