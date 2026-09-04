@@ -2457,11 +2457,27 @@ function MealPlanTab({ client, coachId }) {
               </div>
             )}
 
-            <div className="space-y-3">
-              {MEAL_SLOTS.slice(0, 4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
-              {renderSlotCard('preworkout', 'Pre-workout', 'pre_workout', 'preworkout_static', 'preworkout_meal_id')}
-              {MEAL_SLOTS.slice(4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
-              {renderSlotCard('evening_snack', 'Evening snack', 'evening_snack', 'evening_snack_static', 'evening_snack_meal_id')}
+            <div className="space-y-5">
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Breakfast</h4>
+                {MEAL_SLOTS.slice(0, 2).map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
+              </div>
+              <div className="space-y-3 pt-4 border-t-2 border-gray-100 dark:border-gray-800">
+                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Lunch</h4>
+                {MEAL_SLOTS.slice(2, 4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
+              </div>
+              <div className="space-y-3 pt-4 border-t-2 border-gray-100 dark:border-gray-800">
+                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Pre-workout</h4>
+                {renderSlotCard('preworkout', 'Pre-workout', 'pre_workout', 'preworkout_static', 'preworkout_meal_id')}
+              </div>
+              <div className="space-y-3 pt-4 border-t-2 border-gray-100 dark:border-gray-800">
+                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Dinner</h4>
+                {MEAL_SLOTS.slice(4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
+              </div>
+              <div className="space-y-3 pt-4 border-t-2 border-gray-100 dark:border-gray-800">
+                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Evening Snack</h4>
+                {renderSlotCard('evening_snack', 'Evening snack', 'evening_snack', 'evening_snack_static', 'evening_snack_meal_id')}
+              </div>
             </div>
 
             {(option1Subtotal.cal > 0 || option2Subtotal.cal > 0) && (
