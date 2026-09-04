@@ -2458,8 +2458,9 @@ function MealPlanTab({ client, coachId }) {
             )}
 
             <div className="space-y-3">
-              {MEAL_SLOTS.map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
+              {MEAL_SLOTS.slice(0, 4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
               {renderSlotCard('preworkout', 'Pre-workout', 'pre_workout', 'preworkout_static', 'preworkout_meal_id')}
+              {MEAL_SLOTS.slice(4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
               {renderSlotCard('evening_snack', 'Evening snack', 'evening_snack', 'evening_snack_static', 'evening_snack_meal_id')}
             </div>
 
