@@ -592,7 +592,7 @@ function OverviewTab({ client, onSaved }) {
         other_info: form.intake_other_info || null,
       },
     }
-    let { error: err } = await supabase.from('clients').update(payload).eq('id', client.id)
+    let { error: err, data: rows } = await supabase.from('clients').update(payload).eq('id', client.id).select('id')
     // sex/activity_level/goal_type are new columns — if the database migration adding them
     // hasn't been run yet, PostgREST rejects the whole update and NOTHING gets saved, not
     // just those three fields. Retry without them so the rest of the form isn't silently lost.
@@ -600,9 +600,10 @@ function OverviewTab({ client, onSaved }) {
     // cache" — the field name comes before the word "column", not after — so match either order.
     if (err && /column/i.test(err.message || '') && /(sex|activity_level|goal_type)/i.test(err.message || '')) {
       const { sex, activity_level, goal_type, ...rest } = payload
-      const retry = await supabase.from('clients').update(rest).eq('id', client.id)
+      const retry = await supabase.from('clients').update(rest).eq('id', client.id).select('id')
       err = retry.error
-      if (!err) {
+      rows = retry.data
+      if (!err && rows?.length) {
         setSaving(false)
         setError("Saved everything except Sex/Activity level/Goal phase — those need a database update first (ask your developer to run the latest SQL migration).")
         onSaved()
@@ -611,6 +612,13 @@ function OverviewTab({ client, onSaved }) {
     }
     setSaving(false)
     if (err) { setError(err.message); return }
+    // update()/select() returning zero rows means the write silently matched nothing (almost
+    // always a permissions/RLS mismatch) — without this check that looks identical to a
+    // successful save, which is exactly the "says Saved but reverts" bug this is guarding against.
+    if (!rows || rows.length === 0) {
+      setError("Nothing was actually saved — the app couldn't confirm it has permission to update this client. Please tell your developer: client update returned 0 rows.")
+      return
+    }
     setSaved(true); setTimeout(() => setSaved(false), 2500)
     onSaved()
   }
