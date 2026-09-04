@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
-import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams, splitForGoal } from '../../lib/macros'
+import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams, splitForGoal, normalizeGoalMacroSplits } from '../../lib/macros'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
@@ -468,6 +468,8 @@ function StatusBadge({ client }) {
 }
 
 function OverviewTab({ client, onSaved }) {
+  const { profile } = useAuth()
+  const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [form, setForm] = useState({
     goal: client.goal || '',
     current_calories: client.current_calories || '',
@@ -536,7 +538,7 @@ function OverviewTab({ client, onSaved }) {
   }
 
   function resetToStandardSplit() {
-    const preset = splitForGoal(form.goal_type)
+    const preset = splitForGoal(form.goal_type, goalSplits)
     setSplit(preset)
     applySplit(form.current_calories, preset)
   }
@@ -546,7 +548,7 @@ function OverviewTab({ client, onSaved }) {
   // phase changes (or they click "Use default split") once more.
   function handleGoalTypeChange(value) {
     set('goal_type', value)
-    const preset = splitForGoal(value)
+    const preset = splitForGoal(value, goalSplits)
     setSplit(preset)
     applySplit(form.current_calories, preset)
   }
@@ -697,7 +699,7 @@ function OverviewTab({ client, onSaved }) {
             className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
           >
             {form.goal_type
-              ? `Use ${GOAL_LABELS[form.goal_type].toLowerCase()} default (${splitForGoal(form.goal_type).carbs}/${splitForGoal(form.goal_type).protein}/${splitForGoal(form.goal_type).fat})`
+              ? `Use ${GOAL_LABELS[form.goal_type].toLowerCase()} default (${splitForGoal(form.goal_type, goalSplits).carbs}/${splitForGoal(form.goal_type, goalSplits).protein}/${splitForGoal(form.goal_type, goalSplits).fat})`
               : 'Use standard split (40/35/25)'}
           </button>
         </div>

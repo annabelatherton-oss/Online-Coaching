@@ -1,16 +1,34 @@
 // Standard daily macro split (% of total calories) — used when a client has no goal phase set.
 export const MACRO_SPLIT = { carbs: 40, protein: 35, fat: 25 }
 
-// Default split per goal phase — auto-applied when a coach sets/changes a client's phase on the
-// Overview tab, but still just a starting point: a coach can edit the %s per client afterwards.
-export const GOAL_MACRO_SPLITS = {
+export const GOAL_TYPES = ['cut', 'maintain', 'bulk']
+
+// Bootstrap default split per goal phase — auto-applied when a coach sets/changes a client's
+// phase on the Overview tab, but still just a starting point in two ways: a coach can edit the
+// %s per client afterwards, and can also override these coach-wide defaults in Settings
+// (profiles.goal_macro_splits), which normalizeGoalMacroSplits()/splitForGoal() layer on top of.
+export const DEFAULT_GOAL_MACRO_SPLITS = {
   cut: { carbs: 40, protein: 40, fat: 20 },
   maintain: { carbs: 40, protein: 35, fat: 25 },
-  bulk: { carbs: 45, protein: 30, fat: 25 },
+  bulk: { carbs: 50, protein: 30, fat: 20 },
 }
 
-export function splitForGoal(goalType) {
-  return GOAL_MACRO_SPLITS[goalType] ? { ...GOAL_MACRO_SPLITS[goalType] } : { ...MACRO_SPLIT }
+// profiles.goal_macro_splits may be null, or missing a phase, or missing a macro within a phase
+// (e.g. saved before bulk existed) — fill any gaps from the hardcoded defaults so callers always
+// get all 3 phases with all 3 macros.
+export function normalizeGoalMacroSplits(raw) {
+  const result = {}
+  for (const goal of GOAL_TYPES) {
+    result[goal] = { ...DEFAULT_GOAL_MACRO_SPLITS[goal], ...(raw?.[goal] || {}) }
+  }
+  return result
+}
+
+// customSplits, if given, should already be normalizeGoalMacroSplits() output.
+export function splitForGoal(goalType, customSplits) {
+  if (!goalType) return { ...MACRO_SPLIT }
+  const source = customSplits?.[goalType] || DEFAULT_GOAL_MACRO_SPLITS[goalType]
+  return source ? { ...source } : { ...MACRO_SPLIT }
 }
 
 const KCAL_PER_G = { carbs: 4, protein: 4, fat: 9 }
@@ -24,8 +42,8 @@ export function calcMacrosFromSplit(calories, splitPct) {
   }
 }
 
-export function calcStandardMacros(calories, goalType) {
-  return calcMacrosFromSplit(calories, splitForGoal(goalType))
+export function calcStandardMacros(calories, goalType, customSplits) {
+  return calcMacrosFromSplit(calories, splitForGoal(goalType, customSplits))
 }
 
 // Back-calculates the carbs/protein/fat % split (of calories) from saved gram values,

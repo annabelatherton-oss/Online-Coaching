@@ -10,7 +10,7 @@ import {
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
-import { calcStandardMacros } from '../../lib/macros'
+import { calcStandardMacros, normalizeGoalMacroSplits } from '../../lib/macros'
 import ExerciseThumb from '../../components/ExerciseThumb'
 import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
@@ -143,6 +143,8 @@ function DeltaTag({ delta, invertColors = false, suffix = ' kg' }) {
 
 // ── Plan delivery panel ───────────────────────────────────────────────────────
 function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
+  const { profile } = useAuth()
+  const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [loading, setLoading] = useState(true)
   const [coachNotes, setCoachNotes] = useState(current?.coach_response || '')
   const [calorieTarget, setCalorieTarget] = useState(String(activeAssignment?.calorie_target ?? ''))
@@ -729,7 +731,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   // How far each option's actual daily macros land from the client's
   // calorie target and the coach's standard macro split for it.
   const targetCal = parseInt(calorieTarget) || 0
-  const targetMacros = targetCal > 0 ? calcStandardMacros(targetCal, client?.goal_type) : null
+  const targetMacros = targetCal > 0 ? calcStandardMacros(targetCal, client?.goal_type, goalSplits) : null
 
   return (
     <div className="space-y-0">

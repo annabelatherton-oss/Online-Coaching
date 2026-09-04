@@ -11,3 +11,8 @@ alter table clients add column if not exists goal_type text check (goal_type in 
 -- New clients default to 12 weeks of access instead of 4 — the app already sends this
 -- explicitly on every insert, so this is just keeping the column's own default in sync.
 alter table clients alter column access_weeks set default 12;
+
+-- Per-phase macro split overrides (cut/maintain/bulk), editable in Settings — e.g.
+-- { "cut": { "carbs": 40, "protein": 40, "fat": 20 }, "bulk": { ... }, "maintain": { ... } }.
+-- Null/missing phases fall back to the app's hardcoded defaults.
+alter table profiles add column if not exists goal_macro_splits jsonb;
