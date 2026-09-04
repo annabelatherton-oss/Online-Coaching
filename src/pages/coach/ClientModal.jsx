@@ -3,6 +3,7 @@ import { supabase, supabaseAdmin } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
+import DislikePicker from '../../components/DislikePicker'
 
 export default function ClientModal({ client, onClose, onSaved, duplicateData }) {
   const { profile } = useAuth()
@@ -21,7 +22,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
     start_date: new Date().toISOString().split('T')[0],
     tags: [],
     allergies: [],
-    dislikes: '',
+    dislikes: [],
   })
   const [tagInput, setTagInput] = useState('')
   const [showOptional, setShowOptional] = useState(false)
@@ -47,7 +48,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           : new Date().toISOString().split('T')[0],
         tags: client.tags || [],
         allergies: client.allergies || [],
-        dislikes: (client.dislikes || []).join(', '),
+        dislikes: client.dislikes || [],
       })
       setSplit(splitPercentFromGrams(
         { protein_g: client.current_protein, carbs_g: client.current_carbs, fat_g: client.current_fat },
@@ -144,7 +145,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
             start_date: form.start_date,
             tags: form.tags,
             allergies: form.allergies,
-            dislikes: form.dislikes ? form.dislikes.split(',').map(s => s.trim()).filter(Boolean) : [],
+            dislikes: form.dislikes || [],
           })
           .eq('id', client.id)
 
@@ -195,7 +196,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           is_paused: false,
           tags: form.tags,
           allergies: form.allergies,
-          dislikes: form.dislikes ? form.dislikes.split(',').map(s => s.trim()).filter(Boolean) : [],
+          dislikes: form.dislikes || [],
         })
         if (clientErr) throw clientErr
       }
@@ -443,13 +444,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
 
               <div>
                 <label className="label">Food dislikes / intolerances</label>
-                <input
-                  className="input"
-                  type="text"
-                  value={form.dislikes}
-                  onChange={e => set('dislikes', e.target.value)}
-                  placeholder="e.g. mushrooms, olives, broccoli (comma-separated)"
-                />
+                <DislikePicker coachId={profile.id} value={form.dislikes} onChange={v => set('dislikes', v)} />
                 <p className="text-xs text-gray-400 mt-1">
                   Meals containing these ingredients will be flagged on the plan.
                 </p>

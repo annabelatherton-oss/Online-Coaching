@@ -5,9 +5,10 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import {
   MEAL_GROUPS, ALL_SLOT_DEFS, OPTION_1_KEYS, OPTION_2_KEYS,
-  mealMacros, addMacros,
+  mealMacros, addMacros, getIngredients,
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
+import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../lib/mealSwaps'
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,9 @@ export default function ClientMealPlan() {
   const [coachDelivery, setCoachDelivery] = useState(null)
   const [swapModal, setSwapModal] = useState(null)   // { slotKey, label, cat }
   const [recipeModal, setRecipeModal] = useState(null) // slotKey
+  const [swapCtx, setSwapCtx] = useState(null)
+  const [everyday, setEveryday] = useState(false)
+  const [everydaySaving, setEverydaySaving] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -90,10 +94,46 @@ export default function ClientMealPlan() {
       if (asgn.preworkout_static && asgn.preworkout_meal_id) tSlots.preworkout = asgn.preworkout_meal_id
       if (asgn.evening_snack_static && asgn.evening_snack_meal_id) tSlots.evening_snack = asgn.evening_snack_meal_id
 
-      setTemplateSlots(tSlots)
-      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
-      setIngredientOverrides(cwm?.ingredient_overrides || {})
+      const finalSlots = { ...tSlots, ...(cwm?.slots || {}) }
+      let effectiveSlots = finalSlots
+      let effectiveOverrides = cwm?.ingredient_overrides || {}
+      setEveryday(!!clientRow.everyday_meals_enabled)
+
+      if (clientRow.everyday_meals_enabled) {
+        const { data: edRows } = await supabase.from('client_everyday_meals').select('slot_type, meal_id, ingredient_overrides').eq('client_id', clientRow.id)
+        if (edRows?.length) {
+          const edSlots = {}, edOverrides = {}
+          edRows.forEach(r => {
+            if (r.meal_id) edSlots[r.slot_type] = r.meal_id
+            if (r.ingredient_overrides && Object.keys(r.ingredient_overrides).length) edOverrides[r.slot_type] = r.ingredient_overrides
+          })
+          effectiveSlots = edSlots
+          effectiveOverrides = edOverrides
+        }
+      }
+
+      // In everyday mode there's no separate "template" to compare against or revert to — the
+      // client's chosen set IS the plan, so template === current (no "Swapped"/"Revert" affordance).
+      setTemplateSlots(clientRow.everyday_meals_enabled ? effectiveSlots : tSlots)
+      setEditedSlots(effectiveSlots)
+      setIngredientOverrides(effectiveOverrides)
       setSlotsDirty(false)
+
+      // Dislikes: resolve any saved swap rule automatically so the client never sees something
+      // they've told their coach they dislike, and quietly log what changed for the dashboard.
+      const dislikes = (clientRow.dislikes || []).filter(Boolean)
+      if (dislikes.length) {
+        const { ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike } = await loadSwapContext(clientRow.id, dislikes)
+        setSwapCtx({ dislikes, ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike })
+        for (const slotKey of Object.keys(effectiveSlots)) {
+          const mId = effectiveSlots[slotKey]
+          const meal = mId ? map[mId] : null
+          if (!meal) continue
+          const baseIngredients = getIngredients(meal, tier, effectiveOverrides[slotKey])
+          const { applied, unresolved } = applyDislikeSwaps(baseIngredients, dislikes, mId, ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike)
+          if (applied.length || unresolved.length) syncMealSwapStatus(clientRow.id, mId, applied, unresolved)
+        }
+      }
 
       const { data: delivery } = await supabase
         .from('weekly_deliveries')
@@ -112,14 +152,14 @@ export default function ClientMealPlan() {
   const tier = assignment && CALORIE_TIERS.includes(assignment.calorie_target) ? assignment.calorie_target : null
 
   function sumSlotKeys(keys) {
-    return keys.reduce((acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, tier, ingredientOverrides[key])), { cal: 0, prot: 0, carb: 0, fat: 0 })
+    return keys.reduce((acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, tier, ingredientOverrides[key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
   }
 
-  const originalDailyCal = ALL_SLOT_DEFS.reduce((sum, s) => sum + (mealMacros(templateSlots[s.key], mealMap, tier, null)?.cal || 0), 0)
-  const currentDailyCal  = ALL_SLOT_DEFS.reduce((sum, s) => sum + (mealMacros(editedSlots[s.key], mealMap, tier, ingredientOverrides[s.key])?.cal || 0), 0)
+  const originalDailyCal = ALL_SLOT_DEFS.reduce((sum, s) => sum + (mealMacros(templateSlots[s.key], mealMap, tier, null, swapCtx)?.cal || 0), 0)
+  const currentDailyCal  = ALL_SLOT_DEFS.reduce((sum, s) => sum + (mealMacros(editedSlots[s.key], mealMap, tier, ingredientOverrides[s.key], swapCtx)?.cal || 0), 0)
 
-  const preworkoutM = mealMacros(editedSlots.preworkout, mealMap, tier, ingredientOverrides.preworkout) || { cal: 0, prot: 0, carb: 0, fat: 0 }
-  const snackM      = mealMacros(editedSlots.evening_snack, mealMap, tier, ingredientOverrides.evening_snack) || { cal: 0, prot: 0, carb: 0, fat: 0 }
+  const preworkoutM = mealMacros(editedSlots.preworkout, mealMap, tier, ingredientOverrides.preworkout, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 }
+  const snackM      = mealMacros(editedSlots.evening_snack, mealMap, tier, ingredientOverrides.evening_snack, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 }
   const opt1Sub     = sumSlotKeys(OPTION_1_KEYS)
   const opt2Sub     = sumSlotKeys(OPTION_2_KEYS)
   const opt1Total   = addMacros(addMacros(opt1Sub, preworkoutM), snackM)
@@ -141,6 +181,28 @@ export default function ClientMealPlan() {
   }
 
   async function handleSave() {
+    if (everyday) {
+      setSaving(true); setSaveError(''); setSaved(false)
+      const changedKeys = Object.keys(editedSlots).filter(k => editedSlots[k] !== templateSlots[k])
+      if (changedKeys.length) {
+        const rows = changedKeys.map(k => ({
+          client_id: clientData.id,
+          slot_type: k,
+          meal_id: editedSlots[k] || null,
+          ingredient_overrides: ingredientOverrides[k] || {},
+          needs_coach_review: true,
+          updated_at: new Date().toISOString(),
+        }))
+        const { error } = await supabase.from('client_everyday_meals').upsert(rows, { onConflict: 'client_id,slot_type' })
+        setSaving(false)
+        if (error) { setSaveError('Could not save. Please try again.'); return }
+      } else {
+        setSaving(false)
+      }
+      setTemplateSlots({ ...editedSlots })
+      setSlotsDirty(false); setSaved(true); setTimeout(() => setSaved(false), 2500)
+      return
+    }
     if (!assignment || weekNumber == null) return
     setSaving(true); setSaveError(''); setSaved(false)
     const { error } = await supabase.from('client_week_meals').upsert(
@@ -150,6 +212,22 @@ export default function ClientMealPlan() {
     setSaving(false)
     if (error) { setSaveError('Could not save. Please try again.'); return }
     setSlotsDirty(false); setSaved(true); setTimeout(() => setSaved(false), 2500)
+  }
+
+  async function toggleEveryday(enable) {
+    if (!clientData) return
+    setEverydaySaving(true)
+    if (enable) {
+      const rows = Object.keys(editedSlots).filter(k => editedSlots[k]).map(k => ({
+        client_id: clientData.id,
+        slot_type: k,
+        meal_id: editedSlots[k],
+        ingredient_overrides: ingredientOverrides[k] || {},
+      }))
+      if (rows.length) await supabase.from('client_everyday_meals').upsert(rows, { onConflict: 'client_id,slot_type' })
+    }
+    await supabase.from('clients').update({ everyday_meals_enabled: enable }).eq('id', clientData.id)
+    window.location.reload()
   }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
@@ -179,19 +257,46 @@ export default function ClientMealPlan() {
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Your weekly meals and daily targets.</p>
       </div>
 
-      {/* Week banner */}
-      <div className="flex items-center gap-4 p-4 rounded-2xl bg-brand-50 dark:bg-brand-900/20">
-        <div className="w-14 h-14 rounded-xl bg-brand-500 flex flex-col items-center justify-center flex-shrink-0">
-          <span className="text-2xl font-bold text-white leading-none">{personalWeek ?? weekNumber}</span>
-          <span className="text-xs text-brand-100 uppercase tracking-wide">Week</span>
+      {/* Everyday meals toggle */}
+      <div className="card flex items-center gap-4">
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">Eat the same meals every day</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            {everyday
+              ? 'On — these meals repeat every day. Swap one out any time; your coach will check the macros still work.'
+              : "Turn this on if you'd rather have one fixed set of meals instead of a different plan each week."}
+          </p>
         </div>
-        <div>
-          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Week {personalWeek ?? weekNumber} of your plan</p>
-          {assignment.calorie_target && (
-            <p className="text-sm text-gray-500 dark:text-gray-400">{assignment.calorie_target} kcal/day target</p>
-          )}
-        </div>
+        <button
+          onClick={() => toggleEveryday(!everyday)}
+          disabled={everydaySaving}
+          className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors ${everyday ? 'bg-brand-500' : 'bg-gray-300 dark:bg-gray-700'}`}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${everyday ? 'translate-x-5' : ''}`} />
+        </button>
       </div>
+
+      {/* Week banner */}
+      {everyday ? (
+        assignment.calorie_target && (
+          <div className="flex items-center gap-4 p-4 rounded-2xl bg-brand-50 dark:bg-brand-900/20">
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{assignment.calorie_target} kcal/day target</p>
+          </div>
+        )
+      ) : (
+        <div className="flex items-center gap-4 p-4 rounded-2xl bg-brand-50 dark:bg-brand-900/20">
+          <div className="w-14 h-14 rounded-xl bg-brand-500 flex flex-col items-center justify-center flex-shrink-0">
+            <span className="text-2xl font-bold text-white leading-none">{personalWeek ?? weekNumber}</span>
+            <span className="text-xs text-brand-100 uppercase tracking-wide">Week</span>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Week {personalWeek ?? weekNumber} of your plan</p>
+            {assignment.calorie_target && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">{assignment.calorie_target} kcal/day target</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Coach's weekly message */}
       {coachDelivery?.coach_notes && (
@@ -233,6 +338,7 @@ export default function ClientMealPlan() {
                   onSwap={handleSwapOpen}
                   onViewRecipe={setRecipeModal}
                   ingredientLib={ingredientLib}
+                  swapCtx={swapCtx}
                 />
               ))}
             </div>
@@ -314,6 +420,7 @@ export default function ClientMealPlan() {
           onClose={() => setRecipeModal(null)}
           onSwap={(slotKey, label, cat) => { setRecipeModal(null); setSwapModal({ slotKey, label, cat }) }}
           onRevert={handleRevert}
+          swapCtx={swapCtx}
         />
       )}
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { applyDislikeSwaps } from '../lib/mealSwaps'
 
 /**
  * Shared meal-plan display components and helpers.
@@ -89,27 +90,40 @@ export function sumIngredientMacros(ingredients) {
   )
 }
 
-export function mealMacros(mealId, mealMap, tier, overridesForSlot) {
+// swapCtx (optional): { dislikes, ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike } — when
+// given, any disliked ingredient this client has a saved swap rule for is substituted before macros
+// are summed, so the client's own plan and the coach's delivery panel never show something they
+// dislike once a rule for it exists (previously only the coach's per-client editor knew about dislikes
+// at all, and only there could a coach fix them one at a time by hand).
+export function mealMacros(mealId, mealMap, tier, overridesForSlot, swapCtx) {
   if (!mealId || !mealMap[mealId]) return null
   const meal = mealMap[mealId]
+  const hasDislikes = !!swapCtx?.dislikes?.length
   if (tier) {
     const v = (meal.meal_tier_versions || []).find(v => v.calorie_tier === tier)
     if (v) {
-      if (!hasAnyOverride(overridesForSlot)) return { cal: parseFloat(v.calories) || 0, prot: parseFloat(v.protein_g) || 0, carb: parseFloat(v.carbs_g) || 0, fat: parseFloat(v.fat_g) || 0 }
-      return sumIngredientMacros(applyIngredientOverrides(v.meal_tier_ingredients || [], overridesForSlot))
+      if (!hasAnyOverride(overridesForSlot) && !hasDislikes) return { cal: parseFloat(v.calories) || 0, prot: parseFloat(v.protein_g) || 0, carb: parseFloat(v.carbs_g) || 0, fat: parseFloat(v.fat_g) || 0 }
+      return sumIngredientMacros(getIngredients(meal, tier, overridesForSlot, swapCtx))
     }
   }
-  return sumIngredientMacros(applyIngredientOverrides(meal.meal_ingredients || [], overridesForSlot))
+  return sumIngredientMacros(getIngredients(meal, tier, overridesForSlot, swapCtx))
 }
 
-export function getIngredients(meal, tier, overrides) {
+export function getIngredients(meal, tier, overrides, swapCtx) {
   if (!meal) return []
   let base = meal.meal_ingredients || []
   if (tier) {
     const v = (meal.meal_tier_versions || []).find(v => v.calorie_tier === tier)
     if (v) base = v.meal_tier_ingredients || []
   }
-  return applyIngredientOverrides(base, overrides)
+  let ingredients = applyIngredientOverrides(base, overrides)
+  if (swapCtx?.dislikes?.length) {
+    const { ingredients: swapped } = applyDislikeSwaps(
+      ingredients, swapCtx.dislikes, meal.id, swapCtx.ingredientSwapsByDislike, swapCtx.mealSwapOptionsByMealAndDislike
+    )
+    ingredients = swapped
+  }
+  return ingredients
 }
 
 export function addMacros(a, b) {
@@ -131,10 +145,10 @@ export function formatAmount(ing, ingredientLib) {
 
 // ─── Meal card ────────────────────────────────────────────────────────────────
 
-export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, mealMap, mealsByCategory, tier, overrides, onSwap, onViewRecipe, ingredientLib, onRevert, onRemove }) {
+export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, mealMap, mealsByCategory, tier, overrides, onSwap, onViewRecipe, ingredientLib, onRevert, onRemove, swapCtx }) {
   const meal = mealId ? mealMap[mealId] : null
-  const ingredients = meal ? getIngredients(meal, tier, overrides) : []
-  const macros = mealMacros(mealId, mealMap, tier, overrides)
+  const ingredients = meal ? getIngredients(meal, tier, overrides, swapCtx) : []
+  const macros = mealMacros(mealId, mealMap, tier, overrides, swapCtx)
   const isCustom = (mealId || null) !== (templateMealId || null)
 
   return (
@@ -241,7 +255,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
   const [prepDays, setPrepDays] = useState(null)
@@ -249,8 +263,8 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
   const mealId = editedSlots[slotKey]
   const meal = mealId ? mealMap[mealId] : null
   const overrides = ingredientOverrides[slotKey]
-  const ingredients = meal ? getIngredients(meal, tier, overrides) : []
-  const macros = mealMacros(mealId, mealMap, tier, overrides)
+  const ingredients = meal ? getIngredients(meal, tier, overrides, swapCtx) : []
+  const macros = mealMacros(mealId, mealMap, tier, overrides, swapCtx)
   const isCustom = (mealId || null) !== ((templateSlots[slotKey]) || null)
   const slotDef = ALL_SLOT_DEFS.find(s => s.key === slotKey)
 

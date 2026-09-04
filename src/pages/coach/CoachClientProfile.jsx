@@ -9,6 +9,9 @@ import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
+import { getMealConflicts, findSafeMeal, findSafeAlternative } from '../../lib/mealSwaps'
+import DislikePicker from '../../components/DislikePicker'
+import SwapRulePicker from '../../components/SwapRulePicker'
 
 const TABS = ['Overview', 'Meal Plan', 'Training', 'Daily Plan', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
 
@@ -477,7 +480,7 @@ function OverviewTab({ client, onSaved }) {
     is_paused: client.is_paused || false,
     collect_measurements: client.collect_measurements || false,
     allergies: client.allergies || [],
-    dislikes: (client.dislikes || []).join(', '),
+    dislikes: client.dislikes || [],
     // Personal info
     phone: client.phone || '',
     date_of_birth: client.date_of_birth || '',
@@ -551,7 +554,7 @@ function OverviewTab({ client, onSaved }) {
       is_paused: form.is_paused,
       collect_measurements: form.collect_measurements,
       allergies: form.allergies,
-      dislikes: form.dislikes ? form.dislikes.split(',').map(s => s.trim()).filter(Boolean) : [],
+      dislikes: form.dislikes || [],
       phone: form.phone || null,
       date_of_birth: form.date_of_birth || null,
       height_cm: form.height_cm ? parseFloat(form.height_cm) : null,
@@ -737,16 +740,7 @@ function OverviewTab({ client, onSaved }) {
         </div>
         <div>
           <label className="label">Dislikes / Intolerances</label>
-          <input
-            className="input"
-            type="text"
-            value={form.dislikes}
-            onChange={e => set('dislikes', e.target.value)}
-            placeholder="e.g. mushrooms, olives, broccoli (comma-separated)"
-          />
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-            Partial ingredient name match — e.g. "mushroom" flags any ingredient containing that word
-          </p>
+          <DislikePicker coachId={client.coach_id} value={form.dislikes} onChange={v => set('dislikes', v)} />
         </div>
       </div>
 
@@ -1057,91 +1051,9 @@ const MEAL_SLOTS = [
 ]
 
 // ─── Food restriction helpers ──────────────────────────────────────────────────
-
-
-const ALLERGEN_KEYWORDS = {
-  dairy:     ['milk', 'cheese', 'yogurt', 'yoghurt', 'cream', 'butter', 'whey', 'casein',
-               'lactose', 'cheddar', 'mozzarella', 'feta', 'brie', 'ricotta', 'mascarpone',
-               'skyr', 'creme', 'crème', 'quark', 'fromage'],
-  gluten:    ['wheat', 'flour', 'bread', 'pasta', 'oat', 'oats', 'barley', 'rye', 'semolina',
-               'spelt', 'couscous', 'bulgur', 'wrap', 'tortilla', 'bagel', 'sourdough',
-               'naan', 'pita', 'cracker', 'biscuit', 'malt'],
-  nuts:      ['almond', 'cashew', 'walnut', 'pecan', 'pistachio', 'hazelnut', 'brazil nut',
-               'macadamia', 'pine nut', 'mixed nuts', 'tree nut'],
-  peanuts:   ['peanut', 'peanut butter', 'groundnut'],
-  shellfish: ['prawn', 'shrimp', 'crab', 'lobster', 'scallop', 'clam', 'mussel', 'oyster',
-               'crayfish', 'langoustine', 'squid', 'octopus'],
-  fish:      ['salmon', 'tuna', 'cod', 'haddock', 'tilapia', 'sea bass', 'mackerel', 'trout',
-               'anchovy', 'sardine', 'halibut', 'basa', 'pollock', 'plaice', 'herring'],
-  eggs:      ['egg'],
-  soy:       ['soy', 'soya', 'tofu', 'edamame', 'tempeh', 'miso'],
-  sesame:    ['sesame', 'tahini'],
-}
-
-function ingredientMatchesRestriction(ingName, restriction) {
-  const lower = ingName.toLowerCase()
-  const keywords = ALLERGEN_KEYWORDS[restriction] || [restriction.toLowerCase()]
-  return keywords.some(kw => lower.includes(kw))
-}
-
-export function getMealConflicts(meal, tier, allergies, dislikes) {
-  if (!meal) return { allergens: [], dislikes: [] }
-  const tierVersion = tier ? meal.meal_tier_versions?.find(v => v.calorie_tier === tier) : null
-  // Use tier ingredients for display; always look up the base meal_ingredients.id for removal
-  const displayIngs = tierVersion?.meal_tier_ingredients || meal.meal_ingredients || []
-  const baseIngs    = meal.meal_ingredients || []
-
-  const allergenHits = [], dislikeHits = []
-
-  for (const ing of displayIngs) {
-    // Find the matching base ingredient so we have the correct id for override removal
-    const base = baseIngs.find(b =>
-      b.name === ing.name ||
-      (b.ingredient_id && ing.ingredient_id && b.ingredient_id === ing.ingredient_id)
-    )
-    const removeId = base?.id ?? ing.id
-    const alternativeIds = base?.alternative_ingredient_ids || []
-    const quantity_g = ing.quantity_g ?? base?.quantity_g ?? 0
-
-    for (const allergen of (allergies || [])) {
-      if (ingredientMatchesRestriction(ing.name, allergen)) {
-        if (!allergenHits.find(h => h.allergen === allergen && h.ingredientName === ing.name)) {
-          allergenHits.push({ allergen, ingredientName: ing.name, removeId, quantity_g, alternativeIds })
-        }
-      }
-    }
-    for (const dislike of (dislikes || [])) {
-      if (dislike && ing.name.toLowerCase().includes(dislike.toLowerCase())) {
-        if (!dislikeHits.find(h => h.dislike === dislike && h.ingredientName === ing.name)) {
-          dislikeHits.push({ dislike, ingredientName: ing.name, removeId, quantity_g, alternativeIds })
-        }
-      }
-    }
-  }
-
-  return { allergens: allergenHits, dislikes: dislikeHits }
-}
-
-function findSafeMeal(category, excludeId, allergies, dislikes, mealMap, mealsByCategory, tier) {
-  const options = mealsByCategory[category] || []
-  return options.find(m => {
-    if (m.id === excludeId) return false
-    const { allergens, dislikes: dl } = getMealConflicts(m, tier, allergies, dislikes)
-    return allergens.length === 0 && dl.length === 0
-  }) || null
-}
-
-function findSafeAlternative(hit, allergies, dislikes, library) {
-  for (const altId of (hit.alternativeIds || [])) {
-    const libIng = library.find(l => l.id === altId)
-    if (!libIng) continue
-    const clashes =
-      (allergies || []).some(a => ingredientMatchesRestriction(libIng.name, a)) ||
-      (dislikes  || []).some(d => d && libIng.name.toLowerCase().includes(d.toLowerCase()))
-    if (!clashes) return libIng
-  }
-  return null
-}
+// getMealConflicts/findSafeMeal/findSafeAlternative now live in src/lib/mealSwaps.js
+// so the client's own meal plan and the coach's delivery panel can use the same
+// conflict-detection logic instead of only this editor knowing about it.
 
 // The client eats one option per category per day, not both — these are the two
 // interchangeable combinations the daily totals are built from.
@@ -1248,6 +1160,16 @@ function mealMacros(mealId, mealMap, tier, overridesForSlot) {
     }
   }
   return sumIngredientMacros(applyIngredientOverrides(mealMap[mealId].meal_ingredients || [], overridesForSlot))
+}
+
+// The actual ingredient list currently shown for this slot (tier version if one exists, with this
+// client's overrides applied) — used as the base when saving a per-meal standard swap.
+function getResolvedIngredients(mealId, mealMap, tier, overridesForSlot) {
+  if (!mealId || !mealMap[mealId]) return []
+  const meal = mealMap[mealId]
+  const tierVersion = tier ? (meal.meal_tier_versions || []).find(v => v.calorie_tier === tier) : null
+  const base = tierVersion ? (tierVersion.meal_tier_ingredients || []) : (meal.meal_ingredients || [])
+  return applyIngredientOverrides(base, overridesForSlot)
 }
 
 // Factory for the add/remove/quantity-change handlers shared by rotating slots and static meals —
@@ -1599,6 +1521,8 @@ function MealPlanTab({ client, coachId }) {
   const [library, setLibrary] = useState([])
   const [ingredientOverrides, setIngredientOverrides] = useState({})
   const [expandedSlots, setExpandedSlots] = useState(new Set())
+  const [openSwapRule, setOpenSwapRule] = useState(null) // { slotKey, dislike, removeId, quantity_g }
+  const [swapRuleSaved, setSwapRuleSaved] = useState('')
   const [staticEdits, setStaticEdits] = useState({ preworkout_meal_id: null, evening_snack_meal_id: null })
   const [staticFlags, setStaticFlags] = useState({ preworkout_static: false, evening_snack_static: false })
   const [staticDirty, setStaticDirty] = useState(false)
@@ -1612,6 +1536,36 @@ function MealPlanTab({ client, coachId }) {
   const [showOverride, setShowOverride] = useState(false)
   const [overrideWeek, setOverrideWeek] = useState('')
   const [pastAssignments, setPastAssignments] = useState([])
+  const [mealSwapAcks, setMealSwapAcks] = useState([])
+  const [everydayReviews, setEverydayReviews] = useState([])
+
+  async function loadMealSwapAcks() {
+    const [{ data: acks }, { data: everydayRows }] = await Promise.all([
+      supabase
+        .from('client_meal_swap_acks')
+        .select('id, meal_id, dislike_name, resolution, meals(name)')
+        .eq('client_id', client.id)
+        .eq('acknowledged', false)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('client_everyday_meals')
+        .select('id, slot_type, meals(name)')
+        .eq('client_id', client.id)
+        .eq('needs_coach_review', true),
+    ])
+    setMealSwapAcks(acks || [])
+    setEverydayReviews(everydayRows || [])
+  }
+
+  async function acknowledgeMealSwap(id) {
+    await supabase.from('client_meal_swap_acks').update({ acknowledged: true }).eq('id', id)
+    setMealSwapAcks(prev => prev.filter(r => r.id !== id))
+  }
+
+  async function acknowledgeEverydayReview(id) {
+    await supabase.from('client_everyday_meals').update({ needs_coach_review: false }).eq('id', id)
+    setEverydayReviews(prev => prev.filter(r => r.id !== id))
+  }
 
   async function loadWeekSlots(asgn, weekNum, planGroupId) {
     // If a coach has forked this client's exact calorie target into its own version of the plan
@@ -1786,7 +1740,7 @@ function MealPlanTab({ client, coachId }) {
     })
   }
 
-  useEffect(() => { load() }, [client.id])
+  useEffect(() => { load(); loadMealSwapAcks() }, [client.id])
 
   const globalWeek = planGroup?.current_week ?? null
   const effectiveWeek = assignment?.week_override ?? globalWeek
@@ -1962,6 +1916,39 @@ function MealPlanTab({ client, coachId }) {
   return (
     <div className="space-y-5 max-w-2xl">
 
+      {(mealSwapAcks.length > 0 || everydayReviews.length > 0) && (
+        <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 space-y-2">
+          {mealSwapAcks.map(row => (
+            <div key={row.id} className="flex items-center justify-between gap-3">
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                {row.resolution === 'needs_review'
+                  ? <><span className="font-medium">{row.meals?.name || 'A meal'}</span> needs a swap rule for "{row.dislike_name}" — no fix defined yet</>
+                  : <><span className="font-medium">{row.meals?.name || 'A meal'}</span> was auto-swapped for "{row.dislike_name}" — check the macros still work</>}
+              </p>
+              <button
+                onClick={() => acknowledgeMealSwap(row.id)}
+                className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200 whitespace-nowrap flex-shrink-0"
+              >
+                Got it
+              </button>
+            </div>
+          ))}
+          {everydayReviews.map(row => (
+            <div key={row.id} className="flex items-center justify-between gap-3">
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                Client changed their everyday <span className="font-medium">{row.meals?.name || 'meal'}</span> — check it still fits their daily macros
+              </p>
+              <button
+                onClick={() => acknowledgeEverydayReview(row.id)}
+                className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200 whitespace-nowrap flex-shrink-0"
+              >
+                Got it
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {!assignment && !showForm && (
         <div className="card text-center py-12">
           <p className="text-gray-400 dark:text-gray-500 text-sm mb-4">No meal plan assigned yet.</p>
@@ -2081,6 +2068,11 @@ function MealPlanTab({ client, coachId }) {
               </button>
             </div>
 
+            {swapRuleSaved && (
+              <div className="px-4 py-2 bg-green-50 dark:bg-green-900/10 border-b border-green-100 dark:border-green-900/20">
+                <p className="text-xs font-medium text-green-700 dark:text-green-400">{swapRuleSaved}</p>
+              </div>
+            )}
             <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
               {MEAL_SLOTS.map(slot => {
                 const currentId = editedSlots[slot.key] || ''
@@ -2165,32 +2157,59 @@ function MealPlanTab({ client, coachId }) {
                         })}
                         {conflicts.dislikes.map(d => {
                           const safeAlt = findSafeAlternative(d, clientAllergies, clientDislikes, library)
+                          const ruleOpen = openSwapRule && openSwapRule.slotKey === slot.key && openSwapRule.dislike === d.dislike
                           return (
-                            <div key={d.dislike + d.ingredientName} className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs text-amber-600 dark:text-amber-400 flex-1">
-                                <span className="font-medium">Disliked</span> — {d.ingredientName}
-                              </span>
-                              {safeAlt && (
+                            <div key={d.dislike + d.ingredientName}>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs text-amber-600 dark:text-amber-400 flex-1">
+                                  <span className="font-medium">Disliked</span> — {d.ingredientName}
+                                </span>
+                                {safeAlt && (
+                                  <button
+                                    onClick={() => swapIngredient(slot.key, d.removeId, d.quantity_g, safeAlt)}
+                                    className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-2 py-0.5 rounded transition-colors"
+                                  >
+                                    Swap for {safeAlt.name}
+                                  </button>
+                                )}
                                 <button
-                                  onClick={() => swapIngredient(slot.key, d.removeId, d.quantity_g, safeAlt)}
-                                  className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-2 py-0.5 rounded transition-colors"
+                                  onClick={() => removeDislikedIngredient(slot.key, d.removeId)}
+                                  className="text-xs border border-amber-400 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 px-2 py-0.5 rounded transition-colors"
                                 >
-                                  Swap for {safeAlt.name}
+                                  Remove
                                 </button>
-                              )}
-                              <button
-                                onClick={() => removeDislikedIngredient(slot.key, d.removeId)}
-                                className="text-xs border border-amber-400 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 px-2 py-0.5 rounded transition-colors"
-                              >
-                                Remove
-                              </button>
-                              {canSwap && (
+                                {canSwap && (
+                                  <button
+                                    onClick={() => autoSwapMeal(slot.key, slot.cat)}
+                                    className="text-xs text-amber-700 dark:text-amber-300 hover:underline"
+                                  >
+                                    Swap meal
+                                  </button>
+                                )}
                                 <button
-                                  onClick={() => autoSwapMeal(slot.key, slot.cat)}
+                                  onClick={() => setOpenSwapRule(ruleOpen ? null : { slotKey: slot.key, dislike: d.dislike, removeId: d.removeId, quantity_g: d.quantity_g })}
                                   className="text-xs text-amber-700 dark:text-amber-300 hover:underline"
                                 >
-                                  Swap meal
+                                  {ruleOpen ? 'Cancel' : 'Set up a swap rule…'}
                                 </button>
+                              </div>
+                              {ruleOpen && (
+                                <SwapRulePicker
+                                  clientId={client.id}
+                                  dislikeName={d.dislike}
+                                  mealId={currentId}
+                                  mealName={mealMap[currentId]?.name || 'this meal'}
+                                  removeId={d.removeId}
+                                  originalQty={d.quantity_g}
+                                  ingredients={getResolvedIngredients(currentId, mealMap, tier, slotOverrides)}
+                                  library={library}
+                                  onClose={() => setOpenSwapRule(null)}
+                                  onSaved={() => {
+                                    setOpenSwapRule(null)
+                                    setSwapRuleSaved('Saved — this will auto-apply on the client\'s meal plan from now on.')
+                                    setTimeout(() => setSwapRuleSaved(''), 4000)
+                                  }}
+                                />
                               )}
                             </div>
                           )

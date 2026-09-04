@@ -104,7 +104,7 @@ export default function CoachDashboard() {
         }
 
         if (clientIds.length > 0) {
-          const [{ data: checkinRows }, { data: resolvedRows }] = await Promise.all([
+          const [{ data: checkinRows }, { data: resolvedRows }, { data: mealFlagRows }, { data: everydayRows }] = await Promise.all([
             supabase
               .from('client_checkins')
               .select('client_id, week_number, energy_level, sleep_quality, food_adherence, gym_adherence, submitted_at, updated_at')
@@ -116,6 +116,16 @@ export default function CoachDashboard() {
               .in('client_id', clientIds)
               .eq('status', 'resolved')
               .eq('coach_seen_resolved', false),
+            supabase
+              .from('client_meal_swap_acks')
+              .select('client_id, dislike_name, resolution, meals(name)')
+              .in('client_id', clientIds)
+              .eq('acknowledged', false),
+            supabase
+              .from('client_everyday_meals')
+              .select('client_id, slot_type, meals(name)')
+              .in('client_id', clientIds)
+              .eq('needs_coach_review', true),
           ])
 
           const checkinsByClient = {}
@@ -148,6 +158,19 @@ export default function CoachDashboard() {
           })
 
           ;(resolvedRows || []).forEach(r => flag(r.client_id, { text: r.label, icon: 'check', tone: 'green' }))
+
+          ;(mealFlagRows || []).forEach(r => {
+            const mealName = r.meals?.name || 'A meal'
+            if (r.resolution === 'needs_review') {
+              flag(r.client_id, { text: `${mealName} needs a swap for "${r.dislike_name}"`, tone: 'amber' })
+            } else {
+              flag(r.client_id, { text: `${mealName} auto-swapped for "${r.dislike_name}"`, tone: 'gray' })
+            }
+          })
+
+          ;(everydayRows || []).forEach(r => {
+            flag(r.client_id, { text: `Everyday ${(r.meals?.name) ? r.meals.name : 'meal'} changed — check macros`, tone: 'amber' })
+          })
         }
 
         setAttention(Object.values(attentionMap))

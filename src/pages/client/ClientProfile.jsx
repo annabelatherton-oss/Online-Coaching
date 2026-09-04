@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
+import DislikePicker from '../../components/DislikePicker'
 
 function InfoRow({ label, value }) {
   return (
@@ -19,7 +20,7 @@ function buildInfoForm(c) {
     date_of_birth: c.date_of_birth || '',
     height_cm: c.height_cm || '',
     goal: c.goal || '',
-    dislikes: (c.dislikes || []).join(', '),
+    dislikes: c.dislikes || [],
     intake_motivators: c.intake_form?.motivators || '',
     intake_barriers: c.intake_form?.barriers || '',
     intake_health_history: c.intake_form?.health_history || '',
@@ -118,7 +119,7 @@ export default function ClientProfile() {
       date_of_birth: infoForm.date_of_birth || null,
       height_cm: infoForm.height_cm ? parseFloat(infoForm.height_cm) : null,
       goal: infoForm.goal || null,
-      dislikes: infoForm.dislikes ? infoForm.dislikes.split(',').map(s => s.trim()).filter(Boolean) : [],
+      dislikes: infoForm.dislikes || [],
       intake_form: {
         motivators: infoForm.intake_motivators || null,
         barriers: infoForm.intake_barriers || null,
@@ -219,7 +220,6 @@ export default function ClientProfile() {
               { key: 'intake_current_training', label: 'Current training' },
               { key: 'intake_cardio_preferences', label: 'Cardio preferences' },
               { key: 'intake_food_preferences', label: 'Food preferences' },
-              { key: 'dislikes', label: 'Food dislikes (comma-separated)' },
               { key: 'intake_other_info', label: 'Anything else' },
             ].map(({ key, label }) => (
               <div key={key}>
@@ -227,6 +227,10 @@ export default function ClientProfile() {
                 <textarea className="input resize-none" rows={2} value={infoForm[key]} onChange={e => setInfoForm(f => ({ ...f, [key]: e.target.value }))} placeholder="—" />
               </div>
             ))}
+            <div>
+              <label className="label">Food dislikes</label>
+              <DislikePicker coachId={clientData?.coach_id} value={infoForm.dislikes || []} onChange={v => setInfoForm(f => ({ ...f, dislikes: v }))} />
+            </div>
             <div className="flex items-center gap-3">
               <button type="submit" disabled={savingInfo} className="btn-primary">{savingInfo ? 'Saving…' : 'Save'}</button>
               <button type="button" onClick={() => setShowInfoEdit(false)} className="btn-secondary">Cancel</button>
