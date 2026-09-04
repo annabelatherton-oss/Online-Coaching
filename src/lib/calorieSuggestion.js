@@ -82,6 +82,15 @@ function recentTrend(points) {
   return { weeklyRateKg, latestWeightKg: latest.weight_kg, days, fromDate: first.recorded_at, toDate: latest.recorded_at }
 }
 
+// Pure maintenance estimate (BMR x activity, no goal adjustment) — used to suggest a starting
+// point for a client's very first week, before there's any weight trend to react to.
+export function estimateMaintenanceCalories(client, latestWeightKg) {
+  if (!client.height_cm || !client.date_of_birth || !client.activity_level || !latestWeightKg) return null
+  const age = calcAge(client.date_of_birth)
+  const bmr = calcBMR({ weightKg: latestWeightKg, heightCm: client.height_cm, age, sex: client.sex })
+  return bmr * ACTIVITY_MULTIPLIERS[client.activity_level]
+}
+
 /**
  * @param {object} client - needs height_cm, date_of_birth, sex, activity_level, goal_type
  * @param {Array} weightPoints - [{ recorded_at, weight_kg }] sorted oldest→newest

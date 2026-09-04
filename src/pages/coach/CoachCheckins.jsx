@@ -729,7 +729,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   // How far each option's actual daily macros land from the client's
   // calorie target and the coach's standard macro split for it.
   const targetCal = parseInt(calorieTarget) || 0
-  const targetMacros = targetCal > 0 ? calcStandardMacros(targetCal) : null
+  const targetMacros = targetCal > 0 ? calcStandardMacros(targetCal, client?.goal_type) : null
 
   return (
     <div className="space-y-0">

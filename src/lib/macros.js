@@ -1,5 +1,18 @@
-// Standard daily macro split (% of total calories), applied by default to every client.
+// Standard daily macro split (% of total calories) — used when a client has no goal phase set.
 export const MACRO_SPLIT = { carbs: 40, protein: 35, fat: 25 }
+
+// Default split per goal phase — auto-applied when a coach sets/changes a client's phase on the
+// Overview tab, but still just a starting point: a coach can edit the %s per client afterwards.
+export const GOAL_MACRO_SPLITS = {
+  cut: { carbs: 40, protein: 40, fat: 20 },
+  maintain: { carbs: 40, protein: 35, fat: 25 },
+  bulk: { carbs: 45, protein: 30, fat: 25 },
+}
+
+export function splitForGoal(goalType) {
+  return GOAL_MACRO_SPLITS[goalType] ? { ...GOAL_MACRO_SPLITS[goalType] } : { ...MACRO_SPLIT }
+}
+
 const KCAL_PER_G = { carbs: 4, protein: 4, fat: 9 }
 
 export function calcMacrosFromSplit(calories, splitPct) {
@@ -11,8 +24,8 @@ export function calcMacrosFromSplit(calories, splitPct) {
   }
 }
 
-export function calcStandardMacros(calories) {
-  return calcMacrosFromSplit(calories, MACRO_SPLIT)
+export function calcStandardMacros(calories, goalType) {
+  return calcMacrosFromSplit(calories, splitForGoal(goalType))
 }
 
 // Back-calculates the carbs/protein/fat % split (of calories) from saved gram values,

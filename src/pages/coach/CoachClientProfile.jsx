@@ -4,13 +4,13 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
-import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
+import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams, splitForGoal } from '../../lib/macros'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import { getMealConflicts, findSafeMeal, findSafeAlternative } from '../../lib/mealSwaps'
-import { ACTIVITY_LABELS, GOAL_LABELS } from '../../lib/calorieSuggestion'
+import { ACTIVITY_LABELS, GOAL_LABELS, estimateMaintenanceCalories } from '../../lib/calorieSuggestion'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import DislikePicker from '../../components/DislikePicker'
 import SwapRulePicker from '../../components/SwapRulePicker'
@@ -536,8 +536,19 @@ function OverviewTab({ client, onSaved }) {
   }
 
   function resetToStandardSplit() {
-    setSplit({ ...MACRO_SPLIT })
-    applySplit(form.current_calories, MACRO_SPLIT)
+    const preset = splitForGoal(form.goal_type)
+    setSplit(preset)
+    applySplit(form.current_calories, preset)
+  }
+
+  // Changing the goal phase auto-applies its default split — a coach can still edit the
+  // %s afterwards for this client, that edit just won't be overwritten again until the
+  // phase changes (or they click "Use default split") once more.
+  function handleGoalTypeChange(value) {
+    set('goal_type', value)
+    const preset = splitForGoal(value)
+    setSplit(preset)
+    applySplit(form.current_calories, preset)
   }
 
   const splitTotal = (Number(split.carbs) || 0) + (Number(split.protein) || 0) + (Number(split.fat) || 0)
@@ -639,11 +650,11 @@ function OverviewTab({ client, onSaved }) {
         </div>
         <div>
           <label className="label">Current phase</label>
-          <select className="input" value={form.goal_type} onChange={e => set('goal_type', e.target.value)}>
+          <select className="input" value={form.goal_type} onChange={e => handleGoalTypeChange(e.target.value)}>
             <option value="">—</option>
             {Object.entries(GOAL_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
           </select>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Drives the calorie-target suggestion on the Meal Plan tab based on their recent weigh-ins.</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Drives the calorie-target suggestion on the Meal Plan tab, and sets the default macro split below.</p>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -685,7 +696,9 @@ function OverviewTab({ client, onSaved }) {
             onClick={resetToStandardSplit}
             className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
           >
-            Use standard split (40/35/25)
+            {form.goal_type
+              ? `Use ${GOAL_LABELS[form.goal_type].toLowerCase()} default (${splitForGoal(form.goal_type).carbs}/${splitForGoal(form.goal_type).protein}/${splitForGoal(form.goal_type).fat})`
+              : 'Use standard split (40/35/25)'}
           </button>
         </div>
         <div>
@@ -1718,6 +1731,19 @@ function MealPlanTab({ client, coachId }) {
         evening_snack_static: !!asgn.evening_snack_static,
       })
       if (pg) await loadWeekSlots(asgn, asgn.week_override ?? pg.current_week, pg.id)
+    } else {
+      // No plan yet — a client's very first week should start at maintenance, not a
+      // cut/bulk target, so the estimate here deliberately ignores goal_type.
+      const [{ data: weightRows }, { data: checkinRows }] = await Promise.all([
+        supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', client.id).order('recorded_at', { ascending: false }).limit(1),
+        supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', client.id).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
+      ])
+      const latestWeight = weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null
+      const maintenance = latestWeight ? estimateMaintenanceCalories(client, latestWeight) : null
+      if (maintenance) {
+        const nearestTier = CALORIE_TIERS.reduce((best, t) => Math.abs(t - maintenance) < Math.abs(best - maintenance) ? t : best, CALORIE_TIERS[0])
+        setForm(f => f.calorie_target === '' ? { ...f, calorie_target: nearestTier } : f)
+      }
     }
     setLoading(false)
   }
@@ -2090,6 +2116,9 @@ function MealPlanTab({ client, coachId }) {
                 <option value="">Select a tier…</option>
                 {CALORIE_TIERS.map(t => <option key={t} value={t}>{t} kcal</option>)}
               </select>
+              {!assignment && form.calorie_target && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Estimated maintenance for week 1 — adjust from here based on their weigh-ins.</p>
+              )}
             </div>
             <div>
               <label className="label">Starting week</label>

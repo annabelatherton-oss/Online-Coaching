@@ -18,7 +18,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
     current_protein: '',
     current_carbs: '',
     current_fat: '',
-    access_weeks: 4,
+    access_weeks: 12,
     start_date: new Date().toISOString().split('T')[0],
     tags: [],
     allergies: [],
@@ -42,7 +42,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
         current_protein: client.current_protein || '',
         current_carbs: client.current_carbs || '',
         current_fat: client.current_fat || '',
-        access_weeks: client.access_weeks || 4,
+        access_weeks: client.access_weeks || 12,
         start_date: client.start_date
           ? client.start_date.split('T')[0]
           : new Date().toISOString().split('T')[0],
@@ -62,7 +62,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
         current_protein: duplicateData.current_protein || '',
         current_carbs: duplicateData.current_carbs || '',
         current_fat: duplicateData.current_fat || '',
-        access_weeks: duplicateData.access_weeks || 4,
+        access_weeks: duplicateData.access_weeks || 12,
         tags: duplicateData.tags || [],
       }))
       setSplit(splitPercentFromGrams(
