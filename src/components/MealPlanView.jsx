@@ -589,11 +589,11 @@ export function SwapModal({ slotKey, label, currentMealId, mealMap, tier, onSele
               {visible.map(m => (
                 <button key={m.id} onClick={() => onSelect(slotKey, m.id)} className="w-full text-left px-4 py-3 rounded-xl hover:bg-pink-50 dark:hover:bg-pink-900/10 transition-colors group">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400">{m.name}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 flex-1 min-w-0 break-words">{m.name}</p>
                     <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5 capitalize">{(m.category || '').replace('_', ' ')}</span>
                   </div>
                   {m.macros && (
-                    <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5 tabular-nums">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-0.5 tabular-nums">
                       <span className="font-semibold text-gray-600 dark:text-gray-400">{Math.round(m.macros.cal)} kcal</span>
                       <span>{Math.round(m.macros.carb)}g C · {Math.round(m.macros.prot)}g P · {Math.round(m.macros.fat)}g F</span>
                     </div>
