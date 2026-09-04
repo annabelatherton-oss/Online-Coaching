@@ -1050,6 +1050,12 @@ const MEAL_SLOTS = [
   { key: 'dinner2',    label: 'Dinner B',    cat: 'dinner' },
 ]
 
+// The client's "everyday meals" section only ever uses the *1 slot keys (no A/B options —
+// it's one fixed choice per meal type), plus the two request-only slots.
+const EVERYDAY_DIRECT_SLOTS = ['breakfast1', 'lunch1', 'dinner1']
+const EVERYDAY_REQUEST_SLOTS = ['preworkout', 'evening_snack']
+const EVERYDAY_LABELS = { breakfast1: 'Breakfast', lunch1: 'Lunch', dinner1: 'Dinner', preworkout: 'Pre-workout', evening_snack: 'Evening snack' }
+
 // ─── Food restriction helpers ──────────────────────────────────────────────────
 // getMealConflicts/findSafeMeal/findSafeAlternative now live in src/lib/mealSwaps.js
 // so the client's own meal plan and the coach's delivery panel can use the same
@@ -1538,6 +1544,52 @@ function MealPlanTab({ client, coachId }) {
   const [pastAssignments, setPastAssignments] = useState([])
   const [mealSwapAcks, setMealSwapAcks] = useState([])
   const [everydayReviews, setEverydayReviews] = useState([])
+  const [everydayRows, setEverydayRows] = useState({})
+  const [everydayOverrides, setEverydayOverrides] = useState({})
+  const [everydayDirty, setEverydayDirty] = useState(false)
+  const [savingEveryday, setSavingEveryday] = useState(false)
+  const [expandedEveryday, setExpandedEveryday] = useState(new Set())
+
+  async function loadEverydayMeals() {
+    const { data } = await supabase.from('client_everyday_meals').select('*').eq('client_id', client.id)
+    const byType = {}
+    ;(data || []).forEach(r => { byType[r.slot_type] = r })
+    setEverydayRows(byType)
+    const ov = {}
+    Object.entries(byType).forEach(([k, r]) => {
+      if (r.ingredient_overrides && Object.keys(r.ingredient_overrides).length) ov[k] = r.ingredient_overrides
+    })
+    setEverydayOverrides(ov)
+    setEverydayDirty(false)
+  }
+
+  const everydayHandlers = makeOverrideHandlers(setEverydayOverrides, setEverydayDirty)
+
+  function toggleExpandedEveryday(key) {
+    setExpandedEveryday(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
+  }
+
+  async function saveEverydayOverrides() {
+    setSavingEveryday(true)
+    for (const slotKey of Object.keys(everydayRows)) {
+      const row = everydayRows[slotKey]
+      await supabase.from('client_everyday_meals').update({ ingredient_overrides: everydayOverrides[slotKey] || {}, updated_at: new Date().toISOString() }).eq('id', row.id)
+    }
+    setSavingEveryday(false)
+    await loadEverydayMeals()
+  }
+
+  async function approveEverydayRequest(row) {
+    await supabase.from('client_everyday_meals').update({ meal_id: row.requested_meal_id, requested_meal_id: null, needs_coach_review: false }).eq('id', row.id)
+    await loadEverydayMeals()
+    await loadMealSwapAcks()
+  }
+
+  async function declineEverydayRequest(row) {
+    await supabase.from('client_everyday_meals').update({ requested_meal_id: null, needs_coach_review: false }).eq('id', row.id)
+    await loadEverydayMeals()
+    await loadMealSwapAcks()
+  }
 
   async function loadMealSwapAcks() {
     const [{ data: acks }, { data: everydayRows }] = await Promise.all([
@@ -1549,7 +1601,7 @@ function MealPlanTab({ client, coachId }) {
         .order('created_at', { ascending: false }),
       supabase
         .from('client_everyday_meals')
-        .select('id, slot_type, meals(name)')
+        .select('id, slot_type, requested_meal_id, meal:meal_id(name), requested_meal:requested_meal_id(name)')
         .eq('client_id', client.id)
         .eq('needs_coach_review', true),
     ])
@@ -1740,7 +1792,7 @@ function MealPlanTab({ client, coachId }) {
     })
   }
 
-  useEffect(() => { load(); loadMealSwapAcks() }, [client.id])
+  useEffect(() => { load(); loadMealSwapAcks(); loadEverydayMeals() }, [client.id])
 
   const globalWeek = planGroup?.current_week ?? null
   const effectiveWeek = assignment?.week_override ?? globalWeek
@@ -1936,7 +1988,9 @@ function MealPlanTab({ client, coachId }) {
           {everydayReviews.map(row => (
             <div key={row.id} className="flex items-center justify-between gap-3">
               <p className="text-sm text-amber-800 dark:text-amber-300">
-                Client changed their everyday <span className="font-medium">{row.meals?.name || 'meal'}</span> — check it still fits their daily macros
+                {row.requested_meal_id
+                  ? <>Client wants to switch their everyday {EVERYDAY_LABELS[row.slot_type] || 'meal'} to <span className="font-medium">{row.requested_meal?.name || 'a different meal'}</span> — see below to approve</>
+                  : <>Client changed their everyday <span className="font-medium">{row.meal?.name || 'meal'}</span> — check it still fits their daily macros</>}
               </p>
               <button
                 onClick={() => acknowledgeEverydayReview(row.id)}
@@ -2422,6 +2476,133 @@ function MealPlanTab({ client, coachId }) {
             </div>
           )}
         </>
+      )}
+
+      {/* Everyday meals — the client's own fixed breakfast/lunch/dinner, plus any pending
+          pre-workout/evening-snack swap requests waiting on the coach's approval. */}
+      {Object.keys(everydayRows).length > 0 && (
+        <div className="card space-y-3">
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-white">Everyday Meals</h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+              The client picks their own breakfast, lunch and dinner to repeat daily — adjust portions here if needed.
+              Pre-workout and evening snack changes need your approval first.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {EVERYDAY_DIRECT_SLOTS.map(slotKey => {
+              const row = everydayRows[slotKey]
+              if (!row?.meal_id) {
+                return (
+                  <p key={slotKey} className="text-xs text-gray-400 dark:text-gray-500">
+                    <span className="uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>Not chosen yet
+                  </p>
+                )
+              }
+              const isExpanded = expandedEveryday.has(slotKey)
+              return (
+                <div key={slotKey} className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => toggleExpandedEveryday(slotKey)}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-gray-50/50 dark:hover:bg-gray-800/30"
+                  >
+                    <span className="text-sm text-gray-800 dark:text-gray-200">
+                      <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
+                      {mealMap[row.meal_id]?.name || 'Unknown meal'}
+                    </span>
+                    <svg className={`w-3.5 h-3.5 text-gray-300 dark:text-gray-600 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                  {isExpanded && (
+                    <div className="px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
+                      <TierIngredientList
+                        mealId={row.meal_id}
+                        mealMap={mealMap}
+                        tier={null}
+                        overrides={everydayOverrides[slotKey]}
+                        library={library}
+                        libraryById={libraryById}
+                        onQtyChange={(ingId, val) => everydayHandlers.changeQty(slotKey, ingId, val)}
+                        onRemove={ingId => everydayHandlers.remove(slotKey, ingId)}
+                        onRestore={ingId => everydayHandlers.restore(slotKey, ingId)}
+                        onAdd={newIng => everydayHandlers.add(slotKey, newIng)}
+                        onRemoveAdded={addedId => everydayHandlers.removeAdded(slotKey, addedId)}
+                        onRevertAll={() => everydayHandlers.revertAll(slotKey)}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {EVERYDAY_REQUEST_SLOTS.map(slotKey => {
+              const row = everydayRows[slotKey]
+              if (!row) return null
+              if (row.requested_meal_id) {
+                return (
+                  <div key={slotKey} className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 dark:bg-amber-900/10 px-3 py-2">
+                    <p className="text-sm text-amber-800 dark:text-amber-300">
+                      <span className="text-xs text-amber-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
+                      wants to switch to <span className="font-medium">{mealMap[row.requested_meal_id]?.name || 'a different meal'}</span>
+                    </p>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button onClick={() => approveEverydayRequest(row)} className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors">Approve</button>
+                      <button onClick={() => declineEverydayRequest(row)} className="text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Decline</button>
+                    </div>
+                  </div>
+                )
+              }
+              if (!row.meal_id) return null
+              const isExpanded = expandedEveryday.has(slotKey)
+              return (
+                <div key={slotKey} className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => toggleExpandedEveryday(slotKey)}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-gray-50/50 dark:hover:bg-gray-800/30"
+                  >
+                    <span className="text-sm text-gray-800 dark:text-gray-200">
+                      <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
+                      {mealMap[row.meal_id]?.name || 'Unknown meal'}
+                    </span>
+                    <svg className={`w-3.5 h-3.5 text-gray-300 dark:text-gray-600 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                  {isExpanded && (
+                    <div className="px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
+                      <TierIngredientList
+                        mealId={row.meal_id}
+                        mealMap={mealMap}
+                        tier={null}
+                        overrides={everydayOverrides[slotKey]}
+                        library={library}
+                        libraryById={libraryById}
+                        onQtyChange={(ingId, val) => everydayHandlers.changeQty(slotKey, ingId, val)}
+                        onRemove={ingId => everydayHandlers.remove(slotKey, ingId)}
+                        onRestore={ingId => everydayHandlers.restore(slotKey, ingId)}
+                        onAdd={newIng => everydayHandlers.add(slotKey, newIng)}
+                        onRemoveAdded={addedId => everydayHandlers.removeAdded(slotKey, addedId)}
+                        onRevertAll={() => everydayHandlers.revertAll(slotKey)}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {everydayDirty && (
+            <div className="flex items-center gap-3 pt-1 border-t border-gray-100 dark:border-gray-800">
+              <button onClick={saveEverydayOverrides} disabled={savingEveryday} className="btn-primary py-1.5 px-3 text-xs">
+                {savingEveryday ? 'Saving…' : 'Save quantity changes'}
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Plan history */}

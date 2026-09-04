@@ -94,7 +94,13 @@ create policy "client_meal_swap_acks_client_all" on client_meal_swap_acks
   using (client_id in (select id from clients where profile_id = auth.uid()))
   with check (client_id in (select id from clients where profile_id = auth.uid()));
 
--- ─── Everyday meals: one fixed set of meals the client eats every day ────────
+-- ─── Everyday meals: a client-picked set of meals they eat every day ─────────
+-- This is a separate, always-available section on the client's meal plan —
+-- not a mode that replaces their weekly rotating plan. Breakfast/lunch/dinner
+-- are picked directly by the client from the coach's meal database; the coach
+-- can then adjust quantities. Pre-workout and evening snack can only be
+-- *requested* by the client (requested_meal_id) — the coach approves or
+-- declines before it takes effect (meal_id).
 alter table clients add column if not exists everyday_meals_enabled boolean not null default false;
 
 create table if not exists client_everyday_meals (
@@ -102,11 +108,14 @@ create table if not exists client_everyday_meals (
   client_id             uuid        not null references clients(id) on delete cascade,
   slot_type             meal_slot_type not null,
   meal_id               uuid        references meals(id) on delete set null,
+  requested_meal_id     uuid        references meals(id) on delete set null,
   ingredient_overrides  jsonb       not null default '{}',
   needs_coach_review    boolean     not null default false,
   updated_at            timestamptz not null default now(),
   unique (client_id, slot_type)
 );
+
+alter table client_everyday_meals add column if not exists requested_meal_id uuid references meals(id) on delete set null;
 
 alter table client_everyday_meals enable row level security;
 
