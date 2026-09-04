@@ -2,6 +2,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { initAutoResizeTextareas } from './lib/autoResizeTextareas'
+
+initAutoResizeTextareas()
 
 // Apply dark mode from saved preference before first render
 const savedTheme = localStorage.getItem('theme')
