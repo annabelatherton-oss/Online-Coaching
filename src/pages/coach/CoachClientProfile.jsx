@@ -1723,7 +1723,7 @@ function MealPlanTab({ client, coachId }) {
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', false).order('created_at', { ascending: false }),
       supabase.from('meals').select(`
-        id, name, category,
+        id, name, category, photo_url, photo_position,
         meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, alternative_ingredient_ids),
         meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
           meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
@@ -1739,6 +1739,7 @@ function MealPlanTab({ client, coachId }) {
 
     const map = {}, byCat = {}
     for (const m of (mealsData || [])) {
+      if (m.photo_url) m.photo_url = supabase.storage.from('meal-photos').getPublicUrl(m.photo_url).data.publicUrl
       map[m.id] = m
       ;(byCat[m.category] = byCat[m.category] || []).push(m)
     }
@@ -2063,6 +2064,204 @@ function MealPlanTab({ client, coachId }) {
     setEditingCalorie(false)
   }
 
+  // Shared card renderer for every meal slot (breakfast/lunch/dinner rotations and the two
+  // static slots) so they all render the same way, in the same grid/block. staticFlagKey is
+  // only set for preworkout/evening_snack — that's what turns on the "Make static" button and
+  // (matching prior behaviour) skips allergen/dislike conflict checking, which never covered
+  // those two slots.
+  function renderSlotCard(slotKey, label, cat, staticFlagKey = null, staticEditKey = null) {
+    const currentId = editedSlots[slotKey] || ''
+    const meal = currentId ? mealMap[currentId] : null
+    const isExpanded = expandedSlots.has(slotKey)
+    const overridesForSlot = ingredientOverrides[slotKey]
+    const macros = mealMacros(currentId, mealMap, tier, overridesForSlot)
+    const options = mealsByCategory[cat] || []
+    const isOverridden = templateSlots[slotKey] !== undefined && (editedSlots[slotKey] || null) !== (templateSlots[slotKey] || null)
+    const hasIngredientEdits = hasAnyOverride(overridesForSlot)
+    const missingTierVersion = currentId && tier && !tierVersionExists(currentId, mealMap, tier)
+    const isStaticSlot = !!staticFlagKey
+    const isStatic = isStaticSlot && staticFlags[staticFlagKey]
+    const conflicts = isStaticSlot ? null : getMealConflicts(mealMap[currentId], tier, clientAllergies, clientDislikes)
+    const hasConflicts = !!conflicts && (conflicts.allergens.length > 0 || conflicts.dislikes.length > 0)
+    const canSwap = hasConflicts && !!findSafeMeal(cat, currentId, clientAllergies, clientDislikes, mealMap, mealsByCategory, tier)
+
+    return (
+      <div key={slotKey} className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
+        <div className="relative w-full aspect-[16/9] bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+          {meal?.photo_url ? (
+            <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+          )}
+          <span className="absolute top-2 left-2 text-xs font-semibold bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded-full backdrop-blur-sm shadow-sm">
+            {label}
+          </span>
+          {isOverridden && (
+            <span className="absolute top-2 right-2 text-xs font-semibold bg-brand-500 text-white px-2 py-0.5 rounded-full shadow-sm">Custom</span>
+          )}
+        </div>
+
+        <div className="p-3 space-y-2">
+          <select
+            className="w-full text-sm font-medium text-gray-900 dark:text-white bg-transparent border-0 p-0 focus:ring-0 cursor-pointer"
+            value={currentId}
+            onChange={e => { setEditedSlots(prev => ({ ...prev, [slotKey]: e.target.value || null })); setSlotsDirty(true) }}
+          >
+            <option value="">— None —</option>
+            {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {conflicts?.allergens.length > 0 && (
+              <span className="text-xs font-medium text-red-500" title={conflicts.allergens.map(c => `${ALLERGEN_LABELS[c.allergen]}: ${c.ingredientName}`).join(', ')}>⚠ Allergen</span>
+            )}
+            {conflicts?.dislikes.length > 0 && conflicts.allergens.length === 0 && (
+              <span className="text-xs font-medium text-amber-500" title={conflicts.dislikes.map(d => d.ingredientName).join(', ')}>⚠ Disliked</span>
+            )}
+            {hasIngredientEdits && <span className="text-xs text-blue-500" title="Ingredient quantities adjusted for this client">Adjusted</span>}
+            {missingTierVersion && <span className="text-xs text-amber-500" title={`This meal has no saved ${tier} kcal version — showing its base portion instead. Generate it in the Meal Library to fix this.`}>No {tier} kcal version</span>}
+            {currentId && macros.cal > 0 && <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums ml-auto">{Math.round(macros.cal)} kcal</span>}
+          </div>
+
+          {isStaticSlot && currentId && (
+            <button
+              onClick={() => isStatic ? useTemplateDefault(staticEditKey, staticFlagKey) : makeStatic(staticEditKey, staticFlagKey, currentId)}
+              className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
+              title={isStatic ? 'Stop pinning — revert to the plan template each week' : 'Pin this meal so it carries forward every week automatically'}
+            >
+              {isStatic ? 'Use template default' : 'Make static'}
+            </button>
+          )}
+
+          {hasConflicts && (
+            <div className="px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 space-y-1.5">
+              {conflicts.allergens.map(c => {
+                const safeAlt = findSafeAlternative(c, clientAllergies, clientDislikes, library)
+                return (
+                  <div key={c.allergen + c.ingredientName} className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-red-600 dark:text-red-400 flex-1">
+                      <span className="font-medium">{ALLERGEN_LABELS[c.allergen]}</span> — {c.ingredientName}
+                    </span>
+                    {safeAlt && (
+                      <button
+                        onClick={() => swapIngredient(slotKey, c.removeId, c.quantity_g, safeAlt)}
+                        className="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-0.5 rounded transition-colors"
+                      >
+                        Swap for {safeAlt.name}
+                      </button>
+                    )}
+                    {canSwap && (
+                      <button
+                        onClick={() => autoSwapMeal(slotKey, cat)}
+                        className="text-xs border border-red-400 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20 px-2 py-0.5 rounded transition-colors"
+                      >
+                        Swap meal
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+              {conflicts.dislikes.map(d => {
+                const safeAlt = findSafeAlternative(d, clientAllergies, clientDislikes, library)
+                const ruleOpen = openSwapRule && openSwapRule.slotKey === slotKey && openSwapRule.dislike === d.dislike
+                return (
+                  <div key={d.dislike + d.ingredientName}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-amber-600 dark:text-amber-400 flex-1">
+                        <span className="font-medium">Disliked</span> — {d.ingredientName}
+                      </span>
+                      {safeAlt && (
+                        <button
+                          onClick={() => swapIngredient(slotKey, d.removeId, d.quantity_g, safeAlt)}
+                          className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-2 py-0.5 rounded transition-colors"
+                        >
+                          Swap for {safeAlt.name}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => removeDislikedIngredient(slotKey, d.removeId)}
+                        className="text-xs border border-amber-400 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 px-2 py-0.5 rounded transition-colors"
+                      >
+                        Remove
+                      </button>
+                      {canSwap && (
+                        <button
+                          onClick={() => autoSwapMeal(slotKey, cat)}
+                          className="text-xs text-amber-700 dark:text-amber-300 hover:underline"
+                        >
+                          Swap meal
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setOpenSwapRule(ruleOpen ? null : { slotKey, dislike: d.dislike, removeId: d.removeId, quantity_g: d.quantity_g })}
+                        className="text-xs text-amber-700 dark:text-amber-300 hover:underline"
+                      >
+                        {ruleOpen ? 'Cancel' : 'Set up a swap rule…'}
+                      </button>
+                    </div>
+                    {ruleOpen && (
+                      <SwapRulePicker
+                        clientId={client.id}
+                        dislikeName={d.dislike}
+                        mealId={currentId}
+                        mealName={mealMap[currentId]?.name || 'this meal'}
+                        removeId={d.removeId}
+                        originalQty={d.quantity_g}
+                        ingredients={getResolvedIngredients(currentId, mealMap, tier, overridesForSlot)}
+                        library={library}
+                        onClose={() => setOpenSwapRule(null)}
+                        onSaved={() => {
+                          setOpenSwapRule(null)
+                          setSwapRuleSaved('Saved — this will auto-apply on the client\'s meal plan from now on.')
+                          setTimeout(() => setSwapRuleSaved(''), 4000)
+                        }}
+                      />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {currentId && (
+            <button
+              onClick={() => toggleSlot(slotKey)}
+              className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 flex items-center gap-1"
+            >
+              <svg className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              {isExpanded ? 'Hide ingredients' : 'Edit ingredients'}
+            </button>
+          )}
+
+          {isExpanded && currentId && (
+            <TierIngredientList
+              mealId={currentId}
+              mealMap={mealMap}
+              tier={tier}
+              overrides={overridesForSlot}
+              library={library}
+              libraryById={libraryById}
+              onQtyChange={(ingId, val) => slotHandlers.changeQty(slotKey, ingId, val)}
+              onRemove={ingId => slotHandlers.remove(slotKey, ingId)}
+              onRestore={ingId => slotHandlers.restore(slotKey, ingId)}
+              onAdd={newIng => slotHandlers.add(slotKey, newIng)}
+              onRemoveAdded={addedId => slotHandlers.removeAdded(slotKey, addedId)}
+              onRevertAll={() => slotHandlers.revertAll(slotKey)}
+              onToggleStatic={ing => toggleIngredientStatic(currentId, ing)}
+              onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(currentId, ing, qty)}
+            />
+          )}
+        </div>
+      </div>
+    )
+  }
+
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
   return (
@@ -2238,9 +2437,9 @@ function MealPlanTab({ client, coachId }) {
             )}
           </div>
 
-          {/* Rotating meal slots */}
-          <div className="card space-y-0 p-0 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+          {/* All meals — one block, shown as photo cards */}
+          <div className="card space-y-4">
+            <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
                   Week {effectiveWeek} meals
@@ -2253,181 +2452,19 @@ function MealPlanTab({ client, coachId }) {
             </div>
 
             {swapRuleSaved && (
-              <div className="px-4 py-2 bg-green-50 dark:bg-green-900/10 border-b border-green-100 dark:border-green-900/20">
+              <div className="px-3 py-2 rounded-lg bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/20">
                 <p className="text-xs font-medium text-green-700 dark:text-green-400">{swapRuleSaved}</p>
               </div>
             )}
-            <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
-              {MEAL_SLOTS.map(slot => {
-                const currentId = editedSlots[slot.key] || ''
-                const isExpanded = expandedSlots.has(slot.key)
-                const slotOverrides = ingredientOverrides[slot.key]
-                const macros = mealMacros(currentId, mealMap, tier, slotOverrides)
-                const options = mealsByCategory[slot.cat] || []
-                const isOverridden = templateSlots[slot.key] !== undefined && (editedSlots[slot.key] || null) !== (templateSlots[slot.key] || null)
-                const hasIngredientEdits = hasAnyOverride(slotOverrides)
-                const missingTierVersion = currentId && tier && !tierVersionExists(currentId, mealMap, tier)
-                const conflicts = getMealConflicts(mealMap[currentId], tier, clientAllergies, clientDislikes)
-                const hasConflicts = conflicts.allergens.length > 0 || conflicts.dislikes.length > 0
-                const canSwap = hasConflicts && !!findSafeMeal(slot.cat, currentId, clientAllergies, clientDislikes, mealMap, mealsByCategory, tier)
-                return (
-                  <div key={slot.key}>
-                    <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
-                      <button onClick={() => currentId && toggleSlot(slot.key)} className="flex-shrink-0">
-                        <svg className={`w-3.5 h-3.5 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''} ${!currentId ? 'opacity-0' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
-                      <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{slot.label}</span>
-                      <select
-                        className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
-                        value={currentId}
-                        onChange={e => { setEditedSlots(prev => ({ ...prev, [slot.key]: e.target.value || null })); setSlotsDirty(true) }}
-                      >
-                        <option value="">— None —</option>
-                        {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                      </select>
-                      {conflicts.allergens.length > 0 && (
-                        <span className="text-xs font-medium text-red-500 flex-shrink-0" title={conflicts.allergens.map(c => `${ALLERGEN_LABELS[c.allergen]}: ${c.ingredientName}`).join(', ')}>
-                          ⚠ Allergen
-                        </span>
-                      )}
-                      {conflicts.dislikes.length > 0 && conflicts.allergens.length === 0 && (
-                        <span className="text-xs font-medium text-amber-500 flex-shrink-0" title={conflicts.dislikes.map(d => d.ingredientName).join(', ')}>
-                          ⚠ Disliked
-                        </span>
-                      )}
-                      {isOverridden && (
-                        <span className="text-xs text-orange-500 flex-shrink-0" title="Different from the master template">Custom</span>
-                      )}
-                      {hasIngredientEdits && (
-                        <span className="text-xs text-blue-500 flex-shrink-0" title="Ingredient quantities adjusted for this client">Adjusted</span>
-                      )}
-                      {missingTierVersion && (
-                        <span className="text-xs text-amber-500 flex-shrink-0" title={`This meal has no saved ${tier} kcal version — showing its base portion instead. Generate it in the Meal Library to fix this.`}>No {tier} kcal version</span>
-                      )}
-                      {currentId && macros.cal > 0 && (
-                        <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">{Math.round(macros.cal)} kcal</span>
-                      )}
-                    </div>
 
-                    {hasConflicts && (
-                      <div className="ml-9 mr-3 mb-1 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 space-y-1.5">
-                        {conflicts.allergens.map(c => {
-                          const safeAlt = findSafeAlternative(c, clientAllergies, clientDislikes, library)
-                          return (
-                            <div key={c.allergen + c.ingredientName} className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs text-red-600 dark:text-red-400 flex-1">
-                                <span className="font-medium">{ALLERGEN_LABELS[c.allergen]}</span> — {c.ingredientName}
-                              </span>
-                              {safeAlt && (
-                                <button
-                                  onClick={() => swapIngredient(slot.key, c.removeId, c.quantity_g, safeAlt)}
-                                  className="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-0.5 rounded transition-colors"
-                                >
-                                  Swap for {safeAlt.name}
-                                </button>
-                              )}
-                              {canSwap && (
-                                <button
-                                  onClick={() => autoSwapMeal(slot.key, slot.cat)}
-                                  className="text-xs border border-red-400 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/20 px-2 py-0.5 rounded transition-colors"
-                                >
-                                  Swap meal
-                                </button>
-                              )}
-                            </div>
-                          )
-                        })}
-                        {conflicts.dislikes.map(d => {
-                          const safeAlt = findSafeAlternative(d, clientAllergies, clientDislikes, library)
-                          const ruleOpen = openSwapRule && openSwapRule.slotKey === slot.key && openSwapRule.dislike === d.dislike
-                          return (
-                            <div key={d.dislike + d.ingredientName}>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs text-amber-600 dark:text-amber-400 flex-1">
-                                  <span className="font-medium">Disliked</span> — {d.ingredientName}
-                                </span>
-                                {safeAlt && (
-                                  <button
-                                    onClick={() => swapIngredient(slot.key, d.removeId, d.quantity_g, safeAlt)}
-                                    className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-2 py-0.5 rounded transition-colors"
-                                  >
-                                    Swap for {safeAlt.name}
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => removeDislikedIngredient(slot.key, d.removeId)}
-                                  className="text-xs border border-amber-400 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20 px-2 py-0.5 rounded transition-colors"
-                                >
-                                  Remove
-                                </button>
-                                {canSwap && (
-                                  <button
-                                    onClick={() => autoSwapMeal(slot.key, slot.cat)}
-                                    className="text-xs text-amber-700 dark:text-amber-300 hover:underline"
-                                  >
-                                    Swap meal
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => setOpenSwapRule(ruleOpen ? null : { slotKey: slot.key, dislike: d.dislike, removeId: d.removeId, quantity_g: d.quantity_g })}
-                                  className="text-xs text-amber-700 dark:text-amber-300 hover:underline"
-                                >
-                                  {ruleOpen ? 'Cancel' : 'Set up a swap rule…'}
-                                </button>
-                              </div>
-                              {ruleOpen && (
-                                <SwapRulePicker
-                                  clientId={client.id}
-                                  dislikeName={d.dislike}
-                                  mealId={currentId}
-                                  mealName={mealMap[currentId]?.name || 'this meal'}
-                                  removeId={d.removeId}
-                                  originalQty={d.quantity_g}
-                                  ingredients={getResolvedIngredients(currentId, mealMap, tier, slotOverrides)}
-                                  library={library}
-                                  onClose={() => setOpenSwapRule(null)}
-                                  onSaved={() => {
-                                    setOpenSwapRule(null)
-                                    setSwapRuleSaved('Saved — this will auto-apply on the client\'s meal plan from now on.')
-                                    setTimeout(() => setSwapRuleSaved(''), 4000)
-                                  }}
-                                />
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-
-                    {isExpanded && currentId && (
-                      <div className="ml-9 px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
-                        <TierIngredientList
-                          mealId={currentId}
-                          mealMap={mealMap}
-                          tier={tier}
-                          overrides={slotOverrides}
-                          library={library}
-                          libraryById={libraryById}
-                          onQtyChange={(ingId, val) => slotHandlers.changeQty(slot.key, ingId, val)}
-                          onRemove={ingId => slotHandlers.remove(slot.key, ingId)}
-                          onRestore={ingId => slotHandlers.restore(slot.key, ingId)}
-                          onAdd={newIng => slotHandlers.add(slot.key, newIng)}
-                          onRemoveAdded={addedId => slotHandlers.removeAdded(slot.key, addedId)}
-                          onRevertAll={() => slotHandlers.revertAll(slot.key)}
-                          onToggleStatic={ing => toggleIngredientStatic(currentId, ing)}
-                          onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(currentId, ing, qty)}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {MEAL_SLOTS.map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
+              {renderSlotCard('preworkout', 'Pre-workout', 'pre_workout', 'preworkout_static', 'preworkout_meal_id')}
+              {renderSlotCard('evening_snack', 'Evening snack', 'evening_snack', 'evening_snack_static', 'evening_snack_meal_id')}
             </div>
 
             {(option1Subtotal.cal > 0 || option2Subtotal.cal > 0) && (
-              <div className="px-4 py-2.5 bg-gray-50/60 dark:bg-gray-800/30 border-t border-gray-100 dark:border-gray-800 space-y-1">
+              <div className="px-3 py-2.5 rounded-lg bg-gray-50/60 dark:bg-gray-800/30 space-y-1">
                 {option1Subtotal.cal > 0 && (
                   <div className="flex items-center gap-2">
                     <span className="flex-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Option 1 subtotal (A meals)</span>
@@ -2446,7 +2483,7 @@ function MealPlanTab({ client, coachId }) {
             )}
 
             {slotsDirty && (
-              <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 space-y-2 bg-gray-50/50 dark:bg-gray-800/30">
+              <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
                 {slotsError && (
                   <p className="text-sm font-medium text-red-500">{slotsError}</p>
                 )}
@@ -2456,89 +2493,9 @@ function MealPlanTab({ client, coachId }) {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Static meals */}
-          <div className="card space-y-0 p-0 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Pre-workout &amp; Evening Snack</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Select a meal for each slot and edit ingredients per client below.</p>
-            </div>
-
-            {[
-              { key: 'preworkout_meal_id', flagKey: 'preworkout_static', templateKey: 'preworkout', label: 'Pre-workout', cat: 'pre_workout' },
-              { key: 'evening_snack_meal_id', flagKey: 'evening_snack_static', templateKey: 'evening_snack', label: 'Evening snack', cat: 'evening_snack' },
-            ].map(({ key, flagKey, templateKey, label, cat }) => {
-              const isStatic = staticFlags[flagKey]
-              const mealId = editedSlots[templateKey] || ''
-              const isExpanded = expandedSlots.has(key)
-              const options = mealsByCategory[cat] || []
-              const keyOverrides = ingredientOverrides[templateKey]
-              const macros = mealMacros(mealId, mealMap, tier, keyOverrides)
-              const hasIngredientEdits = hasAnyOverride(keyOverrides)
-              const missingTierVersion = mealId && tier && !tierVersionExists(mealId, mealMap, tier)
-              return (
-                <div key={key} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
-                  <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
-                    <button onClick={() => toggleSlot(key)} className="flex-shrink-0">
-                      <svg className={`w-3.5 h-3.5 transition-transform text-gray-300 dark:text-gray-600 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                    <span className="w-24 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label}</span>
-                    <select
-                      className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
-                      value={mealId}
-                      onChange={e => { setEditedSlots(prev => ({ ...prev, [templateKey]: e.target.value || null })); setSlotsDirty(true) }}
-                    >
-                      <option value="">— None —</option>
-                      {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </select>
-                    {hasIngredientEdits && (
-                      <span className="text-xs text-blue-500 flex-shrink-0" title="Ingredient quantities adjusted for this client">Adjusted</span>
-                    )}
-                    {missingTierVersion && (
-                      <span className="text-xs text-amber-500 flex-shrink-0" title={`This meal has no saved ${tier} kcal version — showing its base portion instead. Generate it in the Meal Library to fix this.`}>No {tier} kcal version</span>
-                    )}
-                    {mealId && macros.cal > 0 && <span className="text-xs text-gray-400 tabular-nums flex-shrink-0">{Math.round(macros.cal)} kcal</span>}
-                    <button
-                      onClick={() => isStatic ? useTemplateDefault(key, flagKey) : makeStatic(key, flagKey, mealId)}
-                      className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex-shrink-0 whitespace-nowrap"
-                      title={isStatic ? 'Stop pinning — revert to the plan template each week' : 'Pin this meal so it carries forward every week automatically'}
-                    >
-                      {isStatic ? 'Use template default' : 'Make static'}
-                    </button>
-                  </div>
-                  {isExpanded && (
-                    <div className="ml-9 px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
-                      {mealId ? (
-                        <TierIngredientList
-                          mealId={mealId}
-                          mealMap={mealMap}
-                          tier={tier}
-                          overrides={keyOverrides}
-                          library={library}
-                          libraryById={libraryById}
-                          onQtyChange={(ingId, val) => slotHandlers.changeQty(templateKey, ingId, val)}
-                          onRemove={ingId => slotHandlers.remove(templateKey, ingId)}
-                          onRestore={ingId => slotHandlers.restore(templateKey, ingId)}
-                          onAdd={newIng => slotHandlers.add(templateKey, newIng)}
-                          onRemoveAdded={addedId => slotHandlers.removeAdded(templateKey, addedId)}
-                          onRevertAll={() => slotHandlers.revertAll(templateKey)}
-                          onToggleStatic={ing => toggleIngredientStatic(mealId, ing)}
-                          onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(mealId, ing, qty)}
-                        />
-                      ) : (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 py-2">No meal set in the plan template for this slot.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
 
             {staticDirty && (
-              <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 space-y-2 bg-gray-50/50 dark:bg-gray-800/30">
+              <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
                 {staticError && <p className="text-sm font-medium text-red-500">{staticError}</p>}
                 <div className="flex items-center gap-3">
                   <button onClick={handleSaveStaticMeals} disabled={savingStatic} className="btn-primary py-1.5 px-4 text-sm">{savingStatic ? 'Saving…' : 'Save static meals'}</button>

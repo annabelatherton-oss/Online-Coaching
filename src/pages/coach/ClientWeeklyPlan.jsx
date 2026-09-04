@@ -80,6 +80,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   // Per-day add form state
   const [addingToDay, setAddingToDay] = useState(null)
   const [addType, setAddType] = useState('workout')
+  const [addWorkoutSource, setAddWorkoutSource] = useState('block') // 'block' | 'library'
   const [addBlock, setAddBlock] = useState('')
   const [addDayVariant, setAddDayVariant] = useState('')
   const [addItemId, setAddItemId] = useState('')
@@ -925,7 +926,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                       {['workout', 'hiit', 'cardio', 'rest'].map(type => (
                         <button
                           key={type}
-                          onClick={() => { setAddType(type); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioText(''); setAddRestSubtype('rest') }}
+                          onClick={() => { setAddType(type); setAddWorkoutSource('block'); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioText(''); setAddRestSubtype('rest') }}
                           className={`flex-1 text-sm py-1.5 rounded-lg font-medium capitalize transition-colors ${
                             addType === type
                               ? type === 'workout' ? 'bg-brand-500 text-white'
@@ -960,34 +961,64 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
 
                     {addType === 'workout' && (
                       <div className="space-y-2">
-                        <select
-                          className="input w-full"
-                          value={addBlock}
-                          onChange={e => { setAddBlock(e.target.value); setAddDayVariant(''); setAddItemId('') }}
-                        >
-                          <option value="">Select block…</option>
-                          {addBlockOptions.map(n => <option key={n} value={n}>Block {n}</option>)}
-                        </select>
-                        {addBlock && (
-                          <select
-                            className="input w-full"
-                            value={addDayVariant}
-                            onChange={e => { setAddDayVariant(e.target.value); setAddItemId('') }}
-                          >
-                            <option value="">Select days…</option>
-                            {addDayOptions.map(d => <option key={d} value={d}>{d} Day</option>)}
-                          </select>
-                        )}
-                        {addDayVariant && (
+                        <div className="flex gap-2">
+                          {[{ v: 'block', label: 'From a training block' }, { v: 'library', label: 'From my workout library' }].map(({ v, label }) => (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => { setAddWorkoutSource(v); setAddBlock(''); setAddDayVariant(''); setAddItemId('') }}
+                              className={`flex-1 text-xs py-1.5 rounded-lg font-medium transition-colors border ${
+                                addWorkoutSource === v
+                                  ? 'border-brand-400 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400'
+                                  : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {addWorkoutSource === 'block' ? (
+                          <>
+                            <select
+                              className="input w-full"
+                              value={addBlock}
+                              onChange={e => { setAddBlock(e.target.value); setAddDayVariant(''); setAddItemId('') }}
+                            >
+                              <option value="">Select block…</option>
+                              {addBlockOptions.map(n => <option key={n} value={n}>Block {n}</option>)}
+                            </select>
+                            {addBlock && (
+                              <select
+                                className="input w-full"
+                                value={addDayVariant}
+                                onChange={e => { setAddDayVariant(e.target.value); setAddItemId('') }}
+                              >
+                                <option value="">Select days…</option>
+                                {addDayOptions.map(d => <option key={d} value={d}>{d} Day</option>)}
+                              </select>
+                            )}
+                            {addDayVariant && (
+                              <select
+                                className="input w-full"
+                                value={addItemId}
+                                onChange={e => setAddItemId(e.target.value)}
+                              >
+                                <option value="">Select session…</option>
+                                {addSessionOptions.map(s => (
+                                  <option key={s.id} value={s.workoutId || ''} disabled={!s.workoutId}>{s.label}</option>
+                                ))}
+                              </select>
+                            )}
+                          </>
+                        ) : (
                           <select
                             className="input w-full"
                             value={addItemId}
                             onChange={e => setAddItemId(e.target.value)}
                           >
-                            <option value="">Select session…</option>
-                            {addSessionOptions.map(s => (
-                              <option key={s.id} value={s.workoutId || ''} disabled={!s.workoutId}>{s.label}</option>
-                            ))}
+                            <option value="">Select a workout…</option>
+                            {workouts.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                           </select>
                         )}
                       </div>
@@ -1050,6 +1081,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                             await addItem(day, addType, addItemId)
                           }
                           setAddingToDay(null)
+                          setAddWorkoutSource('block')
                           setAddBlock('')
                           setAddDayVariant('')
                           setAddItemId('')
@@ -1063,7 +1095,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                         Add to {day}
                       </button>
                       <button
-                        onClick={() => { setAddingToDay(null); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioDuration(''); setAddCardioZone(''); setAddRestSubtype('rest') }}
+                        onClick={() => { setAddingToDay(null); setAddWorkoutSource('block'); setAddBlock(''); setAddDayVariant(''); setAddItemId(''); setAddCardioDuration(''); setAddCardioZone(''); setAddRestSubtype('rest') }}
                         className="btn-secondary text-sm"
                       >
                         Cancel
