@@ -18,6 +18,7 @@ const CATEGORY_OPTIONS = [
   { value: 'dinner', label: 'Dinner' },
   { value: 'pre_workout', label: 'Pre-workout snack' },
   { value: 'evening_snack', label: 'Evening snack' },
+  { value: 'snack', label: 'Snack' },
 ]
 
 const CATEGORY_BADGE_COLOURS = {
@@ -26,6 +27,7 @@ const CATEGORY_BADGE_COLOURS = {
   dinner: 'bg-blue-100 text-blue-700',
   pre_workout: 'bg-orange-100 text-orange-700',
   evening_snack: 'bg-indigo-100 text-indigo-700',
+  snack: 'bg-purple-100 text-purple-700',
 }
 
 function round1(n) {
