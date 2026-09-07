@@ -6,6 +6,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { calcStandardMacros } from '../../lib/macros'
+import { getIngredients, formatAmount } from '../../components/MealPlanView'
 import {
   generateTierIngredients, insertTierVersion, tierTargetsForCategory, calcTotals, snapToConstraints, allIngredientsFixed,
 } from '../../lib/calorieTierScaling'
@@ -315,6 +316,7 @@ export default function PlanGroupEditor() {
   const [activeTier, setActiveTier] = useState(null)
   const [mealsByCategory, setMealsByCategory] = useState({})
   const [mealsById, setMealsById] = useState({})
+  const [ingredientLib, setIngredientLib] = useState({})
   const [expanded, setExpanded] = useState(new Set())
   const [dirty, setDirty] = useState(new Set())
   const [loading, setLoading] = useState(true)
@@ -333,7 +335,7 @@ export default function PlanGroupEditor() {
 
   useEffect(() => {
     async function load() {
-      const [{ data: group }, { data: templates }, { data: meals }, { data: assignments }] = await Promise.all([
+      const [{ data: group }, { data: templates }, { data: meals }, { data: assignments }, { data: ingredientsData }] = await Promise.all([
         supabase.from('plan_groups').select('*').eq('id', groupId).single(),
         supabase
           .from('weekly_templates')
@@ -342,7 +344,12 @@ export default function PlanGroupEditor() {
           .order('week_number'),
         supabase
           .from('meals')
-          .select('id, name, category, meal_ingredients(calories, protein_g, carbs_g, fat_g), meal_tier_versions(calorie_tier, calories, protein_g, carbs_g, fat_g)')
+          .select(`
+            id, name, category, photo_url, photo_position,
+            meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static),
+            meal_tier_versions(calorie_tier, calories, protein_g, carbs_g, fat_g,
+              meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
+          `)
           .eq('coach_id', profile.id)
           .order('name'),
         supabase
@@ -350,6 +357,7 @@ export default function PlanGroupEditor() {
           .select('calorie_target')
           .eq('plan_group_id', groupId)
           .eq('active', true),
+        supabase.from('ingredients').select('id, name, serving_size, serving_unit, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', profile.id),
       ])
 
       if (group) {
@@ -361,11 +369,16 @@ export default function PlanGroupEditor() {
       const byCategory = {}
       const byId = {}
       for (const m of (meals || [])) {
+        if (m.photo_url) m.photo_url = supabase.storage.from('meal-photos').getPublicUrl(m.photo_url).data.publicUrl
         ;(byCategory[m.category] = byCategory[m.category] || []).push(m)
         byId[m.id] = m
       }
       setMealsByCategory(byCategory)
       setMealsById(byId)
+
+      const libById = {}
+      for (const ing of (ingredientsData || [])) libById[ing.id] = ing
+      setIngredientLib(libById)
 
       const usedTargets = new Set((assignments || []).map(a => a.calorie_target))
       setAvailableTiers(CALORIE_TIERS.filter(t => usedTargets.has(t)))
@@ -984,9 +997,9 @@ export default function PlanGroupEditor() {
             </button>
 
             {isOpen && (
-              <div className="divide-y divide-pink-50 dark:divide-pink-900/10">
+              <div className="p-3 space-y-3">
                 {activeTier != null && (opt1Totals.calories > 0 || opt2Totals.calories > 0) && (
-                  <div className="px-4 py-2.5 bg-gray-50/60 dark:bg-gray-800/20 space-y-1">
+                  <div className="px-1 pb-1 space-y-1">
                     <MacroMatchRow label="A" totals={opt1Totals} tier={activeTier} />
                     <MacroMatchRow label="B" totals={opt2Totals} tier={activeTier} />
                   </div>
@@ -994,64 +1007,106 @@ export default function PlanGroupEditor() {
                 {SLOTS.map(slot => {
                   const options = mealsByCategory[slot.cat] || []
                   const mealId = week.slots[slot.key] || ''
+                  const meal = mealId ? mealsById[mealId] : null
                   const macros = mealMacros(mealId, activeTier)
                   const isStatic = STATIC_SLOT_KEYS.has(slot.key)
                   const editKey = mealId && activeTier != null ? `${mealId}:${activeTier}` : null
                   const isEditingIngredients = editKey != null && editingIngredients === editKey
+                  const previewIngredients = meal ? getIngredients(meal, activeTier, null) : []
+                  const isSwapOpen = swapPicker?.weekIdx === weekIdx && swapPicker?.slotKey === slot.key
                   return (
-                    <div key={slot.key}>
-                      <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-pink-50/30 dark:hover:bg-pink-900/5">
-                        <span className="w-40 flex-shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                          {slot.label}
-                          {isStatic && <span className="block normal-case font-normal text-gray-300 dark:text-gray-600">same every week</span>}
-                        </span>
-                        <select
-                          className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer min-w-0"
-                          value={mealId}
-                          onChange={e => changeSlot(weekIdx, slot.key, e.target.value)}
-                        >
-                          <option value="">— None —</option>
-                          {options.map(m => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
-                        <span className="w-48 flex-shrink-0 text-right text-xs">
-                          {!mealId ? (
-                            <span className="text-gray-300 dark:text-gray-600">—</span>
-                          ) : macros ? (
-                            <span className="text-gray-500 dark:text-gray-400">
-                              <span className="font-medium text-gray-700 dark:text-gray-300">{macros.calories} kcal</span>
-                              {' · '}{macros.protein_g}P {macros.carbs_g}C {macros.fat_g}F
-                            </span>
+                    <div key={slot.key} className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
+                      <div className="flex flex-col sm:flex-row">
+                        <div className="relative w-full sm:w-32 aspect-[16/9] sm:aspect-square bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+                          {meal?.photo_url ? (
+                            <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
                           ) : (
-                            <span className="text-amber-500" title="Generate this meal's calorie tiers in the Meal Library">
-                              No {activeTier} kcal version
+                            <div className="w-full h-full flex items-center justify-center">
+                              <svg className="w-8 h-8 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+                          )}
+                          <span className="absolute top-2 left-2 text-xs font-semibold bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded-full backdrop-blur-sm shadow-sm">
+                            {slot.label}
+                          </span>
+                          {isStatic && (
+                            <span className="absolute bottom-2 left-2 text-[10px] font-medium bg-white/90 dark:bg-gray-900/90 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full backdrop-blur-sm shadow-sm">
+                              Same every week
                             </span>
                           )}
-                        </span>
-                        {editKey != null && (
-                          <button
-                            onClick={() => setEditingIngredients(prev => prev === editKey ? null : editKey)}
-                            className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex-shrink-0 whitespace-nowrap"
+                        </div>
+
+                        <div className="p-3 space-y-2 flex-1 min-w-0">
+                          <select
+                            className="w-full text-sm font-semibold text-gray-900 dark:text-white bg-transparent border-0 p-0 focus:ring-0 cursor-pointer"
+                            value={mealId}
+                            onChange={e => changeSlot(weekIdx, slot.key, e.target.value)}
                           >
-                            {isEditingIngredients ? 'Hide' : 'Edit ingredients'}
-                          </button>
-                        )}
-                        {!isStatic && mealId && (
-                          <button
-                            onClick={() => setSwapPicker(prev =>
-                              prev?.weekIdx === weekIdx && prev?.slotKey === slot.key ? null :
-                              { weekIdx, slotKey: slot.key }
+                            <option value="">— None —</option>
+                            {options.map(m => (
+                              <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                          </select>
+
+                          {previewIngredients.length > 0 && (
+                            <div className="space-y-0.5">
+                              {previewIngredients.slice(0, 5).map((ing, i) => (
+                                <div key={ing.id || i} className="flex items-baseline gap-1.5">
+                                  <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 flex-shrink-0 tabular-nums">
+                                    {formatAmount(ing, ingredientLib)}
+                                  </span>
+                                  <span className="text-[11px] text-gray-600 dark:text-gray-400 truncate">{ing.name}</span>
+                                </div>
+                              ))}
+                              {previewIngredients.length > 5 && (
+                                <p className="text-[11px] text-gray-400 dark:text-gray-500 italic">+{previewIngredients.length - 5} more</p>
+                              )}
+                            </div>
+                          )}
+
+                          {mealId && (
+                            <div className="text-xs">
+                              {macros ? (
+                                <span className="text-gray-500 dark:text-gray-400">
+                                  <span className="font-medium text-gray-700 dark:text-gray-300">{macros.calories} kcal</span>
+                                  {' · '}{macros.protein_g}P {macros.carbs_g}C {macros.fat_g}F
+                                </span>
+                              ) : (
+                                <span className="text-amber-500" title="Generate this meal's calorie tiers in the Meal Library">
+                                  No {activeTier} kcal version
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-3 pt-0.5">
+                            {editKey != null && (
+                              <button
+                                onClick={() => setEditingIngredients(prev => prev === editKey ? null : editKey)}
+                                className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex-shrink-0 whitespace-nowrap"
+                              >
+                                {isEditingIngredients ? 'Hide' : 'Edit ingredients'}
+                              </button>
                             )}
-                            className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 flex-shrink-0 whitespace-nowrap"
-                            title="Swap this meal with one from another week"
-                          >
-                            ⇄ Swap
-                          </button>
-                        )}
+                            {!isStatic && mealId && (
+                              <button
+                                onClick={() => setSwapPicker(prev =>
+                                  prev?.weekIdx === weekIdx && prev?.slotKey === slot.key ? null :
+                                  { weekIdx, slotKey: slot.key }
+                                )}
+                                className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 flex-shrink-0 whitespace-nowrap"
+                                title="Swap this meal with one from another week"
+                              >
+                                ⇄ Swap with another week
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
+
                       {isEditingIngredients && (
-                        <div className="mx-4 mb-2 bg-gray-50/60 dark:bg-gray-800/30 rounded-lg">
+                        <div className="mx-3 mb-3 bg-gray-50/60 dark:bg-gray-800/30 rounded-lg">
                           <TierIngredientEditor
                             mealId={mealId}
                             tier={activeTier}
@@ -1066,8 +1121,8 @@ export default function PlanGroupEditor() {
                           />
                         </div>
                       )}
-                      {swapPicker?.weekIdx === weekIdx && swapPicker?.slotKey === slot.key && (
-                        <div className="mx-4 mb-2 border border-brand-100 dark:border-brand-900/30 bg-brand-50/40 dark:bg-brand-900/10 rounded-lg p-3">
+                      {isSwapOpen && (
+                        <div className="mx-3 mb-3 border border-brand-100 dark:border-brand-900/30 bg-brand-50/40 dark:bg-brand-900/10 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
                               Swap {slot.label} with…
