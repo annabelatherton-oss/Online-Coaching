@@ -450,6 +450,9 @@ export default function CoachSettings() {
           <p className="text-xs text-amber-700 dark:text-amber-400">
             Changing this won't update calorie tiers you've already generated — save your new split first, then recalculate below.
           </p>
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Warning: this regenerates every tier for every meal from scratch, overwriting any manual ingredient-quantity corrections you've made (including per-meal edits from the Plan Group rotation editor). Only use it after changing the split above — adding a new meal doesn't need this, the Meal Library page fills in just its missing tiers automatically without touching anything else.
+          </p>
           <div className="flex items-center gap-3 flex-wrap">
             <button
               type="button"
