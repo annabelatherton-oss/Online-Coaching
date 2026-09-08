@@ -1739,8 +1739,22 @@ function MealPlanTab({ client, coachId }) {
     setSlotsDirty(false)
   }
 
+  // A client's starting calorie target should always be at maintenance, not a cut/bulk target,
+  // so this deliberately ignores goal_type — used both before any plan is assigned and to
+  // self-heal an assignment that somehow ended up with no calorie target at all.
+  async function estimateStartingCalorieTarget() {
+    const [{ data: weightRows }, { data: checkinRows }] = await Promise.all([
+      supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', client.id).order('recorded_at', { ascending: false }).limit(1),
+      supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', client.id).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
+    ])
+    const latestWeight = weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null
+    const maintenance = latestWeight ? estimateMaintenanceCalories(client, latestWeight) : null
+    if (!maintenance) return null
+    return CALORIE_TIERS.reduce((best, t) => Math.abs(t - maintenance) < Math.abs(best - maintenance) ? t : best, CALORIE_TIERS[0])
+  }
+
   async function load() {
-    const [{ data: groups }, { data: asgn }, { data: past }, { data: mealsData }, { data: libData }] = await Promise.all([
+    const [{ data: groups }, { data: asgnData }, { data: past }, { data: mealsData }, { data: libData }] = await Promise.all([
       supabase.from('plan_groups').select('*').eq('coach_id', coachId).order('created_at', { ascending: false }),
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', false).order('created_at', { ascending: false }),
@@ -1753,9 +1767,9 @@ function MealPlanTab({ client, coachId }) {
       supabase.from('ingredients').select('*').eq('coach_id', coachId),
     ])
 
+    let asgn = asgnData
     const allGroups = groups || []
     setPlanGroups(allGroups)
-    setAssignment(asgn || null)
     setPastAssignments(past || [])
     setLibrary(libData || [])
 
@@ -1769,6 +1783,18 @@ function MealPlanTab({ client, coachId }) {
     setMealsByCategory(byCat)
 
     if (asgn) {
+      // A plan can end up assigned with no calorie target (e.g. assigned without typing a
+      // number) and would otherwise sit at "No calorie target set" forever, since the
+      // suggestion panel only ever showed once the coach clicked Edit. Self-heal it here so a
+      // sensible starting number is always in place.
+      if (!asgn.calorie_target) {
+        const suggested = await estimateStartingCalorieTarget()
+        if (suggested) {
+          await supabase.from('client_plan_assignments').update({ calorie_target: suggested }).eq('id', asgn.id)
+          asgn = { ...asgn, calorie_target: suggested }
+        }
+      }
+      setAssignment(asgn)
       const pg = allGroups.find(g => g.id === asgn.plan_group_id) || null
       setPlanGroup(pg)
       setOverrideWeek(asgn.week_override ?? '')
@@ -1782,18 +1808,9 @@ function MealPlanTab({ client, coachId }) {
       })
       if (pg) await loadWeekSlots(asgn, asgn.week_override ?? pg.current_week, pg.id)
     } else {
-      // No plan yet — a client's very first week should start at maintenance, not a
-      // cut/bulk target, so the estimate here deliberately ignores goal_type.
-      const [{ data: weightRows }, { data: checkinRows }] = await Promise.all([
-        supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', client.id).order('recorded_at', { ascending: false }).limit(1),
-        supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', client.id).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
-      ])
-      const latestWeight = weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null
-      const maintenance = latestWeight ? estimateMaintenanceCalories(client, latestWeight) : null
-      if (maintenance) {
-        const nearestTier = CALORIE_TIERS.reduce((best, t) => Math.abs(t - maintenance) < Math.abs(best - maintenance) ? t : best, CALORIE_TIERS[0])
-        setForm(f => f.calorie_target === '' ? { ...f, calorie_target: nearestTier } : f)
-      }
+      setAssignment(null)
+      const suggested = await estimateStartingCalorieTarget()
+      if (suggested) setForm(f => f.calorie_target === '' ? { ...f, calorie_target: suggested } : f)
     }
     setLoading(false)
   }
@@ -2392,9 +2409,14 @@ function MealPlanTab({ client, coachId }) {
               <div>
                 <h3 className="font-semibold text-gray-900 dark:text-white">{assignment.plan_group_name || planGroup.name}</h3>
                 {!editingCalorie && (
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{assignment.calorie_target ? `${assignment.calorie_target} kcal / day` : 'No calorie target set'}</p>
-                    <button onClick={() => { setCalorieDraft(assignment.calorie_target || ''); setEditingCalorie(true) }} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">Edit</button>
+                  <div className="mt-0.5 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{assignment.calorie_target ? `${assignment.calorie_target} kcal / day` : 'No calorie target set'}</p>
+                      <button onClick={() => { setCalorieDraft(assignment.calorie_target || ''); setEditingCalorie(true) }} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">Edit</button>
+                    </div>
+                    {!assignment.calorie_target && (
+                      <CalorieSuggestionPanel client={client} currentTarget={null} compact />
+                    )}
                   </div>
                 )}
               </div>
