@@ -65,31 +65,43 @@ serve(async (req) => {
   }
   const normalizedSex = normalizeSex(gender) ?? normalizeSex(sex)
 
-  // Same keys/labels the app itself uses (src/lib/allergens.js, src/lib/diets.js) — kept in sync
-  // by hand since this edge function is a separate Deno deploy target with no access to src/lib.
-  const ALLERGEN_LABELS: Record<string, string> = {
-    dairy: 'Dairy', gluten: 'Gluten / Wheat', nuts: 'Tree Nuts', peanuts: 'Peanuts',
-    shellfish: 'Shellfish', fish: 'Fish', eggs: 'Eggs', soy: 'Soy', sesame: 'Sesame',
+  // Exact checkbox wording from the coach's actual Google Form ("Any Allergies?" /
+  // "Dietary Requirements" questions) plus the app's own keys (src/lib/allergens.js,
+  // src/lib/diets.js) — kept in sync by hand since this edge function is a separate Deno deploy
+  // target with no access to src/lib. Includes "seasame" because that's how it's actually spelled
+  // on the form.
+  const ALLERGEN_ALIASES: Record<string, string[]> = {
+    dairy:     ['dairy'],
+    gluten:    ['gluten', 'gluten/wheat', 'gluten wheat', 'wheat'],
+    nuts:      ['nuts', 'all nuts', 'tree nuts'],
+    peanuts:   ['peanuts', 'peanut'],
+    shellfish: ['shellfish'],
+    fish:      ['fish'],
+    eggs:      ['eggs', 'egg'],
+    soy:       ['soy', 'soya'],
+    sesame:    ['sesame', 'seasame'],
   }
-  const DIET_LABELS: Record<string, string> = {
-    vegetarian: 'Vegetarian', vegan: 'Vegan', pescatarian: 'Pescatarian',
-    gluten_free: 'Gluten-Free', dairy_free: 'Dairy-Free',
+  const DIET_ALIASES: Record<string, string[]> = {
+    vegetarian:  ['vegetarian'],
+    vegan:       ['vegan'],
+    pescatarian: ['pescatarian', 'pescetarian'],
+    gluten_free: ['gluten free', 'gluten-free', 'glutenfree'],
+    dairy_free:  ['dairy free', 'dairy-free', 'dairyfree'],
   }
 
-  // The form may send a checkbox list as an array, or a single comma-separated string. Each
-  // answer is matched against the known keys/labels (either direction, substring included) so
-  // "Gluten Free", "gluten-free", and "gluten_free" all resolve to the same 'gluten_free' key —
-  // anything that doesn't match a known option is dropped rather than stored as junk.
-  function normalizeListField(value: unknown, labels: Record<string, string>): string[] {
+  // The form sends a checkbox question as an array or a comma-separated string (e.g. "Peanuts,
+  // Gluten/Wheat, Other: kiwi"). Each answer is matched against the known aliases above — an
+  // answer that doesn't match anything (like free-text typed into "Other:") is dropped rather
+  // than stored as junk, since there's no structured field for an arbitrary allergy.
+  function normalizeListField(value: unknown, aliasMap: Record<string, string[]>): string[] {
     if (!value) return []
     const raw = Array.isArray(value) ? value : String(value).split(',')
     const found = new Set<string>()
     for (const item of raw) {
-      const v = String(item).trim().toLowerCase().replace(/[\s-]+/g, '_')
+      const v = String(item).trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ')
       if (!v) continue
-      for (const [key, label] of Object.entries(labels)) {
-        const labelKey = label.toLowerCase().replace(/[\s/-]+/g, '_')
-        if (v === key || v === labelKey || labelKey.includes(v) || v.includes(key)) {
+      for (const [key, aliases] of Object.entries(aliasMap)) {
+        if (aliases.some(a => v === a || v.includes(a))) {
           found.add(key)
           break
         }
@@ -98,10 +110,10 @@ serve(async (req) => {
     return [...found]
   }
 
-  const allergiesArray = normalizeListField(allergies, ALLERGEN_LABELS)
+  const allergiesArray = normalizeListField(allergies, ALLERGEN_ALIASES)
   const dietaryRequirementsArray = normalizeListField(
     dietary_requirements ?? dietary_needs ?? diet,
-    DIET_LABELS,
+    DIET_ALIASES,
   )
 
   if (!email || !full_name) {
