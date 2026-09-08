@@ -32,9 +32,22 @@ export const DIET_FORBIDDEN_KEYWORDS = {
 // "Oat Milk" contains "milk" (a dairy keyword) despite being a plant milk. Checked before the
 // forbidden-keyword scan below so a product explicitly labelled for the diet isn't excluded from
 // its own diet's plan by the very keyword that makes it safe.
+// A name starting "Vegan " (e.g. "Vegan Mince", "Vegan Cheese Slice") is meat/fish/dairy/egg-free
+// by definition, even though it trips a forbidden keyword by coincidence ("mince", "cheese") —
+// applies everywhere those keywords are forbidden: vegetarian, vegan, and dairy-free.
+const VEGAN_LABELLED = /^vegan\b/
+// A plant milk contains "milk" (a dairy keyword) without being dairy — applies to both dairy-free
+// and vegan, since dairy is forbidden under both.
+const PLANT_MILK = /\b(oat|almond|soy|soya|coconut|rice|cashew)\s*milk\b/
+
 const DIET_SAFE_EXCEPTIONS = {
+  // Quorn's whole range is meat-free by definition, despite product names like "Quorn Mince" or
+  // "Quorn Chicken Pieces" containing a meat keyword — but Quorn isn't vegan (most of the range
+  // is bound with egg white), so this exception is scoped to vegetarian only.
+  vegetarian: [/^quorn\b/, VEGAN_LABELLED],
+  vegan: [VEGAN_LABELLED, PLANT_MILK],
   gluten_free: [/gluten[\s-]?free/],
-  dairy_free: [/\b(oat|almond|soy|soya|coconut|rice|cashew)\s*milk\b/, /dairy[\s-]?free/],
+  dairy_free: [PLANT_MILK, VEGAN_LABELLED, /dairy[\s-]?free/],
 }
 
 function isDietSafeException(name, dietKey) {

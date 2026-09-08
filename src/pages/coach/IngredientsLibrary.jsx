@@ -37,6 +37,7 @@ const EMPTY_FORM = {
   protein_per_serving: '',
   carbs_per_serving: '',
   fat_per_serving: '',
+  is_vegetarian: true,
 }
 
 function IngredientModal({ ingredient, onSave, onClose, coachId }) {
@@ -52,6 +53,7 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
     protein_per_serving: String(ingredient.protein_per_serving),
     carbs_per_serving: String(ingredient.carbs_per_serving),
     fat_per_serving: String(ingredient.fat_per_serving),
+    is_vegetarian: ingredient.is_vegetarian ?? true,
   } : { ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -79,6 +81,7 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
       protein_per_serving: parseFloat(form.protein_per_serving) || 0,
       carbs_per_serving: parseFloat(form.carbs_per_serving) || 0,
       fat_per_serving: parseFloat(form.fat_per_serving) || 0,
+      is_vegetarian: form.is_vegetarian,
     }
 
     let err
@@ -210,6 +213,17 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
               <label className="label">Fat (g)</label>
               <input className="input" type="number" min="0" step="0.1" value={form.fat_per_serving} onChange={e => set('fat_per_serving', e.target.value)} placeholder="0" />
             </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              id="is_vegetarian"
+              type="checkbox"
+              checked={form.is_vegetarian}
+              onChange={e => set('is_vegetarian', e.target.checked)}
+              className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500"
+            />
+            <label htmlFor="is_vegetarian" className="text-sm text-gray-700 dark:text-gray-300">Vegetarian</label>
           </div>
 
           {error && (
@@ -351,6 +365,7 @@ export default function IngredientsLibrary() {
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Protein</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Carbs</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Fat</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Veg?</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -372,6 +387,13 @@ export default function IngredientsLibrary() {
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{ing.protein_per_serving}g</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{ing.carbs_per_serving}g</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{ing.fat_per_serving}g</td>
+                  <td className="px-4 py-3">
+                    {ing.is_vegetarian ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Veg</span>
+                    ) : (
+                      <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-3">
                       <button onClick={() => openEdit(ing)} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">Edit</button>
