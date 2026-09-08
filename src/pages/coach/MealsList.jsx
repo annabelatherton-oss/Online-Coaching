@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS, missingTiers, createMissingTiersForMeal, regenerateAllTiersForMeal } from '../../lib/calorieTierScaling'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
-import { DIETS, DIET_LABELS } from '../../lib/diets'
+import { DIETS, DIET_LABELS, mealQualifiesForDiet } from '../../lib/diets'
 
 const CATEGORIES = ['All', 'Breakfast', 'Lunch', 'Dinner', 'Snack', 'Pre-workout', 'Evening Snack']
 
@@ -241,7 +241,9 @@ export default function MealsList() {
 
   const q = search.toLowerCase()
   const matchesCat = m => categoryFilter === 'All' || m.category === CATEGORY_VALUE_MAP[categoryFilter]
-  const matchesDiet = m => dietFilter === 'All' || (m.diet_tags || []).includes(dietFilter)
+  // Same tag-first, keyword-fallback logic as Generate Templates — a meal doesn't need to be
+  // explicitly tagged to show up here, it just won't be as reliably correct as a tagged one.
+  const matchesDiet = m => dietFilter === 'All' || mealQualifiesForDiet(m, dietFilter)
   const titleMatches = meals.filter(m => matchesCat(m) && matchesDiet(m) && m.name.toLowerCase().includes(q))
   const ingredientMatches = q
     ? meals.filter(m =>
