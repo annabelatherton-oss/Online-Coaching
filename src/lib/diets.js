@@ -27,10 +27,28 @@ export const DIET_FORBIDDEN_KEYWORDS = {
   dairy_free:  [...ALLERGEN_KEYWORDS.dairy],
 }
 
+// Named products that would otherwise trip a forbidden keyword by coincidence — "Gluten Free
+// Oats" contains "oat" (a gluten keyword, since regular oats are often cross-contaminated), and
+// "Oat Milk" contains "milk" (a dairy keyword) despite being a plant milk. Checked before the
+// forbidden-keyword scan below so a product explicitly labelled for the diet isn't excluded from
+// its own diet's plan by the very keyword that makes it safe.
+const DIET_SAFE_EXCEPTIONS = {
+  gluten_free: [/gluten[\s-]?free/],
+  dairy_free: [/\b(oat|almond|soy|soya|coconut|rice|cashew)\s*milk\b/, /dairy[\s-]?free/],
+}
+
+function isDietSafeException(name, dietKey) {
+  const exceptions = DIET_SAFE_EXCEPTIONS[dietKey]
+  if (!exceptions) return false
+  const lower = (name || '').toLowerCase()
+  return exceptions.some(re => re.test(lower))
+}
+
 // True if any of the given ingredient names contains a keyword forbidden by this diet.
 export function ingredientsViolateDiet(ingredientNames, dietKey) {
   const forbidden = DIET_FORBIDDEN_KEYWORDS[dietKey] || []
   return (ingredientNames || []).some(name => {
+    if (isDietSafeException(name, dietKey)) return false
     const lower = (name || '').toLowerCase()
     return forbidden.some(kw => lower.includes(kw))
   })
@@ -42,6 +60,7 @@ export function dietViolations(meal, dietKey) {
   const forbidden = DIET_FORBIDDEN_KEYWORDS[dietKey] || []
   const hits = []
   for (const ing of (meal.meal_ingredients || [])) {
+    if (isDietSafeException(ing.name, dietKey)) continue
     const lower = (ing.name || '').toLowerCase()
     const kw = forbidden.find(k => lower.includes(k))
     if (kw) hits.push(ing.name)
