@@ -456,26 +456,36 @@ export default function PlanGroupEditor() {
     })
   }
 
-  // Breakfast/lunch/dinner only change for the week being edited. Pre-workout/evening-snack are
-  // the same every week, so changing one writes the new meal into every week at once. Any
-  // ingredient override on the slot is cleared when its meal changes — a correction calibrated
-  // for the old meal's ingredients wouldn't mean anything applied to a different meal.
+  // WHICH MEAL occupies a slot is shared across the Standard template and every calorie tier —
+  // every client sees the same meal each week, just at their own tier's portion size — so this
+  // writes the change to the matching week (by week number) everywhere, not just the tier
+  // currently being viewed. Breakfast/lunch/dinner only change for the week being edited.
+  // Pre-workout/evening-snack are the same every week, so changing one writes the new meal into
+  // every week at once. Any ingredient override on the slot is cleared when its meal changes — a
+  // correction calibrated for the old meal's ingredients wouldn't mean anything applied to a
+  // different meal.
   function changeSlot(weekIdx, slotKey, mealId) {
     const isStatic = STATIC_SLOT_KEYS.has(slotKey)
-    const setActiveWeeks = activeTier == null
-      ? setWeeks
-      : updater => setTierWeeks(prev => ({ ...prev, [activeTier]: updater(prev[activeTier] || []) }))
+    const weekNums = isStatic ? currentWeeks.map(w => w.weekNum) : [currentWeeks[weekIdx].weekNum]
+    const weekNumSet = new Set(weekNums)
 
-    setActiveWeeks(prev => prev.map((w, i) => {
-      if (!isStatic && i !== weekIdx) return w
+    const apply = w => {
+      if (!weekNumSet.has(w.weekNum)) return w
       const nextOverrides = { ...w.overrides }
       delete nextOverrides[slotKey]
       return { ...w, slots: { ...w.slots, [slotKey]: mealId || null }, overrides: nextOverrides }
-    }))
+    }
+    setWeeks(prev => prev.map(apply))
+    setTierWeeks(prev => {
+      const next = {}
+      for (const [tier, tw] of Object.entries(prev)) next[tier] = tw.map(apply)
+      return next
+    })
+
+    const allWeeks = [...weeks, ...Object.values(tierWeeks).flat()]
     setDirty(prev => {
       const s = new Set(prev)
-      if (isStatic) currentWeeks.forEach(w => s.add(w.templateId))
-      else s.add(currentWeeks[weekIdx].templateId)
+      allWeeks.forEach(w => { if (weekNumSet.has(w.weekNum)) s.add(w.templateId) })
       return s
     })
   }
@@ -636,12 +646,15 @@ export default function PlanGroupEditor() {
   }
 
   // Rotates every meal available for each slot's category across the weeks in the arrangement
-  // that gets each day as close as possible to the calorie and macro target. The pool for each
-  // slot is every meal in that category with a tier version for the active tier — including any
-  // meal added to the library since the rotation was last built — so a brand-new meal gets woven
-  // into the schedule the next time this runs, without needing to be placed by hand first. Only
-  // WHICH WEEK each meal lands on changes; nothing about the meal itself (its ingredients, tier
-  // versions, or any manual quantity corrections) is touched.
+  // that gets each day as close as possible to the calorie and macro target for the tier being
+  // viewed, then applies that same meal-per-week choice to the Standard template and every other
+  // calorie tier — every client eats the same meal each week regardless of their tier, just at
+  // their own portion size. The pool for each slot is every meal in that category with a tier
+  // version for the tier being viewed — including any meal added to the library since the
+  // rotation was last built — so a brand-new meal gets woven into the schedule the next time this
+  // runs, without needing to be placed by hand first. Only WHICH WEEK each meal lands on changes;
+  // nothing about the meal itself (its ingredients, tier versions, or any manual quantity
+  // corrections) is touched.
   //
   // Algorithm:
   //   1. Collect every meal in the slot's category that has a tier version for the active tier —
@@ -768,16 +781,24 @@ export default function PlanGroupEditor() {
       for (const s of MAIN_SLOTS) improveSlot(s.key)
     }
 
-    const optimized = currentWeeks.map((week, i) => ({
-      ...week,
-      slots: {
-        ...week.slots,
-        ...Object.fromEntries(MAIN_SLOTS.map(s => [s.key, scheds[s.key][i]])),
-      },
-    }))
+    // Every client should see the same meal each week regardless of their calorie tier — only
+    // portion sizes differ — so the result gets applied to the Standard template and every other
+    // tier fork too, matched up by week number, not just the tier used to score this run.
+    const byWeekNum = new Map(currentWeeks.map((week, i) => [
+      week.weekNum,
+      Object.fromEntries(MAIN_SLOTS.map(s => [s.key, scheds[s.key][i]])),
+    ]))
+    const applyOptimized = w => byWeekNum.has(w.weekNum) ? { ...w, slots: { ...w.slots, ...byWeekNum.get(w.weekNum) } } : w
 
-    setTierWeeks(prev => ({ ...prev, [activeTier]: optimized }))
-    setDirty(new Set(optimized.map(w => w.templateId)))
+    setWeeks(prev => prev.map(applyOptimized))
+    setTierWeeks(prev => {
+      const next = {}
+      for (const [tier, tw] of Object.entries(prev)) next[tier] = tw.map(applyOptimized)
+      return next
+    })
+
+    const allWeeks = [...weeks, ...Object.values(tierWeeks).flat()]
+    setDirty(new Set(allWeeks.filter(w => byWeekNum.has(w.weekNum)).map(w => w.templateId)))
     setOptimizing(false)
   }
 
@@ -809,7 +830,7 @@ export default function PlanGroupEditor() {
               onClick={handleOptimize}
               disabled={optimizing || forking}
               className="btn-secondary"
-              title="Re-spreads every breakfast, lunch, and dinner meal (including any you've added since this was last run) across the weeks to get each day as close as possible to the calorie and macro targets."
+              title="Re-spreads every breakfast, lunch, and dinner meal (including any you've added since this was last run) across the weeks to get each day as close as possible to this tier's calorie and macro targets — then applies the same meal choice to the Standard template and every other calorie tier, so every client eats the same meal each week at their own portion size."
             >
               {optimizing ? 'Optimising…' : 'Optimise combinations'}
             </button>
@@ -940,11 +961,11 @@ export default function PlanGroupEditor() {
 
       {activeTier != null ? (
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          Editing the {activeTier} kcal version of this plan — clients on other calorie targets aren't affected. Starts as a copy of the standard meals below until you change something. Expand a week to see how closely each day's macros match the target. Added a new meal to the library? Click "Optimise combinations" to weave it into this rotation — it won't touch any ingredient corrections you've already made.
+          Editing the {activeTier} kcal version of this plan. Which meal appears each week is shared across every calorie tier and the Standard template — changing a meal here, swapping it, or optimising also updates every other tier, so every client eats the same meal at their own portion size. Only ingredient quantities (and per-week corrections) are specific to this tier. Expand a week to see how closely each day's macros match the target.
         </p>
       ) : availableTiers.length > 0 ? (
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          Select a calorie tier above to see how closely each day matches that tier's calorie and macro targets.
+          Editing the standard version of this plan. Changing which meal appears each week here also updates every calorie tier, so every client eats the same meal at their own portion size. Select a calorie tier above to see how closely each day matches that tier's calorie and macro targets, or to adjust that tier's ingredient quantities.
         </p>
       ) : null}
 
