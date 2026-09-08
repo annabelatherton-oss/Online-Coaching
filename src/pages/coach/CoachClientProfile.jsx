@@ -491,7 +491,7 @@ function OverviewTab({ client, onSaved }) {
     phone: client.phone || '',
     date_of_birth: client.date_of_birth || '',
     height_cm: client.height_cm || '',
-    sex: client.sex || '',
+    sex: client.sex || 'female',
     activity_level: client.activity_level || '',
     goal_type: client.goal_type || '',
     // Intake form answers

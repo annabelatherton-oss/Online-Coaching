@@ -189,13 +189,16 @@ serve(async (req) => {
 
   if (existingClient) {
     // Re-submission: update intake fields only — leave coach-set fields (calories, macros,
-    // access, training assignments, meal plans, weight history) completely untouched
+    // access, training assignments, meal plans, weight history) completely untouched. sex is
+    // omitted entirely when this submission didn't have a usable answer (undefined keys are
+    // dropped before the request is sent), so a resubmission without a recognised answer can't
+    // wipe out a value already recorded.
     await supabase.from('clients').update({
       phone: phone || null,
       date_of_birth: date_of_birth || null,
       height_cm: height_cm ? parseFloat(height_cm) : null,
       goal: goal || null,
-      sex: normalizedSex,
+      sex: normalizedSex ?? undefined,
       dislikes: dislikesArray,
       allergies: allergiesArray,
       dietary_requirements: dietaryRequirementsArray,
@@ -219,7 +222,9 @@ serve(async (req) => {
       date_of_birth: date_of_birth || null,
       height_cm: height_cm ? parseFloat(height_cm) : null,
       goal: goal || null,
-      sex: normalizedSex,
+      // Defaults to female unless the form gave a recognised male/female answer — matches the
+      // same default applied everywhere else a client's sex is used or displayed.
+      sex: normalizedSex ?? 'female',
       activity_level: 'moderate',
       dislikes: dislikesArray,
       allergies: allergiesArray,

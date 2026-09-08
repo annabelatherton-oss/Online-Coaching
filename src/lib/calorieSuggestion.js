@@ -58,9 +58,9 @@ export function calcAge(dateOfBirth) {
 
 function calcBMR({ weightKg, heightCm, age, sex }) {
   const base = 10 * weightKg + 6.25 * heightCm - 5 * age
-  if (sex === 'male') return base + 5
-  if (sex === 'female') return base - 161
-  return base - 78 // midpoint of the male/female offsets when sex isn't recorded
+  // Defaults to female whenever sex isn't explicitly 'male' — matches the same default applied
+  // when a client record is created, so this is really just a safety net for older records.
+  return sex === 'male' ? base + 5 : base - 161
 }
 
 // Picks the trend window from a client's weight history: the earliest and latest
