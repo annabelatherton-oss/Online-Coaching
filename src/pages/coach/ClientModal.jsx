@@ -3,6 +3,7 @@ import { supabase, supabaseAdmin } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
+import { DIETS, DIET_LABELS } from '../../lib/diets'
 import DislikePicker from '../../components/DislikePicker'
 
 export default function ClientModal({ client, onClose, onSaved, duplicateData }) {
@@ -22,6 +23,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
     start_date: new Date().toISOString().split('T')[0],
     tags: [],
     allergies: [],
+    dietary_requirements: [],
     dislikes: [],
   })
   const [tagInput, setTagInput] = useState('')
@@ -48,6 +50,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           : new Date().toISOString().split('T')[0],
         tags: client.tags || [],
         allergies: client.allergies || [],
+        dietary_requirements: client.dietary_requirements || [],
         dislikes: client.dislikes || [],
       })
       setSplit(splitPercentFromGrams(
@@ -145,6 +148,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
             start_date: form.start_date,
             tags: form.tags,
             allergies: form.allergies,
+            dietary_requirements: form.dietary_requirements || [],
             dislikes: form.dislikes || [],
           })
           .eq('id', client.id)
@@ -196,14 +200,19 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
           is_paused: false,
           tags: form.tags,
           allergies: form.allergies,
+          dietary_requirements: form.dietary_requirements || [],
           dislikes: form.dislikes || [],
           activity_level: 'moderate',
         }
         let { error: clientErr } = await supabase.from('clients').insert(newClientPayload)
-        // activity_level is a newer column — if the migration adding it hasn't been run yet,
-        // don't let that block creating the client entirely.
+        // activity_level / dietary_requirements are newer columns — if either migration hasn't
+        // been run yet, don't let that block creating the client entirely.
         if (clientErr && /column/i.test(clientErr.message || '') && /activity_level/i.test(clientErr.message || '')) {
           const { activity_level, ...rest } = newClientPayload
+          clientErr = (await supabase.from('clients').insert(rest)).error
+        }
+        if (clientErr && /column/i.test(clientErr.message || '') && /dietary_requirements/i.test(clientErr.message || '')) {
+          const { dietary_requirements, ...rest } = newClientPayload
           clientErr = (await supabase.from('clients').insert(rest)).error
         }
         if (clientErr) throw clientErr
@@ -445,6 +454,26 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
                         className="w-4 h-4 rounded accent-red-500 flex-shrink-0"
                       />
                       <span className="text-sm text-gray-700 dark:text-gray-300">{ALLERGEN_LABELS[a]}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Dietary requirements</label>
+                <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                  {DIETS.map(d => (
+                    <label key={d} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.dietary_requirements.includes(d)}
+                        onChange={e => set('dietary_requirements', e.target.checked
+                          ? [...form.dietary_requirements, d]
+                          : form.dietary_requirements.filter(x => x !== d)
+                        )}
+                        className="w-4 h-4 rounded accent-brand-500 flex-shrink-0"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">{DIET_LABELS[d]}</span>
                     </label>
                   ))}
                 </div>

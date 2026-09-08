@@ -46,6 +46,10 @@ serve(async (req) => {
     cardio_preferences,
     food_preferences,
     dislikes,
+    allergies,
+    dietary_requirements,
+    dietary_needs,
+    diet,
     meal_preference,
     other_info,
   } = body
@@ -60,6 +64,45 @@ serve(async (req) => {
     return null
   }
   const normalizedSex = normalizeSex(gender) ?? normalizeSex(sex)
+
+  // Same keys/labels the app itself uses (src/lib/allergens.js, src/lib/diets.js) — kept in sync
+  // by hand since this edge function is a separate Deno deploy target with no access to src/lib.
+  const ALLERGEN_LABELS: Record<string, string> = {
+    dairy: 'Dairy', gluten: 'Gluten / Wheat', nuts: 'Tree Nuts', peanuts: 'Peanuts',
+    shellfish: 'Shellfish', fish: 'Fish', eggs: 'Eggs', soy: 'Soy', sesame: 'Sesame',
+  }
+  const DIET_LABELS: Record<string, string> = {
+    vegetarian: 'Vegetarian', vegan: 'Vegan', pescatarian: 'Pescatarian',
+    gluten_free: 'Gluten-Free', dairy_free: 'Dairy-Free',
+  }
+
+  // The form may send a checkbox list as an array, or a single comma-separated string. Each
+  // answer is matched against the known keys/labels (either direction, substring included) so
+  // "Gluten Free", "gluten-free", and "gluten_free" all resolve to the same 'gluten_free' key —
+  // anything that doesn't match a known option is dropped rather than stored as junk.
+  function normalizeListField(value: unknown, labels: Record<string, string>): string[] {
+    if (!value) return []
+    const raw = Array.isArray(value) ? value : String(value).split(',')
+    const found = new Set<string>()
+    for (const item of raw) {
+      const v = String(item).trim().toLowerCase().replace(/[\s-]+/g, '_')
+      if (!v) continue
+      for (const [key, label] of Object.entries(labels)) {
+        const labelKey = label.toLowerCase().replace(/[\s/-]+/g, '_')
+        if (v === key || v === labelKey || labelKey.includes(v) || v.includes(key)) {
+          found.add(key)
+          break
+        }
+      }
+    }
+    return [...found]
+  }
+
+  const allergiesArray = normalizeListField(allergies, ALLERGEN_LABELS)
+  const dietaryRequirementsArray = normalizeListField(
+    dietary_requirements ?? dietary_needs ?? diet,
+    DIET_LABELS,
+  )
 
   if (!email || !full_name) {
     return new Response(JSON.stringify({ error: 'email and full_name are required' }), { status: 400 })
@@ -142,6 +185,8 @@ serve(async (req) => {
       goal: goal || null,
       sex: normalizedSex,
       dislikes: dislikesArray,
+      allergies: allergiesArray,
+      dietary_requirements: dietaryRequirementsArray,
       intake_form: intakeForm,
     }).eq('id', existingClient.id)
 
@@ -165,6 +210,8 @@ serve(async (req) => {
       sex: normalizedSex,
       activity_level: 'moderate',
       dislikes: dislikesArray,
+      allergies: allergiesArray,
+      dietary_requirements: dietaryRequirementsArray,
       intake_form: intakeForm,
       start_date: new Date().toISOString().split('T')[0],
       access_weeks: 12,

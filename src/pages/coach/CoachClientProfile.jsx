@@ -6,6 +6,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams, splitForGoal, normalizeGoalMacroSplits } from '../../lib/macros'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
+import { DIETS, DIET_LABELS } from '../../lib/diets'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
@@ -484,6 +485,7 @@ function OverviewTab({ client, onSaved }) {
     is_paused: client.is_paused || false,
     collect_measurements: client.collect_measurements || false,
     allergies: client.allergies || [],
+    dietary_requirements: client.dietary_requirements || [],
     dislikes: client.dislikes || [],
     // Personal info
     phone: client.phone || '',
@@ -572,6 +574,7 @@ function OverviewTab({ client, onSaved }) {
       is_paused: form.is_paused,
       collect_measurements: form.collect_measurements,
       allergies: form.allergies,
+      dietary_requirements: form.dietary_requirements || [],
       dislikes: form.dislikes || [],
       phone: form.phone || null,
       date_of_birth: form.date_of_birth || null,
@@ -806,6 +809,25 @@ function OverviewTab({ client, onSaved }) {
                   className="w-4 h-4 rounded accent-red-500 flex-shrink-0"
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">{ALLERGEN_LABELS[a]}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="label">Dietary requirements</label>
+          <div className="grid grid-cols-3 gap-y-2 gap-x-4">
+            {DIETS.map(d => (
+              <label key={d} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.dietary_requirements.includes(d)}
+                  onChange={e => set('dietary_requirements', e.target.checked
+                    ? [...form.dietary_requirements, d]
+                    : form.dietary_requirements.filter(x => x !== d)
+                  )}
+                  className="w-4 h-4 rounded accent-brand-500 flex-shrink-0"
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300">{DIET_LABELS[d]}</span>
               </label>
             ))}
           </div>
@@ -3764,7 +3786,7 @@ export default function CoachClientProfile() {
       current_carbs, current_fat, steps_target, water_target_litres, sleep_target_hours,
       start_date, access_weeks, access_expires_at,
       is_active, is_paused, notes, created_at, tags, collect_measurements, top_lifts,
-      allergies, dislikes, phone, date_of_birth, height_cm, sex, activity_level, goal_type, intake_form,
+      allergies, dietary_requirements, dislikes, phone, date_of_birth, height_cm, sex, activity_level, goal_type, intake_form,
       profiles!clients_profile_id_fkey(full_name, email)
     `).eq('id', clientId).eq('coach_id', profile.id).single()
     if (err || !data) setError('Client not found or you do not have access.')
