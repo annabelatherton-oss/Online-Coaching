@@ -6,9 +6,9 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { calcStandardMacros } from '../../lib/macros'
-import { getIngredients, formatAmount } from '../../components/MealPlanView'
+import { getIngredients, formatAmount, hasAnyOverride, normalizeOverrides, mealMacros as sharedMealMacros } from '../../components/MealPlanView'
 import {
-  generateTierIngredients, insertTierVersion, tierTargetsForCategory, calcTotals, snapToConstraints, allIngredientsFixed,
+  generateTierIngredients, insertTierVersion, tierTargetsForCategory, allIngredientsFixed,
 } from '../../lib/calorieTierScaling'
 
 const MAIN_SLOTS = [
@@ -36,17 +36,6 @@ const OVER_TARGET_TOLERANCE = 20
 
 function round1(n) {
   return Math.round(n * 10) / 10
-}
-
-function sumMacros(ingredients) {
-  const t = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
-  for (const i of (ingredients || [])) {
-    t.calories += parseFloat(i.calories) || 0
-    t.protein_g += parseFloat(i.protein_g) || 0
-    t.carbs_g += parseFloat(i.carbs_g) || 0
-    t.fat_g += parseFloat(i.fat_g) || 0
-  }
-  return { calories: round1(t.calories), protein_g: round1(t.protein_g), carbs_g: round1(t.carbs_g), fat_g: round1(t.fat_g) }
 }
 
 function OptionTotal({ label, totals, target }) {
@@ -139,65 +128,37 @@ function MacroMatchRow({ label, totals, tier }) {
   )
 }
 
-// Inline editor for a meal's calorie-tier ingredient set — the same shared meal_tier_versions /
-// meal_tier_ingredients rows the Meal Library edits, just reachable without leaving the template.
-function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit, onSaved, onLiveUpdate }) {
-  const [loading, setLoading] = useState(true)
+// Inline editor for ONE week's occurrence of a meal. Quantities are stored as an override on top
+// of the meal's shared default recipe for this tier (meal_tier_versions / meal_tier_ingredients —
+// the same rows the Meal Library edits), keyed to this specific (week, slot) via
+// template_meal_slots.ingredient_overrides, exactly like a client's own per-week meal-plan
+// overrides. This means adjusting quantities here only ever affects this one week — every other
+// week showing the same meal keeps using the shared default until it's overridden separately.
+function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRevertAll, onGenerated }) {
   const [library, setLibrary] = useState([])
   const [baseIngredients, setBaseIngredients] = useState([])
-  const [version, setVersion] = useState(null)
-  const [saving, setSaving] = useState(false)
+  const [loadingBase, setLoadingBase] = useState(true)
   const [generating, setGenerating] = useState(false)
-  const [dirty, setDirty] = useState(false)
   const [error, setError] = useState('')
 
-  async function load() {
-    setLoading(true)
-    const [{ data: lib }, { data: baseIng }, { data: tierVer }] = await Promise.all([
-      supabase.from('ingredients').select('*').eq('coach_id', coachId),
-      supabase.from('meal_ingredients').select('*').eq('meal_id', mealId).order('id'),
-      supabase.from('meal_tier_versions').select('id, meal_tier_ingredients(*)').eq('meal_id', mealId).eq('calorie_tier', tier).maybeSingle(),
-    ])
-    setLibrary(lib || [])
-    setBaseIngredients(baseIng || [])
-    if (tierVer) {
-      setVersion({
-        id: tierVer.id,
-        ingredients: (tierVer.meal_tier_ingredients || []).sort((a, b) => a.id > b.id ? 1 : -1).map(ing => {
-          const libIng = ing.ingredient_id ? (lib || []).find(l => l.id === ing.ingredient_id) || null : null
-          return {
-            ...ing,
-            _library: libIng,
-            _calPerG:  ing.quantity_g > 0 ? ing.calories  / ing.quantity_g : 0,
-            _proPerG:  ing.quantity_g > 0 ? ing.protein_g / ing.quantity_g : 0,
-            _carbPerG: ing.quantity_g > 0 ? ing.carbs_g   / ing.quantity_g : 0,
-            _fatPerG:  ing.quantity_g > 0 ? ing.fat_g     / ing.quantity_g : 0,
-          }
-        }),
-      })
-    } else {
-      setVersion(null)
+  const version = (meal?.meal_tier_versions || []).find(v => v.calorie_tier === tier)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoadingBase(true)
+      const [{ data: lib }, { data: baseIng }] = await Promise.all([
+        supabase.from('ingredients').select('*').eq('coach_id', coachId),
+        supabase.from('meal_ingredients').select('*').eq('meal_id', mealId).order('id'),
+      ])
+      if (cancelled) return
+      setLibrary(lib || [])
+      setBaseIngredients(baseIng || [])
+      setLoadingBase(false)
     }
-    setDirty(false)
-    setLoading(false)
-  }
-
-  useEffect(() => { load() }, [mealId, tier])
-
-  function updateQty(idx, newQty) {
-    const qty = parseFloat(newQty) || 0
-    const newIngredients = (version?.ingredients || []).map((ing, i) => i !== idx ? ing : {
-      ...ing,
-      quantity_g: newQty,
-      calories:  round1(qty * (ing._calPerG  || 0)),
-      protein_g: round1(qty * (ing._proPerG  || 0)),
-      carbs_g:   round1(qty * (ing._carbPerG || 0)),
-      fat_g:     round1(qty * (ing._fatPerG  || 0)),
-    })
-    setVersion(prev => ({ ...prev, ingredients: newIngredients }))
-    setDirty(true)
-    onLiveUpdate?.(calcTotals(newIngredients))
-  }
+    load()
+    return () => { cancelled = true }
+  }, [mealId])
 
   async function handleGenerate() {
     setGenerating(true)
@@ -212,40 +173,17 @@ function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit, onSa
       return
     }
     setGenerating(false)
-    load()
-    onSaved?.()
+    onGenerated?.()
   }
 
-  async function handleSave() {
-    if (!version) return
-    setSaving(true)
-    const totals = calcTotals(version.ingredients)
-    await supabase.from('meal_tier_versions').update(totals).eq('id', version.id)
-    for (const ing of version.ingredients) {
-      const rawQty = parseFloat(ing.quantity_g) || 0
-      const snapped = ing._library ? (snapToConstraints(rawQty, ing._library) ?? rawQty) : rawQty
-      await supabase.from('meal_tier_ingredients').update({
-        quantity_g: snapped,
-        calories:  round1(snapped * (ing._calPerG  || 0)),
-        protein_g: round1(snapped * (ing._proPerG  || 0)),
-        carbs_g:   round1(snapped * (ing._carbPerG || 0)),
-        fat_g:     round1(snapped * (ing._fatPerG  || 0)),
-      }).eq('id', ing.id)
-    }
-    setSaving(false)
-    load()
-    onSaved?.(totals)
-  }
-
-  if (loading) return <p className="text-xs text-gray-400 py-2 px-2">Loading ingredients…</p>
-
-  const fixedWarning = allIngredientsFixed(baseIngredients) && (
+  const fixedWarning = !loadingBase && allIngredientsFixed(baseIngredients) && (
     <p className="text-xs text-amber-500 px-2 pt-2">
       Every ingredient in this meal is marked Fixed, so it can't be scaled to this tier's target — mark at least one ingredient Flexible in the Meal Library to fix this.
     </p>
   )
 
   if (!version) {
+    if (loadingBase) return <p className="text-xs text-gray-400 py-2 px-2">Loading ingredients…</p>
     return (
       <div>
         {fixedWarning}
@@ -259,40 +197,53 @@ function TierIngredientEditor({ mealId, tier, category, coachId, mealSplit, onSa
     )
   }
 
-  const totals = calcTotals(version.ingredients)
-  const target = tierTargetsForCategory(tier, category, mealSplit)
-  const diff = target.calories - totals.calories
+  const ingredients = getIngredients(meal, tier, overridesForSlot)
+  const overridden = hasAnyOverride(overridesForSlot)
+  const { qty: overrideQty } = normalizeOverrides(overridesForSlot)
 
   return (
-    <div className="space-y-1.5 py-2 px-2">
+    <div className="space-y-1 py-2 px-2">
       {fixedWarning}
       {error && <p className="text-xs text-red-500">{error}</p>}
-      {version.ingredients.map((ing, idx) => (
+      {ingredients.length > 0 && (
+        <div className="flex items-center gap-2 text-[10px] text-gray-400 uppercase tracking-wide font-medium pb-1">
+          <span className="flex-1">Ingredient</span>
+          <span className="w-16 text-right">Amount</span>
+          <span className="w-14 text-right">Kcal</span>
+          <span className="w-10 text-right">C</span>
+          <span className="w-10 text-right">P</span>
+          <span className="w-10 text-right">F</span>
+        </div>
+      )}
+      {ingredients.map(ing => (
         <div key={ing.id} className="flex items-center gap-2 text-xs">
-          <span className="flex-1 text-gray-600 dark:text-gray-300 truncate">{ing.name}</span>
-          <input
-            type="number"
-            className="w-20 text-right bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5"
-            value={ing.quantity_g}
-            onChange={e => updateQty(idx, e.target.value)}
-          />
-          <span className="w-6 text-gray-400">{ing.unit || 'g'}</span>
-          <span className="w-16 text-right text-gray-400 tabular-nums">{ing.calories} kcal</span>
+          <span className={`flex-1 truncate ${overrideQty[ing.id] != null ? 'text-brand-600 dark:text-brand-400 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
+            {ing.name}
+          </span>
+          <span className="w-16 flex items-center justify-end gap-1">
+            <input
+              type="number"
+              className="w-11 text-right bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1 py-0.5"
+              value={ing.quantity_g}
+              onChange={e => onChangeQty(ing.id, e.target.value)}
+            />
+            <span className="text-gray-400 text-[10px]">{ing.unit || 'g'}</span>
+          </span>
+          <span className="w-14 text-right text-gray-500 dark:text-gray-400 tabular-nums">{round1(ing.calories)}</span>
+          <span className="w-10 text-right text-gray-500 dark:text-gray-400 tabular-nums">{round1(ing.carbs_g)}</span>
+          <span className="w-10 text-right text-gray-500 dark:text-gray-400 tabular-nums">{round1(ing.protein_g)}</span>
+          <span className="w-10 text-right text-gray-500 dark:text-gray-400 tabular-nums">{round1(ing.fat_g)}</span>
         </div>
       ))}
       <div className="flex items-center justify-between pt-1.5 border-t border-gray-100 dark:border-gray-800">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
-          <span className="font-medium text-gray-700 dark:text-gray-300">{totals.calories} kcal</span>
-          {' '}(target {target.calories}, {diff >= 0 ? `${Math.round(diff)} under` : `${Math.round(-diff)} over`})
+        <span className="text-[11px] text-gray-400 dark:text-gray-500">
+          {overridden ? 'Adjusted for this week only — every other week keeps the default' : "Using this meal's default quantities"}
         </span>
-        <div className="flex items-center gap-3">
-          <button onClick={handleGenerate} disabled={generating} className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
-            {generating ? 'Regenerating…' : 'Regenerate'}
+        {overridden && (
+          <button onClick={onRevertAll} className="text-xs text-orange-500 hover:text-orange-700 dark:hover:text-orange-400 font-medium">
+            Revert to default
           </button>
-          {dirty && (
-            <button onClick={handleSave} disabled={saving} className="text-xs btn-primary py-1 px-2.5">{saving ? 'Saving…' : 'Save'}</button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   )
@@ -324,7 +275,7 @@ export default function PlanGroupEditor() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [optimizing, setOptimizing] = useState(false)
-  // `${mealId}:${tier}` of the ingredient editor currently open, or null.
+  // `${weekIdx}:${slotKey}` of the ingredient editor currently open, or null.
   const [editingIngredients, setEditingIngredients] = useState(null)
   const [defaultPreworkout, setDefaultPreworkout] = useState('')
   const [defaultEveningSnack, setDefaultEveningSnack] = useState('')
@@ -339,7 +290,7 @@ export default function PlanGroupEditor() {
         supabase.from('plan_groups').select('*').eq('id', groupId).single(),
         supabase
           .from('weekly_templates')
-          .select('id, week_number, calorie_tier, template_meal_slots(slot_type, meal_id)')
+          .select('id, week_number, calorie_tier, template_meal_slots(slot_type, meal_id, ingredient_overrides)')
           .eq('plan_group_id', groupId)
           .order('week_number'),
         supabase
@@ -387,10 +338,12 @@ export default function PlanGroupEditor() {
       const byTier = {}
       for (const t of (templates || [])) {
         const slots = {}
+        const overrides = {}
         for (const s of (t.template_meal_slots || [])) {
           slots[s.slot_type] = s.meal_id
+          if (s.ingredient_overrides) overrides[s.slot_type] = s.ingredient_overrides
         }
-        const week = { templateId: t.id, weekNum: t.week_number, slots }
+        const week = { templateId: t.id, weekNum: t.week_number, slots, overrides }
         if (t.calorie_tier == null) master.push(week)
         else (byTier[t.calorie_tier] = byTier[t.calorie_tier] || []).push(week)
       }
@@ -406,14 +359,12 @@ export default function PlanGroupEditor() {
   const currentWeeks = activeTier == null ? weeks : (tierWeeks[activeTier] || [])
   const mealSplit = normalizeMealSplit(profile.meal_split)
 
-  // A meal's macros at the tier being edited — its tier version's numbers if one exists for this
-  // tier, or its base recipe's totals when editing the tier-agnostic Standard template.
-  function mealMacros(mealId, tier) {
-    const meal = mealId ? mealsById[mealId] : null
-    if (!meal) return null
-    if (tier == null) return sumMacros(meal.meal_ingredients)
-    const ver = (meal.meal_tier_versions || []).find(v => v.calorie_tier === tier)
-    return ver ? { calories: round1(ver.calories), protein_g: round1(ver.protein_g), carbs_g: round1(ver.carbs_g), fat_g: round1(ver.fat_g) } : null
+  // A meal's macros at the tier being edited — its tier version's numbers (with any per-week
+  // ingredient override applied) if one exists for this tier, or its base recipe's totals when
+  // editing the tier-agnostic Standard template.
+  function mealMacros(mealId, tier, overridesForSlot) {
+    const m = sharedMealMacros(mealId, mealsById, tier, overridesForSlot)
+    return m ? { calories: round1(m.cal), protein_g: round1(m.prot), carbs_g: round1(m.carb), fat_g: round1(m.fat) } : null
   }
 
   function sumSlotMacros(week, keys, tier) {
@@ -422,7 +373,7 @@ export default function PlanGroupEditor() {
     for (const key of keys) {
       const slotId = week.slots[key]
       if (!slotId) continue  // empty slot — don't flag as incomplete
-      const m = mealMacros(slotId, tier)
+      const m = mealMacros(slotId, tier, week.overrides?.[key])
       if (!m) { complete = false; continue }
       t.calories += m.calories
       t.protein_g += m.protein_g
@@ -432,25 +383,24 @@ export default function PlanGroupEditor() {
     return { calories: round1(t.calories), protein_g: round1(t.protein_g), carbs_g: round1(t.carbs_g), fat_g: round1(t.fat_g), complete }
   }
 
-  function applyMealTierTotals(mealId, tier, newTotals) {
-    setMealsById(prev => {
-      const meal = prev[mealId]
-      if (!meal) return prev
-      const existing = meal.meal_tier_versions || []
-      const updated = existing.some(v => Number(v.calorie_tier) === Number(tier))
-        ? existing.map(v => Number(v.calorie_tier) === Number(tier) ? { ...v, ...newTotals } : v)
-        : [...existing, { calorie_tier: tier, ...newTotals }]
-      return { ...prev, [mealId]: { ...meal, meal_tier_versions: updated } }
-    })
-  }
-
+  // Re-fetches one meal in the same shape the initial load uses, so cards/editors relying on its
+  // photo, ingredients, and tier ingredients (e.g. right after generating a new tier version) stay
+  // in sync without a full page reload.
   async function refreshMeal(mealId) {
     const { data: meal } = await supabase
       .from('meals')
-      .select('id, name, category, meal_ingredients(calories, protein_g, carbs_g, fat_g), meal_tier_versions(calorie_tier, calories, protein_g, carbs_g, fat_g)')
+      .select(`
+        id, name, category, photo_url, photo_position,
+        meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static),
+        meal_tier_versions(calorie_tier, calories, protein_g, carbs_g, fat_g,
+          meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
+      `)
       .eq('id', mealId)
       .single()
-    if (meal) setMealsById(prev => ({ ...prev, [mealId]: meal }))
+    if (meal) {
+      if (meal.photo_url) meal.photo_url = supabase.storage.from('meal-photos').getPublicUrl(meal.photo_url).data.publicUrl
+      setMealsById(prev => ({ ...prev, [mealId]: meal }))
+    }
   }
 
   async function selectTier(tier) {
@@ -492,7 +442,7 @@ export default function PlanGroupEditor() {
     }
 
     const newWeeks = inserted
-      .map(ins => ({ templateId: ins.id, weekNum: ins.week_number, slots: { ...(weeks.find(w => w.weekNum === ins.week_number)?.slots || {}) } }))
+      .map(ins => ({ templateId: ins.id, weekNum: ins.week_number, slots: { ...(weeks.find(w => w.weekNum === ins.week_number)?.slots || {}) }, overrides: {} }))
       .sort((a, b) => a.weekNum - b.weekNum)
     setTierWeeks(prev => ({ ...prev, [tier]: newWeeks }))
     setForking(false)
@@ -507,7 +457,9 @@ export default function PlanGroupEditor() {
   }
 
   // Breakfast/lunch/dinner only change for the week being edited. Pre-workout/evening-snack are
-  // the same every week, so changing one writes the new meal into every week at once.
+  // the same every week, so changing one writes the new meal into every week at once. Any
+  // ingredient override on the slot is cleared when its meal changes — a correction calibrated
+  // for the old meal's ingredients wouldn't mean anything applied to a different meal.
   function changeSlot(weekIdx, slotKey, mealId) {
     const isStatic = STATIC_SLOT_KEYS.has(slotKey)
     const setActiveWeeks = activeTier == null
@@ -516,7 +468,9 @@ export default function PlanGroupEditor() {
 
     setActiveWeeks(prev => prev.map((w, i) => {
       if (!isStatic && i !== weekIdx) return w
-      return { ...w, slots: { ...w.slots, [slotKey]: mealId || null } }
+      const nextOverrides = { ...w.overrides }
+      delete nextOverrides[slotKey]
+      return { ...w, slots: { ...w.slots, [slotKey]: mealId || null }, overrides: nextOverrides }
     }))
     setDirty(prev => {
       const s = new Set(prev)
@@ -524,6 +478,38 @@ export default function PlanGroupEditor() {
       else s.add(currentWeeks[weekIdx].templateId)
       return s
     })
+  }
+
+  // Adjusts a single ingredient's quantity for just this (week, slot) — stored as an override on
+  // top of the meal's shared default recipe, so no other week showing the same meal is affected.
+  function changeIngredientOverride(weekIdx, slotKey, ingId, newQtyStr) {
+    const newQty = parseFloat(newQtyStr)
+    const setActiveWeeks = activeTier == null
+      ? setWeeks
+      : updater => setTierWeeks(prev => ({ ...prev, [activeTier]: updater(prev[activeTier] || []) }))
+
+    setActiveWeeks(prev => prev.map((w, i) => {
+      if (i !== weekIdx) return w
+      const existing = normalizeOverrides(w.overrides?.[slotKey])
+      const nextQty = { ...existing.qty, [ingId]: isNaN(newQty) ? 0 : newQty }
+      return { ...w, overrides: { ...w.overrides, [slotKey]: { ...existing, qty: nextQty } } }
+    }))
+    setDirty(prev => new Set(prev).add(currentWeeks[weekIdx].templateId))
+  }
+
+  // Clears every per-week override on a slot, reverting it back to the meal's shared defaults.
+  function revertSlotOverrides(weekIdx, slotKey) {
+    const setActiveWeeks = activeTier == null
+      ? setWeeks
+      : updater => setTierWeeks(prev => ({ ...prev, [activeTier]: updater(prev[activeTier] || []) }))
+
+    setActiveWeeks(prev => prev.map((w, i) => {
+      if (i !== weekIdx) return w
+      const nextOverrides = { ...w.overrides }
+      delete nextOverrides[slotKey]
+      return { ...w, overrides: nextOverrides }
+    }))
+    setDirty(prev => new Set(prev).add(currentWeeks[weekIdx].templateId))
   }
 
   function handleSwap(weekIdx, slotKey, candidateId) {
@@ -583,15 +569,23 @@ export default function PlanGroupEditor() {
         await supabase.from('template_meal_slots').insert(rows)
       }
 
-      // Mirror into in-memory state so the editor reflects the change without a full reload
-      const applyDefaults = prev => prev.map(w => ({
-        ...w,
-        slots: {
-          ...w.slots,
-          ...(defaultPreworkout   ? { preworkout:    defaultPreworkout   } : {}),
-          ...(defaultEveningSnack ? { evening_snack: defaultEveningSnack } : {}),
-        },
-      }))
+      // Mirror into in-memory state so the editor reflects the change without a full reload.
+      // The meal is changing, so any per-week override on these slots no longer applies to
+      // anything and is cleared along with it.
+      const applyDefaults = prev => prev.map(w => {
+        const nextOverrides = { ...w.overrides }
+        if (defaultPreworkout) delete nextOverrides.preworkout
+        if (defaultEveningSnack) delete nextOverrides.evening_snack
+        return {
+          ...w,
+          slots: {
+            ...w.slots,
+            ...(defaultPreworkout   ? { preworkout:    defaultPreworkout   } : {}),
+            ...(defaultEveningSnack ? { evening_snack: defaultEveningSnack } : {}),
+          },
+          overrides: nextOverrides,
+        }
+      })
       setWeeks(applyDefaults)
       setTierWeeks(prev => {
         const next = {}
@@ -628,6 +622,7 @@ export default function PlanGroupEditor() {
           slot_type: s.key,
           meal_id: week.slots[s.key],
           scaled_version_id: null,
+          ingredient_overrides: week.overrides?.[s.key] || null,
         }))
 
       if (rows.length) {
@@ -1010,11 +1005,13 @@ export default function PlanGroupEditor() {
                   const options = mealsByCategory[slot.cat] || []
                   const mealId = week.slots[slot.key] || ''
                   const meal = mealId ? mealsById[mealId] : null
-                  const macros = mealMacros(mealId, activeTier)
+                  const overridesForSlot = week.overrides?.[slot.key]
+                  const macros = mealMacros(mealId, activeTier, overridesForSlot)
                   const isStatic = STATIC_SLOT_KEYS.has(slot.key)
-                  const editKey = mealId && activeTier != null ? `${mealId}:${activeTier}` : null
+                  const editKey = mealId && activeTier != null ? `${weekIdx}:${slot.key}` : null
                   const isEditingIngredients = editKey != null && editingIngredients === editKey
-                  const previewIngredients = meal ? getIngredients(meal, activeTier, null) : []
+                  const previewIngredients = meal ? getIngredients(meal, activeTier, overridesForSlot) : []
+                  const isOverridden = hasAnyOverride(overridesForSlot)
                   const isSwapOpen = swapPicker?.weekIdx === weekIdx && swapPicker?.slotKey === slot.key
                   return (
                     <div key={slot.key} className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
@@ -1032,6 +1029,11 @@ export default function PlanGroupEditor() {
                           <span className="absolute top-2 left-2 text-xs font-semibold bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded-full backdrop-blur-sm shadow-sm">
                             {slot.label}
                           </span>
+                          {isOverridden && (
+                            <span className="absolute top-2 right-2 text-xs font-semibold bg-brand-500 text-white px-2 py-0.5 rounded-full shadow-sm" title="Ingredient quantities adjusted for this week only">
+                              Adjusted
+                            </span>
+                          )}
                           {isStatic && (
                             <span className="absolute bottom-2 left-2 text-[10px] font-medium bg-white/90 dark:bg-gray-900/90 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full backdrop-blur-sm shadow-sm">
                               Same every week
@@ -1109,17 +1111,17 @@ export default function PlanGroupEditor() {
 
                       {isEditingIngredients && (
                         <div className="mx-3 mb-3 bg-gray-50/60 dark:bg-gray-800/30 rounded-lg">
-                          <TierIngredientEditor
+                          <SlotIngredientEditor
+                            meal={meal}
                             mealId={mealId}
                             tier={activeTier}
                             category={slot.cat}
                             coachId={profile.id}
                             mealSplit={mealSplit}
-                            onLiveUpdate={(newTotals) => applyMealTierTotals(mealId, activeTier, newTotals)}
-                            onSaved={(newTotals) => {
-                              if (newTotals) applyMealTierTotals(mealId, activeTier, newTotals)
-                              refreshMeal(mealId)
-                            }}
+                            overridesForSlot={overridesForSlot}
+                            onChangeQty={(ingId, val) => changeIngredientOverride(weekIdx, slot.key, ingId, val)}
+                            onRevertAll={() => revertSlotOverrides(weekIdx, slot.key)}
+                            onGenerated={() => refreshMeal(mealId)}
                           />
                         </div>
                       )}
