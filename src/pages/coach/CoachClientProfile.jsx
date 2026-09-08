@@ -15,6 +15,7 @@ import { ACTIVITY_LABELS, GOAL_LABELS, estimateMaintenanceCalories } from '../..
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import DislikePicker from '../../components/DislikePicker'
 import SwapRulePicker from '../../components/SwapRulePicker'
+import TargetDateBanner from '../../components/TargetDateBanner'
 
 const TABS = ['Overview', 'Meal Plan', 'Training', 'Daily Plan', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
 
@@ -494,6 +495,8 @@ function OverviewTab({ client, onSaved }) {
     sex: client.sex || 'female',
     activity_level: client.activity_level || '',
     goal_type: client.goal_type || '',
+    target_date: client.target_date ? client.target_date.split('T')[0] : '',
+    target_event_name: client.target_event_name || '',
     // Intake form answers
     intake_motivators: client.intake_form?.motivators || '',
     intake_barriers: client.intake_form?.barriers || '',
@@ -608,6 +611,8 @@ function OverviewTab({ client, onSaved }) {
       sex: form.sex || null,
       activity_level: form.activity_level || null,
       goal_type: form.goal_type || null,
+      target_date: form.target_date || null,
+      target_event_name: form.target_event_name || null,
       intake_form: {
         motivators: form.intake_motivators || null,
         barriers: form.intake_barriers || null,
@@ -639,6 +644,19 @@ function OverviewTab({ client, onSaved }) {
         return
       }
     }
+    // Same guard for target_date/target_event_name, in case that migration hasn't been run yet.
+    if (err && /column/i.test(err.message || '') && /(target_date|target_event_name)/i.test(err.message || '')) {
+      const { target_date, target_event_name, ...rest } = payload
+      const retry = await supabase.from('clients').update(rest).eq('id', client.id).select('id')
+      err = retry.error
+      rows = retry.data
+      if (!err && rows?.length) {
+        setSaving(false)
+        setError("Saved everything except the target date — that needs a database update first (ask your developer to run the latest SQL migration).")
+        onSaved()
+        return
+      }
+    }
     setSaving(false)
     if (err) { setError(err.message); return }
     // update()/select() returning zero rows means the write silently matched nothing (almost
@@ -658,6 +676,7 @@ function OverviewTab({ client, onSaved }) {
 
   return (
     <div className="space-y-6 max-w-2xl">
+    <TargetDateBanner targetDate={client.target_date} targetEventName={client.target_event_name} />
     <ClientPauseCard clientId={client.id} />
     <form onSubmit={handleSave} className="space-y-6">
 
@@ -712,6 +731,19 @@ function OverviewTab({ client, onSaved }) {
           </select>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Drives the calorie-target suggestion on the Meal Plan tab, and sets the default macro split below.</p>
         </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Target date</label>
+            <input className="input" type="date" value={form.target_date} onChange={e => set('target_date', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Target event</label>
+            <input className="input" type="text" value={form.target_event_name} onChange={e => set('target_event_name', e.target.value)} placeholder="e.g. Wedding, holiday" />
+          </div>
+        </div>
+        {form.target_date && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">Highlighted on the client's Check-in and Progress pages, and shown on your dashboard as it gets closer.</p>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="label">Start date</label>
@@ -3839,7 +3871,7 @@ export default function CoachClientProfile() {
       current_carbs, current_fat, steps_target, water_target_litres, sleep_target_hours,
       start_date, access_weeks, access_expires_at,
       is_active, is_paused, notes, created_at, tags, collect_measurements, top_lifts,
-      allergies, dietary_requirements, dislikes, phone, date_of_birth, height_cm, sex, activity_level, goal_type, intake_form,
+      allergies, dietary_requirements, dislikes, phone, date_of_birth, height_cm, sex, activity_level, goal_type, target_date, target_event_name, intake_form,
       profiles!clients_profile_id_fkey(full_name, email)
     `).eq('id', clientId).eq('coach_id', profile.id).single()
     if (err || !data) setError('Client not found or you do not have access.')

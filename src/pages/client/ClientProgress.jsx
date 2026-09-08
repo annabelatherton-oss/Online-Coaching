@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
 import { useSignedProgressPhotos, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
+import TargetDateBanner from '../../components/TargetDateBanner'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
@@ -187,7 +188,7 @@ export default function ClientProgress() {
     async function load() {
       const { data: client } = await supabase
         .from('clients')
-        .select('id')
+        .select('id, target_date, target_event_name')
         .eq('profile_id', session.user.id)
         .single()
 
@@ -242,6 +243,8 @@ export default function ClientProgress() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Progress</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Your weight trend and weekly check-in history</p>
       </div>
+
+      <TargetDateBanner targetDate={clientData?.target_date} targetEventName={clientData?.target_event_name} />
 
       {/* Quick stats */}
       <div className="grid grid-cols-3 gap-3">

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { daysUntil, formatCountdown, formatTargetDate } from '../../lib/targetDate'
 
 function StatCard({ title, value, subtitle, icon, color, to }) {
   const content = (
@@ -50,12 +51,13 @@ export default function CoachDashboard() {
   const [recentClients, setRecentClients] = useState([])
   const [pendingPauses, setPendingPauses] = useState([])
   const [attention, setAttention] = useState([]) // [{ clientId, name, reasons: [{text, tone}] }]
+  const [upcomingTargetDates, setUpcomingTargetDates] = useState([])
 
   useEffect(() => {
     async function load() {
       const { data: clients } = await supabase
         .from('clients')
-        .select('id, is_active, is_paused, access_expires_at, profiles!clients_profile_id_fkey(full_name, email)')
+        .select('id, is_active, is_paused, access_expires_at, target_date, target_event_name, profiles!clients_profile_id_fkey(full_name, email)')
         .eq('coach_id', profile.id)
 
       if (clients) {
@@ -92,6 +94,15 @@ export default function CoachDashboard() {
           pauses = (pauseData || []).map(p => ({ ...p, client_name: clientMap[p.client_id] }))
         }
         setPendingPauses(pauses)
+
+        // Target dates within the next 8 weeks, soonest first — a client with no date set,
+        // or one that's already passed, doesn't need a coach reminder any more.
+        const targetDates = active
+          .filter(c => c.target_date)
+          .map(c => ({ clientId: c.id, name: clientMap[c.id] || c.profiles?.full_name || 'Unknown', targetDate: c.target_date, eventName: c.target_event_name, days: daysUntil(c.target_date) }))
+          .filter(t => t.days != null && t.days >= 0 && t.days <= 56)
+          .sort((a, b) => a.days - b.days)
+        setUpcomingTargetDates(targetDates)
 
         // ── "Needs attention today" — merges three signals per active client:
         // missed this week's check-in, a rating stuck low 3+ weeks running,
@@ -340,6 +351,36 @@ export default function CoachDashboard() {
                   <button onClick={() => actOnPause(p.id, 'rejected')} className="btn-secondary py-1.5 px-3 text-xs">Decline</button>
                 </div>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Upcoming target dates */}
+      {upcomingTargetDates.length > 0 && (
+        <div className="card space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg leading-none">🎯</span>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white">Upcoming Target Dates</h2>
+            <span className="badge bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400">{upcomingTargetDates.length}</span>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {upcomingTargetDates.map(t => (
+              <Link
+                key={t.clientId}
+                to={`/coach/clients/${t.clientId}`}
+                className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 -mx-2 px-2 rounded-lg transition-colors"
+              >
+                <div>
+                  <p className="font-medium text-sm text-gray-900 dark:text-white">{t.name}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                    {t.eventName ? `${t.eventName} · ` : ''}{formatTargetDate(t.targetDate)}
+                  </p>
+                </div>
+                <span className={`badge ${t.days <= 14 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
+                  {formatCountdown(t.days)}
+                </span>
+              </Link>
             ))}
           </div>
         </div>

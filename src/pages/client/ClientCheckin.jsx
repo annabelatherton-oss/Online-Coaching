@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { compressImage, useSignedProgressPhotos } from '../../lib/progressPhotos'
+import TargetDateBanner from '../../components/TargetDateBanner'
 
 const RATING_LABELS = {
   energy_level:   ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
@@ -381,7 +382,7 @@ export default function ClientCheckin() {
     async function load() {
       const { data: clientRow } = await supabase
         .from('clients')
-        .select('id, coach_id, collect_measurements, top_lifts')
+        .select('id, coach_id, collect_measurements, top_lifts, target_date, target_event_name')
         .eq('profile_id', session.user.id)
         .single()
       if (!clientRow) { setLoading(false); return }
@@ -735,6 +736,7 @@ export default function ClientCheckin() {
       <div className="flex gap-6">
         <Sidebar />
         <div className="flex-1 min-w-0 space-y-6 max-w-lg">
+          <TargetDateBanner targetDate={clientData?.target_date} targetEventName={clientData?.target_event_name} />
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
@@ -772,6 +774,7 @@ export default function ClientCheckin() {
     <div className="flex gap-6">
       <Sidebar />
       <div className="flex-1 min-w-0 space-y-6 max-w-lg">
+      <TargetDateBanner targetDate={clientData?.target_date} targetEventName={clientData?.target_event_name} />
       {viewingCheckin ? (
         <>
           <div>

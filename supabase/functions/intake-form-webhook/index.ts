@@ -52,6 +52,14 @@ serve(async (req) => {
     diet,
     meal_preference,
     other_info,
+    target_date,
+    event_date,
+    important_date,
+    target_event_name,
+    event_name,
+    goal_phase,
+    phase,
+    bulking_cutting_maintaining,
   } = body
 
   // The intake form's gender question may come through as "gender" or "sex", and as
@@ -115,6 +123,44 @@ serve(async (req) => {
     dietary_requirements ?? dietary_needs ?? diet,
     DIET_ALIASES,
   )
+
+  // Matches the app's own goal_type values (src/lib/calorieSuggestion.js GOAL_LABELS) — same
+  // alias-list approach as ALLERGEN_ALIASES/DIET_ALIASES above, so a form label of "Cutting",
+  // "Bulking" or "Maintaining" (or close variants) maps onto cut/maintain/bulk.
+  const GOAL_PHASE_ALIASES: Record<string, string[]> = {
+    cut:      ['cut', 'cutting'],
+    maintain: ['maintain', 'maintaining'],
+    bulk:     ['bulk', 'bulking'],
+  }
+  function normalizeGoalPhase(value: unknown): 'cut' | 'maintain' | 'bulk' | null {
+    if (typeof value !== 'string') return null
+    const v = value.trim().toLowerCase()
+    if (!v) return null
+    for (const [key, aliases] of Object.entries(GOAL_PHASE_ALIASES)) {
+      if (aliases.some(a => v === a || v.includes(a))) return key as 'cut' | 'maintain' | 'bulk'
+    }
+    return null
+  }
+  const normalizedGoalPhase = normalizeGoalPhase(goal_phase) ?? normalizeGoalPhase(phase) ?? normalizeGoalPhase(bulking_cutting_maintaining)
+
+  // The form may send a date as ISO (YYYY-MM-DD) or UK format (DD/MM/YYYY) depending on how the
+  // middleware passes it through — normalize to ISO for the `date` column. Anything unparseable
+  // is dropped rather than stored, since a bad date is worse than no date.
+  function normalizeDate(value: unknown): string | null {
+    if (typeof value !== 'string') return null
+    const v = value.trim()
+    if (!v) return null
+    if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10)
+    const uk = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (uk) {
+      const [, d, m, y] = uk
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+    }
+    const parsed = new Date(v)
+    return isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10)
+  }
+  const normalizedTargetDate = normalizeDate(target_date) ?? normalizeDate(event_date) ?? normalizeDate(important_date)
+  const normalizedTargetEventName = (target_event_name || event_name || '').trim() || null
 
   if (!email || !full_name) {
     return new Response(JSON.stringify({ error: 'email and full_name are required' }), { status: 400 })
@@ -202,6 +248,11 @@ serve(async (req) => {
       dislikes: dislikesArray,
       allergies: allergiesArray,
       dietary_requirements: dietaryRequirementsArray,
+      // Same "don't wipe on a blank resubmission" rule as sex above — a resubmission that
+      // doesn't answer these questions shouldn't erase a value already recorded.
+      goal_type: normalizedGoalPhase ?? undefined,
+      target_date: normalizedTargetDate ?? undefined,
+      target_event_name: normalizedTargetEventName ?? undefined,
       intake_form: intakeForm,
     }).eq('id', existingClient.id)
 
@@ -229,6 +280,9 @@ serve(async (req) => {
       dislikes: dislikesArray,
       allergies: allergiesArray,
       dietary_requirements: dietaryRequirementsArray,
+      goal_type: normalizedGoalPhase,
+      target_date: normalizedTargetDate,
+      target_event_name: normalizedTargetEventName,
       intake_form: intakeForm,
       start_date: new Date().toISOString().split('T')[0],
       access_weeks: 12,
