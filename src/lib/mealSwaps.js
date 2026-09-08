@@ -10,26 +10,39 @@ import { supabase } from './supabase'
 export const ALLERGEN_KEYWORDS = {
   dairy:     ['milk', 'cheese', 'yogurt', 'yoghurt', 'cream', 'butter', 'whey', 'casein',
                'lactose', 'cheddar', 'mozzarella', 'feta', 'brie', 'ricotta', 'mascarpone',
-               'skyr', 'creme', 'crème', 'quark', 'fromage'],
+               'skyr', 'creme', 'crème', 'quark', 'fromage', 'parmesan', 'halloumi', 'philadelphia'],
   gluten:    ['wheat', 'flour', 'bread', 'pasta', 'oat', 'oats', 'barley', 'rye', 'semolina',
                'spelt', 'couscous', 'bulgur', 'wrap', 'tortilla', 'bagel', 'sourdough',
                'naan', 'pita', 'cracker', 'biscuit', 'malt', 'noodle', 'lasagne', 'spaghetti',
                'macaroni', 'linguine', 'tagliatelle', 'rigatoni', 'fusilli', 'orzo', 'penne',
-               'panko', 'breadcrumb'],
+               'panko', 'breadcrumb', 'bun', 'ciabatta', 'cibatta', 'crumpet', 'bap', 'panini',
+               'weetabix', 'hovis', 'warb'],
   nuts:      ['almond', 'cashew', 'walnut', 'pecan', 'pistachio', 'hazelnut', 'brazil nut',
-               'macadamia', 'pine nut', 'mixed nuts', 'tree nut'],
+               'macadamia', 'pine nut', 'mixed nuts', 'tree nut', 'nutella'],
   peanuts:   ['peanut', 'peanut butter', 'groundnut'],
   shellfish: ['prawn', 'shrimp', 'crab', 'lobster', 'scallop', 'clam', 'mussel', 'oyster',
                'crayfish', 'langoustine', 'squid', 'octopus'],
   fish:      ['salmon', 'tuna', 'cod', 'haddock', 'tilapia', 'sea bass', 'mackerel', 'trout',
                'anchovy', 'sardine', 'halibut', 'basa', 'pollock', 'plaice', 'herring'],
-  eggs:      ['egg'],
+  eggs:      ['egg', 'mayo'],
   soy:       ['soy', 'soya', 'tofu', 'edamame', 'tempeh', 'miso'],
   sesame:    ['sesame', 'tahini'],
 }
 
+// Named products that would otherwise trip a keyword by coincidence — "Corn Flour" contains
+// "flour" without containing gluten, "Gluten Free X" and "Vegan X" products are explicitly safe
+// for the very restriction their name's keyword would suggest, and a plant milk contains "milk"
+// without containing dairy. Checked before the keyword scan below.
+const RESTRICTION_SAFE_EXCEPTIONS = {
+  gluten: [/corn\s*flour/, /gluten[\s-]?free/],
+  dairy:  [/^vegan\b/, /\b(oat|almond|soy|soya|coconut|rice|cashew)\s*milk\b/],
+  eggs:   [/^vegan\b/],
+}
+
 export function ingredientMatchesRestriction(ingName, restriction) {
   const lower = ingName.toLowerCase()
+  const exceptions = RESTRICTION_SAFE_EXCEPTIONS[restriction]
+  if (exceptions && exceptions.some(re => re.test(lower))) return false
   const keywords = ALLERGEN_KEYWORDS[restriction] || [restriction.toLowerCase()]
   return keywords.some(kw => lower.includes(kw))
 }

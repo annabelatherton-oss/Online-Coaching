@@ -40,13 +40,16 @@ const VEGAN_LABELLED = /^vegan\b/
 // and vegan, since dairy is forbidden under both.
 const PLANT_MILK = /\b(oat|almond|soy|soya|coconut|rice|cashew)\s*milk\b/
 
+// Corn flour contains "flour" (a gluten keyword) without containing any actual gluten.
+const CORN_FLOUR = /corn\s*flour/
+
 const DIET_SAFE_EXCEPTIONS = {
   // Quorn's whole range is meat-free by definition, despite product names like "Quorn Mince" or
   // "Quorn Chicken Pieces" containing a meat keyword — but Quorn isn't vegan (most of the range
   // is bound with egg white), so this exception is scoped to vegetarian only.
   vegetarian: [/^quorn\b/, VEGAN_LABELLED],
   vegan: [VEGAN_LABELLED, PLANT_MILK],
-  gluten_free: [/gluten[\s-]?free/],
+  gluten_free: [/gluten[\s-]?free/, CORN_FLOUR],
   dairy_free: [PLANT_MILK, VEGAN_LABELLED, /dairy[\s-]?free/],
 }
 
