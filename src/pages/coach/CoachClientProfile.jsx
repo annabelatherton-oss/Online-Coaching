@@ -6,7 +6,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams, splitForGoal, normalizeGoalMacroSplits } from '../../lib/macros'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
-import { DIETS, DIET_LABELS } from '../../lib/diets'
+import { DIETS, DIET_LABELS, mealQualifiesForDiets, ingredientQualifiesForDiets } from '../../lib/diets'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
@@ -1410,12 +1410,13 @@ function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides) {
 // and ingredients can be removed or added just for this client — none of it touches the shared
 // master meal/tier-version data. Quantity overrides rescale that ingredient's macros proportionally;
 // added ingredients are pulled from the coach's ingredient library so their macros are accurate.
-function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange }) {
+function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange }) {
   const [addingOpen, setAddingOpen] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addSelected, setAddSelected] = useState(null)
   const [addQty, setAddQty] = useState('')
   const [staticDrafts, setStaticDrafts] = useState({})
+  const [showAllIngredients, setShowAllIngredients] = useState(false)
 
   const meal = mealMap[mealId]
   if (!meal) return null
@@ -1473,9 +1474,14 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
     resetAddForm()
   }
 
-  const filteredLibrary = addSearch
-    ? library.filter(l => l.name.toLowerCase().includes(addSearch.toLowerCase())).slice(0, 8)
+  const clientDiets = dietaryRequirements || []
+  const searchMatches = addSearch
+    ? library.filter(l => l.name.toLowerCase().includes(addSearch.toLowerCase()))
     : []
+  const filteredLibrary = (clientDiets.length === 0 || showAllIngredients
+    ? searchMatches
+    : searchMatches.filter(l => ingredientQualifiesForDiets(l, clientDiets))
+  ).slice(0, 8)
 
   const overridden = hasAnyOverride(overrides)
 
@@ -1639,10 +1645,22 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
                     <span className="text-gray-400 flex-shrink-0">{l.calories_per_serving} kcal/{l.serving_size}{l.serving_unit}</span>
                   </button>
                 ))}
-                {filteredLibrary.length === 0 && <p className="px-2 py-1.5 text-xs text-gray-400 italic">No matches in your ingredient library</p>}
+                {filteredLibrary.length === 0 && (
+                  <p className="px-2 py-1.5 text-xs text-gray-400 italic">
+                    {clientDiets.length > 0 && !showAllIngredients && searchMatches.length > 0
+                      ? "No matches follow this client's dietary requirements"
+                      : 'No matches in your ingredient library'}
+                  </p>
+                )}
               </div>
             )}
           </div>
+          {clientDiets.length > 0 && (
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+              <input type="checkbox" checked={showAllIngredients} onChange={e => setShowAllIngredients(e.target.checked)} className="w-3.5 h-3.5 rounded accent-brand-500" />
+              Show ingredients that don't follow this client's dietary requirements
+            </label>
+          )}
           {addSelected ? (
             <div className="flex items-center gap-2">
               <input
@@ -1684,6 +1702,7 @@ function MealPlanTab({ client, coachId }) {
   const [library, setLibrary] = useState([])
   const [ingredientOverrides, setIngredientOverrides] = useState({})
   const [expandedSlots, setExpandedSlots] = useState(new Set())
+  const [dietOverrideSlots, setDietOverrideSlots] = useState(new Set())
   const [openSwapRule, setOpenSwapRule] = useState(null) // { slotKey, dislike, removeId, quantity_g }
   const [swapRuleSaved, setSwapRuleSaved] = useState('')
   const [staticEdits, setStaticEdits] = useState({ preworkout_meal_id: null, evening_snack_meal_id: null })
@@ -2040,6 +2059,10 @@ function MealPlanTab({ client, coachId }) {
     setExpandedSlots(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
   }
 
+  function toggleDietOverride(key) {
+    setDietOverrideSlots(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
+  }
+
   function dayTotalViolations() {
     return [
       option1Subtotal.cal > 0 ? suggestion1 : null,
@@ -2187,6 +2210,18 @@ function MealPlanTab({ client, coachId }) {
     const hasConflicts = !!conflicts && (conflicts.allergens.length > 0 || conflicts.dislikes.length > 0)
     const canSwap = hasConflicts && !!findSafeMeal(cat, currentId, clientAllergies, clientDislikes, mealMap, mealsByCategory, tier)
 
+    // Meals this client can't be given without an explicit override, based on their dietary
+    // requirements — hidden from the picker by default rather than just warned about after the
+    // fact, since a diet requirement (unlike an allergy/dislike) isn't optional.
+    const clientDiets = client.dietary_requirements || []
+    const dietOverridden = dietOverrideSlots.has(slotKey)
+    const dietFiltered = clientDiets.length > 0 && !dietOverridden
+      ? options.filter(m => mealQualifiesForDiets(m, clientDiets))
+      : options
+    const currentMealInDietList = dietFiltered.some(m => m.id === currentId)
+    const selectOptions = currentMealInDietList || !meal ? dietFiltered : [meal, ...dietFiltered]
+    const currentMealViolatesDiet = clientDiets.length > 0 && meal && !mealQualifiesForDiets(meal, clientDiets)
+
     return (
       <div key={slotKey} className="flex flex-col sm:flex-row rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
         <div className="relative w-full sm:w-40 aspect-[16/9] sm:aspect-square bg-gray-100 dark:bg-gray-800 flex-shrink-0">
@@ -2214,10 +2249,20 @@ function MealPlanTab({ client, coachId }) {
             onChange={e => { setEditedSlots(prev => ({ ...prev, [slotKey]: e.target.value || null })); setSlotsDirty(true) }}
           >
             <option value="">— None —</option>
-            {options.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            {selectOptions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
 
+          {clientDiets.length > 0 && (
+            <label className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-pointer">
+              <input type="checkbox" checked={dietOverridden} onChange={() => toggleDietOverride(slotKey)} className="w-3.5 h-3.5 rounded accent-brand-500" />
+              Show meals that don't follow {clientDiets.map(d => DIET_LABELS[d]).join(', ')}
+            </label>
+          )}
+
           <div className="flex flex-wrap items-center gap-1.5">
+            {currentMealViolatesDiet && (
+              <span className="text-xs font-medium text-red-500">⚠ Not {clientDiets.filter(d => meal && !mealQualifiesForDiets(meal, [d])).map(d => DIET_LABELS[d]).join('/')}</span>
+            )}
             {conflicts?.allergens.length > 0 && (
               <span className="text-xs font-medium text-red-500" title={conflicts.allergens.map(c => `${ALLERGEN_LABELS[c.allergen]}: ${c.ingredientName}`).join(', ')}>⚠ Allergen</span>
             )}
@@ -2349,6 +2394,7 @@ function MealPlanTab({ client, coachId }) {
               overrides={overridesForSlot}
               library={library}
               libraryById={libraryById}
+              dietaryRequirements={client.dietary_requirements}
               onQtyChange={(ingId, val) => slotHandlers.changeQty(slotKey, ingId, val)}
               onRemove={ingId => slotHandlers.remove(slotKey, ingId)}
               onRestore={ingId => slotHandlers.restore(slotKey, ingId)}
@@ -2736,6 +2782,7 @@ function MealPlanTab({ client, coachId }) {
                         overrides={everydayOverrides[slotKey]}
                         library={library}
                         libraryById={libraryById}
+                        dietaryRequirements={client.dietary_requirements}
                         onQtyChange={(ingId, val) => everydayHandlers.changeQty(slotKey, ingId, val)}
                         onRemove={ingId => everydayHandlers.remove(slotKey, ingId)}
                         onRestore={ingId => everydayHandlers.restore(slotKey, ingId)}
@@ -2792,6 +2839,7 @@ function MealPlanTab({ client, coachId }) {
                         overrides={everydayOverrides[slotKey]}
                         library={library}
                         libraryById={libraryById}
+                        dietaryRequirements={client.dietary_requirements}
                         onQtyChange={(ingId, val) => everydayHandlers.changeQty(slotKey, ingId, val)}
                         onRemove={ingId => everydayHandlers.remove(slotKey, ingId)}
                         onRestore={ingId => everydayHandlers.restore(slotKey, ingId)}

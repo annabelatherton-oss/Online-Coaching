@@ -96,3 +96,23 @@ export function mealQualifiesForDiet(meal, dietKey) {
   const ingredientNames = (meal.meal_ingredients || []).map(i => i.name)
   return !ingredientsViolateDiet(ingredientNames, dietKey)
 }
+
+// True only if a meal satisfies every one of a client's dietary requirements (a client can have
+// more than one, e.g. vegetarian AND gluten-free).
+export function mealQualifiesForDiets(meal, dietKeys) {
+  return (dietKeys || []).every(d => mealQualifiesForDiet(meal, d))
+}
+
+// Whether a single ingredient (from the Ingredient Library, not a meal) is safe for a diet. For
+// vegetarian/vegan this respects the ingredient's own is_vegetarian flag first — the coach's
+// explicit say-so beats a name guess — falling back to the same name-keyword check as everything
+// else when that flag isn't decisive (gluten-free/dairy-free/pescatarian have no such flag).
+export function ingredientQualifiesForDiet(ingredient, dietKey) {
+  if ((dietKey === 'vegetarian' || dietKey === 'vegan') && ingredient.is_vegetarian === false) return false
+  return !ingredientsViolateDiet([ingredient.name], dietKey)
+}
+
+// True only if an ingredient satisfies every one of a client's dietary requirements.
+export function ingredientQualifiesForDiets(ingredient, dietKeys) {
+  return (dietKeys || []).every(d => ingredientQualifiesForDiet(ingredient, d))
+}
