@@ -1,0 +1,108 @@
+-- Tags every meal added in supabase/add-diet-specific-meals.sql and
+-- supabase/add-vegan-protein-meals.sql with the diet it was built for, so they show up
+-- ONLY in their own diet's 50-week plan(s) and never get swept into Standard. Run
+-- supabase/meal-diet-tags-migration.sql FIRST. Safe to re-run — each update is scoped to
+-- an exact (coach_id, category, name) match.
+
+do $$
+declare
+  v_coach_id uuid := (select id from profiles where email = 'annabelatherton@gmail.com');
+begin
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Veggie Scrambled Eggs & Sourdough'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Greek Yogurt Protein Pot'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Quorn Sausage Breakfast Wrap'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Cottage Cheese & Fruit Bowl'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Halloumi & Veg Wrap'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Chickpea & Feta Salad'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Quorn Chicken Caesar Salad'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Cottage Cheese Baked Potato'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Kidney Bean & Rice Bowl'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Quorn Mince Bolognese'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Halloumi & Veg Traybake'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Veggie Chilli'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Quorn Sausage & Mash'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Chickpea Curry & Rice'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Banana & Peanut Butter Rice Cakes'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Protein Yogurt & Granola'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Sourdough Toast & Honey'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Cottage Cheese & Berries'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Greek Yogurt & Dark Chocolate'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Protein Mousse Pot'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Rice Cakes & Peanut Butter'));
+  update meals set diet_tags = array['vegetarian'] where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Apple & Almonds'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('GF Oats with Berries'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Bacon & Eggs'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('GF Bagel & Salmon'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('GF Rice Pudding with Berries'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Chicken & Rice Salad'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Tuna & Baby Potato Salad'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('GF Wrap Chicken Fajita'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Steak & Sweet Potato'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Gammon & Baked Potato'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Chicken, Rice & Broccoli'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('GF Spaghetti Bolognese'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Salmon & New Potatoes'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('GF Penne Chicken Pesto'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Chorizo & Rice'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('GF Oats & Banana'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Rice Cakes & Peanut Butter (GF)'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Protein Yogurt & Grapes'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Greek Yogurt & Berries (GF)'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Cottage Cheese & Cucumber'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Turkey Slice Roll-ups'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Rice Cakes & Almonds'));
+  update meals set diet_tags = array['gluten_free'] where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Apple & Peanut Butter (GF)'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Oat Milk Porridge'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Bacon, Eggs & Tomato'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Scrambled Eggs & Avocado on Sourdough'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Protein Oats (Dairy-Free)'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Chicken, Avocado & Salad Wrap'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Tuna & Sweetcorn Jacket Potato'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Steak & Salad (Dairy-Free)'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Chicken Fajita Wrap'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Gammon, Rice & Green Beans'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Chicken, Rice & Veg (Dairy-Free)'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Beef Mince Chilli'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Salmon, Sweet Potato & Greens'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Chicken Stir Fry'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Sausage & Sweet Potato Mash'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Sourdough, Peanut Butter & Banana'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Oats & Honey (Dairy-Free)'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Dates & Almonds'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Apple & Peanut Butter (Dairy-Free)'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Dairy-Free Protein Shake'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Dark Chocolate & Almonds'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Rice Cakes & Peanut Butter (Dairy-Free)'));
+  update meals set diet_tags = array['dairy_free'] where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Grapes & Walnuts'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Vegan Oat Porridge with Berries'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Peanut Butter Banana Oats'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Baked Beans on Sourdough'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Chickpea & Avocado Salad'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Kidney Bean Rice Bowl'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Chickpea & Avocado Wrap'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Baked Beans & Sweet Potato Jacket'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Kidney Bean Chilli & Rice'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Chickpea Tomato Curry & Rice'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Bean & Veg Stir Fry'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Sweet Potato & Chickpea Traybake'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Banana & Peanut Butter Rice Cakes (Vegan)'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Dates & Almonds (Vegan)'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Apple & Peanut Butter (Vegan)'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Dark Chocolate & Walnuts'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Rice Cakes & Peanut Butter (Vegan)'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Tofu Scramble on Sourdough'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Soy Milk Protein Oats'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Tofu & Edamame Salad'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Hummus & Chickpea Wrap'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Tempeh & Rice Bowl'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Red Lentil Dahl & Rice'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Tofu Stir Fry'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Vegan Mince Bolognese'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Tempeh & Sweet Potato Traybake'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Green Lentil Dahl & Rice'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Vegan Protein Shake'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Hummus & Rice Cakes'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Steamed Edamame'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Vegan Cheese & Rice Cakes'));
+  update meals set diet_tags = array['vegan'] where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Hummus & Carrot Sticks'));
+end $$;

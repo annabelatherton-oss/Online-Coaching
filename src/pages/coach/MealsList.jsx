@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS, missingTiers, createMissingTiersForMeal, regenerateAllTiersForMeal } from '../../lib/calorieTierScaling'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
+import { DIETS, DIET_LABELS } from '../../lib/diets'
 
 const CATEGORIES = ['All', 'Breakfast', 'Lunch', 'Dinner', 'Snack', 'Pre-workout', 'Evening Snack']
 
@@ -50,6 +51,19 @@ function round1(n) {
   return Math.round(n * 10) / 10
 }
 
+function DietTagBadges({ tags }) {
+  if (!tags || tags.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1 mb-2">
+      {tags.map(t => (
+        <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400">
+          {DIET_LABELS[t] || t}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // Which calorie tiers a meal is still missing, based on its saved meal_tier_versions rows.
 function missingTiersFor(meal) {
   const existing = new Set((meal.meal_tier_versions || []).map(v => v.calorie_tier))
@@ -64,9 +78,11 @@ export default function MealsList() {
   const [loading, setLoading] = useState(true)
   const [search, setSearchRaw] = useState(() => sessionStorage.getItem('mealsSearch') || '')
   const [categoryFilter, setCategoryFilterRaw] = useState(() => sessionStorage.getItem('mealsCategoryFilter') || 'All')
+  const [dietFilter, setDietFilterRaw] = useState(() => sessionStorage.getItem('mealsDietFilter') || 'All')
 
   function setSearch(val) { setSearchRaw(val); sessionStorage.setItem('mealsSearch', val) }
   function setCategoryFilter(val) { setCategoryFilterRaw(val); sessionStorage.setItem('mealsCategoryFilter', val) }
+  function setDietFilter(val) { setDietFilterRaw(val); sessionStorage.setItem('mealsDietFilter', val) }
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [bulkRunning, setBulkRunning] = useState(false)
@@ -80,7 +96,7 @@ export default function MealsList() {
       supabase
         .from('meals')
         .select(`
-          id, name, category, photo_url, photo_position, instructions,
+          id, name, category, photo_url, photo_position, instructions, diet_tags,
           meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, alternative_ingredient_ids),
           meal_tier_versions(calorie_tier)
         `)
@@ -225,10 +241,12 @@ export default function MealsList() {
 
   const q = search.toLowerCase()
   const matchesCat = m => categoryFilter === 'All' || m.category === CATEGORY_VALUE_MAP[categoryFilter]
-  const titleMatches = meals.filter(m => matchesCat(m) && m.name.toLowerCase().includes(q))
+  const matchesDiet = m => dietFilter === 'All' || (m.diet_tags || []).includes(dietFilter)
+  const titleMatches = meals.filter(m => matchesCat(m) && matchesDiet(m) && m.name.toLowerCase().includes(q))
   const ingredientMatches = q
     ? meals.filter(m =>
         matchesCat(m) &&
+        matchesDiet(m) &&
         !m.name.toLowerCase().includes(q) &&
         (m.meal_ingredients || []).some(ing => ing.name.toLowerCase().includes(q))
       )
@@ -308,6 +326,16 @@ export default function MealsList() {
             <option key={cat} value={cat}>{cat}</option>
           ))}
         </select>
+        <select
+          className="input sm:w-48"
+          value={dietFilter}
+          onChange={e => setDietFilter(e.target.value)}
+        >
+          <option value="All">All diets</option>
+          {DIETS.map(d => (
+            <option key={d} value={d}>{DIET_LABELS[d]}</option>
+          ))}
+        </select>
       </div>
 
       {loading ? (
@@ -378,6 +406,8 @@ export default function MealsList() {
                     <h3 className="font-semibold text-gray-900 dark:text-white leading-tight">{meal.name}</h3>
                     {meal.category && <CategoryBadge category={meal.category} />}
                   </div>
+
+                  <DietTagBadges tags={meal.diet_tags} />
 
                   {missingTierList && (
                     missingTierList.length === 0 ? (
@@ -474,6 +504,7 @@ export default function MealsList() {
                         <h3 className="font-semibold text-gray-900 dark:text-white leading-tight">{meal.name}</h3>
                         {meal.category && <CategoryBadge category={meal.category} />}
                       </div>
+                      <DietTagBadges tags={meal.diet_tags} />
                       {missingTierList && (
                         missingTierList.length === 0 ? (
                           <span className="inline-flex items-center self-start px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 mb-2">

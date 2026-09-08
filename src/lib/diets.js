@@ -80,3 +80,16 @@ export function dietViolations(meal, dietKey) {
   }
   return hits
 }
+
+// Whether a meal belongs in a given diet's plan. A meal the coach has explicitly tagged (via the
+// Meal Editor's "Dietary tags" field) is purpose-built for that diet — and ONLY that diet, so it's
+// never swept into the Standard plan or any other diet's plan by accident, regardless of what its
+// ingredients look like. An untagged meal falls back to the existing name-keyword check, so every
+// meal added before tagging existed keeps behaving exactly as it did before.
+export function mealQualifiesForDiet(meal, dietKey) {
+  const tags = meal.diet_tags || []
+  if (tags.length > 0) return tags.includes(dietKey)
+  if (!dietKey) return true
+  const ingredientNames = (meal.meal_ingredients || []).map(i => i.name)
+  return !ingredientsViolateDiet(ingredientNames, dietKey)
+}

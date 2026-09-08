@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
-import { DIETS, DIET_LABELS, ingredientsViolateDiet, dietViolations } from '../../lib/diets'
+import { DIETS, DIET_LABELS, dietViolations, mealQualifiesForDiet } from '../../lib/diets'
 
 // ── Classification ─────────────────────────────────────────────────────────────
 
@@ -339,7 +339,7 @@ export default function GenerateTemplates() {
   useEffect(() => {
     supabase
       .from('meals')
-      .select('id, name, category, template_subtype, meal_prep_friendly, template_carb, excluded_from_templates, meal_ingredients(name, calories)')
+      .select('id, name, category, template_subtype, meal_prep_friendly, template_carb, excluded_from_templates, diet_tags, meal_ingredients(name, calories)')
       .eq('coach_id', profile.id)
       .order('name')
       .then(({ data }) => {
@@ -351,7 +351,9 @@ export default function GenerateTemplates() {
           _totalCals: Math.round((m.meal_ingredients || []).reduce((s, i) => s + (parseFloat(i.calories) || 0), 0)),
         }))
         setMeals(classified)
-        setExcluded(new Set(classified.filter(m => m.excluded_from_templates).map(m => m.id)))
+        // Starts on the Standard view, so anything tagged for a specific diet is excluded from
+        // the outset too — matches what clicking "Standard" would (re)compute.
+        setExcluded(new Set(classified.filter(m => m.excluded_from_templates || !mealQualifiesForDiet(m, '')).map(m => m.id)))
         const overrides = {}
         for (const m of classified) {
           if (m.template_subtype) overrides[m.id] = m.template_subtype
@@ -415,22 +417,20 @@ export default function GenerateTemplates() {
   }
 
   // Re-seeds the working exclusion set for this generation session: your permanently-saved
-  // exclusions, plus (when a diet is picked) any meal whose ingredients trip that diet's forbidden
-  // keywords. This is a starting point, not a permanent change — nothing here is written back to
-  // excluded_from_templates unless you also hit "Save changes" below, and it doesn't affect any
-  // other plan you generate. Switching diets recomputes from scratch, so review the list again
-  // after switching.
+  // exclusions, plus any meal that doesn't qualify for the picked diet — a meal you've explicitly
+  // tagged (in the Meal Editor) only qualifies for the diet(s) it's tagged with, so a meal tagged
+  // "Vegan" never shows up here for Standard or any other diet; an untagged meal falls back to a
+  // check of its ingredients' names. This is a starting point, not a permanent change — nothing
+  // here is written back to excluded_from_templates unless you also hit "Save changes" below, and
+  // it doesn't affect any other plan you generate. Switching diets recomputes from scratch, so
+  // review the list again after switching.
   function applyDietFilter(diet) {
     setSelectedDiet(diet)
     const base = new Set(meals.filter(m => m.excluded_from_templates).map(m => m.id))
-    if (diet) {
-      for (const m of meals) {
-        if (ingredientsViolateDiet((m.meal_ingredients || []).map(i => i.name), diet)) base.add(m.id)
-      }
-      setPlanName(`${DIET_LABELS[diet]} ${WEEK_COUNT} Week Plan`)
-    } else {
-      setPlanName('50 Week Plan')
+    for (const m of meals) {
+      if (!mealQualifiesForDiet(m, diet)) base.add(m.id)
     }
+    setPlanName(diet ? `${DIET_LABELS[diet]} ${WEEK_COUNT} Week Plan` : '50 Week Plan')
     setExcluded(base)
   }
 
@@ -574,8 +574,11 @@ export default function GenerateTemplates() {
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Diet</h3>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-              Picking a diet automatically unchecks any meal whose ingredients don't fit it, as a starting
-              point — review the list below and adjust before generating. This only affects this plan.
+              Picking a diet automatically unchecks anything that doesn't fit it — a meal you've tagged (in
+              the Meal Editor) only shows up for the diet(s) it's tagged with, so it never appears in
+              Standard or another diet's plan by accident; an untagged meal falls back to a check of its
+              ingredients' names. This is a starting point — review the list below and adjust before
+              generating. This only affects this plan.
             </p>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -641,7 +644,10 @@ export default function GenerateTemplates() {
                 {sectionMeals.map(m => {
                   const sub = getSubtype(m)
                   const isExcluded = excluded.has(m.id)
-                  const violations = selectedDiet ? dietViolations(m, selectedDiet) : []
+                  const tags = m.diet_tags || []
+                  // Only show ingredient-keyword violations for untagged meals — a tagged meal's
+                  // inclusion/exclusion is already fully explained by its tag badges below.
+                  const violations = selectedDiet && tags.length === 0 ? dietViolations(m, selectedDiet) : []
                   return (
                     <div
                       key={m.id}
@@ -655,6 +661,11 @@ export default function GenerateTemplates() {
                       />
                       <span className="flex-1 text-sm text-gray-800 dark:text-gray-200">
                         {m.name}
+                        {tags.map(t => (
+                          <span key={t} className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400">
+                            {DIET_LABELS[t] || t}
+                          </span>
+                        ))}
                         {violations.length > 0 && (
                           <span className="ml-2 text-xs text-amber-500 font-normal" title="Uncheck stays off, or re-check to include it anyway">
                             ⚠ contains {violations.join(', ')}
