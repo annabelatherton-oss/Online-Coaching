@@ -517,6 +517,32 @@ function OverviewTab({ client, onSaved }) {
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
 
+  // Auto-fills Current Nutrition Targets from the client's stats (height, age, sex, activity
+  // level) and latest weight the moment there's enough info to do so and nothing's been entered
+  // yet — a coach can still override it, that just won't be touched again once a number is there.
+  useEffect(() => {
+    if (form.current_calories) return
+    if (!client.height_cm || !client.date_of_birth || !client.activity_level) return
+    let cancelled = false
+    async function autofill() {
+      const [{ data: weightRows }, { data: checkinRows }] = await Promise.all([
+        supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', client.id).order('recorded_at', { ascending: false }).limit(1),
+        supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', client.id).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
+      ])
+      if (cancelled) return
+      const latestWeight = weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null
+      const maintenance = latestWeight ? estimateMaintenanceCalories(client, latestWeight) : null
+      if (!maintenance) return
+      const nearestTier = CALORIE_TIERS.reduce((best, t) => Math.abs(t - maintenance) < Math.abs(best - maintenance) ? t : best, CALORIE_TIERS[0])
+      const preset = splitForGoal(form.goal_type, goalSplits)
+      setSplit(preset)
+      applySplit(nearestTier, preset)
+    }
+    autofill()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function applySplit(calories, splitPct) {
     const grams = calcMacrosFromSplit(calories, splitPct)
     setForm(f => ({
@@ -734,6 +760,11 @@ function OverviewTab({ client, onSaved }) {
         <div>
           <label className="label">Calories (kcal/day)</label>
           <input className="input" type="number" min={0} value={form.current_calories} onChange={e => setCalories(e.target.value)} placeholder="e.g. 1800" />
+          {!form.current_calories && (
+            <div className="mt-1.5">
+              <CalorieSuggestionPanel client={client} currentTarget={null} onApply={v => setCalories(String(v))} compact />
+            </div>
+          )}
         </div>
         <div>
           <label className="label !mb-0">Macro split (% of calories)</label>
