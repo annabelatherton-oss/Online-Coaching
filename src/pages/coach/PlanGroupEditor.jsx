@@ -646,46 +646,54 @@ export default function PlanGroupEditor() {
   }
 
   // Rotates every meal available for each slot's category across the weeks in the arrangement
-  // that gets each day as close as possible to the calorie and macro target for the tier being
-  // viewed, then applies that same meal-per-week choice to the Standard template and every other
-  // calorie tier — every client eats the same meal each week regardless of their tier, just at
-  // their own portion size. The pool for each slot is every meal in that category with a tier
-  // version for the tier being viewed — including any meal added to the library since the
+  // that gets each day as close as possible to the calorie and macro targets of EVERY calorie
+  // tier with an active client — not just the tier being viewed — then applies that same
+  // meal-per-week choice to the Standard template and every tier. Every client eats the same meal
+  // each week regardless of their tier, just at their own portion size, and the arrangement is
+  // chosen to actually suit every tier reasonably well rather than being tuned for just one and
+  // applied to the rest. The pool for each slot is every meal in that category with a tier
+  // version for at least one considered tier — including any meal added to the library since the
   // rotation was last built — so a brand-new meal gets woven into the schedule the next time this
   // runs, without needing to be placed by hand first. Only WHICH WEEK each meal lands on changes;
   // nothing about the meal itself (its ingredients, tier versions, or any manual quantity
   // corrections) is touched.
   //
   // Algorithm:
-  //   1. Collect every meal in the slot's category that has a tier version for the active tier —
-  //      that's the pool, whether or not it's already in the rotation.
+  //   1. Collect every meal in the slot's category that has a tier version for at least one
+  //      considered tier — that's the pool, whether or not it's already in the rotation.
   //   2. Build a round-robin schedule for each slot by cycling through its pool so every meal
   //      gets equal airtime and no meal repeats until all others have appeared.
   //   3. Run pairwise swap-improvement for each slot independently (holding the other 5 fixed):
   //      swap week i's meal with week j's in this slot if it lowers the sum of those two weeks'
-  //      day-total scores. This converges in a few passes and runs entirely in-memory.
+  //      day-total scores, averaged across every considered tier. This converges in a few passes
+  //      and runs entirely in-memory.
   function handleOptimize() {
     if (activeTier == null) return
     setOptimizing(true)
 
-    const tgtMacros = calcStandardMacros(activeTier)
+    // Score against every calorie tier with an active client, not just the tier being viewed —
+    // the result gets applied to all of them, so it needs to actually fit each one's targets
+    // rather than being tuned for whichever tier happened to be open. Falls back to just the
+    // active tier if somehow none are marked available yet.
+    const tiers = availableTiers.length > 0 ? availableTiers : [activeTier]
+    const tgtMacrosByTier = new Map(tiers.map(t => [t, calcStandardMacros(t)]))
     const N = currentWeeks.length
 
-    // Every meal in this slot's category with a tier version for the active tier — meals
-    // currently placed in the rotation first (in first-seen week order), then any other library
-    // meal for the category not yet in the rotation (including newly added ones). Meals without
-    // a tier version are excluded — they'd contribute 0 kcal to the day total and make every week
-    // they land in look 100-200 kcal under.
+    // Every meal in this slot's category with a tier version for at least one tier being
+    // considered — meals currently placed in the rotation first (in first-seen week order), then
+    // any other library meal for the category not yet in the rotation (including newly added
+    // ones). Meals with no tier version for any considered tier are excluded — they'd contribute
+    // 0 kcal to the day total and make every week they land in look 100-200 kcal under.
     function buildPool(slotKey) {
       const seen = new Set()
       const order = []
       for (const w of currentWeeks) {
         const id = w.slots[slotKey]
-        if (id && !seen.has(id) && mealMacros(id, activeTier) != null) { seen.add(id); order.push(id) }
+        if (id && !seen.has(id) && tiers.some(t => mealMacros(id, t) != null)) { seen.add(id); order.push(id) }
       }
       const cat = MAIN_SLOTS.find(s => s.key === slotKey)?.cat
       ;(mealsByCategory[cat] || [])
-        .filter(m => (m.meal_tier_versions || []).some(v => v.calorie_tier === activeTier))
+        .filter(m => tiers.some(t => (m.meal_tier_versions || []).some(v => v.calorie_tier === t)))
         .forEach(m => { if (!seen.has(m.id)) { seen.add(m.id); order.push(m.id) } })
       return order
     }
@@ -719,27 +727,31 @@ export default function PlanGroupEditor() {
     const scheds = {}
     for (const s of MAIN_SLOTS) scheds[s.key] = makeRoundRobin(pools[s.key])
 
-    // How far a full day total deviates from the tier target — same 4:1:1:1 weighting as the
-    // tier solver so the same quality bar applies here.
-    // Also penalises: same meal in A and B of the same category (very heavy), and
-    // any meal re-used within MIN_GAP weeks in the same slot (moderate penalty).
+    // How far a full day total deviates from the target — same 4:1:1:1 weighting as the tier
+    // solver so the same quality bar applies here — averaged across every tier being considered,
+    // so an arrangement that fits one tier well but another badly doesn't look artificially good.
+    // Also penalises: same meal in A and B of the same category (very heavy), and any meal
+    // re-used within MIN_GAP weeks in the same slot (moderate penalty).
     const MIN_GAP = 6
     function dayScore(weekIdx) {
       const staticIds = [
         currentWeeks[weekIdx].slots['preworkout']    || defaultPreworkout    || null,
         currentWeeks[weekIdx].slots['evening_snack'] || defaultEveningSnack  || null,
       ].filter(Boolean)
-      let scoreA = 0, scoreB = 0
-      for (const opt of [['breakfast1','lunch1','dinner1'], ['breakfast2','lunch2','dinner2']]) {
-        let cal = 0, prot = 0, carbs = 0, fat = 0
-        for (const id of [...opt.map(k => scheds[k][weekIdx]), ...staticIds]) {
-          const m = id ? mealMacros(id, activeTier) : null
-          if (!m) continue
-          cal += m.calories; prot += m.protein_g; carbs += m.carbs_g; fat += m.fat_g
+      let fitTotal = 0
+      for (const tier of tiers) {
+        const tgtMacros = tgtMacrosByTier.get(tier)
+        for (const opt of [['breakfast1','lunch1','dinner1'], ['breakfast2','lunch2','dinner2']]) {
+          let cal = 0, prot = 0, carbs = 0, fat = 0
+          for (const id of [...opt.map(k => scheds[k][weekIdx]), ...staticIds]) {
+            const m = id ? mealMacros(id, tier) : null
+            if (!m) continue
+            cal += m.calories; prot += m.protein_g; carbs += m.carbs_g; fat += m.fat_g
+          }
+          fitTotal += 4*Math.abs(cal-tier) + Math.abs(prot-tgtMacros.protein_g) + Math.abs(carbs-tgtMacros.carbs_g) + Math.abs(fat-tgtMacros.fat_g)
         }
-        const s = 4*Math.abs(cal-activeTier) + Math.abs(prot-tgtMacros.protein_g) + Math.abs(carbs-tgtMacros.carbs_g) + Math.abs(fat-tgtMacros.fat_g)
-        if (opt[0] === 'breakfast1') scoreA = s; else scoreB = s
       }
+      const fitScore = fitTotal / tiers.length
       // Penalty: A and B same meal in same category this week
       let penalty = 0
       for (const cat of ['breakfast', 'lunch', 'dinner']) {
@@ -754,7 +766,7 @@ export default function PlanGroupEditor() {
           if (scheds[s.key][k] === meal) { penalty += 500; break }
         }
       }
-      return scoreA + scoreB + penalty
+      return fitScore + penalty
     }
 
     // Swap-improve one slot's schedule: try every pair of weeks; keep the swap if it lowers the
@@ -830,7 +842,7 @@ export default function PlanGroupEditor() {
               onClick={handleOptimize}
               disabled={optimizing || forking}
               className="btn-secondary"
-              title="Re-spreads every breakfast, lunch, and dinner meal (including any you've added since this was last run) across the weeks to get each day as close as possible to this tier's calorie and macro targets — then applies the same meal choice to the Standard template and every other calorie tier, so every client eats the same meal each week at their own portion size."
+              title="Re-spreads every breakfast, lunch, and dinner meal (including any you've added since this was last run) across the weeks to get each day as close as possible to the calorie and macro targets of every calorie tier with an active client — then applies the same meal choice to the Standard template and every tier, so every client eats the same meal each week at their own portion size."
             >
               {optimizing ? 'Optimising…' : 'Optimise combinations'}
             </button>
