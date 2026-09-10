@@ -497,10 +497,22 @@ export async function createMissingTiersForMeal(mealId, category, baseIngredient
   }
 }
 
+// Runs `worker` over `items` with up to `size` requests in flight at once, instead of either
+// firing everything simultaneously (hundreds of concurrent requests can overwhelm the connection)
+// or awaiting one at a time (hundreds of sequential round-trips — this is what used to make
+// saving a popular ingredient feel like it hung).
+async function runInBatches(items, size, worker) {
+  for (let i = 0; i < items.length; i += size) {
+    await Promise.all(items.slice(i, i + size).map(worker))
+  }
+}
+
 // When a library ingredient's macros or constraints change, every meal_ingredient and
 // meal_tier_ingredient linked to it has stale numbers baked in at whatever quantity was saved —
 // re-snap each to the new constraints, recompute its macros, then roll the updated tier ingredient
-// totals back up into their meal_tier_versions row.
+// totals back up into their meal_tier_versions row. A widely-used ingredient (chicken, rice, eggs)
+// can touch hundreds of rows across a whole library's calorie tiers, so every step below batches
+// its requests in parallel rather than awaiting them one at a time.
 export async function propagateIngredientRuleChange(ingredientId, libIng) {
   const [{ data: baseRows }, { data: tierRows }] = await Promise.all([
     supabase.from('meal_ingredients').select('id, quantity_g').eq('ingredient_id', ingredientId),
@@ -519,18 +531,28 @@ export async function propagateIngredientRuleChange(ingredientId, libIng) {
     }
   }
 
-  for (const row of (baseRows || [])) {
-    await supabase.from('meal_ingredients').update(macrosAt(row.quantity_g)).eq('id', row.id)
-  }
+  await runInBatches(baseRows || [], 20, row =>
+    supabase.from('meal_ingredients').update(macrosAt(row.quantity_g)).eq('id', row.id)
+  )
 
-  const touchedVersionIds = new Set()
-  for (const row of (tierRows || [])) {
-    await supabase.from('meal_tier_ingredients').update(macrosAt(row.quantity_g)).eq('id', row.id)
-    touchedVersionIds.add(row.tier_version_id)
-  }
+  const touchedVersionIds = [...new Set((tierRows || []).map(r => r.tier_version_id))]
+  await runInBatches(tierRows || [], 20, row =>
+    supabase.from('meal_tier_ingredients').update(macrosAt(row.quantity_g)).eq('id', row.id)
+  )
 
-  for (const versionId of touchedVersionIds) {
-    const { data: ings } = await supabase.from('meal_tier_ingredients').select('calories, protein_g, carbs_g, fat_g').eq('tier_version_id', versionId)
-    await supabase.from('meal_tier_versions').update(calcTotals(ings || [])).eq('id', versionId)
+  if (touchedVersionIds.length > 0) {
+    // One query for every touched version's ingredients (grouped in JS) instead of one query per
+    // version — versions can number in the dozens for a common ingredient.
+    const { data: allIngs } = await supabase
+      .from('meal_tier_ingredients')
+      .select('tier_version_id, calories, protein_g, carbs_g, fat_g')
+      .in('tier_version_id', touchedVersionIds)
+    const byVersion = {}
+    for (const row of (allIngs || [])) {
+      (byVersion[row.tier_version_id] ??= []).push(row)
+    }
+    await runInBatches(touchedVersionIds, 20, versionId =>
+      supabase.from('meal_tier_versions').update(calcTotals(byVersion[versionId] || [])).eq('id', versionId)
+    )
   }
 }
