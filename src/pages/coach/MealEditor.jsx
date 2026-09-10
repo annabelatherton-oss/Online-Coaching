@@ -45,6 +45,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
     active: meal?.active !== false,
     includeInTemplate: !(meal?.excluded_from_templates ?? false),
     diet_tags: meal?.diet_tags || [],
+    standardEligible: meal?.standard_eligible !== false,
   })
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
@@ -156,6 +157,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
       active: form.active,
       excluded_from_templates: !form.includeInTemplate,
       diet_tags: form.diet_tags,
+      standard_eligible: form.standardEligible,
     }
 
     let savedId = mealId
@@ -204,6 +206,10 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
           <input id="includeInTemplate" type="checkbox" checked={form.includeInTemplate} onChange={e => set('includeInTemplate', e.target.checked)} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
           <label htmlFor="includeInTemplate" className="text-sm text-gray-700 dark:text-gray-300">Include in 50-week schedule generation</label>
         </div>
+        <div className="flex items-center gap-2">
+          <input id="standardEligible" type="checkbox" checked={form.standardEligible} onChange={e => set('standardEligible', e.target.checked)} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
+          <label htmlFor="standardEligible" className="text-sm text-gray-700 dark:text-gray-300">Standard-eligible (can go in the Standard plan)</label>
+        </div>
         <div>
           <label className="label">Dietary tags</label>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2 gap-x-4">
@@ -220,10 +226,10 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
             ))}
           </div>
           <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-            Tag this meal only if it was built specifically for a diet — it'll then appear ONLY in that
-            diet's 50-week plan(s), never in Standard or any other diet. Leave untagged for a normal meal
-            that can go in Standard (and may still show up in a diet's plan automatically, based on its
-            ingredients).
+            Tags mean "safe for this diet" — they're informational, not exclusive, so a tagged meal still
+            shows up in Standard and any other diet it qualifies for too. To keep a meal (e.g. one built
+            around Quorn, tofu, or another meat/dairy substitute) OUT of the Standard plan specifically,
+            untick "Standard-eligible" above instead.
           </p>
         </div>
       </div>

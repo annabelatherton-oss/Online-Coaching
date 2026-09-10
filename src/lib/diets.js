@@ -84,15 +84,17 @@ export function dietViolations(meal, dietKey) {
   return hits
 }
 
-// Whether a meal belongs in a given diet's plan. A meal the coach has explicitly tagged (via the
-// Meal Editor's "Dietary tags" field) is purpose-built for that diet — and ONLY that diet, so it's
-// never swept into the Standard plan or any other diet's plan by accident, regardless of what its
-// ingredients look like. An untagged meal falls back to the existing name-keyword check, so every
-// meal added before tagging existed keeps behaving exactly as it did before.
+// Whether a meal belongs in a given diet's plan. dietKey === '' means "Standard": a meal only
+// fails Standard if it's marked standard_eligible = false (built around a meat/dairy substitute
+// like Quorn/tofu/tempeh that a general client wouldn't expect — see the Meal Editor's "Standard
+// eligible" checkbox). For an actual diet, a tag means "this meal is safe for it" — tags are
+// informational, not exclusive, so a tagged meal still shows up in Standard and every other diet
+// it also qualifies for. An untagged meal (diet_tags empty — e.g. a brand-new meal not yet
+// recomputed) falls back to a live check of its ingredients' names.
 export function mealQualifiesForDiet(meal, dietKey) {
+  if (!dietKey) return meal.standard_eligible !== false
   const tags = meal.diet_tags || []
   if (tags.length > 0) return tags.includes(dietKey)
-  if (!dietKey) return true
   const ingredientNames = (meal.meal_ingredients || []).map(i => i.name)
   return !ingredientsViolateDiet(ingredientNames, dietKey)
 }

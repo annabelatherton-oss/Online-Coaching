@@ -1841,7 +1841,7 @@ function MealPlanTab({ client, coachId }) {
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', false).order('created_at', { ascending: false }),
       supabase.from('meals').select(`
-        id, name, category, photo_url, photo_position,
+        id, name, category, photo_url, photo_position, diet_tags, standard_eligible,
         meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, alternative_ingredient_ids),
         meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
           meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
@@ -2212,15 +2212,17 @@ function MealPlanTab({ client, coachId }) {
 
     // Meals this client can't be given without an explicit override, based on their dietary
     // requirements — hidden from the picker by default rather than just warned about after the
-    // fact, since a diet requirement (unlike an allergy/dislike) isn't optional.
+    // fact, since a diet requirement (unlike an allergy/dislike) isn't optional. A client with no
+    // dietary requirements is checked against Standard instead (''), which excludes only meals
+    // marked "not Standard-eligible" in the Meal Editor (built around a substitute like Quorn/tofu)
+    // — so those don't clutter a general client's picker either, unless overridden.
     const clientDiets = client.dietary_requirements || []
+    const dietsToCheck = clientDiets.length > 0 ? clientDiets : ['']
     const dietOverridden = dietOverrideSlots.has(slotKey)
-    const dietFiltered = clientDiets.length > 0 && !dietOverridden
-      ? options.filter(m => mealQualifiesForDiets(m, clientDiets))
-      : options
+    const dietFiltered = dietOverridden ? options : options.filter(m => mealQualifiesForDiets(m, dietsToCheck))
     const currentMealInDietList = dietFiltered.some(m => m.id === currentId)
     const selectOptions = currentMealInDietList || !meal ? dietFiltered : [meal, ...dietFiltered]
-    const currentMealViolatesDiet = clientDiets.length > 0 && meal && !mealQualifiesForDiets(meal, clientDiets)
+    const currentMealViolatesDiet = meal && !mealQualifiesForDiets(meal, dietsToCheck)
 
     return (
       <div key={slotKey} className="flex flex-col sm:flex-row rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
@@ -2252,16 +2254,18 @@ function MealPlanTab({ client, coachId }) {
             {selectOptions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
 
-          {clientDiets.length > 0 && (
-            <label className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-pointer">
-              <input type="checkbox" checked={dietOverridden} onChange={() => toggleDietOverride(slotKey)} className="w-3.5 h-3.5 rounded accent-brand-500" />
-              Show meals that don't follow {clientDiets.map(d => DIET_LABELS[d]).join(', ')}
-            </label>
-          )}
+          <label className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-pointer">
+            <input type="checkbox" checked={dietOverridden} onChange={() => toggleDietOverride(slotKey)} className="w-3.5 h-3.5 rounded accent-brand-500" />
+            {clientDiets.length > 0
+              ? `Show meals that don't follow ${clientDiets.map(d => DIET_LABELS[d]).join(', ')}`
+              : "Show meals built for a specific diet (e.g. Quorn, tofu)"}
+          </label>
 
           <div className="flex flex-wrap items-center gap-1.5">
             {currentMealViolatesDiet && (
-              <span className="text-xs font-medium text-red-500">⚠ Not {clientDiets.filter(d => meal && !mealQualifiesForDiets(meal, [d])).map(d => DIET_LABELS[d]).join('/')}</span>
+              <span className="text-xs font-medium text-red-500">
+                ⚠ Not {dietsToCheck.filter(d => meal && !mealQualifiesForDiets(meal, [d])).map(d => d ? DIET_LABELS[d] : 'Standard-eligible').join('/')}
+              </span>
             )}
             {conflicts?.allergens.length > 0 && (
               <span className="text-xs font-medium text-red-500" title={conflicts.allergens.map(c => `${ALLERGEN_LABELS[c.allergen]}: ${c.ingredientName}`).join(', ')}>⚠ Allergen</span>

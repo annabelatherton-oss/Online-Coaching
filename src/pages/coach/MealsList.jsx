@@ -51,15 +51,21 @@ function round1(n) {
   return Math.round(n * 10) / 10
 }
 
-function DietTagBadges({ tags }) {
-  if (!tags || tags.length === 0) return null
+function DietTagBadges({ tags, standardEligible }) {
+  const hasTags = tags && tags.length > 0
+  if (!hasTags && standardEligible !== false) return null
   return (
     <div className="flex flex-wrap gap-1 mb-2">
-      {tags.map(t => (
+      {(tags || []).map(t => (
         <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400">
           {DIET_LABELS[t] || t}
         </span>
       ))}
+      {standardEligible === false && (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" title="Uses a meat/dairy substitute (Quorn, tofu, etc.) — kept out of the Standard plan">
+          Not Standard
+        </span>
+      )}
     </div>
   )
 }
@@ -96,7 +102,7 @@ export default function MealsList() {
       supabase
         .from('meals')
         .select(`
-          id, name, category, photo_url, photo_position, instructions, diet_tags,
+          id, name, category, photo_url, photo_position, instructions, diet_tags, standard_eligible,
           meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, alternative_ingredient_ids),
           meal_tier_versions(calorie_tier)
         `)
@@ -409,7 +415,7 @@ export default function MealsList() {
                     {meal.category && <CategoryBadge category={meal.category} />}
                   </div>
 
-                  <DietTagBadges tags={meal.diet_tags} />
+                  <DietTagBadges tags={meal.diet_tags} standardEligible={meal.standard_eligible} />
 
                   {missingTierList && (
                     missingTierList.length === 0 ? (
@@ -506,7 +512,7 @@ export default function MealsList() {
                         <h3 className="font-semibold text-gray-900 dark:text-white leading-tight">{meal.name}</h3>
                         {meal.category && <CategoryBadge category={meal.category} />}
                       </div>
-                      <DietTagBadges tags={meal.diet_tags} />
+                      <DietTagBadges tags={meal.diet_tags} standardEligible={meal.standard_eligible} />
                       {missingTierList && (
                         missingTierList.length === 0 ? (
                           <span className="inline-flex items-center self-start px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 mb-2">

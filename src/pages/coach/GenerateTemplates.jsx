@@ -339,7 +339,7 @@ export default function GenerateTemplates() {
   useEffect(() => {
     supabase
       .from('meals')
-      .select('id, name, category, template_subtype, meal_prep_friendly, template_carb, excluded_from_templates, diet_tags, meal_ingredients(name, calories)')
+      .select('id, name, category, template_subtype, meal_prep_friendly, template_carb, excluded_from_templates, diet_tags, standard_eligible, meal_ingredients(name, calories)')
       .eq('coach_id', profile.id)
       .order('name')
       .then(({ data }) => {
@@ -351,8 +351,9 @@ export default function GenerateTemplates() {
           _totalCals: Math.round((m.meal_ingredients || []).reduce((s, i) => s + (parseFloat(i.calories) || 0), 0)),
         }))
         setMeals(classified)
-        // Starts on the Standard view, so anything tagged for a specific diet is excluded from
-        // the outset too — matches what clicking "Standard" would (re)compute.
+        // Starts on the Standard view, so anything marked "not Standard-eligible" (built around a
+        // meat/dairy substitute) is excluded from the outset too — matches what clicking
+        // "Standard" would (re)compute.
         setExcluded(new Set(classified.filter(m => m.excluded_from_templates || !mealQualifiesForDiet(m, '')).map(m => m.id)))
         const overrides = {}
         for (const m of classified) {
@@ -417,13 +418,15 @@ export default function GenerateTemplates() {
   }
 
   // Re-seeds the working exclusion set for this generation session: your permanently-saved
-  // exclusions, plus any meal that doesn't qualify for the picked diet — a meal you've explicitly
-  // tagged (in the Meal Editor) only qualifies for the diet(s) it's tagged with, so a meal tagged
-  // "Vegan" never shows up here for Standard or any other diet; an untagged meal falls back to a
-  // check of its ingredients' names. This is a starting point, not a permanent change — nothing
-  // here is written back to excluded_from_templates unless you also hit "Save changes" below, and
-  // it doesn't affect any other plan you generate. Switching diets recomputes from scratch, so
-  // review the list again after switching.
+  // exclusions, plus any meal that doesn't qualify for the picked diet. Diet tags are
+  // informational (a "Vegan" tag means "safe for vegan clients", not "vegan-only"), so a tagged
+  // meal can still show up here for Standard and any other diet it also qualifies for — the one
+  // exception is Standard, which excludes anything marked "not Standard-eligible" in the Meal
+  // Editor (a meal built around a meat/dairy substitute like Quorn/tofu that a general client
+  // wouldn't expect). An untagged meal falls back to a check of its ingredients' names. This is a
+  // starting point, not a permanent change — nothing here is written back to excluded_from_templates
+  // unless you also hit "Save changes" below, and it doesn't affect any other plan you generate.
+  // Switching diets recomputes from scratch, so review the list again after switching.
   function applyDietFilter(diet) {
     setSelectedDiet(diet)
     const base = new Set(meals.filter(m => m.excluded_from_templates).map(m => m.id))
@@ -574,11 +577,11 @@ export default function GenerateTemplates() {
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Diet</h3>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-              Picking a diet automatically unchecks anything that doesn't fit it — a meal you've tagged (in
-              the Meal Editor) only shows up for the diet(s) it's tagged with, so it never appears in
-              Standard or another diet's plan by accident; an untagged meal falls back to a check of its
-              ingredients' names. This is a starting point — review the list below and adjust before
-              generating. This only affects this plan.
+              Picking a diet automatically unchecks anything that doesn't fit it. Diet tags mean "safe for
+              this diet" — a tagged meal can still show up for Standard and other diets too, unless it's
+              marked "not Standard-eligible" (Meal Editor) for using a meat/dairy substitute like Quorn or
+              tofu. An untagged meal falls back to a check of its ingredients' names. This is a starting
+              point — review the list below and adjust before generating. This only affects this plan.
             </p>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
