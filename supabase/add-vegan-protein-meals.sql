@@ -20,8 +20,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Tofu Scramble on Sourdough'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Tofu Scramble on Sourdough', 'breakfast', null)
+    values (v_coach_id, 'Tofu Scramble on Sourdough', 'breakfast', 'Toast the sourdough. Crumble the tofu into a hot pan with the olive oil and cook for 5-6 min, stirring, until lightly golden. Wilt in the spinach for the last minute. Serve on the toast with the cherry tomatoes.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Toast the sourdough. Crumble the tofu into a hot pan with the olive oil and cook for 5-6 min, stirring, until lightly golden. Wilt in the spinach for the last minute. Serve on the toast with the cherry tomatoes.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Firm Tofu', 150, 'g', 159.0, 2.5, 17.0, 8.7, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Firm Tofu'))));
@@ -34,8 +36,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Soy Milk Protein Oats'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Soy Milk Protein Oats', 'breakfast', null)
+    values (v_coach_id, 'Soy Milk Protein Oats', 'breakfast', 'Combine the oats and soy milk in a pan or bowl and cook (3-4 min on the hob, or microwave in bursts) until thick. Stir through the protein powder once slightly cooled, then top with sliced banana.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Combine the oats and soy milk in a pan or bowl and cook (3-4 min on the hob, or microwave in bursts) until thick. Stir through the protein powder once slightly cooled, then top with sliced banana.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Oats', 60, 'g', 222.0, 39.0, 7.2, 3.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Oats'))));
@@ -49,8 +53,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Tofu & Edamame Salad'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Tofu & Edamame Salad', 'lunch', null)
+    values (v_coach_id, 'Tofu & Edamame Salad', 'lunch', 'Pat the tofu dry, cube it and pan-fry in a little of the olive oil for 6-7 min, turning, until golden on most sides. Cook the edamame per pack instructions (or use pre-cooked). Toss the salad and cherry tomatoes with the remaining oil, then top with the tofu and edamame.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Pat the tofu dry, cube it and pan-fry in a little of the olive oil for 6-7 min, turning, until golden on most sides. Cook the edamame per pack instructions (or use pre-cooked). Toss the salad and cherry tomatoes with the remaining oil, then top with the tofu and edamame.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Firm Tofu', 150, 'g', 159.0, 2.5, 17.0, 8.7, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Firm Tofu'))));
@@ -63,8 +69,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Hummus & Chickpea Wrap'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Hummus & Chickpea Wrap', 'lunch', null)
+    values (v_coach_id, 'Hummus & Chickpea Wrap', 'lunch', 'Drain and rinse the chickpeas. Warm the wrap, spread with the hummus, then add the salad, chickpeas and sliced cucumber. Roll to close.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Drain and rinse the chickpeas. Warm the wrap, spread with the hummus, then add the salad, chickpeas and sliced cucumber. Roll to close.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Tortilla Wrap', 1.0, 'unit', 181.0, 37.0, 5.0, 2.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Tortilla Wrap'))));
@@ -77,8 +85,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Tempeh & Rice Bowl'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Tempeh & Rice Bowl', 'lunch', null)
+    values (v_coach_id, 'Tempeh & Rice Bowl', 'lunch', 'Cook the rice per pack instructions. Slice the tempeh and pan-fry for 3-4 min per side until golden. Stir-fry the sliced pepper for 2-3 min, then add the tempeh and sauce and toss together. Serve over the rice, topped with spring onion.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Cook the rice per pack instructions. Slice the tempeh and pan-fry for 3-4 min per side until golden. Stir-fry the sliced pepper for 2-3 min, then add the tempeh and sauce and toss together. Serve over the rice, topped with spring onion.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Tempeh', 150, 'g', 252.0, 9.0, 30.0, 10.5, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Tempeh'))));
@@ -91,8 +101,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'lunch' and lower(trim(name)) = lower(trim('Red Lentil Dahl & Rice'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Red Lentil Dahl & Rice', 'lunch', null)
+    values (v_coach_id, 'Red Lentil Dahl & Rice', 'lunch', 'Cook the rice per pack instructions. Rinse the red lentils. Fry the diced onion for 2-3 min, add the lentils, passata and 150ml water, and simmer for 20-25 min, stirring occasionally, until the lentils have broken down and thickened. Stir through the spinach for the last 2 min. Serve over the rice.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Cook the rice per pack instructions. Rinse the red lentils. Fry the diced onion for 2-3 min, add the lentils, passata and 150ml water, and simmer for 20-25 min, stirring occasionally, until the lentils have broken down and thickened. Stir through the spinach for the last 2 min. Serve over the rice.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Red Lentils (Dry)', 75, 'g', 262.5, 45.0, 18.8, 1.1, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Red Lentils (Dry)'))));
@@ -107,8 +119,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Tofu Stir Fry'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Tofu Stir Fry', 'dinner', null)
+    values (v_coach_id, 'Tofu Stir Fry', 'dinner', 'Cook the rice per pack instructions. Pat the tofu dry, cube it and pan-fry for 6-7 min until golden on most sides. Add the bean sprouts and sliced pepper and stir-fry for 2-3 min, then stir through the sauce. Serve over the rice.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Cook the rice per pack instructions. Pat the tofu dry, cube it and pan-fry for 6-7 min until golden on most sides. Add the bean sprouts and sliced pepper and stir-fry for 2-3 min, then stir through the sauce. Serve over the rice.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Firm Tofu', 180, 'g', 190.8, 3.1, 20.3, 10.4, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Firm Tofu'))));
@@ -121,8 +135,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Vegan Mince Bolognese'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Vegan Mince Bolognese', 'dinner', null)
+    values (v_coach_id, 'Vegan Mince Bolognese', 'dinner', 'Cook the spaghetti per pack instructions. Fry the diced onion for 2-3 min, add the vegan mince and cook for 4-5 min per pack instructions, then stir in the passata and simmer for 8 min. Serve over the spaghetti.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Cook the spaghetti per pack instructions. Fry the diced onion for 2-3 min, add the vegan mince and cook for 4-5 min per pack instructions, then stir in the passata and simmer for 8 min. Serve over the spaghetti.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Vegan Mince', 150, 'g', 271.5, 14.2, 21.5, 10.8, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Vegan Mince'))));
@@ -134,8 +150,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Tempeh & Sweet Potato Traybake'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Tempeh & Sweet Potato Traybake', 'dinner', null)
+    values (v_coach_id, 'Tempeh & Sweet Potato Traybake', 'dinner', 'Cube the tempeh and sweet potato, toss with the sliced pepper and olive oil. Roast at 200°C for 25-30 min, turning halfway, until the sweet potato is tender and the tempeh is golden.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Cube the tempeh and sweet potato, toss with the sliced pepper and olive oil. Roast at 200°C for 25-30 min, turning halfway, until the sweet potato is tender and the tempeh is golden.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Tempeh', 150, 'g', 252.0, 9.0, 30.0, 10.5, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Tempeh'))));
@@ -147,8 +165,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Green Lentil Dahl & Rice'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Green Lentil Dahl & Rice', 'dinner', null)
+    values (v_coach_id, 'Green Lentil Dahl & Rice', 'dinner', 'Cook the rice per pack instructions. Fry the diced onion for 2-3 min, add the drained lentils and passata and simmer for 10-12 min. Stir through the spinach for the last 2 min until wilted. Serve over the rice.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Cook the rice per pack instructions. Fry the diced onion for 2-3 min, add the drained lentils and passata and simmer for 10-12 min. Stir through the spinach for the last 2 min until wilted. Serve over the rice.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Green Lentils (Tinned)', 1, 'tin', 242, 40, 18, 1, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Green Lentils (Tinned)'))));
@@ -163,8 +183,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Vegan Protein Shake'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Vegan Protein Shake', 'pre_workout', null)
+    values (v_coach_id, 'Vegan Protein Shake', 'pre_workout', 'Blend or shake the protein powder with the soy milk and banana until smooth.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Blend or shake the protein powder with the soy milk and banana until smooth.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Vegan Protein Powder', 25, 'g', 88.0, 1.5, 18.0, 0.8, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Vegan Protein Powder'))));
@@ -175,8 +197,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Hummus & Rice Cakes'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Hummus & Rice Cakes', 'pre_workout', null)
+    values (v_coach_id, 'Hummus & Rice Cakes', 'pre_workout', 'Spread the hummus over the rice cakes.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Spread the hummus over the rice cakes.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Hummus', 60, 'g', 138.0, 7.2, 3.6, 10.2, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Hummus'))));
@@ -188,8 +212,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Steamed Edamame'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Steamed Edamame', 'evening_snack', null)
+    values (v_coach_id, 'Steamed Edamame', 'evening_snack', 'Steam or boil the edamame for 4-5 min until tender. Drain and serve warm (lightly salted if you like).')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Steam or boil the edamame for 4-5 min until tender. Drain and serve warm (lightly salted if you like).' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Edamame Beans', 150, 'g', 234.0, 13.8, 18.0, 9.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Edamame Beans'))));
@@ -198,11 +224,13 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Vegan Cheese & Rice Cakes'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Vegan Cheese & Rice Cakes', 'evening_snack', null)
+    values (v_coach_id, 'Vegan Cheese & Rice Cakes', 'evening_snack', 'Lay the vegan cheese slices over the rice cakes.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Lay the vegan cheese slices over the rice cakes.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Vegan Cheese Slice', 2, 'g', 5.9, 0.4, 0.0, 0.5, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Vegan Cheese Slice'))));
+  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Vegan Cheese Slice', 50, 'g', 148.0, 11.0, 0.1, 11.6, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Vegan Cheese Slice'))));
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Salted Rice Cakes', 2.0, 'unit', 54.0, 12.0, 2.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Salted Rice Cakes'))));
 
   -- ============ SNACK ============
@@ -211,8 +239,10 @@ begin
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Hummus & Carrot Sticks'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Hummus & Carrot Sticks', 'snack', null)
+    values (v_coach_id, 'Hummus & Carrot Sticks', 'snack', 'Cut the carrots into sticks and serve with the hummus for dipping.')
     returning id into v_meal_id;
+  else
+    update meals set instructions = 'Cut the carrots into sticks and serve with the hummus for dipping.' where id = v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Hummus', 60, 'g', 138.0, 7.2, 3.6, 10.2, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Hummus'))));
