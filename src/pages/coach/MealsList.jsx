@@ -92,6 +92,7 @@ export default function MealsList() {
   function setDietFilter(val) { setDietFilterRaw(val); sessionStorage.setItem('mealsDietFilter', val) }
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [duplicatingId, setDuplicatingId] = useState(null)
   const [bulkRunning, setBulkRunning] = useState(false)
   const [bulkProgress, setBulkProgress] = useState(null)
   const [autoRunDone, setAutoRunDone] = useState(false)
@@ -103,8 +104,8 @@ export default function MealsList() {
       supabase
         .from('meals')
         .select(`
-          id, name, category, photo_url, photo_position, instructions, diet_tags, standard_eligible,
-          meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, alternative_ingredient_ids),
+          id, name, category, description, photo_url, photo_position, instructions, diet_tags, standard_eligible, active, excluded_from_templates,
+          meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, alternative_ingredient_ids, is_static),
           meal_tier_versions(calorie_tier)
         `)
         .eq('coach_id', profile.id),
@@ -229,6 +230,61 @@ export default function MealsList() {
     }
     setDeleting(false)
     setConfirmDeleteId(null)
+  }
+
+  // Clones a meal's whole card — details, every ingredient, and its calorie tiers — as a
+  // starting point for a variant (e.g. duplicating "Breakfast Bagel" to swap in a GF bagel)
+  // instead of building one from scratch. Opens the new copy straight in the editor afterwards.
+  async function handleDuplicate(meal, e) {
+    e.stopPropagation()
+    setDuplicatingId(meal.id)
+    try {
+      const { data: newMeal, error: insErr } = await supabase.from('meals').insert({
+        coach_id: profile.id,
+        name: `${meal.name} (Copy)`,
+        category: meal.category,
+        description: meal.description || null,
+        instructions: meal.instructions || null,
+        photo_url: meal.photo_url || null,
+        photo_position: meal.photo_position || '50% 50%',
+        active: meal.active !== false,
+        excluded_from_templates: meal.excluded_from_templates || false,
+        diet_tags: meal.diet_tags || [],
+        standard_eligible: meal.standard_eligible !== false,
+      }).select('id').single()
+      if (insErr) throw insErr
+
+      const ingredientRows = (meal.meal_ingredients || []).map(ing => ({
+        meal_id: newMeal.id,
+        ingredient_id: ing.ingredient_id || null,
+        name: ing.name,
+        quantity_g: ing.quantity_g,
+        unit: ing.unit || 'g',
+        calories: ing.calories,
+        protein_g: ing.protein_g,
+        carbs_g: ing.carbs_g,
+        fat_g: ing.fat_g,
+        scaling_type: ing.scaling_type || 'flexible',
+        is_static: ing.is_static || false,
+        alternative_ingredient_ids: ing.alternative_ingredient_ids || [],
+      }))
+      if (ingredientRows.length > 0) {
+        const { error: ingErr } = await supabase.from('meal_ingredients').insert(ingredientRows)
+        if (ingErr) throw ingErr
+      }
+
+      if (meal.category && ingredientRows.length > 0) {
+        const baseIngs = withIngredientSwaps(ingredientRows, ingredientSwapsMap)
+        await regenerateAllTiersForMeal(newMeal.id, meal.category, baseIngs, library, mealSplit)
+      }
+
+      navigate(`/coach/meals/${newMeal.id}`)
+    } catch (err) {
+      console.error('Failed to duplicate meal:', err)
+      alert('Could not duplicate this meal: ' + err.message)
+    } finally {
+      setDuplicatingId(null)
+    }
   }
 
   function calcTotals(ingredients) {
@@ -383,6 +439,22 @@ export default function MealsList() {
                 className="card relative cursor-pointer hover:shadow-md hover:border-pink-200 transition-all duration-150 p-0 overflow-hidden flex flex-col"
               >
                 <button
+                  onClick={e => handleDuplicate(meal, e)}
+                  disabled={duplicatingId === meal.id}
+                  title="Duplicate meal"
+                  className="absolute top-2 right-10 z-10 p-1.5 rounded-full bg-white/90 dark:bg-gray-900/80 text-gray-400 hover:text-brand-500 hover:bg-white shadow-sm transition-colors disabled:opacity-50"
+                >
+                  {duplicatingId === meal.id ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  )}
+                </button>
+                <button
                   onClick={e => { e.stopPropagation(); setConfirmDeleteId(meal.id) }}
                   title="Delete meal"
                   className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/90 dark:bg-gray-900/80 text-gray-400 hover:text-red-500 hover:bg-white shadow-sm transition-colors"
@@ -484,6 +556,22 @@ export default function MealsList() {
                     onClick={() => navigate(`/coach/meals/${meal.id}`)}
                     className="card relative cursor-pointer hover:shadow-md hover:border-pink-200 transition-all duration-150 p-0 overflow-hidden flex flex-col"
                   >
+                    <button
+                      onClick={e => handleDuplicate(meal, e)}
+                      disabled={duplicatingId === meal.id}
+                      title="Duplicate meal"
+                      className="absolute top-2 right-10 z-10 p-1.5 rounded-full bg-white/90 dark:bg-gray-900/80 text-gray-400 hover:text-brand-500 hover:bg-white shadow-sm transition-colors disabled:opacity-50"
+                    >
+                      {duplicatingId === meal.id ? (
+                        <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                    </button>
                     <button
                       onClick={e => { e.stopPropagation(); setConfirmDeleteId(meal.id) }}
                       title="Delete meal"

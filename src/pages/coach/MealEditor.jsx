@@ -36,6 +36,23 @@ function round1(n) {
   return Math.round(parseFloat(n || 0) * 10) / 10
 }
 
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Case-insensitive find/replace that keeps the matched text's casing pattern (ALL CAPS stays all
+// caps, Capitalized stays capitalized, otherwise lowercase) so a mid-sentence match like "toast
+// the bagel" becomes "toast the gluten free bagel" rather than "toast the Gluten Free Bagel".
+function replacePreservingCase(text, oldWord, newWord) {
+  if (!text || !oldWord || !newWord) return text
+  const re = new RegExp(escapeRegExp(oldWord), 'gi')
+  return text.replace(re, matched => {
+    if (matched === matched.toUpperCase()) return newWord.toUpperCase()
+    if (matched[0] === matched[0].toUpperCase()) return newWord.charAt(0).toUpperCase() + newWord.slice(1).toLowerCase()
+    return newWord.toLowerCase()
+  })
+}
+
 // ─── Details Tab ─────────────────────────────────────────────────────────────
 function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
   const [form, setForm] = useState({
@@ -198,6 +215,12 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
         <div>
           <label className="label">Instructions</label>
           <textarea className="input resize-y min-h-[100px]" value={form.instructions} onChange={e => set('instructions', e.target.value)} placeholder="Preparation and cooking steps…" />
+          <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+            If you swap an ingredient on the Ingredients tab for a differently-named one (e.g. Bagel → Gluten
+            Free Bagel), its name gets updated here too automatically. It only swaps the wording — it won't
+            rewrite cooking steps for a genuinely different ingredient (e.g. chicken → tofu still needs its
+            own method), so give this a read after a swap that changes more than the name.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <input id="active" type="checkbox" checked={form.active} onChange={e => set('active', e.target.checked)} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
@@ -314,7 +337,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
 }
 
 // ─── Ingredients Tab ──────────────────────────────────────────────────────────
-function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, onMealUpdated, onDirtyChange }) {
+function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, instructions, onMealUpdated, onDirtyChange }) {
   const [ingredients, setIngredients] = useState([])
   const [library, setLibrary] = useState([])
   const [ingredientSwapsMap, setIngredientSwapsMap] = useState({})
@@ -342,6 +365,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, onMeal
     setIngredients(ings.map(ing => ({
       ...ing,
       scaling_type: ing.scaling_type || 'flexible',
+      _originalName: ing.name,
       _library: ing.ingredient_id ? lib.find(l => l.id === ing.ingredient_id) || null : null,
       _alternatives: (ing.alternative_ingredient_ids || []).map(id => {
         const libIng = lib.find(l => l.id === id)
@@ -495,6 +519,25 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, onMeal
           onMealUpdated?.()
         } catch (err) {
           console.error('Failed to auto-predict diet tags:', err)
+        }
+      }
+    }
+
+    // If an existing ingredient row's name changed (swapped to a different library ingredient,
+    // e.g. Bagel -> Gluten Free Bagel, or a free-typed name edited directly), swap the same
+    // wording in the instructions so a step like "toast the bagel" doesn't go stale.
+    const renames = ingredients.filter(ing => !ing._isNew && ing._originalName && ing.name && ing.name !== ing._originalName)
+    if (renames.length > 0 && instructions) {
+      let updatedInstructions = instructions
+      for (const ing of renames) {
+        updatedInstructions = replacePreservingCase(updatedInstructions, ing._originalName, ing.name)
+      }
+      if (updatedInstructions !== instructions) {
+        try {
+          await supabase.from('meals').update({ instructions: updatedInstructions }).eq('id', mealId)
+          onMealUpdated?.()
+        } catch (err) {
+          console.error('Failed to auto-update instructions:', err)
         }
       }
     }
@@ -1225,7 +1268,7 @@ export default function MealEditor() {
 
       <div>
         {activeTab === 'Details' && <DetailsTab meal={meal} mealId={currentId} isNew={isNew} onSaved={handleDetailsSaved} coachId={profile.id} />}
-        {activeTab === 'Ingredients' && currentId && <IngredientsTab mealId={currentId} coachId={profile.id} category={meal?.category} mealSplit={mealSplit} dietTags={meal?.diet_tags} onMealUpdated={() => loadMeal(currentId)} onDirtyChange={setIngredientsDirty} />}
+        {activeTab === 'Ingredients' && currentId && <IngredientsTab mealId={currentId} coachId={profile.id} category={meal?.category} mealSplit={mealSplit} dietTags={meal?.diet_tags} instructions={meal?.instructions} onMealUpdated={() => loadMeal(currentId)} onDirtyChange={setIngredientsDirty} />}
         {activeTab === 'Calorie Tiers' && currentId && <CalorieTiersTab mealId={currentId} coachId={profile.id} category={meal?.category} mealSplit={mealSplit} />}
       </div>
     </div>
