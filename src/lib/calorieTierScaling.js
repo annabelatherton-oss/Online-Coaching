@@ -202,14 +202,27 @@ const MAX_OVER_KCAL = 4
 const FLEX_MIN_FACTOR = 0.5
 const FLEX_MAX_FACTOR = 2
 
-// Clamps a flexible ingredient's continuous (pre-snap) quantity to within FLEX_MIN/MAX_FACTOR of
-// its own base-recipe amount. Fixed/static rows are never passed through here (callers already
-// exclude them from scaling); optional rows keep their "can reach 0" allowance but are still
-// capped above, so they can't balloon past a normal portion either.
+// This row's allowed [lo, hi] range while scaling. An ingredient's own min_amount/max_amount —
+// set on it in the Ingredients Library — always win when present: the coach configured those
+// deliberately for that specific ingredient (e.g. "rice can go up to 250g"), so they override the
+// generic origQty-relative default rather than being squeezed by it, and apply no matter what
+// stage of the calculation is running. Only whichever bound isn't explicitly set falls back to
+// FLEX_MIN/MAX_FACTOR of the ingredient's own recipe amount.
+function flexBounds(row) {
+  const lib = row.libIng
+  const hi = lib?.max_amount != null ? lib.max_amount : row.origQty * FLEX_MAX_FACTOR
+  const lo = lib?.min_amount != null ? lib.min_amount : row.origQty * FLEX_MIN_FACTOR
+  return { lo, hi }
+}
+
+// Clamps a flexible ingredient's continuous (pre-snap) quantity to its flexBounds(). Fixed/static
+// rows are never passed through here (callers already exclude them from scaling); optional rows
+// keep their "can reach 0" allowance but are still capped above, so they can't balloon past a
+// normal portion either.
 function clampFlexQty(row, qty) {
-  const hi = row.origQty * FLEX_MAX_FACTOR
+  const { lo, hi } = flexBounds(row)
   if (row.scaling_type === 'optional') return Math.min(hi, qty)
-  return Math.min(hi, Math.max(row.origQty * FLEX_MIN_FACTOR, qty))
+  return Math.min(hi, Math.max(lo, qty))
 }
 
 export function generateTierIngredients(baseIngredients, library, targets) {
@@ -234,7 +247,9 @@ export function generateTierIngredients(baseIngredients, library, targets) {
     // FLEX_MAX_FACTOR] keeps every flexible ingredient recognisably close to its original amount.
     factors = factors.map(f => Math.min(FLEX_MAX_FACTOR, Math.max(FLEX_MIN_FACTOR, f)))
     let flexIdx = 0
-    qtyByRow = rows.map(r => (r.scaling_type === 'fixed' || r.is_static) ? r.origQty : r.origQty * factors[flexIdx++])
+    // The factor clamp above only knows the generic default — re-clamp each row through
+    // clampFlexQty so an ingredient's own min_amount/max_amount (when set) still wins here too.
+    qtyByRow = rows.map(r => (r.scaling_type === 'fixed' || r.is_static) ? r.origQty : clampFlexQty(r, r.origQty * factors[flexIdx++]))
 
     let bestQty = qtyByRow
     // Scoring (lower = better):
@@ -293,8 +308,9 @@ export function generateTierIngredients(baseIngredients, library, targets) {
           for (const dir of [1, -1]) {
             const newQ = snapToConstraints(stepQty[i] + dir * r.libIng.serving_step, r.libIng, r.scaling_type === 'optional')
             if (newQ == null || newQ === stepQty[i] || (newQ <= 0 && r.scaling_type !== 'optional')) continue
-            if (newQ > r.origQty * FLEX_MAX_FACTOR) continue
-            if (newQ > 0 && r.scaling_type !== 'optional' && newQ < r.origQty * FLEX_MIN_FACTOR) continue
+            const { lo, hi } = flexBounds(r)
+            if (newQ > hi) continue
+            if (newQ > 0 && r.scaling_type !== 'optional' && newQ < lo) continue
             const deltaCal = round1(newQ * r.calPerG) - round1(stepQty[i] * r.calPerG)
             const sc = calcScore(stepCal + deltaCal)
             if (sc < bestMoveScore) { bestMoveScore = sc; bestMoveI = i; bestMoveNewQty = newQ; bestMoveDeltaCal = deltaCal }
