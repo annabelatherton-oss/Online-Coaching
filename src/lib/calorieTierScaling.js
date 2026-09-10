@@ -188,6 +188,30 @@ const TIER_CONVERGENCE_KCAL = 5
 // the plan view which sums all meals for the day.
 const MAX_OVER_KCAL = 4
 
+// How far a "flexible" ingredient is allowed to move from its own base-recipe amount — e.g. a
+// 60g portion of rice can range 30g-120g. This applies equally to every flexible ingredient
+// (a rice/pasta portion meant to carry most of the macro-fitting gets exactly the same room as
+// a bagel), so the ones a coach expects to move a lot for macros still can — a meal built with
+// enough genuinely adjustable ingredients has plenty of room within this band to hit its target.
+// What it stops is the algorithm reaching further than this to chase a calorie/macro number,
+// which is what used to produce a "5g strawberries" or vanishing-bagel result: previously this
+// bound was only applied in the very first pass (see the comment below) — every later correction
+// (the iterative pull-toward-target, the calorie top-up, and especially the hard-cap downscale)
+// could push a row arbitrarily far past it. Optional ingredients are exempt on the low end only
+// (they're explicitly allowed to drop to 0) but still capped on the way up.
+const FLEX_MIN_FACTOR = 0.5
+const FLEX_MAX_FACTOR = 2
+
+// Clamps a flexible ingredient's continuous (pre-snap) quantity to within FLEX_MIN/MAX_FACTOR of
+// its own base-recipe amount. Fixed/static rows are never passed through here (callers already
+// exclude them from scaling); optional rows keep their "can reach 0" allowance but are still
+// capped above, so they can't balloon past a normal portion either.
+function clampFlexQty(row, qty) {
+  const hi = row.origQty * FLEX_MAX_FACTOR
+  if (row.scaling_type === 'optional') return Math.min(hi, qty)
+  return Math.min(hi, Math.max(row.origQty * FLEX_MIN_FACTOR, qty))
+}
+
 export function generateTierIngredients(baseIngredients, library, targets) {
   const rows = baseIngredients.map(ing => buildRow(ing, library))
   const flexRows = rows.filter(r => r.scaling_type !== 'fixed' && !r.is_static)
@@ -206,9 +230,9 @@ export function generateTierIngredients(baseIngredients, library, targets) {
     let factors = solveFactors(flexRows, fixedTotals, targetVec)
     // Tightened from [0.1, 3] — a single ingredient could previously shrink to a tenth or
     // triple in size on its own to chase a macro sub-target, which is what read as the recipe
-    // changing rather than just scaling. Capping the per-ingredient swing to [0.5, 2] keeps
-    // every flexible ingredient recognisably close to its original amount.
-    factors = factors.map(f => Math.min(2, Math.max(0.5, f)))
+    // changing rather than just scaling. Capping the per-ingredient swing to [FLEX_MIN_FACTOR,
+    // FLEX_MAX_FACTOR] keeps every flexible ingredient recognisably close to its original amount.
+    factors = factors.map(f => Math.min(FLEX_MAX_FACTOR, Math.max(FLEX_MIN_FACTOR, f)))
     let flexIdx = 0
     qtyByRow = rows.map(r => (r.scaling_type === 'fixed' || r.is_static) ? r.origQty : r.origQty * factors[flexIdx++])
 
@@ -243,7 +267,9 @@ export function generateTierIngredients(baseIngredients, library, targets) {
       if (flexAchievedCal <= 0) break
       const desiredFlexCal = targetVec.cal - fixedTotals.cal
       const corr = Math.min(2, Math.max(0.3, desiredFlexCal / flexAchievedCal))
-      qtyByRow = qtyByRow.map((q, i) => (rows[i].scaling_type === 'fixed' || rows[i].is_static) ? q : q * corr)
+      qtyByRow = qtyByRow.map((q, i) =>
+        (rows[i].scaling_type === 'fixed' || rows[i].is_static) ? q : clampFlexQty(rows[i], q * corr)
+      )
     }
     qtyByRow = bestQty
 
@@ -267,6 +293,8 @@ export function generateTierIngredients(baseIngredients, library, targets) {
           for (const dir of [1, -1]) {
             const newQ = snapToConstraints(stepQty[i] + dir * r.libIng.serving_step, r.libIng, r.scaling_type === 'optional')
             if (newQ == null || newQ === stepQty[i] || (newQ <= 0 && r.scaling_type !== 'optional')) continue
+            if (newQ > r.origQty * FLEX_MAX_FACTOR) continue
+            if (newQ > 0 && r.scaling_type !== 'optional' && newQ < r.origQty * FLEX_MIN_FACTOR) continue
             const deltaCal = round1(newQ * r.calPerG) - round1(stepQty[i] * r.calPerG)
             const sc = calcScore(stepCal + deltaCal)
             if (sc < bestMoveScore) { bestMoveScore = sc; bestMoveI = i; bestMoveNewQty = newQ; bestMoveDeltaCal = deltaCal }
@@ -294,7 +322,7 @@ export function generateTierIngredients(baseIngredients, library, targets) {
       const corr = Math.min(3, (flexCal + gap) / flexCal)
       const nextQty = rows.map((r, i) => {
         if (r.scaling_type !== 'flexible' || r.is_static) return tuQty[i]
-        const raw = tuQty[i] * corr
+        const raw = clampFlexQty(r, tuQty[i] * corr)
         const snapped = snapToConstraints(raw, r.libIng, false)
         return snapped != null ? snapped : raw
       })
@@ -326,7 +354,8 @@ export function generateTierIngredients(baseIngredients, library, targets) {
       const contCorr = (capTarget - nonContResultCal) / contResultCal
       next = rows.map((r, i) => {
         if (!isCont(i)) return result[i]
-        const newQty = snapToConstraints(result[i].quantity_g * contCorr, r.libIng, r.scaling_type === 'optional') ?? result[i].quantity_g * contCorr
+        const clamped = clampFlexQty(r, result[i].quantity_g * contCorr)
+        const newQty = snapToConstraints(clamped, r.libIng, r.scaling_type === 'optional') ?? clamped
         return finalizeRow(r, newQty)
       })
     } else {
@@ -338,7 +367,8 @@ export function generateTierIngredients(baseIngredients, library, targets) {
       const downCorr = (capTarget - fixedResultCal) / flexResultCal
       next = rows.map((r, i) => {
         if (r.scaling_type !== 'flexible' || r.is_static) return result[i]
-        const newQty = snapToConstraints(result[i].quantity_g * downCorr, r.libIng, r.scaling_type === 'optional') ?? result[i].quantity_g * downCorr
+        const clamped = clampFlexQty(r, result[i].quantity_g * downCorr)
+        const newQty = snapToConstraints(clamped, r.libIng, r.scaling_type === 'optional') ?? clamped
         return finalizeRow(r, newQty)
       })
     }
