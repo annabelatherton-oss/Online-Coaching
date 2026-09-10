@@ -135,8 +135,17 @@ export default function ClientMealPlan() {
     return keys.reduce((acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, tier, ingredientOverrides[key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
   }
 
-  const originalDailyCal = ALL_SLOT_DEFS.reduce((sum, s) => sum + (mealMacros(templateSlots[s.key], mealMap, tier, null, swapCtx)?.cal || 0), 0)
-  const currentDailyCal  = ALL_SLOT_DEFS.reduce((sum, s) => sum + (mealMacros(editedSlots[s.key], mealMap, tier, ingredientOverrides[s.key], swapCtx)?.cal || 0), 0)
+  // Swapping a meal only ever changes that one slot — no other slot is rebalanced to compensate,
+  // that's left entirely up to the client — so the current-vs-original comparison below is a
+  // plain, honest total of whatever's actually in each slot right now.
+  const originalDailyTotal = ALL_SLOT_DEFS.reduce((acc, s) => addMacros(acc, mealMacros(templateSlots[s.key], mealMap, tier, null, swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
+  const currentDailyTotal  = ALL_SLOT_DEFS.reduce((acc, s) => addMacros(acc, mealMacros(editedSlots[s.key], mealMap, tier, ingredientOverrides[s.key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
+  const dailyDelta = {
+    cal:  Math.round(currentDailyTotal.cal  - originalDailyTotal.cal),
+    prot: Math.round(currentDailyTotal.prot - originalDailyTotal.prot),
+    carb: Math.round(currentDailyTotal.carb - originalDailyTotal.carb),
+    fat:  Math.round(currentDailyTotal.fat  - originalDailyTotal.fat),
+  }
 
   const preworkoutM = mealMacros(editedSlots.preworkout, mealMap, tier, ingredientOverrides.preworkout, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 }
   const snackM      = mealMacros(editedSlots.evening_snack, mealMap, tier, ingredientOverrides.evening_snack, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 }
@@ -312,6 +321,33 @@ export default function ClientMealPlan() {
         ingredientLib={ingredientLib}
         tier={tier}
       />
+
+      {/* Swap impact — shows exactly how today's totals have shifted from the original plan, so a
+          swap's effect is obvious rather than something the client has to work out themselves.
+          Nothing else adjusts to compensate; this is purely informational. */}
+      {slotsDirty && dailyDelta.cal !== 0 && (
+        <div className="card border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-900/10">
+          <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+            Today's totals with your swap{dailyDelta.cal > 0 ? ' are now over your original plan:' : ' are now under your original plan:'}
+          </p>
+          <div className="grid grid-cols-4 gap-2 text-center">
+            {[
+              ['kcal', dailyDelta.cal, Math.round(currentDailyTotal.cal)],
+              ['C', dailyDelta.carb, Math.round(currentDailyTotal.carb)],
+              ['P', dailyDelta.prot, Math.round(currentDailyTotal.prot)],
+              ['F', dailyDelta.fat, Math.round(currentDailyTotal.fat)],
+            ].map(([label, delta, total]) => (
+              <div key={label}>
+                <p className="text-xs text-gray-400">{label}</p>
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{total}{label !== 'kcal' ? 'g' : ''}</p>
+                <p className={`text-xs font-medium ${delta > 0 ? 'text-amber-600 dark:text-amber-400' : delta < 0 ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}>
+                  {delta > 0 ? '+' : ''}{delta}{label !== 'kcal' ? 'g' : ''}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Save bar */}
       {slotsDirty && (
