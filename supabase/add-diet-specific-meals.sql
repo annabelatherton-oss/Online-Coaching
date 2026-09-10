@@ -54,20 +54,6 @@ begin
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Eggs', 1.0, 'large', 79.0, 1.0, 8.0, 5.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Eggs'))));
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Spinach', 20, 'g', 3.8, 0.0, 0.6, 0.2, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Spinach'))));
 
-  -- Cottage Cheese & Fruit Bowl (breakfast)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Cottage Cheese & Fruit Bowl'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Cottage Cheese & Fruit Bowl', 'breakfast', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Cottage Cheese', 150, 'g', 157.5, 6.0, 15.0, 9.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Cottage Cheese'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Banana', 1.0, 'unit', 71.0, 18.0, 1.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Banana'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Berries', 60, 'g', 20.4, 3.0, 0.6, 0.6, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Berries'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Honey', 10, 'g', 30.0, 8.0, 0.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Honey'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Almonds', 15, 'g', 95.5, 1.0, 2.0, 8.5, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Almonds'))));
-
   -- ============ LUNCH ============
 
   -- Halloumi & Veg Wrap (lunch)
@@ -456,18 +442,6 @@ begin
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Onion', 1.0, 'small', 28.0, 7.0, 1.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Onion'))));
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Parmesan', 15, 'g', 60.5, 0.0, 5.0, 4.5, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Parmesan'))));
 
-  -- Salmon & New Potatoes (dinner)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Salmon & New Potatoes'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Salmon & New Potatoes', 'dinner', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Salmon Fillet', 130, 'g', 197.0, 0.0, 24.0, 11.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Salmon Fillet'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Baby Potatoes (Raw)', 165, 'g', 123.8, 28.0, 3.3, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Baby Potatoes (Raw)'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Tenderstem Broccoli', 100, 'g', 38.0, 2.0, 4.0, 1.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Tenderstem Broccoli'))));
-
   -- GF Penne Chicken Pesto (dinner)
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('GF Penne Chicken Pesto'));
   if v_meal_id is null then
@@ -509,17 +483,6 @@ begin
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Banana', 1.0, 'unit', 71.0, 18.0, 1.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Banana'))));
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Honey', 15, 'g', 45.0, 12.0, 0.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Honey'))));
 
-  -- Rice Cakes & Peanut Butter (GF) (pre_workout)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Rice Cakes & Peanut Butter (GF)'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Rice Cakes & Peanut Butter (GF)', 'pre_workout', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Salted Rice Cakes', 2.0, 'unit', 54.0, 12.0, 2.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Salted Rice Cakes'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Peanut Butter', 25, 'g', 160.0, 6.0, 6.0, 13.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Peanut Butter'))));
-
   -- Protein Yogurt & Grapes (pre_workout)
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Protein Yogurt & Grapes'));
   if v_meal_id is null then
@@ -543,17 +506,6 @@ begin
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, '0% Greek Yogurt', 150, 'g', 81.0, 4.5, 15.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('0% Greek Yogurt'))));
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Berries', 80, 'g', 27.2, 4.0, 0.8, 0.8, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Berries'))));
-
-  -- Cottage Cheese & Cucumber (evening_snack)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Cottage Cheese & Cucumber'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Cottage Cheese & Cucumber', 'evening_snack', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Cottage Cheese', 100, 'g', 105.0, 4.0, 10.0, 6.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Cottage Cheese'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Cucumber', 80, 'g', 12.8, 0.8, 0.8, 0.8, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Cucumber'))));
 
   -- Turkey Slice Roll-ups (evening_snack)
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Turkey Slice Roll-ups'));
@@ -579,11 +531,11 @@ begin
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Salted Rice Cakes', 2.0, 'unit', 54.0, 12.0, 2.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Salted Rice Cakes'))));
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Almonds', 20, 'g', 127.3, 1.3, 2.7, 11.3, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Almonds'))));
 
-  -- Apple & Peanut Butter (GF) (snack)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Apple & Peanut Butter (GF)'));
+  -- Apple & Peanut Butter (snack)
+  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Apple & Peanut Butter'));
   if v_meal_id is null then
     insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Apple & Peanut Butter (GF)', 'snack', null)
+    values (v_coach_id, 'Apple & Peanut Butter', 'snack', null)
     returning id into v_meal_id;
   end if;
   delete from meal_ingredients where meal_id = v_meal_id;
@@ -604,18 +556,6 @@ begin
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Oat Milk', 200, 'ml', 80.0, 12.0, 0.0, 4.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Oat Milk'))));
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Banana', 1.0, 'unit', 71.0, 18.0, 1.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Banana'))));
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Honey', 15, 'g', 45.0, 12.0, 0.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Honey'))));
-
-  -- Bacon, Eggs & Tomato (breakfast)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Bacon, Eggs & Tomato'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Bacon, Eggs & Tomato', 'breakfast', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Bacon Medallions', 3.0, 'unit', 81.0, 0.0, 15.0, 3.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Bacon Medallions'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Eggs', 2.0, 'large', 158.0, 2.0, 16.0, 10.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Eggs'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Tomato', 1.0, 'unit', 14.0, 2.0, 0.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Tomato'))));
 
   -- Scrambled Eggs & Avocado on Sourdough (breakfast)
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'breakfast' and lower(trim(name)) = lower(trim('Scrambled Eggs & Avocado on Sourdough'));
@@ -713,19 +653,6 @@ begin
 
   -- ============ DINNER ============
 
-  -- Chicken, Rice & Veg (Dairy-Free) (dinner)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Chicken, Rice & Veg (Dairy-Free)'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Chicken, Rice & Veg (Dairy-Free)', 'dinner', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Chicken (Raw)', 205, 'g', 246.0, 0.0, 47.1, 6.1, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Chicken (Raw)'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Rice (Uncooked)', 55, 'g', 200.8, 45.7, 4.4, 0.6, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Rice (Uncooked)'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Broccoli', 100, 'g', 39.0, 6.0, 0.0, 3.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Broccoli'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Olive Oil', 10, 'g', 90.0, 0.0, 0.0, 10.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Olive Oil'))));
-
   -- Beef Mince Chilli (dinner)
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'dinner' and lower(trim(name)) = lower(trim('Beef Mince Chilli'));
   if v_meal_id is null then
@@ -816,17 +743,6 @@ begin
 
   -- ============ EVENING_SNACK ============
 
-  -- Apple & Peanut Butter (Dairy-Free) (evening_snack)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Apple & Peanut Butter (Dairy-Free)'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Apple & Peanut Butter (Dairy-Free)', 'evening_snack', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Apple', 1.0, 'unit', 104.0, 28.0, 1.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Apple'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Peanut Butter', 20, 'g', 128.0, 4.8, 4.8, 10.4, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Peanut Butter'))));
-
   -- Dairy-Free Protein Shake (evening_snack)
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Dairy-Free Protein Shake'));
   if v_meal_id is null then
@@ -850,17 +766,6 @@ begin
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Almonds', 15, 'g', 95.5, 1.0, 2.0, 8.5, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Almonds'))));
 
   -- ============ SNACK ============
-
-  -- Rice Cakes & Peanut Butter (Dairy-Free) (snack)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Rice Cakes & Peanut Butter (Dairy-Free)'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Rice Cakes & Peanut Butter (Dairy-Free)', 'snack', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Salted Rice Cakes', 2.0, 'unit', 54.0, 12.0, 2.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Salted Rice Cakes'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Peanut Butter', 20, 'g', 128.0, 4.8, 4.8, 10.4, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Peanut Butter'))));
 
   -- Grapes & Walnuts (snack)
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Grapes & Walnuts'));
@@ -1024,43 +929,7 @@ begin
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Pepper', 1.0, 'unit', 31.0, 15.0, 1.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Pepper'))));
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Olive Oil', 10, 'g', 90.0, 0.0, 0.0, 10.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Olive Oil'))));
 
-  -- ============ PRE_WORKOUT ============
-
-  -- Banana & Peanut Butter Rice Cakes (Vegan) (pre_workout)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Banana & Peanut Butter Rice Cakes (Vegan)'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Banana & Peanut Butter Rice Cakes (Vegan)', 'pre_workout', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Banana', 1.0, 'unit', 71.0, 18.0, 1.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Banana'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Peanut Butter', 25, 'g', 160.0, 6.0, 6.0, 13.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Peanut Butter'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Salted Rice Cakes', 2.0, 'unit', 54.0, 12.0, 2.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Salted Rice Cakes'))));
-
-  -- Dates & Almonds (Vegan) (pre_workout)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'pre_workout' and lower(trim(name)) = lower(trim('Dates & Almonds (Vegan)'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Dates & Almonds (Vegan)', 'pre_workout', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Medjool Dates', 30, 'g', 87.0, 20.0, 1.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Medjool Dates'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Almonds', 20, 'g', 127.3, 1.3, 2.7, 11.3, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Almonds'))));
-
   -- ============ EVENING_SNACK ============
-
-  -- Apple & Peanut Butter (Vegan) (evening_snack)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Apple & Peanut Butter (Vegan)'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Apple & Peanut Butter (Vegan)', 'evening_snack', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Apple', 1.0, 'unit', 104.0, 28.0, 1.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Apple'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Peanut Butter', 20, 'g', 128.0, 4.8, 4.8, 10.4, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Peanut Butter'))));
 
   -- Dark Chocolate & Walnuts (evening_snack)
   select id into v_meal_id from meals where coach_id = v_coach_id and category = 'evening_snack' and lower(trim(name)) = lower(trim('Dark Chocolate & Walnuts'));
@@ -1072,17 +941,4 @@ begin
   delete from meal_ingredients where meal_id = v_meal_id;
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, '70% Dark Chocolate', 2.0, 'square', 144.0, 12.0, 2.0, 12.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('70% Dark Chocolate'))));
   insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Walnuts', 20, 'g', 140.0, 0.7, 2.7, 14.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Walnuts'))));
-
-  -- ============ SNACK ============
-
-  -- Rice Cakes & Peanut Butter (Vegan) (snack)
-  select id into v_meal_id from meals where coach_id = v_coach_id and category = 'snack' and lower(trim(name)) = lower(trim('Rice Cakes & Peanut Butter (Vegan)'));
-  if v_meal_id is null then
-    insert into meals (coach_id, name, category, instructions)
-    values (v_coach_id, 'Rice Cakes & Peanut Butter (Vegan)', 'snack', null)
-    returning id into v_meal_id;
-  end if;
-  delete from meal_ingredients where meal_id = v_meal_id;
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Salted Rice Cakes', 2.0, 'unit', 54.0, 12.0, 2.0, 0.0, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Salted Rice Cakes'))));
-  insert into meal_ingredients (meal_id, name, quantity_g, unit, calories, carbs_g, protein_g, fat_g, ingredient_id) values (v_meal_id, 'Peanut Butter', 20, 'g', 128.0, 4.8, 4.8, 10.4, (select id from ingredients where coach_id = v_coach_id and lower(trim(name)) = lower(trim('Peanut Butter'))));
 end $$;
