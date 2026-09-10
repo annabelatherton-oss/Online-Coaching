@@ -1258,8 +1258,10 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         <SwapModal
           slotKey={swapModal.slotKey}
           label={swapModal.label}
+          category={swapModal.cat}
           currentMealId={editedSlots[swapModal.slotKey]}
           mealMap={mealMap}
+          mealsByCategory={mealsByCategory}
           tier={tier}
           onSelect={handleSwapSelect}
           onClose={() => setSwapModal(null)}

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
@@ -134,25 +134,6 @@ export default function MealsList() {
   }
 
   useEffect(() => { loadMeals() }, [profile.id])
-
-  // Save scroll position when leaving this page. useLayoutEffect cleanup fires before React
-  // removes the DOM nodes, so main.scrollTop is still the real position at this point.
-  useLayoutEffect(() => {
-    const key = `scroll:${window.location.pathname}`
-    return () => {
-      const main = document.querySelector('main')
-      if (main) sessionStorage.setItem(key, String(main.scrollTop))
-    }
-  }, [])
-
-  // Restore scroll before the browser paints the loaded list so the user never sees position 0.
-  useLayoutEffect(() => {
-    if (loading) return
-    const saved = parseInt(sessionStorage.getItem(`scroll:${window.location.pathname}`) || '0', 10)
-    if (!saved) return
-    const main = document.querySelector('main')
-    if (main) main.scrollTop = saved
-  }, [loading])
 
   const mealSplit = normalizeMealSplit(profile.meal_split)
 
@@ -370,8 +351,8 @@ export default function MealsList() {
         </div>
       </div>
 
-      {/* Search + filter */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      {/* Search + filter — sticky so it's always reachable while scrolling a long library */}
+      <div className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-950 py-3 flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

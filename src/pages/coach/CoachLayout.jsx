@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation, useNavigationType } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import DarkModeToggle from '../../components/DarkModeToggle'
 
@@ -150,6 +150,7 @@ export default function CoachLayout() {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const navigationType = useNavigationType()
   const mainRef = useRef(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -163,11 +164,17 @@ export default function CoachLayout() {
     return () => main.removeEventListener('scroll', save)
   }, [location.pathname])
 
-  // Restore scroll position after navigating back. Content loads async so poll
-  // until scrollTop actually reaches the target (the page is tall enough).
+  // Restore scroll position only when arriving via the browser/in-app back (or forward) button
+  // (navigationType === 'POP') — opening a page fresh, e.g. clicking a sidebar link, should
+  // always start at the top like a normal page would. Content loads async so poll until
+  // scrollTop actually reaches the target (the page is tall enough).
   useEffect(() => {
     const main = mainRef.current
     if (!main) return
+    if (navigationType !== 'POP') {
+      main.scrollTop = 0
+      return
+    }
     const target = parseInt(sessionStorage.getItem(`scroll:${location.pathname}`) || '0', 10)
     if (!target) return
     let attempts = 0
@@ -181,7 +188,7 @@ export default function CoachLayout() {
     }
     const t = setTimeout(try_, 50)
     return () => clearTimeout(t)
-  }, [location.pathname])
+  }, [location.pathname, navigationType])
 
   async function handleLogout() {
     await signOut()

@@ -536,13 +536,18 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
 
 // ─── Swap modal ───────────────────────────────────────────────────────────────
 
-export function SwapModal({ slotKey, label, currentMealId, mealMap, tier, onSelect, onClose }) {
+export function SwapModal({ slotKey, label, category, currentMealId, mealMap, mealsByCategory, tier, onSelect, onClose }) {
   const [search, setSearch] = useState('')
 
   const currentMacros = mealMacros(currentMealId, mealMap, tier, null) || { cal: 0, prot: 0, carb: 0, fat: 0 }
   const { cal: curCal, prot: curProt, carb: curCarb, fat: curFat } = currentMacros
 
-  const scored = Object.values(mealMap)
+  // Only offer meals from the same slot category — a breakfast slot should only ever swap to
+  // another breakfast, never a lunch or dinner. Falls back to every meal only if this modal is
+  // ever opened without a category (shouldn't happen from any current call site).
+  const pool = category ? (mealsByCategory?.[category] || []) : Object.values(mealMap)
+
+  const scored = pool
     .filter(m => m.id !== currentMealId)
     .map(m => {
       const mac = mealMacros(m.id, mealMap, tier, null) || { cal: 0, prot: 0, carb: 0, fat: 0 }
