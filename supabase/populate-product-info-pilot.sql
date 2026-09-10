@@ -1,6 +1,6 @@
--- Populates product name/brand/link for your 12 most-used ingredients, favouring Tesco own-brand
--- where one exists and matches reasonably well, with a mainstream mid-cost brand otherwise (never
--- the priciest option). This only sets product_name/product_brand/product_url — it does NOT touch
+-- Populates product name/brand/link for your 12 most-used ingredients, favouring Tesco or Aldi
+-- own-brand where one exists and matches reasonably well, with a mainstream mid-cost brand
+-- otherwise (never the priciest option). This only sets product_name/product_brand/product_url — it does NOT touch
 -- calories_per_serving/protein_per_serving/etc, since changing those needs to go through the
 -- Ingredient Library UI (Save an ingredient there and it automatically updates every meal that
 -- already uses it — a plain SQL update here would leave those meals with stale numbers). See the
@@ -23,8 +23,9 @@ begin
     product_url = 'https://www.tesco.com/groceries/en-GB/products/305249769'
   where coach_id = v_coach_id and name = 'Light Mayo';
 
-  update ingredients set product_name = 'Reduced Sugar Sweet Chilli Dipping Sauce', product_brand = 'Blue Dragon',
-    product_url = 'https://www.sainsburys.co.uk/gol-ui/product/blue-dragon-reduced-sugar-thai-sweet-chilli-sauce-380g-7759308-p'
+  -- Aldi's Sweet Chilli Sauce (131 kcal/100g) is a closer calorie match to this ingredient than
+  -- any "reduced sugar" branded product found (Blue Dragon's reduced-sugar version runs 156/100g).
+  update ingredients set product_name = 'Sweet Chilli Sauce', product_brand = 'Aldi'
   where coach_id = v_coach_id and name = 'Reduced Sweet Chilli Sauce';
 
   update ingredients set product_name = 'BBQ Sauce', product_brand = 'Tesco',
@@ -45,8 +46,9 @@ begin
   update ingredients set product_name = 'British Chicken Sausages', product_brand = 'Tesco'
   where coach_id = v_coach_id and name = 'Chicken Chipolata Sausages';
 
-  update ingredients set product_name = 'Thin Plain Bagels', product_brand = 'Warburtons',
-    product_url = 'https://www.tesco.com/shop/en-GB/products/287853081'
+  -- Aldi Bagel Thins (130 kcal / 5g protein per bagel) match this ingredient almost exactly —
+  -- closer than the Warburtons/Thomas' options checked, and no Tesco own-brand thin bagel exists.
+  update ingredients set product_name = 'Bagel Thins', product_brand = 'Aldi'
   where coach_id = v_coach_id and name = 'Bagel Thin';
 
   update ingredients set product_name = 'Smooth Peanut Butter', product_brand = 'Tesco',
