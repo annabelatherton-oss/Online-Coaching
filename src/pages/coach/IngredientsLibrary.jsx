@@ -231,8 +231,8 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
             {ingredient ? 'Edit Ingredient' : 'Add Ingredient'}
           </h2>
@@ -243,7 +243,7 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="p-6 space-y-4">
+        <form onSubmit={handleSave} className="p-6 space-y-4 overflow-y-auto">
           <div>
             <label className="label">Ingredient Name <span className="text-red-400">*</span></label>
             <input
