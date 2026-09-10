@@ -19,6 +19,7 @@ import ClientLayout from './pages/client/ClientLayout'
 import ClientDashboard from './pages/client/ClientDashboard'
 import ClientProfile from './pages/client/ClientProfile'
 import ClientMealPlan from './pages/client/ClientMealPlan'
+import ClientShoppingList from './pages/client/ClientShoppingList'
 import ClientCheckin from './pages/client/ClientCheckin'
 import ClientProgress from './pages/client/ClientProgress'
 import CoachReports from './pages/coach/CoachReports'
@@ -89,6 +90,7 @@ export default function App() {
             <Route index element={<ClientDashboard />} />
             <Route path="profile" element={<ClientProfile />} />
             <Route path="meals" element={<ClientMealPlan />} />
+            <Route path="shopping-list" element={<ClientShoppingList />} />
             <Route path="checkin" element={<ClientCheckin />} />
             <Route path="progress" element={<ClientProgress />} />
             <Route path="training" element={<ClientTraining />} />

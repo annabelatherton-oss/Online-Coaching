@@ -56,6 +56,8 @@ const EMPTY_FORM = {
   is_vegan: true,
   is_gluten_free: true,
   is_dairy_free: true,
+  product_name: '',
+  product_brand: '',
 }
 
 // Applies an ingredient-swap add/remove diff against the (symmetric) ingredient_swaps table —
@@ -94,7 +96,12 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
     is_vegan: ingredient.is_vegan ?? true,
     is_gluten_free: ingredient.is_gluten_free ?? true,
     is_dairy_free: ingredient.is_dairy_free ?? true,
+    product_name: ingredient.product_name || '',
+    product_brand: ingredient.product_brand || '',
   } : { ...EMPTY_FORM })
+  const [photoFile, setPhotoFile] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState(null)
+  const [photoRemoved, setPhotoRemoved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [swaps, setSwaps] = useState(initialSwaps || [])
@@ -142,6 +149,17 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
     setSaving(true)
     setError('')
 
+    let photoPath = ingredient?.product_photo_url || null
+    if (photoFile) {
+      const path = `${coachId}/${Date.now()}-${photoFile.name}`
+      const { error: uploadErr } = await supabase.storage.from('ingredient-photos').upload(path, photoFile)
+      if (uploadErr) { setError('Photo upload failed: ' + uploadErr.message); setSaving(false); return }
+      photoPath = path
+    } else if (photoRemoved) {
+      if (ingredient?.product_photo_url) await supabase.storage.from('ingredient-photos').remove([ingredient.product_photo_url])
+      photoPath = null
+    }
+
     const payload = {
       name: form.name.trim(),
       category: form.category || null,
@@ -158,6 +176,9 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
       is_vegan: form.is_vegan,
       is_gluten_free: form.is_gluten_free,
       is_dairy_free: form.is_dairy_free,
+      product_name: form.product_name.trim() || null,
+      product_brand: form.product_brand.trim() || null,
+      product_photo_url: photoPath,
     }
 
     let err
@@ -333,6 +354,66 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
                   <label htmlFor={field} className="text-sm text-gray-700 dark:text-gray-300">{label}</label>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Exact product (optional)</label>
+            <p className="mt-0.5 mb-1.5 text-xs text-gray-400">
+              A photo and product name so a client who doesn't recognise this ingredient can see exactly what to
+              buy — shown on the Shopping List.
+            </p>
+            <div className="flex gap-3 items-start">
+              <div className="flex-shrink-0">
+                {(photoPreview || (ingredient?.product_photo_url && !photoRemoved)) ? (
+                  <div className="relative w-20 h-20">
+                    <img
+                      src={photoPreview || supabase.storage.from('ingredient-photos').getPublicUrl(ingredient.product_photo_url).data.publicUrl}
+                      alt=""
+                      className="w-20 h-20 rounded-lg object-cover border border-gray-200 dark:border-gray-700"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setPhotoFile(null); setPhotoPreview(null); setPhotoRemoved(true) }}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-red-500 flex items-center justify-center shadow-sm"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                ) : (
+                  <label className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-300 dark:text-gray-600 cursor-pointer hover:border-brand-300 hover:text-brand-400 transition-colors">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" /></svg>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files[0]
+                        if (!file) return
+                        setPhotoRemoved(false)
+                        setPhotoFile(file)
+                        setPhotoPreview(URL.createObjectURL(file))
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+              <div className="flex-1 space-y-2">
+                <input
+                  className="input"
+                  type="text"
+                  value={form.product_name}
+                  onChange={e => set('product_name', e.target.value)}
+                  placeholder="Product name, e.g. Chicken Breast Fillets 650g"
+                />
+                <input
+                  className="input"
+                  type="text"
+                  value={form.product_brand}
+                  onChange={e => set('product_brand', e.target.value)}
+                  placeholder="Brand / supermarket, e.g. Tesco"
+                />
+              </div>
             </div>
           </div>
 
