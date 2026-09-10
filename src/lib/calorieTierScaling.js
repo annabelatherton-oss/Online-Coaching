@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { CALORIE_TIERS } from './calorieTiers'
-import { MACRO_SPLIT, calcMacrosFromSplit } from './macros'
+import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from './macros'
 
 export { CALORIE_TIERS }
 
@@ -50,11 +50,20 @@ export function calcTotals(ingredients) {
 }
 
 // A meal's calorie sub-target for a tier is its category's share (the coach's standard split) of
-// that tier's total — macro sub-targets apportion the same overall split (MACRO_SPLIT) across it.
-export function tierTargetsForCategory(tier, category, mealSplit) {
+// that tier's total. Macro sub-targets follow the MEAL'S OWN base-recipe ratio scaled to that
+// calorie number — not a single fixed split forced onto every meal. A pre-workout jam bagel is
+// naturally carb-heavy with almost no fat; forcing it toward the generic 40/35/25 split at every
+// tier had no fat source to pull from, so the solver warped quantities (and even dropped
+// ingredients) trying to chase an unreachable macro target instead of just scaling the recipe.
+// baseTotals (that meal's un-scaled calories/protein_g/carbs_g/fat_g) is optional so existing
+// callers/tests that don't have it yet still fall back to the generic split.
+export function tierTargetsForCategory(tier, category, mealSplit, baseTotals) {
   const pct = mealSplit?.[category] || 0
   const calories = round1(tier * pct / 100)
-  const macros = calcMacrosFromSplit(calories, MACRO_SPLIT)
+  const splitPct = baseTotals && baseTotals.calories > 0
+    ? splitPercentFromGrams(baseTotals, baseTotals.calories)
+    : MACRO_SPLIT
+  const macros = calcMacrosFromSplit(calories, splitPct)
   return { calories, protein_g: macros.protein_g, carbs_g: macros.carbs_g, fat_g: macros.fat_g }
 }
 
@@ -408,8 +417,9 @@ export async function regenerateAllTiersForMeal(mealId, category, baseIngredient
   if (existing?.length) {
     await supabase.from('meal_tier_versions').delete().in('id', existing.map(v => v.id))
   }
+  const baseTotals = calcTotals(baseIngredients)
   for (const tier of CALORIE_TIERS) {
-    const targets = tierTargetsForCategory(tier, category, mealSplit)
+    const targets = tierTargetsForCategory(tier, category, mealSplit, baseTotals)
     await insertTierVersion(mealId, tier, bestIngredientsForTier(baseIngredients, library, targets))
   }
 }
@@ -417,9 +427,10 @@ export async function regenerateAllTiersForMeal(mealId, category, baseIngredient
 // Creates every tier a meal doesn't already have yet. Leaves existing tiers (including any manual
 // coach edits) untouched, so it's safe to run repeatedly across the whole library.
 export async function createMissingTiersForMeal(mealId, category, baseIngredients, library, mealSplit, existingTiers) {
+  const baseTotals = calcTotals(baseIngredients)
   for (const tier of CALORIE_TIERS) {
     if (existingTiers.has(tier)) continue
-    const targets = tierTargetsForCategory(tier, category, mealSplit)
+    const targets = tierTargetsForCategory(tier, category, mealSplit, baseTotals)
     await insertTierVersion(mealId, tier, bestIngredientsForTier(baseIngredients, library, targets))
   }
 }
