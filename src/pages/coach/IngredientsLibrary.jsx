@@ -58,6 +58,7 @@ const EMPTY_FORM = {
   is_dairy_free: true,
   product_name: '',
   product_brand: '',
+  product_url: '',
 }
 
 // Applies an ingredient-swap add/remove diff against the (symmetric) ingredient_swaps table —
@@ -98,6 +99,7 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
     is_dairy_free: ingredient.is_dairy_free ?? true,
     product_name: ingredient.product_name || '',
     product_brand: ingredient.product_brand || '',
+    product_url: ingredient.product_url || '',
   } : { ...EMPTY_FORM })
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
@@ -178,6 +180,7 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
       is_dairy_free: form.is_dairy_free,
       product_name: form.product_name.trim() || null,
       product_brand: form.product_brand.trim() || null,
+      product_url: form.product_url.trim() || null,
       product_photo_url: photoPath,
     }
 
@@ -360,8 +363,9 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
           <div>
             <label className="label">Exact product (optional)</label>
             <p className="mt-0.5 mb-1.5 text-xs text-gray-400">
-              A photo and product name so a client who doesn't recognise this ingredient can see exactly what to
-              buy — shown on the Shopping List.
+              A photo, name and/or a link to the product page so a client who doesn't recognise this ingredient
+              can see exactly what to buy — shown on the Shopping List. A link works fine on its own if you don't
+              have a photo to hand.
             </p>
             <div className="flex gap-3 items-start">
               <div className="flex-shrink-0">
@@ -412,6 +416,13 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
                   value={form.product_brand}
                   onChange={e => set('product_brand', e.target.value)}
                   placeholder="Brand / supermarket, e.g. Tesco"
+                />
+                <input
+                  className="input"
+                  type="url"
+                  value={form.product_url}
+                  onChange={e => set('product_url', e.target.value)}
+                  placeholder="Link to the product page (optional)"
                 />
               </div>
             </div>
@@ -546,7 +557,7 @@ export default function IngredientsLibrary() {
       </div>
 
       {/* Search + category filters — sticky so it's always reachable while scrolling a long library */}
-      <div className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-950 py-3 space-y-3">
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 lg:-mx-6 lg:-mt-6 px-4 lg:px-6 pt-4 lg:pt-6 pb-3 bg-white dark:bg-gray-900 border-b border-pink-100 dark:border-gray-800 space-y-3">
         <div className="relative max-w-sm">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

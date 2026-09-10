@@ -17,11 +17,11 @@ const CATEGORY_LABELS = {
 }
 const CATEGORY_ORDER = ['protein', 'carbohydrates', 'vegetables', 'fats', 'toppings', 'snacks', 'other']
 
-function PhotoModal({ item, onClose }) {
+function ProductModal({ item, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-        <img src={item.photo} alt={item.name} className="w-full aspect-square object-cover" />
+        {item.photo && <img src={item.photo} alt={item.name} className="w-full aspect-square object-cover" />}
         <div className="p-4">
           <p className="font-semibold text-gray-900 dark:text-white">{item.name}</p>
           {(item.productName || item.productBrand) && (
@@ -29,8 +29,14 @@ function PhotoModal({ item, onClose }) {
               {[item.productBrand, item.productName].filter(Boolean).join(' — ')}
             </p>
           )}
+          {item.productUrl && (
+            <a href={item.productUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary w-full mt-3 inline-flex items-center justify-center gap-1.5">
+              View product
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+            </a>
+          )}
           <p className="text-xs text-gray-400 mt-2">This is the exact product your coach used to calculate this ingredient's macros.</p>
-          <button onClick={onClose} className="btn-secondary w-full mt-4">Close</button>
+          <button onClick={onClose} className="btn-secondary w-full mt-2">Close</button>
         </div>
       </div>
     </div>
@@ -50,7 +56,7 @@ export default function ClientShoppingList() {
   const [swapCtx, setSwapCtx] = useState(null)
   const [selections, setSelections] = useState({})
   const [checkedItems, setCheckedItems] = useState([])
-  const [photoModal, setPhotoModal] = useState(null)
+  const [productModal, setProductModal] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -178,6 +184,7 @@ export default function ClientShoppingList() {
           photo: libIng?.product_photo_url || null,
           productName: libIng?.product_name || null,
           productBrand: libIng?.product_brand || null,
+          productUrl: libIng?.product_url || null,
         }
       }
       itemsByKey[key].quantity_g += (parseFloat(ing.quantity_g) || 0) * count
@@ -249,6 +256,7 @@ export default function ClientShoppingList() {
               <div className="space-y-1">
                 {grouped[cat].map(item => {
                   const checked = checkedItems.includes(item.key)
+                  const hasProductInfo = !!(item.photo || item.productName || item.productBrand || item.productUrl)
                   return (
                     <div key={item.key} className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-colors ${checked ? 'opacity-50' : 'hover:bg-pink-50/50 dark:hover:bg-pink-900/5'}`}>
                       <input
@@ -258,12 +266,12 @@ export default function ClientShoppingList() {
                         className="w-5 h-5 rounded-md text-brand-500 focus:ring-brand-500 flex-shrink-0"
                       />
                       {item.photo && (
-                        <button type="button" onClick={() => setPhotoModal(item)} className="flex-shrink-0">
+                        <button type="button" onClick={() => setProductModal(item)} className="flex-shrink-0">
                           <img src={item.photo} alt="" className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-700" />
                         </button>
                       )}
-                      <button type="button" onClick={() => item.photo && setPhotoModal(item)} className="flex-1 min-w-0 text-left">
-                        <p className={`text-sm font-medium text-gray-800 dark:text-gray-200 ${checked ? 'line-through' : ''}`}>{item.name}</p>
+                      <button type="button" onClick={() => hasProductInfo && setProductModal(item)} className="flex-1 min-w-0 text-left">
+                        <p className={`text-sm font-medium text-gray-800 dark:text-gray-200 ${checked ? 'line-through' : ''} ${hasProductInfo && !item.photo ? 'underline decoration-dotted underline-offset-2' : ''}`}>{item.name}</p>
                       </button>
                       <span className="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0 tabular-nums">
                         {formatAmount({ quantity_g: item.quantity_g, unit: item.unit, ingredient_id: item.ingredient_id }, ingredientLib)}
@@ -277,7 +285,7 @@ export default function ClientShoppingList() {
         </div>
       )}
 
-      {photoModal && <PhotoModal item={photoModal} onClose={() => setPhotoModal(null)} />}
+      {productModal && <ProductModal item={productModal} onClose={() => setProductModal(null)} />}
     </div>
   )
 }
