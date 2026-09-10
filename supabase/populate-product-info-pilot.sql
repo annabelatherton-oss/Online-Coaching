@@ -6,6 +6,14 @@
 -- already uses it — a plain SQL update here would leave those meals with stale numbers). See the
 -- chat message for the 3 ingredients worth a manual macro tweak, and 2 that need your own check.
 --
+-- CAVEAT (found the hard way on Reduced Sweet Chilli Sauce, since corrected below): every figure
+-- here was sourced via web search, which pulls from third-party calorie-tracker sites (FatSecret,
+-- MyNetDiary, etc.) rather than the retailer's own page — this environment can't fetch tesco.com
+-- or aldi.co.uk directly to verify against them. The same risk applies to every ingredient below,
+-- not just the one caught — worth a quick check against the real label/website for any of these
+-- you're relying on closely, especially Bacon Medallions, Bagel Thin and Peanut Butter, where a
+-- brand choice was made based on this same kind of figure.
+--
 -- Safe to re-run.
 
 do $$
@@ -23,9 +31,12 @@ begin
     product_url = 'https://www.tesco.com/groceries/en-GB/products/305249769'
   where coach_id = v_coach_id and name = 'Light Mayo';
 
-  -- Aldi's Sweet Chilli Sauce (131 kcal/100g) is a closer calorie match to this ingredient than
-  -- any "reduced sugar" branded product found (Blue Dragon's reduced-sugar version runs 156/100g).
-  update ingredients set product_name = 'Sweet Chilli Sauce', product_brand = 'Aldi'
+  -- Reverted: the coach checked the real websites directly — Aldi's regular Sweet Chilli Sauce is
+  -- actually 200 kcal/100g (not the ~131 a calorie-tracker site had it at), and the Tesco-listed
+  -- product (Blue Dragon Reduced Sugar) is 156/100g — genuinely the closer match to this
+  -- ingredient's 136/100g figure, confirmed against the actual site rather than a tracker app.
+  update ingredients set product_name = 'Reduced Sugar Sweet Chilli Dipping Sauce', product_brand = 'Blue Dragon',
+    product_url = 'https://www.sainsburys.co.uk/gol-ui/product/blue-dragon-reduced-sugar-thai-sweet-chilli-sauce-380g-7759308-p'
   where coach_id = v_coach_id and name = 'Reduced Sweet Chilli Sauce';
 
   update ingredients set product_name = 'BBQ Sauce', product_brand = 'Tesco',
