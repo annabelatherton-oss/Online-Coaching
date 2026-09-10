@@ -617,6 +617,7 @@ export default function IngredientsLibrary() {
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Fat</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Diets</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Swaps with</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -662,6 +663,27 @@ export default function IngredientsLibrary() {
                             {s.name}
                           </span>
                         ))}
+                      </div>
+                    ) : (
+                      <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {(ing.product_brand || ing.product_name) ? (
+                      <div className="max-w-[160px]">
+                        <div className="text-gray-700 dark:text-gray-300 text-xs font-medium truncate">
+                          {[ing.product_brand, ing.product_name].filter(Boolean).join(' — ')}
+                        </div>
+                        {ing.product_url && (
+                          <a
+                            href={ing.product_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 underline"
+                          >
+                            View product
+                          </a>
+                        )}
                       </div>
                     ) : (
                       <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
