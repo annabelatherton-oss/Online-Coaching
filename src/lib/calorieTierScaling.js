@@ -38,6 +38,22 @@ export function snapToConstraints(amount, libIng, isOptional = false) {
   return val
 }
 
+// Combines a meal ingredient's own manually-set alternatives (alternative_ingredient_ids, set
+// per-recipe in the Meal Editor's "↔ swap" picker) with any ingredient-level default swaps set
+// once on the ingredient itself in the Ingredients Library (swapsMap: ingredient_id -> array of
+// alternative ingredient_ids) — so marking two ingredients interchangeable (e.g. Bagel/Bagel Thin)
+// there makes every meal that uses either of them pick up the swap automatically, without having
+// to also add it on each recipe. The two sources are just unioned (deduped); either can supply a
+// swap candidate for calorie-tier generation to try.
+export function withIngredientSwaps(baseIngredients, swapsMap) {
+  return baseIngredients.map(ing => {
+    const own = ing.alternative_ingredient_ids || []
+    const fromLibrary = (ing.ingredient_id && swapsMap?.[ing.ingredient_id]) || []
+    const ids = [...new Set([...own, ...fromLibrary])].filter(id => id !== ing.ingredient_id)
+    return { ...ing, alternatives: ids.map(id => ({ ingredient_id: id })) }
+  })
+}
+
 export function calcTotals(ingredients) {
   const t = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
   for (const ing of ingredients) {
@@ -411,7 +427,7 @@ export async function insertTierVersion(mealId, tier, ingredients) {
 // When an ingredient has alternatives, try every combination of base vs alternative ingredients
 // and return whichever produces the result closest to the calorie target. Ingredients without
 // alternatives are treated as fixed-identity (only their quantity is scaled as usual).
-function bestIngredientsForTier(baseIngredients, library, targets) {
+export function bestIngredientsForTier(baseIngredients, library, targets) {
   const hasSwaps = baseIngredients.some(ing => (ing.alternatives || []).length > 0)
   if (!hasSwaps) return generateTierIngredients(baseIngredients, library, targets)
 

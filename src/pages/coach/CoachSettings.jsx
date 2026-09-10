@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { MEAL_SPLIT_CATEGORIES, MEAL_SPLIT_LABELS, DEFAULT_MEAL_SPLIT, normalizeMealSplit } from '../../lib/calorieSplit'
-import { regenerateAllTiersForMeal } from '../../lib/calorieTierScaling'
+import { regenerateAllTiersForMeal, withIngredientSwaps } from '../../lib/calorieTierScaling'
 import { GOAL_TYPES, normalizeGoalMacroSplits } from '../../lib/macros'
 import { GOAL_LABELS } from '../../lib/calorieSuggestion'
 
@@ -180,24 +180,28 @@ export default function CoachSettings() {
   async function handleRecalculateAll() {
     setRecalculating(true)
     setRecalcMsg(false)
-    const [{ data: meals, error }, { data: library }] = await Promise.all([
+    const [{ data: meals, error }, { data: library }, { data: swapRows }] = await Promise.all([
       supabase
         .from('meals')
         .select('id, name, category, meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, scaling_type, unit, alternative_ingredient_ids, is_static)')
         .eq('coach_id', profile.id),
       supabase.from('ingredients').select('*').eq('coach_id', profile.id),
+      supabase.from('ingredient_swaps').select('ingredient_id, alternative_ingredient_id').eq('coach_id', profile.id),
     ])
     if (error) { setRecalculating(false); alert('Could not load meals: ' + error.message); return }
+
+    const ingredientSwapsMap = {}
+    for (const row of (swapRows || [])) {
+      if (!ingredientSwapsMap[row.ingredient_id]) ingredientSwapsMap[row.ingredient_id] = []
+      ingredientSwapsMap[row.ingredient_id].push(row.alternative_ingredient_id)
+    }
 
     const targets = (meals || []).filter(m => m.category && (m.meal_ingredients || []).length > 0)
     setRecalcProgress({ done: 0, total: targets.length })
     const failed = []
     for (const meal of targets) {
       try {
-        const baseIngs = (meal.meal_ingredients || []).map(ing => ({
-          ...ing,
-          alternatives: (ing.alternative_ingredient_ids || []).map(id => ({ ingredient_id: id })),
-        }))
+        const baseIngs = withIngredientSwaps(meal.meal_ingredients || [], ingredientSwapsMap)
         await regenerateAllTiersForMeal(meal.id, meal.category, baseIngs, library || [], savedSplitValues)
       } catch (err) {
         console.error(`Failed to regenerate calorie tiers for "${meal.name}":`, err)

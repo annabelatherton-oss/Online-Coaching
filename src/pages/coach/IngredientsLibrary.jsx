@@ -40,7 +40,26 @@ const EMPTY_FORM = {
   is_vegetarian: true,
 }
 
-function IngredientModal({ ingredient, onSave, onClose, coachId }) {
+// Applies an ingredient-swap add/remove diff against the (symmetric) ingredient_swaps table —
+// every swap is stored as both directions, so removing "Bagel Thin" from Bagel also removes
+// "Bagel" from Bagel Thin, and vice versa.
+async function syncIngredientSwaps(coachId, ingredientId, prevIds, nextIds) {
+  const toAdd = nextIds.filter(id => !prevIds.includes(id))
+  const toRemove = prevIds.filter(id => !nextIds.includes(id))
+  if (toAdd.length > 0) {
+    const rows = toAdd.flatMap(altId => ([
+      { coach_id: coachId, ingredient_id: ingredientId, alternative_ingredient_id: altId },
+      { coach_id: coachId, ingredient_id: altId, alternative_ingredient_id: ingredientId },
+    ]))
+    await supabase.from('ingredient_swaps').upsert(rows, { onConflict: 'ingredient_id,alternative_ingredient_id' })
+  }
+  for (const altId of toRemove) {
+    await supabase.from('ingredient_swaps').delete().eq('ingredient_id', ingredientId).eq('alternative_ingredient_id', altId)
+    await supabase.from('ingredient_swaps').delete().eq('ingredient_id', altId).eq('alternative_ingredient_id', ingredientId)
+  }
+}
+
+function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, onClose, coachId }) {
   const [form, setForm] = useState(ingredient ? {
     name: ingredient.name,
     category: ingredient.category || '',
@@ -57,9 +76,23 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
   } : { ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [swaps, setSwaps] = useState(initialSwaps || [])
+  const [swapSearch, setSwapSearch] = useState('')
+  const [swapDropdownOpen, setSwapDropdownOpen] = useState(false)
 
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }))
+  }
+
+  function addSwap(libIng) {
+    if (swaps.some(s => s.id === libIng.id)) return
+    setSwaps(s => [...s, { id: libIng.id, name: libIng.name }])
+    setSwapDropdownOpen(false)
+    setSwapSearch('')
+  }
+
+  function removeSwap(id) {
+    setSwaps(s => s.filter(x => x.id !== id))
   }
 
   async function handleSave(e) {
@@ -85,6 +118,7 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
     }
 
     let err
+    let savedId = ingredient?.id || null
     if (ingredient) {
       ({ error: err } = await supabase.from('ingredients').update(payload).eq('id', ingredient.id))
       if (!err) {
@@ -97,13 +131,36 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
         }
       }
     } else {
-      ({ error: err } = await supabase.from('ingredients').insert({ ...payload, coach_id: coachId }))
+      const { data, error: insErr } = await supabase.from('ingredients').insert({ ...payload, coach_id: coachId }).select('id').single()
+      err = insErr
+      savedId = data?.id || null
     }
 
     if (err) { setError(err.message); setSaving(false); return }
+
+    if (savedId) {
+      try {
+        await syncIngredientSwaps(
+          coachId, savedId,
+          (initialSwaps || []).map(s => s.id),
+          swaps.map(s => s.id),
+        )
+      } catch (swapErr) {
+        console.error('Failed to save interchangeable ingredients:', swapErr)
+      }
+    }
+
     setSaving(false)
     onSave()
   }
+
+  const swapCandidates = swapSearch
+    ? ingredientsList.filter(l =>
+        l.id !== ingredient?.id &&
+        l.name.toLowerCase().includes(swapSearch.toLowerCase()) &&
+        !swaps.some(s => s.id === l.id)
+      ).slice(0, 10)
+    : []
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -226,6 +283,46 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
             <label htmlFor="is_vegetarian" className="text-sm text-gray-700 dark:text-gray-300">Vegetarian</label>
           </div>
 
+          <div>
+            <label className="label">Interchangeable with</label>
+            <p className="mt-0.5 mb-1.5 text-xs text-gray-400">
+              Meals using either ingredient can automatically swap to whichever fits a calorie tier better — set once here instead of on every recipe.
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {swaps.map(s => (
+                <span key={s.id} className="inline-flex items-center gap-1 text-xs bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 px-2 py-0.5 rounded-full border border-violet-200 dark:border-violet-800">
+                  {s.name}
+                  <button type="button" onClick={() => removeSwap(s.id)} className="text-violet-400 hover:text-violet-700 ml-0.5 leading-none">×</button>
+                </span>
+              ))}
+              {swapDropdownOpen ? (
+                <div className="relative">
+                  <input
+                    autoFocus
+                    className="input py-1 text-xs w-40"
+                    placeholder="Search ingredients…"
+                    value={swapSearch}
+                    onChange={e => setSwapSearch(e.target.value)}
+                    onBlur={() => setTimeout(() => { setSwapDropdownOpen(false); setSwapSearch('') }, 150)}
+                  />
+                  {swapCandidates.length > 0 && (
+                    <div className="absolute top-full left-0 mt-1 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-40 overflow-y-auto w-48">
+                      {swapCandidates.map(l => (
+                        <button key={l.id} type="button" className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 truncate" onMouseDown={() => addSwap(l)}>
+                          {l.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button type="button" onClick={() => setSwapDropdownOpen(true)} className="text-xs text-brand-500 hover:text-brand-700 px-2 py-0.5 rounded-full border border-dashed border-brand-300">
+                  + Add
+                </button>
+              )}
+            </div>
+          </div>
+
           {error && (
             <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
               <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
@@ -247,6 +344,7 @@ function IngredientModal({ ingredient, onSave, onClose, coachId }) {
 export default function IngredientsLibrary() {
   const { profile } = useAuth()
   const [ingredients, setIngredients] = useState([])
+  const [swapsMap, setSwapsMap] = useState({}) // ingredient_id -> [{ id, name }]
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState('all')
@@ -254,12 +352,19 @@ export default function IngredientsLibrary() {
   const [editing, setEditing] = useState(null)
 
   async function load() {
-    const { data } = await supabase
-      .from('ingredients')
-      .select('*')
-      .eq('coach_id', profile.id)
-      .order('name', { ascending: true })
+    const [{ data }, { data: swapRows }] = await Promise.all([
+      supabase.from('ingredients').select('*').eq('coach_id', profile.id).order('name', { ascending: true }),
+      supabase.from('ingredient_swaps').select('ingredient_id, alternative_ingredient_id').eq('coach_id', profile.id),
+    ])
     setIngredients(data || [])
+    const nameById = {}
+    for (const ing of (data || [])) nameById[ing.id] = ing.name
+    const map = {}
+    for (const row of (swapRows || [])) {
+      if (!map[row.ingredient_id]) map[row.ingredient_id] = []
+      map[row.ingredient_id].push({ id: row.alternative_ingredient_id, name: nameById[row.alternative_ingredient_id] || '?' })
+    }
+    setSwapsMap(map)
     setLoading(false)
   }
 
@@ -366,6 +471,7 @@ export default function IngredientsLibrary() {
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Carbs</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Fat</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Veg?</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Swaps with</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -394,6 +500,19 @@ export default function IngredientsLibrary() {
                       <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    {(swapsMap[ing.id] || []).length > 0 ? (
+                      <div className="flex flex-wrap gap-1 max-w-[180px]">
+                        {swapsMap[ing.id].map(s => (
+                          <span key={s.id} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300">
+                            {s.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-3">
                       <button onClick={() => openEdit(ing)} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">Edit</button>
@@ -410,6 +529,8 @@ export default function IngredientsLibrary() {
       {modalOpen && (
         <IngredientModal
           ingredient={editing}
+          ingredientsList={ingredients}
+          initialSwaps={editing ? (swapsMap[editing.id] || []) : []}
           onSave={handleSaved}
           onClose={() => setModalOpen(false)}
           coachId={profile.id}

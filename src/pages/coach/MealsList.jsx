@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
-import { CALORIE_TIERS, missingTiers, createMissingTiersForMeal, regenerateAllTiersForMeal } from '../../lib/calorieTierScaling'
+import { CALORIE_TIERS, missingTiers, createMissingTiersForMeal, regenerateAllTiersForMeal, withIngredientSwaps } from '../../lib/calorieTierScaling'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { DIETS, DIET_LABELS, mealQualifiesForDiet } from '../../lib/diets'
 
@@ -81,6 +81,7 @@ export default function MealsList() {
   const navigate = useNavigate()
   const [meals, setMeals] = useState([])
   const [library, setLibrary] = useState([])
+  const [ingredientSwapsMap, setIngredientSwapsMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [search, setSearchRaw] = useState(() => sessionStorage.getItem('mealsSearch') || '')
   const [categoryFilter, setCategoryFilterRaw] = useState(() => sessionStorage.getItem('mealsCategoryFilter') || 'All')
@@ -98,7 +99,7 @@ export default function MealsList() {
   const [regenProgress, setRegenProgress] = useState(null)
 
   async function loadMeals() {
-    const [{ data, error }, { data: libData }] = await Promise.all([
+    const [{ data, error }, { data: libData }, { data: swapRows }] = await Promise.all([
       supabase
         .from('meals')
         .select(`
@@ -108,6 +109,7 @@ export default function MealsList() {
         `)
         .eq('coach_id', profile.id),
       supabase.from('ingredients').select('*').eq('coach_id', profile.id),
+      supabase.from('ingredient_swaps').select('ingredient_id, alternative_ingredient_id').eq('coach_id', profile.id),
     ])
 
     if (error) console.error(error)
@@ -121,6 +123,12 @@ export default function MealsList() {
       setMeals(sorted)
     }
     setLibrary(libData || [])
+    const swapsMap = {}
+    for (const row of (swapRows || [])) {
+      if (!swapsMap[row.ingredient_id]) swapsMap[row.ingredient_id] = []
+      swapsMap[row.ingredient_id].push(row.alternative_ingredient_id)
+    }
+    setIngredientSwapsMap(swapsMap)
     setLoading(false)
   }
 
@@ -169,10 +177,7 @@ export default function MealsList() {
     for (const meal of targets) {
       const existing = new Set((meal.meal_tier_versions || []).map(v => v.calorie_tier))
       try {
-        const baseIngs = (meal.meal_ingredients || []).map(ing => ({
-          ...ing,
-          alternatives: (ing.alternative_ingredient_ids || []).map(id => ({ ingredient_id: id })),
-        }))
+        const baseIngs = withIngredientSwaps(meal.meal_ingredients || [], ingredientSwapsMap)
         await createMissingTiersForMeal(meal.id, meal.category, baseIngs, library, mealSplit, existing)
       } catch (err) {
         console.error(`Failed to create calorie tiers for "${meal.name}":`, err)
@@ -197,10 +202,7 @@ export default function MealsList() {
     const failed = []
     for (const meal of targets) {
       try {
-        const baseIngs = (meal.meal_ingredients || []).map(ing => ({
-          ...ing,
-          alternatives: (ing.alternative_ingredient_ids || []).map(id => ({ ingredient_id: id })),
-        }))
+        const baseIngs = withIngredientSwaps(meal.meal_ingredients || [], ingredientSwapsMap)
         await regenerateAllTiersForMeal(meal.id, meal.category, baseIngs, library, mealSplit)
       } catch (err) {
         console.error(`Failed to regenerate tiers for "${meal.name}":`, err)

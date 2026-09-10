@@ -4,8 +4,9 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import {
-  CALORIE_TIERS, regenerateAllTiersForMeal, generateTierIngredients,
+  CALORIE_TIERS, regenerateAllTiersForMeal, bestIngredientsForTier,
   tierTargetsForCategory, insertTierVersion, snapToConstraints, calcTotals, allIngredientsFixed,
+  withIngredientSwaps,
 } from '../../lib/calorieTierScaling'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { DIETS, DIET_LABELS } from '../../lib/diets'
@@ -314,6 +315,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
 function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange }) {
   const [ingredients, setIngredients] = useState([])
   const [library, setLibrary] = useState([])
+  const [ingredientSwapsMap, setIngredientSwapsMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState(false)
@@ -328,9 +330,10 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
   useEffect(() => () => onDirtyChange?.(false), [])
 
   async function load() {
-    const [ingRes, libRes] = await Promise.all([
+    const [ingRes, libRes, swapRes] = await Promise.all([
       supabase.from('meal_ingredients').select('*').eq('meal_id', mealId).order('id', { ascending: true }),
       supabase.from('ingredients').select('*').eq('coach_id', coachId).order('name'),
+      supabase.from('ingredient_swaps').select('ingredient_id, alternative_ingredient_id').eq('coach_id', coachId),
     ])
     const lib = libRes.data || []
     const ings = ingRes.data || []
@@ -344,6 +347,12 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
       }),
     })))
     setLibrary(lib)
+    const swapsMap = {}
+    for (const row of (swapRes.data || [])) {
+      if (!swapsMap[row.ingredient_id]) swapsMap[row.ingredient_id] = []
+      swapsMap[row.ingredient_id].push(row.alternative_ingredient_id)
+    }
+    setIngredientSwapsMap(swapsMap)
     setLoading(false)
     setDirty(false)
   }
@@ -450,7 +459,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
     // Rebuild every calorie-tier version from the base recipe just saved, so ingredient
     // changes always pull through into the tiers without a separate manual step.
     if (saved.length > 0 && category) {
-      const baseIngs = saved.map(({ ing }) => ({
+      const baseIngs = withIngredientSwaps(saved.map(({ ing }) => ({
         name: ing.name || '',
         quantity_g: parseFloat(ing.quantity_g) || 0,
         unit: ing.unit || 'g',
@@ -461,9 +470,8 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
         scaling_type: ing.scaling_type || 'flexible',
         is_static: ing.is_static || false,
         ingredient_id: ing.ingredient_id || null,
-        alternatives: (ing._alternatives || []).map(a => ({ ingredient_id: a.ingredient_id })),
         alternative_ingredient_ids: (ing._alternatives || []).map(a => a.ingredient_id),
-      }))
+      })), ingredientSwapsMap)
       try {
         await regenerateAllTiersForMeal(mealId, category, baseIngs, library, mealSplit)
       } catch (err) {
@@ -632,6 +640,17 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
                             <button type="button" onClick={() => removeAlternative(idx, ai)} className="text-violet-400 hover:text-violet-700 ml-0.5 leading-none">×</button>
                           </span>
                         ))}
+                        {(ingredientSwapsMap[ing.ingredient_id] || [])
+                          .filter(id => !(ing._alternatives || []).some(a => a.ingredient_id === id))
+                          .map(id => {
+                            const libIng = library.find(l => l.id === id)
+                            if (!libIng) return null
+                            return (
+                              <span key={id} className="inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full" title="Already interchangeable — set on this ingredient in the Ingredient Library">
+                                {libIng.name}
+                              </span>
+                            )
+                          })}
                         {altDropdownOpen === idx ? (
                           <div className="relative">
                             <input
@@ -709,6 +728,7 @@ function CalorieTiersTab({ mealId, coachId, category, mealSplit }) {
   const [baseIngredients, setBaseIngredients] = useState([])
   const [tierMap, setTierMap] = useState({}) // {calorie_tier: {id, ingredients: []}}
   const [library, setLibrary] = useState([])
+  const [ingredientSwapsMap, setIngredientSwapsMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [expandedTier, setExpandedTier] = useState(null)
   const [creating, setCreating] = useState(null)
@@ -716,16 +736,23 @@ function CalorieTiersTab({ mealId, coachId, category, mealSplit }) {
   const [error, setError] = useState('')
 
   async function load() {
-    const [ingRes, tierRes, libRes] = await Promise.all([
+    const [ingRes, tierRes, libRes, swapRes] = await Promise.all([
       supabase.from('meal_ingredients').select('*').eq('meal_id', mealId).order('id'),
       supabase.from('meal_tier_versions')
         .select('id, calorie_tier, calories, protein_g, carbs_g, fat_g, meal_tier_ingredients(*)')
         .eq('meal_id', mealId),
       supabase.from('ingredients').select('*').eq('coach_id', coachId).order('name'),
+      supabase.from('ingredient_swaps').select('ingredient_id, alternative_ingredient_id').eq('coach_id', coachId),
     ])
     setBaseIngredients(ingRes.data || [])
     const lib = libRes.data || []
     setLibrary(lib)
+    const swapsMap = {}
+    for (const row of (swapRes.data || [])) {
+      if (!swapsMap[row.ingredient_id]) swapsMap[row.ingredient_id] = []
+      swapsMap[row.ingredient_id].push(row.alternative_ingredient_id)
+    }
+    setIngredientSwapsMap(swapsMap)
     const map = {}
     for (const v of (tierRes.data || [])) {
       map[v.calorie_tier] = {
@@ -761,8 +788,10 @@ function CalorieTiersTab({ mealId, coachId, category, mealSplit }) {
       await supabase.from('meal_tier_versions').delete().eq('id', existing.id)
     }
 
-    const targets = tierTargetsForCategory(tier, category, mealSplit)
-    const generated = generateTierIngredients(baseIngredients, library, targets)
+    const baseTotals = calcTotals(baseIngredients)
+    const targets = tierTargetsForCategory(tier, category, mealSplit, baseTotals)
+    const mergedBase = withIngredientSwaps(baseIngredients, ingredientSwapsMap)
+    const generated = bestIngredientsForTier(mergedBase, library, targets)
 
     try {
       await insertTierVersion(mealId, tier, generated)
