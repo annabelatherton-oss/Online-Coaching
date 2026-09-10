@@ -9,7 +9,7 @@ import {
   withIngredientSwaps,
 } from '../../lib/calorieTierScaling'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
-import { DIETS, DIET_LABELS } from '../../lib/diets'
+import { DIETS, DIET_LABELS, predictMealDietTags } from '../../lib/diets'
 
 const TABS = ['Details', 'Ingredients', 'Calorie Tiers']
 
@@ -230,7 +230,9 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
             Tags mean "safe for this diet" — they're informational, not exclusive, so a tagged meal still
             shows up in Standard and any other diet it qualifies for too. To keep a meal (e.g. one built
             around Quorn, tofu, or another meat/dairy substitute) OUT of the Standard plan specifically,
-            untick "Standard-eligible" above instead.
+            untick "Standard-eligible" above instead. Left untouched, tags get predicted automatically
+            from the meal's ingredients the first time they're saved on the Ingredients tab — check them
+            over and adjust here if anything looks wrong.
           </p>
         </div>
       </div>
@@ -312,7 +314,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
 }
 
 // ─── Ingredients Tab ──────────────────────────────────────────────────────────
-function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange }) {
+function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, onMealUpdated, onDirtyChange }) {
   const [ingredients, setIngredients] = useState([])
   const [library, setLibrary] = useState([])
   const [ingredientSwapsMap, setIngredientSwapsMap] = useState({})
@@ -476,6 +478,24 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, onDirtyChange })
         await regenerateAllTiersForMeal(mealId, category, baseIngs, library, mealSplit)
       } catch (err) {
         console.error('Failed to auto-update calorie tiers:', err)
+      }
+    }
+
+    // Auto-predict this meal's dietary tags from its ingredients — only while it hasn't been
+    // tagged yet (new meal, or one nobody's tagged before), so this never silently overwrites
+    // tags the coach has already reviewed or manually set on the Details tab.
+    if (saved.length > 0 && (!dietTags || dietTags.length === 0)) {
+      const predicted = predictMealDietTags(
+        saved.map(({ ing }) => ({ name: ing.name || '', ingredient_id: ing.ingredient_id || null })),
+        library
+      )
+      if (predicted.length > 0) {
+        try {
+          await supabase.from('meals').update({ diet_tags: predicted }).eq('id', mealId)
+          onMealUpdated?.()
+        } catch (err) {
+          console.error('Failed to auto-predict diet tags:', err)
+        }
       }
     }
 
@@ -1205,7 +1225,7 @@ export default function MealEditor() {
 
       <div>
         {activeTab === 'Details' && <DetailsTab meal={meal} mealId={currentId} isNew={isNew} onSaved={handleDetailsSaved} coachId={profile.id} />}
-        {activeTab === 'Ingredients' && currentId && <IngredientsTab mealId={currentId} coachId={profile.id} category={meal?.category} mealSplit={mealSplit} onDirtyChange={setIngredientsDirty} />}
+        {activeTab === 'Ingredients' && currentId && <IngredientsTab mealId={currentId} coachId={profile.id} category={meal?.category} mealSplit={mealSplit} dietTags={meal?.diet_tags} onMealUpdated={() => loadMeal(currentId)} onDirtyChange={setIngredientsDirty} />}
         {activeTab === 'Calorie Tiers' && currentId && <CalorieTiersTab mealId={currentId} coachId={profile.id} category={meal?.category} mealSplit={mealSplit} />}
       </div>
     </div>

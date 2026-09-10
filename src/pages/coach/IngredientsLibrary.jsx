@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { propagateIngredientRuleChange } from '../../lib/calorieTierScaling'
+import { predictIngredientDietFlags } from '../../lib/diets'
 
 const UNIT_OPTIONS = ['g', 'ml', 'tbsp', 'tsp', 'cup', 'piece', 'square', 'scoop', 'slice', 'handful']
 
@@ -14,6 +15,20 @@ const CATEGORIES = [
   { value: 'vegetables', label: 'Vegetables' },
   { value: 'toppings', label: 'Toppings' },
   { value: 'snacks', label: 'Snacks' },
+]
+
+const DIET_FLAG_LABELS = [
+  ['is_vegetarian', 'Vegetarian'],
+  ['is_vegan', 'Vegan'],
+  ['is_gluten_free', 'Gluten-free'],
+  ['is_dairy_free', 'Dairy-free'],
+]
+
+const DIET_FLAG_SHORT_LABELS = [
+  ['is_vegetarian', 'Veg'],
+  ['is_vegan', 'Vegan'],
+  ['is_gluten_free', 'GF'],
+  ['is_dairy_free', 'DF'],
 ]
 
 const CATEGORY_COLOURS = {
@@ -38,6 +53,9 @@ const EMPTY_FORM = {
   carbs_per_serving: '',
   fat_per_serving: '',
   is_vegetarian: true,
+  is_vegan: true,
+  is_gluten_free: true,
+  is_dairy_free: true,
 }
 
 // Applies an ingredient-swap add/remove diff against the (symmetric) ingredient_swaps table —
@@ -73,15 +91,37 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
     carbs_per_serving: String(ingredient.carbs_per_serving),
     fat_per_serving: String(ingredient.fat_per_serving),
     is_vegetarian: ingredient.is_vegetarian ?? true,
+    is_vegan: ingredient.is_vegan ?? true,
+    is_gluten_free: ingredient.is_gluten_free ?? true,
+    is_dairy_free: ingredient.is_dairy_free ?? true,
   } : { ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [swaps, setSwaps] = useState(initialSwaps || [])
   const [swapSearch, setSwapSearch] = useState('')
   const [swapDropdownOpen, setSwapDropdownOpen] = useState(false)
+  // Once the coach manually touches a diet checkbox, stop auto-predicting from the name so we
+  // never silently overwrite a deliberate correction — applies to both new and existing
+  // ingredients (editing an existing one already starts from its saved flags, not a fresh guess).
+  const [dietFlagsTouched, setDietFlagsTouched] = useState(false)
 
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }))
+  }
+
+  function setName(value) {
+    setForm(f => {
+      const next = { ...f, name: value }
+      if (!ingredient && !dietFlagsTouched && value.trim()) {
+        Object.assign(next, predictIngredientDietFlags(value))
+      }
+      return next
+    })
+  }
+
+  function setDietFlag(field, value) {
+    setDietFlagsTouched(true)
+    set(field, value)
   }
 
   function addSwap(libIng) {
@@ -115,6 +155,9 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
       carbs_per_serving: parseFloat(form.carbs_per_serving) || 0,
       fat_per_serving: parseFloat(form.fat_per_serving) || 0,
       is_vegetarian: form.is_vegetarian,
+      is_vegan: form.is_vegan,
+      is_gluten_free: form.is_gluten_free,
+      is_dairy_free: form.is_dairy_free,
     }
 
     let err
@@ -183,10 +226,13 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
               className="input"
               type="text"
               value={form.name}
-              onChange={e => set('name', e.target.value)}
+              onChange={e => setName(e.target.value)}
               placeholder="e.g. Oats, Chia Seeds, Dark Chocolate"
               autoFocus
             />
+            {!ingredient && (
+              <p className="mt-1 text-xs text-gray-400">Diet tick boxes below are predicted from the name — check them before saving.</p>
+            )}
           </div>
 
           <div>
@@ -272,15 +318,22 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              id="is_vegetarian"
-              type="checkbox"
-              checked={form.is_vegetarian}
-              onChange={e => set('is_vegetarian', e.target.checked)}
-              className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500"
-            />
-            <label htmlFor="is_vegetarian" className="text-sm text-gray-700 dark:text-gray-300">Vegetarian</label>
+          <div>
+            <label className="label">Dietary requirements</label>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {DIET_FLAG_LABELS.map(([field, label]) => (
+                <div key={field} className="flex items-center gap-2">
+                  <input
+                    id={field}
+                    type="checkbox"
+                    checked={form[field]}
+                    onChange={e => setDietFlag(field, e.target.checked)}
+                    className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500"
+                  />
+                  <label htmlFor={field} className="text-sm text-gray-700 dark:text-gray-300">{label}</label>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div>
@@ -470,7 +523,7 @@ export default function IngredientsLibrary() {
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Protein</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Carbs</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Fat</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Veg?</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Diets</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Swaps with</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -494,11 +547,20 @@ export default function IngredientsLibrary() {
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{ing.carbs_per_serving}g</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{ing.fat_per_serving}g</td>
                   <td className="px-4 py-3">
-                    {ing.is_vegetarian ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Veg</span>
-                    ) : (
-                      <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
-                    )}
+                    {(() => {
+                      const active = DIET_FLAG_SHORT_LABELS.filter(([field]) => ing[field])
+                      return active.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {active.map(([field, label]) => (
+                            <span key={field} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     {(swapsMap[ing.id] || []).length > 0 ? (

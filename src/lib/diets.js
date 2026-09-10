@@ -105,16 +105,47 @@ export function mealQualifiesForDiets(meal, dietKeys) {
   return (dietKeys || []).every(d => mealQualifiesForDiet(meal, d))
 }
 
-// Whether a single ingredient (from the Ingredient Library, not a meal) is safe for a diet. For
-// vegetarian/vegan this respects the ingredient's own is_vegetarian flag first — the coach's
-// explicit say-so beats a name guess — falling back to the same name-keyword check as everything
-// else when that flag isn't decisive (gluten-free/dairy-free/pescatarian have no such flag).
+// Whether a single ingredient (from the Ingredient Library, not a meal) is safe for a diet. Each
+// diet with its own Ingredient Library checkbox (vegetarian/vegan/gluten-free/dairy-free) reads
+// that flag directly — the coach's explicit say-so beats a name guess. Vegan additionally implies
+// vegetarian. Pescatarian has no library checkbox, so it still falls back to a name-keyword check.
 export function ingredientQualifiesForDiet(ingredient, dietKey) {
-  if ((dietKey === 'vegetarian' || dietKey === 'vegan') && ingredient.is_vegetarian === false) return false
+  if (dietKey === 'vegetarian') return ingredient.is_vegetarian !== false
+  if (dietKey === 'vegan') return ingredient.is_vegetarian !== false && ingredient.is_vegan !== false
+  if (dietKey === 'gluten_free') return ingredient.is_gluten_free !== false
+  if (dietKey === 'dairy_free') return ingredient.is_dairy_free !== false
   return !ingredientsViolateDiet([ingredient.name], dietKey)
 }
 
 // True only if an ingredient satisfies every one of a client's dietary requirements.
 export function ingredientQualifiesForDiets(ingredient, dietKeys) {
   return (dietKeys || []).every(d => ingredientQualifiesForDiet(ingredient, d))
+}
+
+// Predicts an ingredient's diet flags from its name alone, via the same keyword system used
+// everywhere else — used to pre-fill the Ingredient Library's diet checkboxes when adding a new
+// ingredient (or re-predicting an existing one). Always just a starting point: every flag stays a
+// plain editable checkbox afterwards.
+export function predictIngredientDietFlags(name) {
+  return {
+    is_vegetarian:  !ingredientsViolateDiet([name], 'vegetarian'),
+    is_vegan:       !ingredientsViolateDiet([name], 'vegan'),
+    is_gluten_free: !ingredientsViolateDiet([name], 'gluten_free'),
+    is_dairy_free:  !ingredientsViolateDiet([name], 'dairy_free'),
+  }
+}
+
+// Predicts a meal's diet_tags from its current ingredient rows — a diet applies only if every
+// ingredient qualifies for it. Prefers each ingredient's own Ingredient Library flags where linked
+// (ingredientQualifiesForDiet), falling back to a name-keyword check for any ingredient that isn't
+// (a free-typed row with no library match). Used to auto-suggest tags when a meal's ingredients are
+// first saved — always just a starting point, never overwrites tags the coach has already set.
+export function predictMealDietTags(ingredientRows, library) {
+  if (!ingredientRows || ingredientRows.length === 0) return []
+  return DIETS.filter(dietKey =>
+    ingredientRows.every(ing => {
+      const libIng = ing.ingredient_id ? (library || []).find(l => l.id === ing.ingredient_id) : null
+      return libIng ? ingredientQualifiesForDiet(libIng, dietKey) : !ingredientsViolateDiet([ing.name], dietKey)
+    })
+  )
 }
