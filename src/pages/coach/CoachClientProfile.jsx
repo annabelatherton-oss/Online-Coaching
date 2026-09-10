@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams, splitForGoal, normalizeGoalMacroSplits } from '../../lib/macros'
+import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 import { DIETS, DIET_LABELS, mealQualifiesForDiets, ingredientQualifiesForDiets } from '../../lib/diets'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
@@ -1687,7 +1688,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
 
 // ─── Meal Plan Tab ────────────────────────────────────────────────────────────
 
-function MealPlanTab({ client, coachId }) {
+function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
   const [planGroups, setPlanGroups] = useState([])
   const [assignment, setAssignment] = useState(null)
   const [planGroup, setPlanGroup] = useState(null)
@@ -1702,6 +1703,7 @@ function MealPlanTab({ client, coachId }) {
   const [library, setLibrary] = useState([])
   const [ingredientOverrides, setIngredientOverrides] = useState({})
   const [expandedSlots, setExpandedSlots] = useState(new Set())
+  const [comparingSlots, setComparingSlots] = useState(new Set())
   const [dietOverrideSlots, setDietOverrideSlots] = useState(new Set())
   const [openSwapRule, setOpenSwapRule] = useState(null) // { slotKey, dislike, removeId, quantity_g }
   const [swapRuleSaved, setSwapRuleSaved] = useState('')
@@ -2028,6 +2030,37 @@ function MealPlanTab({ client, coachId }) {
   const option1Total = addMacros(addMacros(option1Subtotal, preworkoutTotal), snackTotal)
   const option2Total = addMacros(addMacros(option2Subtotal, preworkoutTotal), snackTotal)
 
+  // Full day's macro targets (not just calories) — the same goal-phase split used everywhere else
+  // (Overview tab, client's own check-ins) applied to this client's calorie target, so "remaining"
+  // below means the same thing it does anywhere else in the app.
+  const dailyMacroTargets = assignment?.calorie_target
+    ? { cal: assignment.calorie_target, ...calcMacrosFromSplit(assignment.calorie_target, splitForGoal(client.goal_type, goalMacroSplits)) }
+    : null
+
+  function remainingFor(total) {
+    if (!dailyMacroTargets) return null
+    return {
+      cal:  Math.round(dailyMacroTargets.cal      - total.cal),
+      prot: Math.round(dailyMacroTargets.protein_g - total.prot),
+      carb: Math.round(dailyMacroTargets.carbs_g   - total.carb),
+      fat:  Math.round(dailyMacroTargets.fat_g      - total.fat),
+    }
+  }
+
+  // A slot's own share of the day's targets — its category's % of the coach's standard meal
+  // split, applied to the full daily targets above. Shown next to each meal card so the coach can
+  // see at a glance whether what's actually in that slot roughly matches what it's meant to carry.
+  function slotTarget(cat) {
+    if (!dailyMacroTargets) return null
+    const pct = (mealSplit?.[cat] || 0) / 100
+    return {
+      cal:  dailyMacroTargets.cal * pct,
+      prot: dailyMacroTargets.protein_g * pct,
+      carb: dailyMacroTargets.carbs_g * pct,
+      fat:  dailyMacroTargets.fat_g * pct,
+    }
+  }
+
   // Suggestion: if an option's day total falls outside the -50/+20 kcal band, suggest a fix. Every
   // meal is already sized to hit its own calorie-tier sub-target, so the gap (if any) can only be
   // closed by swapping a meal or editing ingredients for this client.
@@ -2055,8 +2088,26 @@ function MealPlanTab({ client, coachId }) {
     return null
   }
 
+  // Full remaining-for-the-day breakdown (not just calories) — negative means over on that macro.
+  function renderRemaining(total) {
+    const rem = remainingFor(total)
+    if (!rem) return null
+    return (
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Remaining: <span className={rem.cal < 0 ? 'text-orange-500 font-medium' : 'text-gray-700 dark:text-gray-300 font-medium'}>{rem.cal} kcal</span>
+        {' · '}<span className={rem.carb < 0 ? 'text-orange-500' : ''}>{rem.carb}g C</span>
+        {' · '}<span className={rem.prot < 0 ? 'text-orange-500' : ''}>{rem.prot}g P</span>
+        {' · '}<span className={rem.fat < 0 ? 'text-orange-500' : ''}>{rem.fat}g F</span>
+      </p>
+    )
+  }
+
   function toggleSlot(key) {
     setExpandedSlots(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
+  }
+
+  function toggleCompare(key) {
+    setComparingSlots(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
   }
 
   function toggleDietOverride(key) {
@@ -2200,6 +2251,8 @@ function MealPlanTab({ client, coachId }) {
     const isExpanded = expandedSlots.has(slotKey)
     const overridesForSlot = ingredientOverrides[slotKey]
     const macros = mealMacros(currentId, mealMap, tier, overridesForSlot)
+    const slotTgt = slotTarget(cat)
+    const isComparing = comparingSlots.has(slotKey)
     const options = mealsByCategory[cat] || []
     const isOverridden = templateSlots[slotKey] !== undefined && (editedSlots[slotKey] || null) !== (templateSlots[slotKey] || null)
     const hasIngredientEdits = hasAnyOverride(overridesForSlot)
@@ -2277,6 +2330,13 @@ function MealPlanTab({ client, coachId }) {
             {missingTierVersion && <span className="text-xs text-amber-500" title={`This meal has no saved ${tier} kcal version — showing its base portion instead. Generate it in the Meal Library to fix this.`}>No {tier} kcal version</span>}
             {currentId && macros.cal > 0 && <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums ml-auto">{Math.round(macros.cal)} kcal</span>}
           </div>
+
+          {currentId && macros.cal > 0 && slotTgt && (
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Target: {Math.round(slotTgt.cal)} kcal · {Math.round(slotTgt.carb)}g C · {Math.round(slotTgt.prot)}g P · {Math.round(slotTgt.fat)}g F
+              <span className="text-gray-300 dark:text-gray-600"> — this meal: {Math.round(macros.cal)} kcal · {Math.round(macros.carb)}g C · {Math.round(macros.prot)}g P · {Math.round(macros.fat)}g F</span>
+            </p>
+          )}
 
           {isStaticSlot && currentId && (
             <button
@@ -2378,16 +2438,51 @@ function MealPlanTab({ client, coachId }) {
             </div>
           )}
 
-          {currentId && (
-            <button
-              onClick={() => toggleSlot(slotKey)}
-              className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 flex items-center gap-1"
-            >
-              <svg className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              {isExpanded ? 'Hide ingredients' : 'Edit ingredients'}
-            </button>
+          <div className="flex items-center gap-3">
+            {currentId && (
+              <button
+                onClick={() => toggleSlot(slotKey)}
+                className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 flex items-center gap-1"
+              >
+                <svg className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                {isExpanded ? 'Hide ingredients' : 'Edit ingredients'}
+              </button>
+            )}
+            {options.length > 1 && (
+              <button
+                onClick={() => toggleCompare(slotKey)}
+                className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 flex items-center gap-1"
+              >
+                <svg className={`w-3 h-3 transition-transform ${isComparing ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                {isComparing ? 'Hide other options' : `Compare ${options.length - 1} other option${options.length - 1 === 1 ? '' : 's'}`}
+              </button>
+            )}
+          </div>
+
+          {isComparing && (
+            <div className="rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+              {options.map(m => {
+                const m_macros = mealMacros(m.id, mealMap, tier, m.id === currentId ? overridesForSlot : null)
+                const isCurrent = m.id === currentId
+                return (
+                  <div key={m.id} className={`flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs ${isCurrent ? 'bg-brand-50 dark:bg-brand-900/10' : ''}`}>
+                    <span className={`truncate ${isCurrent ? 'font-semibold text-brand-700 dark:text-brand-400' : 'text-gray-600 dark:text-gray-300'}`}>
+                      {isCurrent && '✓ '}{m.name}
+                    </span>
+                    <span className="text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">
+                      {Math.round(m_macros.cal)} kcal · {Math.round(m_macros.carb)}C · {Math.round(m_macros.prot)}P · {Math.round(m_macros.fat)}F
+                    </span>
+                  </div>
+                )
+              })}
+              <p className="px-2.5 py-1.5 text-[11px] text-gray-400 bg-gray-50 dark:bg-gray-800/50">
+                Every option for this slot is scaled to the same calorie tier, so any of them are safe to swap in for each other.
+              </p>
+            </div>
           )}
 
           {isExpanded && currentId && (
@@ -2692,6 +2787,7 @@ function MealPlanTab({ client, coachId }) {
                 </div>
               </div>
               {targetStatus(option1Total)}
+              {renderRemaining(option1Total)}
 
               {option2Subtotal.cal > 0 && (
                 <>
@@ -2705,6 +2801,7 @@ function MealPlanTab({ client, coachId }) {
                     </div>
                   </div>
                   {targetStatus(option2Total)}
+                  {renderRemaining(option2Total)}
                 </>
               )}
 
@@ -3973,7 +4070,7 @@ export default function CoachClientProfile() {
 
       <div>
         {activeTab === 'Overview'    && <OverviewTab client={client} onSaved={loadClient} />}
-        {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} />}
+        {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} mealSplit={normalizeMealSplit(profile.meal_split)} goalMacroSplits={normalizeGoalMacroSplits(profile.goal_macro_splits)} />}
         {activeTab === 'Training'   && <TrainingTab client={client} coachId={profile.id} onSaved={loadClient} />}
         {activeTab === 'Daily Plan' && <DailyPlanTab client={client} />}
         {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} />}
