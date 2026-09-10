@@ -36,7 +36,11 @@ begin
     product_url = 'https://www.tesco.com/shop/en-GB/products/307760281'
   where coach_id = v_coach_id and name = 'Oat Milk';
 
-  update ingredients set product_name = 'British Smoked Bacon Medallions', product_brand = 'Tesco'
+  -- Closest real macro match found (~24 kcal / 4.4g protein per medallion vs this ingredient's
+  -- 27/5) — note this specific listing is from Aldi's "Specially Selected" range, not their
+  -- cheapest bacon line.
+  update ingredients set product_name = 'Specially Selected Smoked Bacon Medallions', product_brand = 'Aldi',
+    product_url = 'https://www.aldi.co.uk/product/specially-selected-smoked-bacon-medallions-8-pack-000000000620237001'
   where coach_id = v_coach_id and name = 'Bacon Medallions';
 
   update ingredients set product_name = '2 Cooked Skinless Chicken Breast', product_brand = 'Tesco',
