@@ -81,10 +81,10 @@ begin
     );
 
     v_tags := array[]::text[];
-    if v_veg   then v_tags := v_tags || 'vegetarian'; end if;
-    if v_vegan then v_tags := v_tags || 'vegan';       end if;
-    if v_gf    then v_tags := v_tags || 'gluten_free'; end if;
-    if v_df    then v_tags := v_tags || 'dairy_free';  end if;
+    if v_veg   then v_tags := array_append(v_tags, 'vegetarian'); end if;
+    if v_vegan then v_tags := array_append(v_tags, 'vegan');       end if;
+    if v_gf    then v_tags := array_append(v_tags, 'gluten_free'); end if;
+    if v_df    then v_tags := array_append(v_tags, 'dairy_free');  end if;
 
     update meals set diet_tags = v_tags where id = r.id;
   end loop;
