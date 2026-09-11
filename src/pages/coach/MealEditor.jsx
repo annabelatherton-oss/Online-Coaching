@@ -404,7 +404,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, instru
   function selectLibraryIngredient(idx, libIng) {
     const amount = ingredients[idx].quantity_g
     const macros = amount ? calcMacros(libIng, amount) : { calories: '', protein_g: '', carbs_g: '', fat_g: '' }
-    updateRow(idx, { ingredient_id: libIng.id, _library: libIng, name: libIng.name, ...macros })
+    updateRow(idx, { ingredient_id: libIng.id, _library: libIng, name: libIng.name, unit: libIng.serving_unit || 'g', ...macros })
     setOpenDropdown(null)
     setSearchText(prev => ({ ...prev, [idx]: '' }))
   }

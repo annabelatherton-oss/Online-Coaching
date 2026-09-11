@@ -60,7 +60,7 @@ export default function ClientMealPlan() {
           meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
             meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
         `).eq('coach_id', clientRow.coach_id).order('name'),
-        supabase.from('ingredients').select('id, serving_unit').eq('coach_id', clientRow.coach_id),
+        supabase.from('ingredients').select('id, name, serving_unit').eq('coach_id', clientRow.coach_id),
       ])
 
       const lib = {}

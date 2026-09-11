@@ -132,9 +132,23 @@ export function addMacros(a, b) {
   return { cal: az.cal + bz.cal, prot: az.prot + bz.prot, carb: az.carb + bz.carb, fat: az.fat + bz.fat }
 }
 
+// Looks up the real-world unit ("unit", "tbsp", …) for an ingredient row. Prefers the linked
+// library ingredient; falls back to matching by name, since older/free-typed rows often have no
+// ingredient_id even though a library entry with the same name (and correct unit) exists.
+export function libraryUnit(ing, ingredientLib) {
+  if (!ingredientLib) return null
+  if (ing.ingredient_id && ingredientLib[ing.ingredient_id]) return ingredientLib[ing.ingredient_id].serving_unit || null
+  const nameLower = (ing.name || '').trim().toLowerCase()
+  if (!nameLower) return null
+  for (const lib of Object.values(ingredientLib)) {
+    if ((lib.name || '').trim().toLowerCase() === nameLower) return lib.serving_unit || null
+  }
+  return null
+}
+
 export function formatAmount(ing, ingredientLib) {
   const qty = parseFloat(ing.quantity_g)
-  const libUnit = ing.ingredient_id && ingredientLib ? ingredientLib[ing.ingredient_id]?.serving_unit : null
+  const libUnit = libraryUnit(ing, ingredientLib)
   const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libUnit && libUnit !== 'g') ? libUnit : ing.unit
   if (unit && unit !== 'g') {
     const n = Number.isInteger(qty) ? qty : Math.round(qty * 10) / 10
@@ -369,8 +383,8 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                       {ingredients.map((ing, i) => {
                         const qty = parseFloat(ing.quantity_g) || 0
                         const totalQty = qty * prepDays
-                        const libIng = ing.ingredient_id && ingredientLib ? ingredientLib[ing.ingredient_id] : null
-                        const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libIng?.serving_unit && libIng.serving_unit !== 'g') ? libIng.serving_unit : 'g'
+                        const libUnit = libraryUnit(ing, ingredientLib)
+                        const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libUnit && libUnit !== 'g') ? libUnit : 'g'
                         const displayQty = unit !== 'g'
                           ? (Number.isInteger(totalQty) ? totalQty : Math.round(totalQty * 10) / 10)
                           : Math.round(totalQty)
@@ -389,7 +403,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                 )}
                 <div className="space-y-2">
                   {ingredients.map((ing, i) => {
-                    const libUnit = ing.ingredient_id && ingredientLib ? ingredientLib[ing.ingredient_id]?.serving_unit : null
+                    const libUnit = libraryUnit(ing, ingredientLib)
                     const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libUnit && libUnit !== 'g') ? libUnit : 'g'
                     const isStatic = ing.is_static && !ing._isAdded
                     return (
