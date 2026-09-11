@@ -236,6 +236,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
         {mealId && (
           <div className="flex items-center gap-3 self-start">
             <button
+              data-tour="meal-swap-button"
               onClick={e => { e.stopPropagation(); onSwap(slotKey, label, cat) }}
               className="text-[10px] text-gray-400 dark:text-gray-500 hover:text-brand-500 flex items-center gap-1"
             >

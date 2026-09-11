@@ -205,7 +205,7 @@ export default function ClientShoppingList() {
       </div>
 
       {/* Day-count selection */}
-      <div className="card space-y-4">
+      <div data-tour="shopping-day-count" className="card space-y-4">
         {MEAL_GROUPS.map(group => {
           const slots = group.slots.filter(s => editedSlots[s.key])
           if (slots.length === 0) return null

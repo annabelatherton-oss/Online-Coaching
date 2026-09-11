@@ -317,7 +317,7 @@ export default function ClientTraining() {
           }
 
           return (
-            <div key={dayName} className="card overflow-hidden p-0">
+            <div key={dayName} data-tour="training-day-card" className="card overflow-hidden p-0">
               <button
                 onClick={() => toggle(s.id)}
                 className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"

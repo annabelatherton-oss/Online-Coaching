@@ -499,7 +499,7 @@ export default function ClientTodoList() {
           )}
 
           {/* Daily habits */}
-          <div className="space-y-2">
+          <div data-tour="daily-habits" className="space-y-2">
             <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Daily habits</h2>
             {systemTasks.map(task => {
               const row = getSystemRow(task.key)

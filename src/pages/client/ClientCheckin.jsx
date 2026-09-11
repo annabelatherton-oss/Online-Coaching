@@ -739,7 +739,7 @@ export default function ClientCheckin() {
           <TargetDateBanner targetDate={clientData?.target_date} targetEventName={clientData?.target_event_name} />
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
+              <h1 data-tour="checkin-heading" className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
               {personalWeek != null && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Week {personalWeek}</p>}
             </div>
             {streak > 1 && (
@@ -778,7 +778,7 @@ export default function ClientCheckin() {
       {viewingCheckin ? (
         <>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
+            <h1 data-tour="checkin-heading" className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Week {viewingCheckin.personal_week} · {fmtCheckinDate(viewingCheckin.created_at)}</p>
           </div>
           <CheckinReadView checkin={viewingCheckin} collectMeasurements={collectMeasurements} />
@@ -787,7 +787,7 @@ export default function ClientCheckin() {
       <>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
+          <h1 data-tour="checkin-heading" className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             {personalWeek != null ? `Week ${personalWeek}` : 'Your weekly progress update.'}
             {existing && <span className="ml-1 text-brand-500">Already submitted — you can update it below.</span>}
