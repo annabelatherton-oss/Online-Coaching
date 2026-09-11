@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import DarkModeToggle from '../../components/DarkModeToggle'
 import { supabase } from '../../lib/supabase'
 import { registerPushNotifications } from '../../lib/pushNotifications'
+import ClientAppTour, { shouldAutoShowTour } from '../../components/ClientAppTour'
 
 const navItems = [
   {
@@ -143,6 +144,13 @@ export default function ClientLayout() {
   const navigationType = useNavigationType()
   const mainRef = useRef(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showTour, setShowTour] = useState(false)
+
+  // First-ever visit gets the app tour automatically; afterwards it's only shown again if the
+  // client taps the "Tour" button in the header.
+  useEffect(() => {
+    if (shouldAutoShowTour()) setShowTour(true)
+  }, [])
 
   // Register for push notifications once after login
   useEffect(() => {
@@ -299,6 +307,15 @@ export default function ClientLayout() {
           </button>
           <div className="hidden lg:block" />
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowTour(true)}
+              title="Take the app tour"
+              className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
             <DarkModeToggle />
             <div className="text-sm text-gray-600 dark:text-gray-400 pl-2 border-l border-gray-200 dark:border-gray-700 ml-1">
               {profile?.full_name?.split(' ')[0] || 'Client'}
@@ -312,6 +329,8 @@ export default function ClientLayout() {
           <Outlet />
         </main>
       </div>
+
+      {showTour && <ClientAppTour onClose={() => setShowTour(false)} />}
     </div>
   )
 }
