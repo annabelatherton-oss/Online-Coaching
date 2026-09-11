@@ -247,7 +247,7 @@ export default function ClientProgress() {
       <TargetDateBanner targetDate={clientData?.target_date} targetEventName={clientData?.target_event_name} />
 
       {/* Quick stats */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="card text-center py-4">
           <p className="text-2xl font-bold text-gray-900 dark:text-white">
             {currentWeight ?? '—'}

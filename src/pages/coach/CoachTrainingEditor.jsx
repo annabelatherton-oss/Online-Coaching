@@ -308,29 +308,31 @@ function SessionCard({ session, onDelete, onSynced, occupiedDays, library, varia
       {expanded && (
         <div className="border-t border-gray-100 dark:border-gray-800 px-4 pb-3">
           {exercises.length > 0 && (
-            <div className="pt-2">
-              <div className="flex gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pb-1 pl-5">
-                <span className="flex-1">Exercise</span>
-                <span className="w-32 text-center">Variation</span>
-                <span className="w-14 text-center">Sets</span>
-                <span className="w-20 text-center">Reps</span>
-                <span className="w-16 text-center">RPE</span>
-                <span className="w-4" />
+            <div className="pt-2 overflow-x-auto -mx-1 px-1">
+              <div className="min-w-[600px]">
+                <div className="flex gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pb-1 pl-5">
+                  <span className="flex-1">Exercise</span>
+                  <span className="w-32 text-center">Variation</span>
+                  <span className="w-14 text-center">Sets</span>
+                  <span className="w-20 text-center">Reps</span>
+                  <span className="w-16 text-center">RPE</span>
+                  <span className="w-4" />
+                </div>
+                {exercises.map((ex, i) => (
+                  <ExerciseRow
+                    key={ex.id || ex._key || i}
+                    exercise={ex}
+                    library={library}
+                    variationsByExerciseId={variationsByExerciseId}
+                    onChange={(field, value) => update(i, field, value)}
+                    onRemove={() => remove(i)}
+                    onMoveUp={() => moveUp(i)}
+                    onMoveDown={() => moveDown(i)}
+                    isFirst={i === 0}
+                    isLast={i === exercises.length - 1}
+                  />
+                ))}
               </div>
-              {exercises.map((ex, i) => (
-                <ExerciseRow
-                  key={ex.id || ex._key || i}
-                  exercise={ex}
-                  library={library}
-                  variationsByExerciseId={variationsByExerciseId}
-                  onChange={(field, value) => update(i, field, value)}
-                  onRemove={() => remove(i)}
-                  onMoveUp={() => moveUp(i)}
-                  onMoveDown={() => moveDown(i)}
-                  isFirst={i === 0}
-                  isLast={i === exercises.length - 1}
-                />
-              ))}
             </div>
           )}
           <button
@@ -658,42 +660,44 @@ export default function CoachTrainingEditor() {
         </div>
 
         {topLifts.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium">
-              <span className="flex-1">Exercise</span>
-              <span className="w-32 text-center">Rep range (min–max)</span>
-              <span className="w-20 text-center">+kg step</span>
-              <span className="w-4" />
-            </div>
-            {topLifts.map((lift, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <select
-                  className="flex-1 input py-1.5 text-sm"
-                  value={lift.name ?? ''}
-                  onChange={e => {
-                    const name = e.target.value
-                    const parsed = parseRepRange(exerciseRepsMap[name])
-                    setTopLifts(prev => prev.map((l, idx) => idx === i ? { ...l, name, ...parsed } : l))
-                  }}
-                >
-                  <option value="">Select exercise</option>
-                  {exerciseNames.map(name => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-                <div className="flex items-center gap-1 w-32">
-                  <input className="input py-1.5 text-sm w-12 text-center" type="number" min={1} placeholder="6"
-                    value={lift.reps_min ?? ''} onChange={e => updateLift(i, 'reps_min', e.target.value)} />
-                  <span className="text-gray-400 text-sm flex-shrink-0">–</span>
-                  <input className="input py-1.5 text-sm w-12 text-center" type="number" min={1} placeholder="8"
-                    value={lift.reps_max ?? ''} onChange={e => updateLift(i, 'reps_max', e.target.value)} />
-                </div>
-                <input className="input py-1.5 text-sm w-20 text-center" type="number" min={0.5} step={0.5} placeholder="5"
-                  value={lift.weight_increment ?? ''} onChange={e => updateLift(i, 'weight_increment', e.target.value)} />
-                <button type="button" onClick={() => removeLift(i)}
-                  className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 text-xl leading-none w-4 flex-shrink-0">×</button>
+          <div className="overflow-x-auto -mx-1 px-1">
+            <div className="min-w-[420px] space-y-2">
+              <div className="flex gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium">
+                <span className="flex-1">Exercise</span>
+                <span className="w-32 text-center">Rep range (min–max)</span>
+                <span className="w-20 text-center">+kg step</span>
+                <span className="w-4" />
               </div>
-            ))}
+              {topLifts.map((lift, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select
+                    className="flex-1 input py-1.5 text-sm"
+                    value={lift.name ?? ''}
+                    onChange={e => {
+                      const name = e.target.value
+                      const parsed = parseRepRange(exerciseRepsMap[name])
+                      setTopLifts(prev => prev.map((l, idx) => idx === i ? { ...l, name, ...parsed } : l))
+                    }}
+                  >
+                    <option value="">Select exercise</option>
+                    {exerciseNames.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                  <div className="flex items-center gap-1 w-32">
+                    <input className="input py-1.5 text-sm w-12 text-center" type="number" min={1} placeholder="6"
+                      value={lift.reps_min ?? ''} onChange={e => updateLift(i, 'reps_min', e.target.value)} />
+                    <span className="text-gray-400 text-sm flex-shrink-0">–</span>
+                    <input className="input py-1.5 text-sm w-12 text-center" type="number" min={1} placeholder="8"
+                      value={lift.reps_max ?? ''} onChange={e => updateLift(i, 'reps_max', e.target.value)} />
+                  </div>
+                  <input className="input py-1.5 text-sm w-20 text-center" type="number" min={0.5} step={0.5} placeholder="5"
+                    value={lift.weight_increment ?? ''} onChange={e => updateLift(i, 'weight_increment', e.target.value)} />
+                  <button type="button" onClick={() => removeLift(i)}
+                    className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 text-xl leading-none w-4 flex-shrink-0">×</button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

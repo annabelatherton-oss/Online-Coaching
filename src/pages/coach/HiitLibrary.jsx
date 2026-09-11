@@ -247,7 +247,8 @@ function CircuitCard({ circuit, onSaved, onDelete }) {
       )}
 
       {(expanded || editing) && (
-        <div className="border-t border-gray-50 dark:border-gray-800 pt-3 space-y-1">
+        <div className="border-t border-gray-50 dark:border-gray-800 pt-3 space-y-1 overflow-x-auto -mx-1 px-1">
+          <div className={editing ? 'min-w-[400px] space-y-1' : ''}>
           {exercises.length > 0 && (
             <div className="flex gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pb-1 pl-6">
               <span className="flex-1">Exercise</span>
@@ -268,6 +269,7 @@ function CircuitCard({ circuit, onSaved, onDelete }) {
               {ex.rest_seconds ? <span className="text-xs text-gray-400 w-20 text-center">{ex.rest_seconds}s rest</span> : <span className="w-20" />}
             </div>
           ))}
+          </div>
           {editing && (
             <button onClick={addExercise}
               className="w-full py-2 text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex items-center justify-center gap-1">

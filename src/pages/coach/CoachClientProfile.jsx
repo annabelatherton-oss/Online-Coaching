@@ -801,7 +801,7 @@ function OverviewTab({ client, onSaved }) {
         </div>
         <div>
           <label className="label !mb-0">Macro split (% of calories)</label>
-          <div className="grid grid-cols-3 gap-4 mt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-1">
             <div>
               <label className="label">Carbs %</label>
               <input className="input" type="number" min={0} max={100} value={split.carbs} onChange={e => setSplitPct('carbs', e.target.value)} />
@@ -829,7 +829,7 @@ function OverviewTab({ client, onSaved }) {
           <h3 className="font-semibold text-gray-900 dark:text-white">Daily Habit Targets</h3>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Only habits you fill in here appear on the client's Daily Plan. Leave blank to exclude.</p>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="label">Steps goal</label>
             <input className="input" type="number" min={0} step={500} value={form.steps_target}
@@ -860,7 +860,7 @@ function OverviewTab({ client, onSaved }) {
         </div>
         <div>
           <label className="label">Allergies</label>
-          <div className="grid grid-cols-3 gap-y-2 gap-x-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2 gap-x-4">
             {ALLERGENS.map(a => (
               <label key={a} className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -879,7 +879,7 @@ function OverviewTab({ client, onSaved }) {
         </div>
         <div>
           <label className="label">Dietary requirements</label>
-          <div className="grid grid-cols-3 gap-y-2 gap-x-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2 gap-x-4">
             {DIETS.map(d => (
               <label key={d} className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -3860,7 +3860,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
             {c.lift_results?.filter(l => l?.name).length > 0 && (
               <div>
                 <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Lifts</p>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {c.lift_results.filter(l => l?.name).map((lift, li) => {
                     const d = liftDelta(lift, p)
                     return (

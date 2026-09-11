@@ -224,7 +224,7 @@ export default function CoachMessages() {
       {selectedId ? (
         <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950 min-w-0">
           {/* Chat header */}
-          <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-wrap">
             <button
               onClick={() => setSelectedId(null)}
               className="lg:hidden p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -239,10 +239,10 @@ export default function CoachMessages() {
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{selected?.full_name}</h2>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white truncate">{selected?.full_name}</h2>
             </div>
             {/* Quick links to client profile sections */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-wrap w-full sm:w-auto">
               {[
                 { label: 'Check-ins', tab: 'Check-ins' },
                 { label: 'Meal Plan', tab: 'Meal Plan' },

@@ -264,35 +264,42 @@ export default function WorkoutEditor() {
 
       {/* Exercise list */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="flex gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pl-10 flex-1">
-            <span className="flex-1">Exercise</span>
-            <span className="w-32 text-center">Variation</span>
-            <span className="w-14 text-center">Sets</span>
-            <span className="w-20 text-center">Reps</span>
-            <span className="w-16 text-center">RPE</span>
-            <span className="w-8" />
-          </div>
-        </div>
-
         <datalist id="we-exercise-list">
           {library.map(l => <option key={l.id} value={l.name} />)}
         </datalist>
 
-        {exercises.map((ex, i) => (
-          <ExRow
-            key={ex._key || ex.id || i}
-            ex={ex}
-            idx={i}
-            total={exercises.length}
-            library={library}
-            variationsByExerciseId={variationsByExerciseId}
-            onChange={(field, value) => updateEx(i, field, value)}
-            onRemove={() => removeEx(i)}
-            onMoveUp={() => moveUp(i)}
-            onMoveDown={() => moveDown(i)}
-          />
-        ))}
+        {/* Each row needs more width than an iPhone screen has (name field + variation + sets/reps/rpe
+            columns) - scroll horizontally within this card rather than forcing the whole page to be
+            zoomed out, same pattern used for wide tables elsewhere in the app. */}
+        <div className="overflow-x-auto -mx-1 px-1">
+          <div className="min-w-[600px] space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="flex gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pl-10 flex-1">
+                <span className="flex-1">Exercise</span>
+                <span className="w-32 text-center">Variation</span>
+                <span className="w-14 text-center">Sets</span>
+                <span className="w-20 text-center">Reps</span>
+                <span className="w-16 text-center">RPE</span>
+                <span className="w-8" />
+              </div>
+            </div>
+
+            {exercises.map((ex, i) => (
+              <ExRow
+                key={ex._key || ex.id || i}
+                ex={ex}
+                idx={i}
+                total={exercises.length}
+                library={library}
+                variationsByExerciseId={variationsByExerciseId}
+                onChange={(field, value) => updateEx(i, field, value)}
+                onRemove={() => removeEx(i)}
+                onMoveUp={() => moveUp(i)}
+                onMoveDown={() => moveDown(i)}
+              />
+            ))}
+          </div>
+        </div>
 
         {/* Add exercise */}
         <div className="relative">

@@ -296,7 +296,7 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
             <p className="mt-1 text-xs text-gray-400">e.g. 100 g · 15 g · 1 square · 1 tbsp</p>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="label">Step (increment)</label>
               <div className="flex items-center gap-2">

@@ -803,7 +803,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
             />
             {/* Daily macro totals, with how far each option lands from the
                 calorie target and the coach's standard macro split for it */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[{ label: 'Option A', macros: opt1Total }, { label: 'Option B', macros: opt2Total }].map(({ label, macros }) => (
                 <div key={label} className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{label} daily total{targetMacros ? ' vs target' : ''}</p>
