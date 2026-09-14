@@ -187,7 +187,7 @@ export default function ClientMealPlan() {
     return (
       <div className="space-y-6 max-w-2xl">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Meal Plan</h1>
+          <h1 data-tour="meals-heading" className="text-2xl font-bold text-gray-900 dark:text-white">My Meal Plan</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Your weekly meals and daily targets.</p>
         </div>
         <div className="card text-center py-16">
@@ -204,7 +204,7 @@ export default function ClientMealPlan() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Meal Plan</h1>
+        <h1 data-tour="meals-heading" className="text-2xl font-bold text-gray-900 dark:text-white">My Meal Plan</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Your weekly meals and daily targets.</p>
       </div>
 

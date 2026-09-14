@@ -260,7 +260,7 @@ export default function ClientTraining() {
   if (!weekNumber) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">This Week's Training</h1>
+        <h1 data-tour="training-heading" className="text-2xl font-bold text-gray-900 dark:text-white">This Week's Training</h1>
         <div className="card text-center py-16">
           <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mx-auto mb-4">
             <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -283,7 +283,7 @@ export default function ClientTraining() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">This Week's Training</h1>
+        <h1 data-tour="training-heading" className="text-2xl font-bold text-gray-900 dark:text-white">This Week's Training</h1>
         {programName && (
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{programName}</p>
         )}
@@ -317,7 +317,7 @@ export default function ClientTraining() {
           }
 
           return (
-            <div key={dayName} className="card overflow-hidden p-0">
+            <div key={dayName} data-tour="training-day-card" className="card overflow-hidden p-0">
               <button
                 onClick={() => toggle(s.id)}
                 className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"

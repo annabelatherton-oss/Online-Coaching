@@ -101,7 +101,7 @@ export default function ClientMessages() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Messages</h1>
+        <h1 data-tour="messages-heading" className="text-2xl font-bold text-gray-900 dark:text-white">Messages</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Chat with {coachName}</p>
       </div>
 
@@ -147,6 +147,7 @@ export default function ClientMessages() {
         <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
           <form onSubmit={sendMessage} className="flex gap-2">
             <textarea
+              data-tour="message-compose"
               value={newMessage}
               onChange={e => setNewMessage(e.target.value)}
               onKeyDown={e => {

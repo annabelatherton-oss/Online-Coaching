@@ -420,7 +420,7 @@ export default function ClientTodoList() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Daily Plan</h1>
+          <h1 data-tour="todos-heading" className="text-2xl font-bold text-gray-900 dark:text-white">My Daily Plan</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             {isSelectedToday ? 'Today — ' : ''}{selectedLabel}
           </p>
@@ -499,7 +499,7 @@ export default function ClientTodoList() {
           )}
 
           {/* Daily habits */}
-          <div className="space-y-2">
+          <div data-tour="daily-habits" className="space-y-2">
             <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Daily habits</h2>
             {systemTasks.map(task => {
               const row = getSystemRow(task.key)

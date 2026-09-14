@@ -158,7 +158,7 @@ export default function ClientShoppingList() {
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
   if (noPlan) {
     return (
-      <div className="card text-center py-16">
+      <div data-tour="shopping-fallback" className="card text-center py-16">
         <p className="text-gray-400 dark:text-gray-500">No active meal plan yet — check back once your coach has set one up.</p>
       </div>
     )
@@ -205,7 +205,7 @@ export default function ClientShoppingList() {
       </div>
 
       {/* Day-count selection */}
-      <div className="card space-y-4">
+      <div data-tour="shopping-day-count" className="card space-y-4">
         {MEAL_GROUPS.map(group => {
           const slots = group.slots.filter(s => editedSlots[s.key])
           if (slots.length === 0) return null

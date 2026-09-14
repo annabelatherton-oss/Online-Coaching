@@ -1,48 +1,58 @@
 import { useEffect, useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 
-// Points at the sidebar nav links rather than in-page content - a brand-new client's meal plan,
-// training, etc. might not be set up yet, so anything living inside those pages may not exist to
-// point at. The nav items are always there regardless of what data the account has, so the tour
-// never gets stuck or ends up pointing at nothing.
+// Step 0 has no page/selectors - it's a plain welcome card, shown wherever the client happens to
+// be. Every step after that navigates to the given route and spotlights a real feature already on
+// that page. Each step lists its selectors from most to least specific: the first one tries to hit
+// the actual feature (e.g. the meal Swap button); if that never shows up - because this client
+// doesn't have a plan/programme assigned yet - it falls back to the page's heading instead, so the
+// tour still lands somewhere real on every screen rather than going blank.
 const STEPS = [
   {
-    selector: null,
+    path: null,
+    selectors: [],
     emoji: '👋',
     title: 'Welcome to your plan',
-    body: "Here's where everything lives. Quick look around — 30 seconds.",
+    body: "Everything from your coach lives here. Quick look around — 30 seconds.",
   },
   {
-    selector: '[data-tour="nav-meals"]',
+    path: '/client/meals',
+    selectors: ['[data-tour="meal-swap-button"]', '[data-tour="meals-heading"]'],
     emoji: '🍽️',
     title: 'My Meal Plan',
     body: "Your meals for the week. Don't fancy something? Swap it, or tap a meal for the full recipe.",
   },
   {
-    selector: '[data-tour="nav-shopping"]',
+    path: '/client/shopping-list',
+    selectors: ['[data-tour="shopping-day-count"]', '[data-tour="shopping-fallback"]'],
     emoji: '🛒',
     title: 'Shopping List',
-    body: 'Pick how many of each meal you need this week and get one shopping list, ready to tick off.',
+    body: "Tell it how many days you'll eat each option and get one shopping list for the week.",
   },
   {
-    selector: '[data-tour="nav-training"]',
+    path: '/client/training',
+    selectors: ['[data-tour="training-day-card"]', '[data-tour="training-heading"]'],
     emoji: '💪',
     title: 'My Training',
-    body: 'Your workouts with sets, reps, and video demos for every exercise.',
+    body: 'Tap a day to see the exercises, sets, reps and video demos.',
   },
   {
-    selector: '[data-tour="nav-checkin"]',
+    path: '/client/checkin',
+    selectors: ['[data-tour="checkin-heading"]'],
     emoji: '✅',
-    title: 'Check-in',
+    title: 'Weekly check-in',
     body: 'Log your weight, photos and how the week went here every Friday.',
   },
   {
-    selector: '[data-tour="nav-todos"]',
+    path: '/client/todos',
+    selectors: ['[data-tour="daily-habits"]', '[data-tour="todos-heading"]'],
     emoji: '📋',
-    title: 'My Daily Plan',
-    body: 'Tick off the daily habits your coach set for you.',
+    title: 'Daily habits',
+    body: 'Tick off the habits your coach set for you, right here, each day.',
   },
   {
-    selector: '[data-tour="nav-messages"]',
+    path: '/client/messages',
+    selectors: ['[data-tour="message-compose"]', '[data-tour="messages-heading"]'],
     emoji: '💬',
     title: 'Message your coach',
     body: 'Questions, swaps, life getting in the way — message your coach straight from here.',
@@ -50,20 +60,8 @@ const STEPS = [
 ]
 
 const STORAGE_KEY = 'clientTourSeen_v1'
-const FIND_TIMEOUT_MS = 1500
-const FIND_POLL_MS = 50
-
-// The nav links render twice in the DOM (a desktop sidebar that's always mounted but CSS-hidden
-// on small screens, plus a mobile overlay copy) - a plain querySelector would grab whichever
-// comes first, which on a phone is the invisible desktop one. Pick the one actually on screen.
-function findVisible(selector) {
-  const matches = document.querySelectorAll(selector)
-  for (const el of matches) {
-    const r = el.getBoundingClientRect()
-    if (r.width > 0 && r.height > 0) return el
-  }
-  return null
-}
+const FIND_TIMEOUT_MS = 5000
+const FIND_POLL_MS = 100
 
 export function shouldAutoShowTour() {
   try {
@@ -73,53 +71,76 @@ export function shouldAutoShowTour() {
   }
 }
 
-export default function ClientAppTour({ onClose, setSidebarOpen }) {
+// Tries each selector in order (most specific first) and returns the first match that's actually
+// visible on screen - a display:none/zero-size element (e.g. a hidden duplicate elsewhere in the
+// DOM) doesn't count.
+function findVisible(selectors) {
+  for (const sel of selectors) {
+    const matches = document.querySelectorAll(sel)
+    for (const el of matches) {
+      const r = el.getBoundingClientRect()
+      if (r.width > 0 && r.height > 0) return el
+    }
+  }
+  return null
+}
+
+export default function ClientAppTour({ onClose }) {
   const [step, setStep] = useState(0)
   const [rect, setRect] = useState(null)
+  const navigate = useNavigate()
+  const location = useLocation()
   const current = STEPS[step]
   const isLast = step === STEPS.length - 1
 
   function stop() {
     try { localStorage.setItem(STORAGE_KEY, 'true') } catch { /* ignore */ }
-    setSidebarOpen?.(false)
+    navigate('/client')
     onClose()
   }
 
-  // Nav items only exist in the DOM on mobile once the sidebar overlay is open (on desktop the
-  // sidebar is always mounted, so this is a no-op there). Poll briefly for the target since it
-  // needs at least one render after opening the sidebar.
+  // Navigate to this step's page (if needed) and locate its target, polling since the page's own
+  // data still has to load. If nothing on the selector list ever shows up, skip to the next step
+  // rather than leaving the client staring at a tour that never moves on.
   useEffect(() => {
     setRect(null)
-    if (!current.selector) { setSidebarOpen?.(false); return }
-    setSidebarOpen?.(true)
+    if (!current.path) return // welcome card - nothing to find
+    if (location.pathname !== current.path) navigate(current.path)
 
     let cancelled = false
     let elapsed = 0
     const poll = setInterval(() => {
       if (cancelled) return
-      const el = findVisible(current.selector)
+      const el = findVisible(current.selectors)
       if (el) {
         clearInterval(poll)
-        setRect(el.getBoundingClientRect())
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        setTimeout(() => {
+          if (!cancelled) setRect(el.getBoundingClientRect())
+        }, 350)
         return
       }
       elapsed += FIND_POLL_MS
-      if (elapsed >= FIND_TIMEOUT_MS) clearInterval(poll)
+      if (elapsed >= FIND_TIMEOUT_MS) {
+        clearInterval(poll)
+        if (!cancelled && step < STEPS.length - 1) setStep(s => s + 1)
+      }
     }, FIND_POLL_MS)
 
     return () => { cancelled = true; clearInterval(poll) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
 
+  // Keep the spotlight glued to its target through window resizes / orientation changes.
   useEffect(() => {
-    if (!current.selector) return
+    if (current.selectors.length === 0) return
     function reposition() {
-      const el = findVisible(current.selector)
+      const el = findVisible(current.selectors)
       if (el) setRect(el.getBoundingClientRect())
     }
     window.addEventListener('resize', reposition)
     return () => window.removeEventListener('resize', reposition)
-  }, [step, current.selector])
+  }, [step, current.selectors])
 
   const pad = 8
   const spotlightBox = rect && {
@@ -129,6 +150,8 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
     height: rect.height + pad * 2,
   }
 
+  // Put the tooltip on whichever side of the spotlight has more room, otherwise (welcome step)
+  // just centre it on screen.
   const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
   const tooltipBelow = !spotlightBox || (viewportH - spotlightBox.top - spotlightBox.height) > spotlightBox.top
 
