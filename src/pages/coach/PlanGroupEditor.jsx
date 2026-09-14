@@ -1273,6 +1273,21 @@ export default function PlanGroupEditor() {
                             )}
                           </div>
                         </div>
+
+                        {/* Day total, pinned to the right of every Option A (and shared) card so it's
+                            always visible while scanning down the day, without scrolling back to the
+                            top or expanding anything. */}
+                        {!slot.key.endsWith('2') && activeTier != null && opt1Totals.calories > 0 && (
+                          <div className="flex sm:flex-col items-center sm:items-end justify-center gap-1 sm:gap-0.5 px-3 py-2 sm:w-28 flex-shrink-0 sm:border-l border-t sm:border-t-0 border-gray-100 dark:border-gray-800">
+                            <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Day total</span>
+                            <span className={`text-sm font-semibold ${deviationColor(opt1Totals.calories, activeTier)}`}>{opt1Totals.calories} kcal</span>
+                            <span className="flex items-center gap-1.5 text-[10px] tabular-nums">
+                              <span className={`flex items-center gap-0.5 ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{opt1Totals.carbs_g}g</span>
+                              <span className={`flex items-center gap-0.5 ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{opt1Totals.protein_g}g</span>
+                              <span className={`flex items-center gap-0.5 ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{opt1Totals.fat_g}g</span>
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {isEditingIngredients && (
