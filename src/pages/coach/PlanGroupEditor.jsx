@@ -41,35 +41,8 @@ const OPTION_B_KEYS = ['breakfast2', 'lunch2', 'dinner2', 'preworkout', 'evening
 // given day), so each B slot's target is A's own sibling slot rather than a generic tier share.
 const SIBLING_SLOT = { breakfast1: 'breakfast2', breakfast2: 'breakfast1', lunch1: 'lunch2', lunch2: 'lunch1', dinner1: 'dinner2', dinner2: 'dinner1' }
 
-const UNDER_TARGET_TOLERANCE = 50
-const OVER_TARGET_TOLERANCE = 20
-
 function round1(n) {
   return Math.round(n * 10) / 10
-}
-
-function OptionTotal({ label, totals, target }) {
-  if (!totals || totals.calories <= 0) return null
-  if (!totals.complete) {
-    return (
-      <span className="font-medium text-amber-500" title="One or more meals in this day has no calorie-tier version — regenerate tiers in Coach Settings to fix this.">
-        {label}: {totals.calories} kcal ⚠ missing tier
-      </span>
-    )
-  }
-  let diffText = null
-  let colour = 'text-gray-500 dark:text-gray-400'
-  if (target != null) {
-    const diff = target - totals.calories
-    if (diff > UNDER_TARGET_TOLERANCE) { diffText = `${Math.round(diff)} under`; colour = 'text-amber-500' }
-    else if (diff < -OVER_TARGET_TOLERANCE) { diffText = `${Math.round(-diff)} over`; colour = 'text-red-500' }
-    else { colour = 'text-green-600 dark:text-green-400' }
-  }
-  return (
-    <span className={`font-medium ${colour}`}>
-      {label}: {totals.calories} kcal{diffText ? ` (${diffText})` : ''}
-    </span>
-  )
 }
 
 // Each meal's tier version is generated to hit MACRO_SPLIT of its tier's calories (see
@@ -82,38 +55,9 @@ function macroColour(actual, target) {
   return deviationColor(actual, target)
 }
 
-// Signed +/- for calories and each macro, right on the collapsed week header — so it's clear
-// whether Option B needs changing to match Option A without opening the week, let alone an
-// ingredient editor. referenceTotals (optional): Option B's target is Option A's actual macros,
-// not the generic tier split — the two need to stay as close to each other as possible since a
-// client eats either one.
-function MacroDots({ totals, tier, referenceTotals }) {
-  if (!totals || totals.calories <= 0 || !totals.complete || tier == null) return null
-  const targets = referenceTotals?.calories > 0
-    ? referenceTotals
-    : calcStandardMacros(tier)
-  const dims = [
-    { type: 'carb', actual: totals.carbs_g, target: targets.carbs_g },
-    { type: 'prot', actual: totals.protein_g, target: targets.protein_g },
-    { type: 'fat', actual: totals.fat_g, target: targets.fat_g },
-  ]
-  return (
-    <span className="inline-flex items-center gap-1.5 tabular-nums">
-      {dims.map(d => {
-        const diff = Math.round(d.target - d.actual)
-        return (
-          <span key={d.type} className={`flex items-center gap-0.5 ${macroColour(d.actual, d.target)}`} title={`${d.actual}g / ${d.target}g target`}>
-            <MacroBadge type={d.type} />{diff === 0 ? '±0' : diff > 0 ? `+${diff}` : diff}
-          </span>
-        )
-      })}
-    </span>
-  )
-}
-
 // Full breakdown shown inside an expanded day — the same "add/remove X to hit target" block used
-// everywhere else a meal's macros are edited. referenceTotals (optional): see MacroDots above —
-// Option B is measured against Option A's actual totals rather than the generic tier split.
+// everywhere else a meal's macros are edited. referenceTotals (optional): Option B is measured
+// against Option A's actual totals rather than the generic tier split.
 function MacroMatchRow({ label, totals, tier, referenceTotals }) {
   if (!totals || totals.calories <= 0) return null
   if (tier == null) return null
@@ -1090,16 +1034,6 @@ export default function PlanGroupEditor() {
                 )}
               </div>
               <div className="flex items-center gap-4">
-                <div className="hidden sm:flex items-center gap-3 text-xs">
-                  <span className="inline-flex items-center gap-1.5">
-                    <OptionTotal label="A" totals={opt1Totals} target={activeTier} />
-                    <MacroDots totals={opt1Totals} tier={activeTier} />
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <OptionTotal label="B" totals={opt2Totals} target={opt1Totals.calories > 0 ? opt1Totals.calories : activeTier} />
-                    <MacroDots totals={opt2Totals} tier={activeTier} referenceTotals={opt1Totals} />
-                  </span>
-                </div>
                 <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
@@ -1204,7 +1138,7 @@ export default function PlanGroupEditor() {
                           )}
 
                           {mealId && (
-                            <div className="text-xs space-y-1">
+                            <div className="text-xs">
                               {macros ? (
                                 <span className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
                                   <span className="font-medium text-gray-700 dark:text-gray-300">{macros.calories} kcal</span>
@@ -1215,32 +1149,6 @@ export default function PlanGroupEditor() {
                               ) : (
                                 <span className="text-amber-500" title="Generate this meal's calorie tiers in the Meal Library">
                                   No {activeTier} kcal version
-                                </span>
-                              )}
-                              {/* Option B only - how far this meal is from its Option A sibling, right next
-                                  to its current macros, so it's clear whether it needs changing without
-                                  opening anything. */}
-                              {macros && slot.key.endsWith('2') && siblingMacros?.calories > 0 && (
-                                <span className="flex items-center gap-2 tabular-nums">
-                                  <span className={`font-medium ${macroColour(macros.calories, siblingMacros.calories)}`}>
-                                    {(() => {
-                                      const d = Math.round(siblingMacros.calories - macros.calories)
-                                      return d === 0 ? '±0 kcal' : `${d > 0 ? '+' : ''}${d} kcal`
-                                    })()}
-                                  </span>
-                                  {[
-                                    { type: 'carb', a: macros.carbs_g, r: siblingMacros.carbs_g },
-                                    { type: 'prot', a: macros.protein_g, r: siblingMacros.protein_g },
-                                    { type: 'fat', a: macros.fat_g, r: siblingMacros.fat_g },
-                                  ].map(({ type, a, r }) => {
-                                    const d = Math.round(r - a)
-                                    return (
-                                      <span key={type} className={`flex items-center gap-0.5 ${macroColour(a, r)}`}>
-                                        <MacroBadge type={type} />{d === 0 ? '±0' : d > 0 ? `+${d}` : d}
-                                      </span>
-                                    )
-                                  })}
-                                  <span className="text-gray-400 dark:text-gray-500">vs A</span>
                                 </span>
                               )}
                             </div>
@@ -1274,20 +1182,49 @@ export default function PlanGroupEditor() {
                           </div>
                         </div>
 
-                        {/* Day total, pinned to the right of every Option A (and shared) card so it's
-                            always visible while scanning down the day, without scrolling back to the
-                            top or expanding anything. */}
-                        {!slot.key.endsWith('2') && activeTier != null && opt1Totals.calories > 0 && (
-                          <div className="flex sm:flex-col items-center sm:items-end justify-center gap-1 sm:gap-0.5 px-3 py-2 sm:w-28 flex-shrink-0 sm:border-l border-t sm:border-t-0 border-gray-100 dark:border-gray-800">
-                            <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Day total</span>
-                            <span className={`text-sm font-semibold ${deviationColor(opt1Totals.calories, activeTier)}`}>{opt1Totals.calories} kcal</span>
-                            <span className="flex items-center gap-1.5 text-[10px] tabular-nums">
-                              <span className={`flex items-center gap-0.5 ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{opt1Totals.carbs_g}g</span>
-                              <span className={`flex items-center gap-0.5 ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{opt1Totals.protein_g}g</span>
-                              <span className={`flex items-center gap-0.5 ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{opt1Totals.fat_g}g</span>
-                            </span>
-                          </div>
-                        )}
+                        {/* Day total, pinned to the right of every card so it's always visible while
+                            scanning down the day, without scrolling back to the top or expanding
+                            anything. Option A's reference is the tier target; Option B's is Option
+                            A's own actual day total, since B needs to match A, not the tier split. */}
+                        {activeTier != null && (() => {
+                          const isB = slot.key.endsWith('2')
+                          const dayTotals = isB ? opt2Totals : opt1Totals
+                          if (!dayTotals || dayTotals.calories <= 0) return null
+                          const ref = isB
+                            ? (opt1Totals.calories > 0 ? opt1Totals : null)
+                            : { calories: activeTier, ...calcStandardMacros(activeTier) }
+                          return (
+                            <div className="flex flex-col items-center sm:items-end justify-center gap-0.5 px-3 py-2 sm:w-24 flex-shrink-0 sm:border-l border-t sm:border-t-0 border-gray-100 dark:border-gray-800">
+                              <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 whitespace-nowrap">Day total</span>
+                              <span className={`text-sm font-semibold whitespace-nowrap ${ref ? deviationColor(dayTotals.calories, ref.calories) : 'text-gray-700 dark:text-gray-300'}`}>{dayTotals.calories} kcal</span>
+                              <span className={`flex items-center gap-0.5 text-[10px] tabular-nums whitespace-nowrap ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{dayTotals.carbs_g}g</span>
+                              <span className={`flex items-center gap-0.5 text-[10px] tabular-nums whitespace-nowrap ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{dayTotals.protein_g}g</span>
+                              <span className={`flex items-center gap-0.5 text-[10px] tabular-nums whitespace-nowrap ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{dayTotals.fat_g}g</span>
+                              {ref && (
+                                <div className="flex flex-col items-center sm:items-end gap-0.5 mt-1 pt-1 border-t border-gray-100 dark:border-gray-800">
+                                  <span className={`text-[10px] font-semibold whitespace-nowrap ${deviationColor(dayTotals.calories, ref.calories)}`}>
+                                    {(() => {
+                                      const d = Math.round(ref.calories - dayTotals.calories)
+                                      return d === 0 ? '±0 kcal' : `${d > 0 ? '+' : ''}${d} kcal`
+                                    })()}
+                                  </span>
+                                  {[
+                                    { type: 'carb', a: dayTotals.carbs_g, r: ref.carbs_g },
+                                    { type: 'prot', a: dayTotals.protein_g, r: ref.protein_g },
+                                    { type: 'fat', a: dayTotals.fat_g, r: ref.fat_g },
+                                  ].map(({ type, a, r }) => {
+                                    const d = Math.round(r - a)
+                                    return (
+                                      <span key={type} className={`flex items-center gap-0.5 text-[10px] tabular-nums whitespace-nowrap ${macroColour(a, r)}`}>
+                                        <MacroBadge type={type} />{d === 0 ? '±0' : d > 0 ? `+${d}` : d}
+                                      </span>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
 
                       {isEditingIngredients && (
