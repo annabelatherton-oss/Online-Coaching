@@ -25,7 +25,7 @@ const STEPS = [
   { kind: 'page', path: '/client/shopping-list', selectors: ['[data-tour="shopping-items"]', '[data-tour="shopping-fallback"]'], title: 'Your shopping list', body: 'Everything you need, totalled up and grouped by category — tick items off as you shop.' },
 
   { kind: 'nav', navSelector: '[data-tour="nav-training"]', title: 'My Training', body: 'Next — My Training, found here in your menu.' },
-  { kind: 'page', path: '/client/training', selectors: ['[data-tour="training-day-card"]', '[data-tour="training-heading"]'], title: 'Your workouts', body: 'Tap a day to see the exercises, sets, reps and video demos.' },
+  { kind: 'page', path: '/client/training', selectors: ['[data-tour="training-day-card"]', '[data-tour="training-heading"]'], title: 'Your workouts', body: "Tap a day to see the exercises, sets, reps and video demos. Log the weight and reps you actually use for each exercise as you train — your coach uses this to progress you week to week." },
 
   { kind: 'nav', navSelector: '[data-tour="nav-checkin"]', title: 'Check-in', body: 'Next — your weekly Check-in.' },
   { kind: 'page', path: '/client/checkin', selectors: ['[data-tour="checkin-weight"]', '[data-tour="checkin-heading"]'], title: 'Weekly check-in', body: 'Log your weight, photos and how the week went here every Friday.' },
