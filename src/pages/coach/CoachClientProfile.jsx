@@ -1411,7 +1411,7 @@ function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides) {
 // and ingredients can be removed or added just for this client — none of it touches the shared
 // master meal/tier-version data. Quantity overrides rescale that ingredient's macros proportionally;
 // added ingredients are pulled from the coach's ingredient library so their macros are accurate.
-function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange }) {
+function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange, target }) {
   const [addingOpen, setAddingOpen] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addSelected, setAddSelected] = useState(null)
@@ -1607,6 +1607,23 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
           <span className="tabular-nums w-10 text-right">{Math.round(totFat)}g</span>
         </div>
       )}
+
+      {totCal > 0 && target && (() => {
+        const gap = target.cal - totCal
+        const overBy = gap < -OVER_TARGET_TOLERANCE ? Math.round(-gap) : null
+        const underBy = gap > UNDER_TARGET_TOLERANCE ? Math.round(gap) : null
+        return (
+          <div className={`flex items-center gap-2 text-xs pt-0.5 ${overBy != null ? 'text-orange-500' : underBy != null ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'}`}>
+            <span className="flex-1">
+              Target{overBy != null ? ` — ${overBy} kcal over` : underBy != null ? ` — ${underBy} kcal under` : ' — on track'}
+            </span>
+            <span className="tabular-nums w-16 text-right">{Math.round(target.cal)} kcal</span>
+            <span className="tabular-nums w-10 text-right">{Math.round(target.carb)}g</span>
+            <span className="tabular-nums w-10 text-right">{Math.round(target.prot)}g</span>
+            <span className="tabular-nums w-10 text-right">{Math.round(target.fat)}g</span>
+          </div>
+        )
+      })()}
 
       {removed.length > 0 && (
         <div className="pt-1.5 space-y-1">
@@ -2502,6 +2519,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
               onRevertAll={() => slotHandlers.revertAll(slotKey)}
               onToggleStatic={ing => toggleIngredientStatic(currentId, ing)}
               onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(currentId, ing, qty)}
+              target={slotTgt}
             />
           )}
         </div>
