@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { MEAL_SPLIT_CATEGORIES, MEAL_SPLIT_LABELS, DEFAULT_MEAL_SPLIT, normalizeMealSplit } from '../../lib/calorieSplit'
 import { regenerateAllTiersForMeal, withIngredientSwaps } from '../../lib/calorieTierScaling'
-import { GOAL_TYPES, normalizeGoalMacroSplits } from '../../lib/macros'
+import { GOAL_TYPES, normalizeGoalMacroSplits, normalizeProteinPerKg, DEFAULT_PROTEIN_G_PER_KG } from '../../lib/macros'
 import { GOAL_LABELS } from '../../lib/calorieSuggestion'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -127,22 +127,37 @@ export default function CoachSettings() {
   }
 
   // ── Goal phase macro splits ────────────────────────────────────────────────
+  // Protein is set from bodyweight (below), not a %, so only carbs/fat are edited per phase here —
+  // protein is still carried internally (= 100 - carbs - fat) so the older %-based systems that
+  // haven't moved to bodyweight yet (a client's own manual override, calorie-tier meal scaling)
+  // keep working unchanged.
   const [goalSplits, setGoalSplits] = useState(normalizeGoalMacroSplits(profile.goal_macro_splits))
+  const [proteinPerKg, setProteinPerKg] = useState(normalizeProteinPerKg(profile.protein_g_per_kg))
   const [savingGoalSplits, setSavingGoalSplits] = useState(false)
   const [savedGoalSplits, setSavedGoalSplits] = useState(false)
 
   const savedGoalSplitValues = normalizeGoalMacroSplits(profile.goal_macro_splits)
-  const isGoalSplitsDirty = GOAL_TYPES.some(g => ['carbs', 'protein', 'fat'].some(m => Number(goalSplits[g][m]) !== Number(savedGoalSplitValues[g][m])))
+  const savedProteinPerKg = normalizeProteinPerKg(profile.protein_g_per_kg)
+  const isGoalSplitsDirty =
+    GOAL_TYPES.some(g => ['carbs', 'fat'].some(m => Number(goalSplits[g][m]) !== Number(savedGoalSplitValues[g][m]))) ||
+    Number(proteinPerKg) !== Number(savedProteinPerKg)
 
   function setGoalPct(goal, macro, value) {
-    setGoalSplits(prev => ({ ...prev, [goal]: { ...prev[goal], [macro]: value === '' ? '' : Number(value) } }))
+    setGoalSplits(prev => {
+      const carbs = macro === 'carbs' ? (value === '' ? 0 : Number(value)) : (Number(prev[goal].carbs) || 0)
+      const fat   = macro === 'fat'   ? (value === '' ? 0 : Number(value)) : (Number(prev[goal].fat) || 0)
+      return { ...prev, [goal]: { ...prev[goal], [macro]: value === '' ? '' : Number(value), protein: Math.max(0, 100 - carbs - fat) } }
+    })
     setSavedGoalSplits(false)
   }
 
   async function handleSaveGoalSplits(e) {
     e.preventDefault()
     setSavingGoalSplits(true)
-    const { error } = await supabase.from('profiles').update({ goal_macro_splits: goalSplits }).eq('id', profile.id)
+    const { error } = await supabase.from('profiles').update({
+      goal_macro_splits: goalSplits,
+      protein_g_per_kg: proteinPerKg === '' ? DEFAULT_PROTEIN_G_PER_KG : Number(proteinPerKg),
+    }).eq('id', profile.id)
     setSavingGoalSplits(false)
     if (error) { alert('Could not save: ' + error.message); return }
     await refetchProfile()
@@ -490,38 +505,45 @@ export default function CoachSettings() {
         <div>
           <h3 className="font-semibold text-gray-900 dark:text-white">Goal Phase Macro Splits</h3>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-            The default carbs/protein/fat split applied when you set a client's phase to Cutting, Maintaining or Bulking on their Overview tab.
+            The default carbs/fat split applied when you set a client's phase to Cutting, Maintaining or Bulking on their Overview tab.
             You can still edit the split per client afterwards — this just controls the starting point.
           </p>
         </div>
 
-        {GOAL_TYPES.map(goal => {
-          const goalTotal = ['carbs', 'protein', 'fat'].reduce((sum, m) => sum + (Number(goalSplits[goal][m]) || 0), 0)
-          return (
-            <div key={goal} className="space-y-2">
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{GOAL_LABELS[goal]}</p>
-              <div className="grid grid-cols-3 gap-4">
-                {['carbs', 'protein', 'fat'].map(macro => (
-                  <div key={macro}>
-                    <label className="label capitalize">{macro} %</label>
-                    <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100}
-                      value={goalSplits[goal][macro]}
-                      onChange={e => setGoalPct(goal, macro, e.target.value)} />
-                  </div>
-                ))}
-              </div>
-              {goalTotal !== 100 && (
-                <p className="text-xs text-amber-500">Totals {goalTotal}% — adjust so the three add up to 100%.</p>
-              )}
+        <div className="pb-2 border-b border-gray-100 dark:border-gray-700">
+          <label className="label">Protein target (g per kg bodyweight)</label>
+          <input
+            className="input w-32" type="number" onFocus={e => e.target.select()} min={0} step={0.1}
+            value={proteinPerKg}
+            onChange={e => { setProteinPerKg(e.target.value === '' ? '' : Number(e.target.value)); setSavedGoalSplits(false) }}
+          />
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            Standardised at {DEFAULT_PROTEIN_G_PER_KG}g/kg — protein is set directly from each client's own bodyweight rather than as a % of calories, so it scales with how much muscle there is to feed, not with the calorie target.
+          </p>
+        </div>
+
+        {GOAL_TYPES.map(goal => (
+          <div key={goal} className="space-y-2">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{GOAL_LABELS[goal]}</p>
+            <div className="grid grid-cols-2 gap-4">
+              {['carbs', 'fat'].map(macro => (
+                <div key={macro}>
+                  <label className="label capitalize">{macro} %</label>
+                  <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100}
+                    value={goalSplits[goal][macro]}
+                    onChange={e => setGoalPct(goal, macro, e.target.value)} />
+                </div>
+              ))}
             </div>
-          )
-        })}
+            <p className="text-xs text-gray-400 dark:text-gray-500">Split between carbs and fat for whatever calories protein leaves behind.</p>
+          </div>
+        ))}
 
         <div className="flex items-center gap-3 flex-wrap pt-2 border-t border-gray-100 dark:border-gray-700">
-          <button type="submit" disabled={savingGoalSplits || GOAL_TYPES.some(g => ['carbs', 'protein', 'fat'].reduce((s, m) => s + (Number(goalSplits[g][m]) || 0), 0) !== 100)} className="btn-primary">
+          <button type="submit" disabled={savingGoalSplits || !isGoalSplitsDirty} className="btn-primary">
             {savingGoalSplits ? 'Saving…' : 'Save splits'}
           </button>
-          <button type="button" onClick={() => { setGoalSplits(normalizeGoalMacroSplits(null)); setSavedGoalSplits(false) }} className="btn-secondary">
+          <button type="button" onClick={() => { setGoalSplits(normalizeGoalMacroSplits(null)); setProteinPerKg(DEFAULT_PROTEIN_G_PER_KG); setSavedGoalSplits(false) }} className="btn-secondary">
             Reset to defaults
           </button>
           {isGoalSplitsDirty && !savedGoalSplits && <span className="text-xs text-amber-600 dark:text-amber-400">Unsaved changes</span>}

@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
-import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams, splitForGoal, normalizeGoalMacroSplits } from '../../lib/macros'
+import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams, splitForGoal, normalizeGoalMacroSplits, calcBodyweightMacros, normalizeProteinPerKg } from '../../lib/macros'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 import { DIETS, DIET_LABELS, mealQualifiesForDiets, ingredientQualifiesForDiets } from '../../lib/diets'
@@ -1706,7 +1706,8 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
 
 // ─── Meal Plan Tab ────────────────────────────────────────────────────────────
 
-function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
+function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg }) {
+  const [clientWeightKg, setClientWeightKg] = useState(null)
   const [planGroups, setPlanGroups] = useState([])
   const [assignment, setAssignment] = useState(null)
   const [planGroup, setPlanGroup] = useState(null)
@@ -1856,7 +1857,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
   }
 
   async function load() {
-    const [{ data: groups }, { data: asgnData }, { data: past }, { data: mealsData }, { data: libData }] = await Promise.all([
+    const [{ data: groups }, { data: asgnData }, { data: past }, { data: mealsData }, { data: libData }, { data: weightRows }, { data: checkinRows }] = await Promise.all([
       supabase.from('plan_groups').select('*').eq('coach_id', coachId).order('created_at', { ascending: false }),
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', false).order('created_at', { ascending: false }),
@@ -1867,6 +1868,8 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
           meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
       `).eq('coach_id', coachId).order('name'),
       supabase.from('ingredients').select('*').eq('coach_id', coachId),
+      supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', client.id).order('recorded_at', { ascending: false }).limit(1),
+      supabase.from('client_checkins').select('weight_kg').eq('client_id', client.id).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
     ])
 
     let asgn = asgnData
@@ -1874,6 +1877,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
     setPlanGroups(allGroups)
     setPastAssignments(past || [])
     setLibrary(libData || [])
+    setClientWeightKg(weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null)
 
     const map = {}, byCat = {}
     for (const m of (mealsData || [])) {
@@ -2048,11 +2052,11 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
   const option1Total = addMacros(addMacros(option1Subtotal, preworkoutTotal), snackTotal)
   const option2Total = addMacros(addMacros(option2Subtotal, preworkoutTotal), snackTotal)
 
-  // Full day's macro targets (not just calories) — the same goal-phase split used everywhere else
-  // (Overview tab, client's own check-ins) applied to this client's calorie target, so "remaining"
-  // below means the same thing it does anywhere else in the app.
+  // Full day's macro targets (not just calories) — protein from this client's own logged
+  // bodyweight, carbs/fat from the same goal-phase split used everywhere else (Overview tab,
+  // client's own check-ins), so "remaining" below means the same thing it does anywhere else.
   const dailyMacroTargets = assignment?.calorie_target
-    ? { cal: assignment.calorie_target, ...calcMacrosFromSplit(assignment.calorie_target, splitForGoal(client.goal_type, goalMacroSplits)) }
+    ? { cal: assignment.calorie_target, ...calcBodyweightMacros(assignment.calorie_target, clientWeightKg, proteinPerKg, client.goal_type, goalMacroSplits) }
     : null
 
   function remainingFor(total) {
@@ -4096,7 +4100,7 @@ export default function CoachClientProfile() {
 
       <div>
         {activeTab === 'Overview'    && <OverviewTab client={client} onSaved={loadClient} />}
-        {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} mealSplit={normalizeMealSplit(profile.meal_split)} goalMacroSplits={normalizeGoalMacroSplits(profile.goal_macro_splits)} />}
+        {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} mealSplit={normalizeMealSplit(profile.meal_split)} goalMacroSplits={normalizeGoalMacroSplits(profile.goal_macro_splits)} proteinPerKg={normalizeProteinPerKg(profile.protein_g_per_kg)} />}
         {activeTab === 'Training'   && <TrainingTab client={client} coachId={profile.id} onSaved={loadClient} />}
         {activeTab === 'Daily Plan' && <DailyPlanTab client={client} />}
         {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} />}

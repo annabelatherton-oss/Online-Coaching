@@ -11,7 +11,7 @@ import {
   MacroBadge, MACRO_META,
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
-import { calcStandardMacros, normalizeGoalMacroSplits } from '../../lib/macros'
+import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import ExerciseThumb from '../../components/ExerciseThumb'
 import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
@@ -731,10 +731,11 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const prevCalTarget = activeAssignment?.calorie_target
   const calDiff = calorieTarget && prevCalTarget ? parseInt(calorieTarget) - prevCalTarget : null
 
-  // How far each option's actual daily macros land from the client's
-  // calorie target and the coach's standard macro split for it.
+  // How far each option's actual daily macros land from the client's calorie target - protein
+  // from this week's own logged bodyweight (falls back to the %-of-calories split if it hasn't
+  // been logged yet), carbs/fat from the coach's standard split for the goal phase.
   const targetCal = parseInt(calorieTarget) || 0
-  const targetMacros = targetCal > 0 ? calcStandardMacros(targetCal, client?.goal_type, goalSplits) : null
+  const targetMacros = targetCal > 0 ? calcBodyweightMacros(targetCal, current?.weight_kg, profile?.protein_g_per_kg, client?.goal_type, goalSplits) : null
 
   // A single slot's share of the daily target, for the ingredient-editing modal.
   function slotTarget(cat) {

@@ -46,6 +46,38 @@ export function calcStandardMacros(calories, goalType, customSplits) {
   return calcMacrosFromSplit(calories, splitForGoal(goalType, customSplits))
 }
 
+// Standard protein target — grams per kg of bodyweight, not a % of calories, since how much
+// protein someone needs scales with how much of them there is to feed, not with how many
+// calories happen to be on the plan. Coach-editable in Settings; 2 is the widely-used default.
+export const DEFAULT_PROTEIN_G_PER_KG = 2
+
+export function normalizeProteinPerKg(raw) {
+  const n = Number(raw)
+  return n > 0 ? n : DEFAULT_PROTEIN_G_PER_KG
+}
+
+// Daily macro targets with protein set directly from bodyweight instead of as a % of calories —
+// carbs and fat then split whatever calories protein leaves behind, in the same ratio to each
+// other as the goal phase's carbs/fat %s (their split vs protein no longer means anything once
+// protein isn't a % itself). Falls back to the plain %-of-calories split (calcStandardMacros) when
+// bodyweight isn't known yet, rather than showing a misleading 0g protein target.
+export function calcBodyweightMacros(calories, bodyweightKg, proteinPerKg, goalType, customSplits) {
+  const cals = Number(calories) || 0
+  const split = splitForGoal(goalType, customSplits)
+  const bw = Number(bodyweightKg) || 0
+  if (bw <= 0) return calcMacrosFromSplit(cals, split)
+  const protein_g = Math.round(bw * normalizeProteinPerKg(proteinPerKg))
+  const remaining = Math.max(0, cals - protein_g * KCAL_PER_G.protein)
+  const ratioTotal = (split.carbs || 0) + (split.fat || 0)
+  const carbShare = ratioTotal > 0 ? split.carbs / ratioTotal : 0.62
+  const fatShare = ratioTotal > 0 ? split.fat / ratioTotal : 0.38
+  return {
+    protein_g,
+    carbs_g: Math.round(remaining * carbShare / KCAL_PER_G.carbs),
+    fat_g: Math.round(remaining * fatShare / KCAL_PER_G.fat),
+  }
+}
+
 // Back-calculates the carbs/protein/fat % split (of calories) from saved gram values,
 // so editing an existing client starts from their actual current split.
 export function splitPercentFromGrams({ protein_g, carbs_g, fat_g }, calories) {

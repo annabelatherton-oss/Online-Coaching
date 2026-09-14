@@ -10,7 +10,7 @@ import {
 } from '../../components/MealPlanView'
 import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../lib/mealSwaps'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
-import { normalizeGoalMacroSplits, splitForGoal, calcMacrosFromSplit } from '../../lib/macros'
+import { normalizeGoalMacroSplits, calcBodyweightMacros } from '../../lib/macros'
 import EverydayMealsClient from '../../components/EverydayMealsClient'
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -38,6 +38,8 @@ export default function ClientMealPlan() {
   const [swapCtx, setSwapCtx] = useState(null)
   const [mealSplit, setMealSplit] = useState(null)
   const [goalMacroSplits, setGoalMacroSplits] = useState(null)
+  const [proteinPerKg, setProteinPerKg] = useState(null)
+  const [weightKg, setWeightKg] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -57,7 +59,7 @@ export default function ClientMealPlan() {
       setWeekNumber(effectiveWeek)
       setPersonalWeek((checkinCount ?? 0) + 1)
 
-      const [{ data: mealsData }, { data: libData }, { data: coachProfile }] = await Promise.all([
+      const [{ data: mealsData }, { data: libData }, { data: coachProfile }, { data: weightRows }, { data: checkinRows }] = await Promise.all([
         supabase.from('meals').select(`
           id, name, category, instructions, photo_url, photo_position,
           meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static),
@@ -65,10 +67,14 @@ export default function ClientMealPlan() {
             meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
         `).eq('coach_id', clientRow.coach_id).order('name'),
         supabase.from('ingredients').select('id, name, serving_unit').eq('coach_id', clientRow.coach_id),
-        supabase.from('profiles').select('meal_split, goal_macro_splits').eq('id', clientRow.coach_id).single(),
+        supabase.from('profiles').select('meal_split, goal_macro_splits, protein_g_per_kg').eq('id', clientRow.coach_id).single(),
+        supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', clientRow.id).order('recorded_at', { ascending: false }).limit(1),
+        supabase.from('client_checkins').select('weight_kg').eq('client_id', clientRow.id).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
       ])
       setMealSplit(normalizeMealSplit(coachProfile?.meal_split))
       setGoalMacroSplits(normalizeGoalMacroSplits(coachProfile?.goal_macro_splits))
+      setProteinPerKg(coachProfile?.protein_g_per_kg)
+      setWeightKg(weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null)
 
       const lib = {}
       for (const ing of (libData || [])) lib[ing.id] = ing
@@ -253,11 +259,11 @@ export default function ClientMealPlan() {
     return null
   }
 
-  // Full day's macro targets, same goal-phase split used everywhere else in the app (Overview tab,
-  // check-ins) applied to this plan's calorie target — then a slot's own share of that, from the
-  // coach's meal-split %, so "target" means the same thing here as it does on the coach's side.
+  // Full day's macro targets, same as everywhere else in the app (Overview tab, check-ins):
+  // protein from this client's own logged bodyweight, carbs/fat from the coach's standard split
+  // for the goal phase — then a slot's own share of that, from the coach's meal-split %.
   const dailyMacroTargets = assignment?.calorie_target && goalMacroSplits
-    ? { cal: assignment.calorie_target, ...calcMacrosFromSplit(assignment.calorie_target, splitForGoal(clientData?.goal_type, goalMacroSplits)) }
+    ? { cal: assignment.calorie_target, ...calcBodyweightMacros(assignment.calorie_target, weightKg, proteinPerKg, clientData?.goal_type, goalMacroSplits) }
     : null
   function slotTarget(cat) {
     if (!dailyMacroTargets || !mealSplit) return null
