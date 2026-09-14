@@ -1160,9 +1160,12 @@ export default function PlanGroupEditor() {
                             {editKey != null && (
                               <button
                                 onClick={() => setEditingIngredients(prev => prev === editKey ? null : editKey)}
-                                className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex-shrink-0 whitespace-nowrap"
+                                className="flex items-center gap-1 text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex-shrink-0 whitespace-nowrap"
                               >
-                                {isEditingIngredients ? 'Hide' : 'Edit ingredients'}
+                                <svg className={`w-3 h-3 transition-transform ${isEditingIngredients ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                                {isEditingIngredients ? 'Hide ingredients' : 'Edit ingredients'}
                               </button>
                             )}
                             {!isStatic && mealId && (
