@@ -45,6 +45,21 @@ function round1(n) {
   return Math.round(n * 10) / 10
 }
 
+// The day's calories should never fall more than 50 kcal below target, or more than 20 kcal above
+// it - a stricter, absolute pass/fail band (unlike the %-based bands used for macros elsewhere),
+// so the week row's colour reflects whether the day is genuinely within the limits that actually
+// matter for calories, not just roughly close.
+const UNDER_TARGET_TOLERANCE = 50
+const OVER_TARGET_TOLERANCE = 20
+
+function calorieRangeColor(actual, target) {
+  if (!target) return 'text-gray-500 dark:text-gray-400'
+  const diff = target - actual
+  if (diff > UNDER_TARGET_TOLERANCE) return 'text-amber-500'
+  if (diff < -OVER_TARGET_TOLERANCE) return 'text-red-500'
+  return 'text-green-600 dark:text-green-400'
+}
+
 // Each meal's tier version is generated to hit MACRO_SPLIT of its tier's calories (see
 // tierTargetsForCategory in calorieTierScaling.js), so a day's macro "target" is just that same
 // split applied to the full tier number — comparing against it tells a coach at a glance whether
@@ -1025,10 +1040,10 @@ export default function PlanGroupEditor() {
                 {activeTier != null && (opt1Totals.calories > 0 || opt2Totals.calories > 0) && (
                   <span className="hidden sm:flex items-center gap-2 text-sm tabular-nums">
                     {opt1Totals.calories > 0 && (
-                      <span className={deviationColor(opt1Totals.calories, activeTier)}>A: {opt1Totals.calories} kcal</span>
+                      <span className={calorieRangeColor(opt1Totals.calories, activeTier)}>A: {opt1Totals.calories} kcal</span>
                     )}
                     {opt2Totals.calories > 0 && (
-                      <span className={deviationColor(opt2Totals.calories, opt1Totals.calories > 0 ? opt1Totals.calories : activeTier)}>B: {opt2Totals.calories} kcal</span>
+                      <span className={calorieRangeColor(opt2Totals.calories, opt1Totals.calories > 0 ? opt1Totals.calories : activeTier)}>B: {opt2Totals.calories} kcal</span>
                     )}
                   </span>
                 )}
