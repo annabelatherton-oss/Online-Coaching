@@ -45,11 +45,11 @@ function round1(n) {
   return Math.round(n * 10) / 10
 }
 
-// The day's calories should never fall more than 50 kcal below target, or more than 20 kcal above
-// it - a stricter, absolute pass/fail band (unlike the %-based bands used for macros elsewhere),
-// so the week row's colour reflects whether the day is genuinely within the limits that actually
-// matter for calories, not just roughly close.
-const UNDER_TARGET_TOLERANCE = 50
+// The day's calories should land within 20 kcal of target either way - a stricter, absolute
+// pass/fail band (unlike the %-based bands used for macros elsewhere), so the week row's colour
+// reflects whether the day is genuinely within the limits that actually matter for calories, not
+// just roughly close.
+const UNDER_TARGET_TOLERANCE = 20
 const OVER_TARGET_TOLERANCE = 20
 
 function calorieRangeColor(actual, target) {
