@@ -1176,33 +1176,6 @@ export default function PlanGroupEditor() {
                                   No {activeTier} kcal version
                                 </span>
                               )}
-                              {/* Option B only - this specific meal's own match to its Option A sibling
-                                  (e.g. Breakfast B vs Breakfast A), separate from the day-level total
-                                  column on the right - the day can balance out while one meal still
-                                  doesn't match its sibling, so both numbers matter. */}
-                              {macros && slot.key.endsWith('2') && siblingMacros?.calories > 0 && (
-                                <span className="flex items-center gap-2 tabular-nums">
-                                  <span className={`font-medium ${macroColour(macros.calories, siblingMacros.calories)}`}>
-                                    {(() => {
-                                      const d = Math.round(siblingMacros.calories - macros.calories)
-                                      return d === 0 ? '±0 kcal' : `${d > 0 ? '+' : ''}${d} kcal`
-                                    })()}
-                                  </span>
-                                  {[
-                                    { type: 'carb', a: macros.carbs_g, r: siblingMacros.carbs_g },
-                                    { type: 'prot', a: macros.protein_g, r: siblingMacros.protein_g },
-                                    { type: 'fat', a: macros.fat_g, r: siblingMacros.fat_g },
-                                  ].map(({ type, a, r }) => {
-                                    const d = Math.round(r - a)
-                                    return (
-                                      <span key={type} className={`flex items-center gap-0.5 ${macroColour(a, r)}`}>
-                                        <MacroBadge type={type} />{d === 0 ? '±0' : d > 0 ? `+${d}` : d}
-                                      </span>
-                                    )
-                                  })}
-                                  <span className="text-gray-400 dark:text-gray-500">vs A</span>
-                                </span>
-                              )}
                               {/* One-tap fix for THIS meal specifically, using only its own
                                   ingredients - matches this meal to its sibling, not the day total. */}
                               {macros && slot.key.endsWith('2') && siblingMacros?.calories > 0 && (() => {
@@ -1299,6 +1272,33 @@ export default function PlanGroupEditor() {
                                       </span>
                                     )
                                   })}
+                                </div>
+                              )}
+                              {/* Option B only - this meal's own match to its Option A sibling, in the
+                                  same right-hand spot the day-level delta used to sit - matching is
+                                  judged per meal now, not by day total (see the "fit the day" removal
+                                  above), so this is the actual target row for B. */}
+                              {isB && macros && siblingMacros?.calories > 0 && (
+                                <div className="flex flex-col items-center sm:items-end gap-1 mt-1 pt-1 border-t border-gray-100 dark:border-gray-800">
+                                  <span className={`text-xs font-semibold whitespace-nowrap ${macroColour(macros.calories, siblingMacros.calories)}`}>
+                                    {(() => {
+                                      const d = Math.round(siblingMacros.calories - macros.calories)
+                                      return d === 0 ? '±0 kcal' : `${d > 0 ? '+' : ''}${d} kcal`
+                                    })()}
+                                  </span>
+                                  {[
+                                    { type: 'carb', a: macros.carbs_g, r: siblingMacros.carbs_g },
+                                    { type: 'prot', a: macros.protein_g, r: siblingMacros.protein_g },
+                                    { type: 'fat', a: macros.fat_g, r: siblingMacros.fat_g },
+                                  ].map(({ type, a, r }) => {
+                                    const d = Math.round(r - a)
+                                    return (
+                                      <span key={type} className={`flex items-center gap-1 text-xs tabular-nums whitespace-nowrap ${macroColour(a, r)}`}>
+                                        <MacroBadge type={type} />{d === 0 ? '±0' : d > 0 ? `+${d}` : d}
+                                      </span>
+                                    )
+                                  })}
+                                  <span className="text-[10px] text-gray-400 dark:text-gray-500 whitespace-nowrap">vs A</span>
                                 </div>
                               )}
                             </div>
