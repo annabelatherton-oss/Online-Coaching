@@ -250,7 +250,7 @@ export default function CoachTrainingList() {
                 <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Weeks</label>
                 <input
                   className="input w-full py-1.5 text-sm"
-                  type="number"
+                  type="number" onFocus={e => e.target.select()}
                   min={1}
                   placeholder="12"
                   value={blockForm.weeks}

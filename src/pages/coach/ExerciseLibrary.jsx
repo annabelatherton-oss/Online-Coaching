@@ -422,7 +422,7 @@ function ExerciseModal({ exercise, allExercises, onSave, onClose }) {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Default rest (seconds)</label>
-                      <input type="number" min={0} className="input w-full" placeholder="e.g. 90" value={variations[activeTab]?.default_rest_seconds ?? ''} onChange={e => setVariation(activeTab, 'default_rest_seconds', e.target.value)} />
+                      <input type="number" onFocus={e => e.target.select()} min={0} className="input w-full" placeholder="e.g. 90" value={variations[activeTab]?.default_rest_seconds ?? ''} onChange={e => setVariation(activeTab, 'default_rest_seconds', e.target.value)} />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Tempo</label>

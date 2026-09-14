@@ -108,7 +108,7 @@ function ExerciseRow({ exercise, onChange, onRemove, onMoveUp, onMoveDown, isFir
           {equipmentOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
         </select>
 
-        <input className="input py-1.5 text-sm w-14 text-center" placeholder="Sets" type="number" min={1}
+        <input className="input py-1.5 text-sm w-14 text-center" placeholder="Sets" type="number" onFocus={e => e.target.select()} min={1}
           value={exercise.sets ?? ''} onChange={e => onChange('sets', e.target.value ? parseInt(e.target.value) : null)} />
         <input className="input py-1.5 text-sm w-20 text-center" placeholder="Reps"
           value={exercise.reps ?? ''} onChange={e => onChange('reps', e.target.value)} />
@@ -685,13 +685,13 @@ export default function CoachTrainingEditor() {
                     ))}
                   </select>
                   <div className="flex items-center gap-1 w-32">
-                    <input className="input py-1.5 text-sm w-12 text-center" type="number" min={1} placeholder="6"
+                    <input className="input py-1.5 text-sm w-12 text-center" type="number" onFocus={e => e.target.select()} min={1} placeholder="6"
                       value={lift.reps_min ?? ''} onChange={e => updateLift(i, 'reps_min', e.target.value)} />
                     <span className="text-gray-400 text-sm flex-shrink-0">–</span>
-                    <input className="input py-1.5 text-sm w-12 text-center" type="number" min={1} placeholder="8"
+                    <input className="input py-1.5 text-sm w-12 text-center" type="number" onFocus={e => e.target.select()} min={1} placeholder="8"
                       value={lift.reps_max ?? ''} onChange={e => updateLift(i, 'reps_max', e.target.value)} />
                   </div>
-                  <input className="input py-1.5 text-sm w-20 text-center" type="number" min={0.5} step={0.5} placeholder="5"
+                  <input className="input py-1.5 text-sm w-20 text-center" type="number" onFocus={e => e.target.select()} min={0.5} step={0.5} placeholder="5"
                     value={lift.weight_increment ?? ''} onChange={e => updateLift(i, 'weight_increment', e.target.value)} />
                   <button type="button" onClick={() => removeLift(i)}
                     className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 text-xl leading-none w-4 flex-shrink-0">×</button>

@@ -859,7 +859,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                       </select>
                                       <input
                                         className="input py-1 text-xs w-12 text-center"
-                                        type="number"
+                                        type="number" onFocus={e => e.target.select()}
                                         min={1}
                                         placeholder="Sets"
                                         value={ex.sets ?? ''}
@@ -1045,7 +1045,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                           ))}
                         </select>
                         <input
-                          type="number"
+                          type="number" onFocus={e => e.target.select()}
                           min={1}
                           className="input w-full"
                           placeholder="Duration (minutes)"

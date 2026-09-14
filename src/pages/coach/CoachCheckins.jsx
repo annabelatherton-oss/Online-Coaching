@@ -8,6 +8,7 @@ import {
   normalizeOverrides, hasAnyOverride,
   mealMacros, addMacros, getIngredients,
   MealCard, RecipeModal, SwapModal,
+  MacroBadge, MACRO_META,
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { calcStandardMacros, normalizeGoalMacroSplits } from '../../lib/macros'
@@ -798,7 +799,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                 <label className="label text-xs">kcal/day</label>
                 <input
                   className="input w-32 text-sm"
-                  type="number"
+                  type="number" onFocus={e => e.target.select()}
                   min="0"
                   step="100"
                   value={calorieTarget}
@@ -825,17 +826,19 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{label} daily total{targetMacros ? ' vs target' : ''}</p>
                   <div className="grid grid-cols-4 gap-1 text-center">
                     {[
-                      { val: Math.round(macros.cal), lbl: 'kcal', target: targetMacros ? targetCal : null, unit: '' },
-                      { val: Math.round(macros.carb), lbl: 'carbs', target: targetMacros?.carbs_g ?? null, unit: 'g' },
-                      { val: Math.round(macros.prot), lbl: 'prot', target: targetMacros?.protein_g ?? null, unit: 'g' },
-                      { val: Math.round(macros.fat), lbl: 'fat', target: targetMacros?.fat_g ?? null, unit: 'g' },
-                    ].map(({ val, lbl, target, unit }) => {
+                      { val: Math.round(macros.cal), lbl: 'kcal', target: targetMacros ? targetCal : null, unit: '', type: null },
+                      { val: Math.round(macros.carb), lbl: 'carbs', target: targetMacros?.carbs_g ?? null, unit: 'g', type: 'carb' },
+                      { val: Math.round(macros.prot), lbl: 'prot', target: targetMacros?.protein_g ?? null, unit: 'g', type: 'prot' },
+                      { val: Math.round(macros.fat), lbl: 'fat', target: targetMacros?.fat_g ?? null, unit: 'g', type: 'fat' },
+                    ].map(({ val, lbl, target, unit, type }) => {
                       const diff = target != null ? val - target : null
                       const onTarget = diff !== null && Math.abs(diff) <= (lbl === 'kcal' ? 30 : 5)
                       return (
                         <div key={lbl}>
-                          <p className="text-xs font-bold text-gray-900 dark:text-white tabular-nums">{val}{unit}</p>
-                          <p className="text-[10px] text-gray-400">{lbl}</p>
+                          <p className={`text-xs font-bold tabular-nums ${type ? MACRO_META[type].text : 'text-gray-900 dark:text-white'}`}>{val}{unit}</p>
+                          <p className="text-[10px] text-gray-400 flex items-center justify-center gap-0.5">
+                            {type && <MacroBadge type={type} />}{lbl}
+                          </p>
                           {diff !== null && (
                             <p className={`text-[10px] font-semibold tabular-nums ${onTarget ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
                               {diff > 0 ? `+${diff}` : diff === 0 ? '±0' : diff}{unit}
@@ -1048,7 +1051,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                     )}
                     {exerciseLibrary.map(lib => <option key={lib.id} value={lib.id}>{lib.name}</option>)}
                   </select>
-                  <input type="number" min="0" value={ex.sets ?? ''} onChange={e => onUpdate('sets', e.target.value ? parseInt(e.target.value) : null)}
+                  <input type="number" onFocus={e => e.target.select()} min="0" value={ex.sets ?? ''} onChange={e => onUpdate('sets', e.target.value ? parseInt(e.target.value) : null)}
                     className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
                   <input type="text" value={ex.reps ?? ''} onChange={e => onUpdate('reps', e.target.value || null)}
                     className="w-12 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
@@ -1751,7 +1754,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                 <>
                   <div className="flex items-center gap-2">
                     <input
-                      type="number" min="0" step="25" autoFocus
+                      type="number" onFocus={e => e.target.select()} min="0" step="25" autoFocus
                       className="input py-1.5 w-28 text-sm"
                       value={calorieDraft}
                       onChange={e => setCalorieDraft(e.target.value)}

@@ -274,7 +274,7 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
             <div className="flex gap-2">
               <input
                 className="input w-28"
-                type="number"
+                type="number" onFocus={e => e.target.select()}
                 min="0.01"
                 step="0.01"
                 value={form.serving_size}
@@ -300,7 +300,7 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
             <div>
               <label className="label">Step (increment)</label>
               <div className="flex items-center gap-2">
-                <input className="input flex-1" type="number" min="0.01" step="0.01" value={form.serving_step} onChange={e => set('serving_step', e.target.value)} placeholder={form.serving_size || '100'} />
+                <input className="input flex-1" type="number" onFocus={e => e.target.select()} min="0.01" step="0.01" value={form.serving_step} onChange={e => set('serving_step', e.target.value)} placeholder={form.serving_size || '100'} />
                 <span className="text-sm text-gray-400 whitespace-nowrap">{form.serving_unit || 'g'}</span>
               </div>
               <p className="mt-1 text-xs text-gray-400">Rounds to nearest multiple of this</p>
@@ -308,7 +308,7 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
             <div>
               <label className="label">Min amount</label>
               <div className="flex items-center gap-2">
-                <input className="input flex-1" type="number" min="0.01" step="0.01" value={form.min_amount} onChange={e => set('min_amount', e.target.value)} placeholder="—" />
+                <input className="input flex-1" type="number" onFocus={e => e.target.select()} min="0.01" step="0.01" value={form.min_amount} onChange={e => set('min_amount', e.target.value)} placeholder="—" />
                 <span className="text-sm text-gray-400 whitespace-nowrap">{form.serving_unit || 'g'}</span>
               </div>
               <p className="mt-1 text-xs text-gray-400">Never use less than this</p>
@@ -316,7 +316,7 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
             <div>
               <label className="label">Max amount</label>
               <div className="flex items-center gap-2">
-                <input className="input flex-1" type="number" min="0.01" step="0.01" value={form.max_amount} onChange={e => set('max_amount', e.target.value)} placeholder="—" />
+                <input className="input flex-1" type="number" onFocus={e => e.target.select()} min="0.01" step="0.01" value={form.max_amount} onChange={e => set('max_amount', e.target.value)} placeholder="—" />
                 <span className="text-sm text-gray-400 whitespace-nowrap">{form.serving_unit || 'g'}</span>
               </div>
               <p className="mt-1 text-xs text-gray-400">Never use more than this</p>
@@ -326,19 +326,19 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Calories</label>
-              <input className="input" type="number" min="0" step="0.1" value={form.calories_per_serving} onChange={e => set('calories_per_serving', e.target.value)} placeholder="0" />
+              <input className="input" type="number" onFocus={e => e.target.select()} min="0" step="0.1" value={form.calories_per_serving} onChange={e => set('calories_per_serving', e.target.value)} placeholder="0" />
             </div>
             <div>
               <label className="label">Protein (g)</label>
-              <input className="input" type="number" min="0" step="0.1" value={form.protein_per_serving} onChange={e => set('protein_per_serving', e.target.value)} placeholder="0" />
+              <input className="input" type="number" onFocus={e => e.target.select()} min="0" step="0.1" value={form.protein_per_serving} onChange={e => set('protein_per_serving', e.target.value)} placeholder="0" />
             </div>
             <div>
               <label className="label">Carbs (g)</label>
-              <input className="input" type="number" min="0" step="0.1" value={form.carbs_per_serving} onChange={e => set('carbs_per_serving', e.target.value)} placeholder="0" />
+              <input className="input" type="number" onFocus={e => e.target.select()} min="0" step="0.1" value={form.carbs_per_serving} onChange={e => set('carbs_per_serving', e.target.value)} placeholder="0" />
             </div>
             <div>
               <label className="label">Fat (g)</label>
-              <input className="input" type="number" min="0" step="0.1" value={form.fat_per_serving} onChange={e => set('fat_per_serving', e.target.value)} placeholder="0" />
+              <input className="input" type="number" onFocus={e => e.target.select()} min="0" step="0.1" value={form.fat_per_serving} onChange={e => set('fat_per_serving', e.target.value)} placeholder="0" />
             </div>
           </div>
 

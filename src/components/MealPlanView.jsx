@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { applyDislikeSwaps } from '../lib/mealSwaps'
+import { selectOnFocus } from '../lib/formUtils'
 
 /**
  * Shared meal-plan display components and helpers.
@@ -52,6 +53,26 @@ export const SWAP_FAT_TOLERANCE = 8
 
 function round1(n) { return Math.round(n * 10) / 10 }
 
+// Fixed colour + letter for each macro, used everywhere one is shown so carbs/protein/fat are
+// identifiable at a glance without reading the label - always in this order: calories, carbs,
+// protein, fat.
+export const MACRO_META = {
+  carb: { letter: 'C', name: 'Carbs',   dot: 'bg-amber-400 dark:bg-amber-500',  text: 'text-amber-600 dark:text-amber-400' },
+  prot: { letter: 'P', name: 'Protein', dot: 'bg-rose-400 dark:bg-rose-500',    text: 'text-rose-600 dark:text-rose-400' },
+  fat:  { letter: 'F', name: 'Fat',     dot: 'bg-violet-400 dark:bg-violet-500', text: 'text-violet-600 dark:text-violet-400' },
+}
+
+// Small coloured letter badge - the "icon" for a macro, same colour everywhere it appears.
+export function MacroBadge({ type, className = '' }) {
+  const meta = MACRO_META[type]
+  if (!meta) return null
+  return (
+    <span className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] font-bold leading-none text-white flex-shrink-0 ${meta.dot} ${className}`}>
+      {meta.letter}
+    </span>
+  )
+}
+
 // Percentage a meal's calories are off from some reference (its target share of the day, or its
 // sibling option's calories) - direction doesn't matter, only distance.
 export function deviationPct(actualCal, referenceCal) {
@@ -78,11 +99,12 @@ function actionText(actualCal, referenceCal) {
   return diff > 0 ? `Add ~${diff} kcal` : `Remove ~${Math.abs(diff)} kcal`
 }
 
-// Compact signed delta for a single macro, e.g. "+12g C" (add) or "−8g P" (remove).
-function macroChip(actualG, referenceG, label) {
+// Compact signed delta for a single macro, e.g. "+12g" (add) or "−8g" (remove) - paired with a
+// MacroBadge for which macro it is, rather than a text label.
+function macroDiff(actualG, referenceG) {
   const diff = Math.round(referenceG - actualG)
   const sign = diff > 0 ? '+' : diff < 0 ? '−' : '±'
-  return `${sign}${Math.abs(diff)}g ${label}`
+  return `${sign}${Math.abs(diff)}g`
 }
 
 // Suggests changing the amount of one editable ingredient to close most of the calorie gap to a
@@ -156,8 +178,10 @@ export function MacroTargetInfo({ macros, target, siblingMacros, siblingLabel = 
           <span className={`text-xs font-semibold ${deviationColor(macros.cal, target.cal)}`}>
             {actionText(macros.cal, target.cal)} to hit target
           </span>
-          <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
-            {macroChip(macros.carb, target.carb, 'C')} · {macroChip(macros.prot, target.prot, 'P')} · {macroChip(macros.fat, target.fat, 'F')}
+          <span className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+            <span className="flex items-center gap-0.5"><MacroBadge type="carb" />{macroDiff(macros.carb, target.carb)}</span>
+            <span className="flex items-center gap-0.5"><MacroBadge type="prot" />{macroDiff(macros.prot, target.prot)}</span>
+            <span className="flex items-center gap-0.5"><MacroBadge type="fat" />{macroDiff(macros.fat, target.fat)}</span>
           </span>
         </div>
       )}
@@ -352,14 +376,16 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
             {macros && (
               <div className="grid grid-cols-4 gap-0.5 text-center pt-2 border-t border-gray-100 dark:border-gray-800 mt-auto">
                 {[
-                  { val: Math.round(macros.cal), lbl: 'kcal' },
-                  { val: Math.round(macros.carb) + 'g', lbl: 'carbs' },
-                  { val: Math.round(macros.prot) + 'g', lbl: 'prot' },
-                  { val: Math.round(macros.fat) + 'g', lbl: 'fat' },
-                ].map(({ val, lbl }) => (
+                  { val: Math.round(macros.cal), lbl: 'kcal', type: null },
+                  { val: Math.round(macros.carb) + 'g', lbl: 'carbs', type: 'carb' },
+                  { val: Math.round(macros.prot) + 'g', lbl: 'prot', type: 'prot' },
+                  { val: Math.round(macros.fat) + 'g', lbl: 'fat', type: 'fat' },
+                ].map(({ val, lbl, type }) => (
                   <div key={lbl}>
-                    <p className="text-[10px] font-bold text-gray-900 dark:text-white tabular-nums">{val}</p>
-                    <p className="text-[9px] text-gray-400 dark:text-gray-500">{lbl}</p>
+                    <p className={`text-[10px] font-bold tabular-nums ${type ? MACRO_META[type].text : 'text-gray-900 dark:text-white'}`}>{val}</p>
+                    <p className="text-[9px] text-gray-400 dark:text-gray-500 flex items-center justify-center gap-0.5">
+                      {type && <MacroBadge type={type} />}{lbl}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -463,9 +489,9 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
               {macros && (
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm">
                   <span className="font-bold text-gray-900 dark:text-white">{Math.round(macros.cal)} kcal</span>
-                  <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.carb)}g carbs</span>
-                  <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.prot)}g protein</span>
-                  <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.fat)}g fat</span>
+                  <span className={`flex items-center gap-1 font-medium ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{Math.round(macros.carb)}g carbs</span>
+                  <span className={`flex items-center gap-1 font-medium ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{Math.round(macros.prot)}g protein</span>
+                  <span className={`flex items-center gap-1 font-medium ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{Math.round(macros.fat)}g fat</span>
                 </div>
               )}
               {macros && (target || siblingMacros) && (
@@ -546,7 +572,11 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                         )
                       })}
                       <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                        <span>{Math.round(macros.carb * prepDays)}g carbs · {Math.round(macros.prot * prepDays)}g protein · {Math.round(macros.fat * prepDays)}g fat</span>
+                        <span className="flex items-center gap-2">
+                          <span className={`flex items-center gap-0.5 ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{Math.round(macros.carb * prepDays)}g</span>
+                          <span className={`flex items-center gap-0.5 ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{Math.round(macros.prot * prepDays)}g</span>
+                          <span className={`flex items-center gap-0.5 ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{Math.round(macros.fat * prepDays)}g</span>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -580,13 +610,14 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                           {onUpdateIngredient ? (
                             <div className="flex items-center gap-1">
                               <input
-                                type="number"
+                                type="number" onFocus={e => e.target.select()}
                                 min="0"
                                 step="1"
                                 disabled={isStatic}
                                 value={Math.round((parseFloat(ing.quantity_g) || 0) * 10) / 10}
                                 onChange={e => !isStatic && onUpdateIngredient(slotKey, ing._tempId || ing.id, parseFloat(e.target.value) || 0)}
                                 onClick={e => e.stopPropagation()}
+                                {...selectOnFocus}
                                 className={`w-16 text-sm text-right border rounded-lg px-2 py-0.5 focus:outline-none tabular-nums ${
                                   isStatic
                                     ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 cursor-not-allowed'
@@ -599,8 +630,10 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                             <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{formatAmount(ing, ingredientLib)}</span>
                           )}
                           <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
-                          <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
-                            {Math.round(parseFloat(ing.carbs_g) || 0)}c · {Math.round(parseFloat(ing.protein_g) || 0)}p · {Math.round(parseFloat(ing.fat_g) || 0)}f
+                          <span className="hidden sm:flex items-center gap-1.5 text-xs">
+                            <span className={`flex items-center gap-0.5 ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{Math.round(parseFloat(ing.carbs_g) || 0)}</span>
+                            <span className={`flex items-center gap-0.5 ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{Math.round(parseFloat(ing.protein_g) || 0)}</span>
+                            <span className={`flex items-center gap-0.5 ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{Math.round(parseFloat(ing.fat_g) || 0)}</span>
                           </span>
                         </div>
                       </div>
@@ -764,7 +797,11 @@ export function SwapModal({ slotKey, label, category, currentMealId, mealMap, me
                   {m.macros && (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-0.5 tabular-nums">
                       <span className="font-semibold text-gray-600 dark:text-gray-400">{Math.round(m.macros.cal)} kcal</span>
-                      <span>{Math.round(m.macros.carb)}g C · {Math.round(m.macros.prot)}g P · {Math.round(m.macros.fat)}g F</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className={`flex items-center gap-0.5 ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{Math.round(m.macros.carb)}g</span>
+                        <span className={`flex items-center gap-0.5 ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{Math.round(m.macros.prot)}g</span>
+                        <span className={`flex items-center gap-0.5 ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{Math.round(m.macros.fat)}g</span>
+                      </span>
                     </div>
                   )}
                 </button>

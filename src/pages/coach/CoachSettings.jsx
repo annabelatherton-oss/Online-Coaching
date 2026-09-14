@@ -234,22 +234,22 @@ export default function CoachSettings() {
         >
           <div className="grid grid-cols-2 gap-4">
             <Field label="Default plan length (weeks)">
-              <input className="input" type="number" min={1} max={520}
+              <input className="input" type="number" onFocus={e => e.target.select()} min={1} max={520}
                 value={s.default_access_weeks}
                 onChange={e => set('default_access_weeks', e.target.value)} />
             </Field>
             <Field label="Daily steps target">
-              <input className="input" type="number" min={0} step={500}
+              <input className="input" type="number" onFocus={e => e.target.select()} min={0} step={500}
                 value={s.default_steps_target}
                 onChange={e => set('default_steps_target', e.target.value)} />
             </Field>
             <Field label="Daily water target (litres)">
-              <input className="input" type="number" min={0} max={10} step={0.25}
+              <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={10} step={0.25}
                 value={s.default_water_target_litres}
                 onChange={e => set('default_water_target_litres', e.target.value)} />
             </Field>
             <Field label="Daily sleep target (hours)">
-              <input className="input" type="number" min={4} max={12} step={0.5}
+              <input className="input" type="number" onFocus={e => e.target.select()} min={4} max={12} step={0.5}
                 value={s.default_sleep_target_hours}
                 onChange={e => set('default_sleep_target_hours', e.target.value)} />
             </Field>
@@ -294,7 +294,7 @@ export default function CoachSettings() {
           </Field>
 
           <Field label="Mark check-in as overdue after (days)" hint="Clients with no check-in in this many days are flagged on your dashboard.">
-            <input className="input" type="number" min={1} max={30}
+            <input className="input" type="number" onFocus={e => e.target.select()} min={1} max={30}
               value={s.checkin_overdue_days}
               onChange={e => set('checkin_overdue_days', e.target.value)} />
           </Field>
@@ -312,12 +312,12 @@ export default function CoachSettings() {
         <Section title="Training Preferences">
           <div className="grid grid-cols-2 gap-4">
             <Field label="Default training days per week">
-              <input className="input" type="number" min={1} max={7}
+              <input className="input" type="number" onFocus={e => e.target.select()} min={1} max={7}
                 value={s.default_training_days}
                 onChange={e => set('default_training_days', e.target.value)} />
             </Field>
             <Field label="Deload every (weeks)" hint="How often to schedule a deload week in new training programmes.">
-              <input className="input" type="number" min={1} max={24}
+              <input className="input" type="number" onFocus={e => e.target.select()} min={1} max={24}
                 value={s.deload_every_weeks}
                 onChange={e => set('deload_every_weeks', e.target.value)} />
             </Field>
@@ -331,22 +331,22 @@ export default function CoachSettings() {
             <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">How far off a meal can be from a client's targets and still count as a match.</p>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Calories (± kcal)">
-                <input className="input" type="number" min={0} max={500}
+                <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={500}
                   value={s.calorie_tolerance}
                   onChange={e => set('calorie_tolerance', e.target.value)} />
               </Field>
               <Field label="Protein (± g)">
-                <input className="input" type="number" min={0} max={100}
+                <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100}
                   value={s.protein_tolerance_g}
                   onChange={e => set('protein_tolerance_g', e.target.value)} />
               </Field>
               <Field label="Carbs (± g)">
-                <input className="input" type="number" min={0} max={200}
+                <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={200}
                   value={s.carbs_tolerance_g}
                   onChange={e => set('carbs_tolerance_g', e.target.value)} />
               </Field>
               <Field label="Fat (± g)">
-                <input className="input" type="number" min={0} max={100}
+                <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100}
                   value={s.fat_tolerance_g}
                   onChange={e => set('fat_tolerance_g', e.target.value)} />
               </Field>
@@ -363,7 +363,7 @@ export default function CoachSettings() {
             />
             {s.calorie_cycling_enabled && (
               <Field label="Rest day calorie reduction (%)" hint="e.g. 20 means rest days are 20% lower than training day targets.">
-                <input className="input" type="number" min={5} max={50}
+                <input className="input" type="number" onFocus={e => e.target.select()} min={5} max={50}
                   value={s.calorie_cycling_rest_pct}
                   onChange={e => set('calorie_cycling_rest_pct', e.target.value)} />
               </Field>
@@ -439,7 +439,7 @@ export default function CoachSettings() {
           {MEAL_SPLIT_CATEGORIES.map(cat => (
             <div key={cat}>
               <label className="label">{MEAL_SPLIT_LABELS[cat]} %</label>
-              <input className="input" type="number" min={0} max={100}
+              <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100}
                 value={split[cat]}
                 onChange={e => setPct(cat, e.target.value)} />
             </div>
@@ -504,7 +504,7 @@ export default function CoachSettings() {
                 {['carbs', 'protein', 'fat'].map(macro => (
                   <div key={macro}>
                     <label className="label capitalize">{macro} %</label>
-                    <input className="input" type="number" min={0} max={100}
+                    <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100}
                       value={goalSplits[goal][macro]}
                       onChange={e => setGoalPct(goal, macro, e.target.value)} />
                   </div>

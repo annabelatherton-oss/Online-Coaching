@@ -205,7 +205,7 @@ export default function ClientProfile() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="label">Height (cm)</label>
-                <input className="input" type="number" step="0.1" value={infoForm.height_cm} onChange={e => setInfoForm(f => ({ ...f, height_cm: e.target.value }))} placeholder="e.g. 165" />
+                <input className="input" type="number" onFocus={e => e.target.select()} step="0.1" value={infoForm.height_cm} onChange={e => setInfoForm(f => ({ ...f, height_cm: e.target.value }))} placeholder="e.g. 165" />
               </div>
             </div>
             <div>
@@ -320,7 +320,7 @@ export default function ClientProfile() {
               <label className="label">Weight (kg)</label>
               <input
                 className="input"
-                type="number"
+                type="number" onFocus={e => e.target.select()}
                 step="0.1"
                 min="0"
                 required

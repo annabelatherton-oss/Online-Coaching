@@ -833,17 +833,17 @@ export default function ClientCheckin() {
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Body metrics</h2>
           <div>
             <label className="label">Weight (kg)</label>
-            <input data-tour="checkin-weight" className="input" type="number" step="0.1" min="0" value={form.weight_kg} onChange={e => set('weight_kg', e.target.value)} placeholder="e.g. 72.5" />
+            <input data-tour="checkin-weight" className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" value={form.weight_kg} onChange={e => set('weight_kg', e.target.value)} placeholder="e.g. 72.5" />
           </div>
           {collectMeasurements && (
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="label">Waist (cm)</label>
-                <input className="input" type="number" step="0.5" min="0" value={form.waist_cm} onChange={e => set('waist_cm', e.target.value)} placeholder="—" />
+                <input className="input" type="number" onFocus={e => e.target.select()} step="0.5" min="0" value={form.waist_cm} onChange={e => set('waist_cm', e.target.value)} placeholder="—" />
               </div>
               <div>
                 <label className="label">Hips (cm)</label>
-                <input className="input" type="number" step="0.5" min="0" value={form.hips_cm} onChange={e => set('hips_cm', e.target.value)} placeholder="—" />
+                <input className="input" type="number" onFocus={e => e.target.select()} step="0.5" min="0" value={form.hips_cm} onChange={e => set('hips_cm', e.target.value)} placeholder="—" />
               </div>
             </div>
           )}
@@ -1001,11 +1001,11 @@ export default function ClientCheckin() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="label">Weight (kg)</label>
-                      <input className="input" type="number" step="0.5" min="0" value={result.weight_kg ?? ''} onChange={e => setLift(i, 'weight_kg', e.target.value)} placeholder="e.g. 80" />
+                      <input className="input" type="number" onFocus={e => e.target.select()} step="0.5" min="0" value={result.weight_kg ?? ''} onChange={e => setLift(i, 'weight_kg', e.target.value)} placeholder="e.g. 80" />
                     </div>
                     <div>
                       <label className="label">Reps</label>
-                      <input className="input" type="number" min="1" value={result.reps ?? ''} onChange={e => setLift(i, 'reps', e.target.value)} placeholder="e.g. 5" />
+                      <input className="input" type="number" onFocus={e => e.target.select()} min="1" value={result.reps ?? ''} onChange={e => setLift(i, 'reps', e.target.value)} placeholder="e.g. 5" />
                     </div>
                   </div>
                 </div>

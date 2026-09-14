@@ -304,7 +304,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
               <label className="label">Access (weeks)</label>
               <input
                 className="input"
-                type="number"
+                type="number" onFocus={e => e.target.select()}
                 required
                 min={1}
                 max={52}
@@ -329,7 +329,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
             <label className="label">Current calories (kcal/day)</label>
             <input
               className="input"
-              type="number"
+              type="number" onFocus={e => e.target.select()}
               min={0}
               value={form.current_calories}
               onChange={e => setCalories(e.target.value)}
@@ -369,7 +369,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
                   <label className="label">Carbs %</label>
                   <input
                     className="input"
-                    type="number"
+                    type="number" onFocus={e => e.target.select()}
                     min={0}
                     max={100}
                     value={split.carbs}
@@ -381,7 +381,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
                   <label className="label">Protein %</label>
                   <input
                     className="input"
-                    type="number"
+                    type="number" onFocus={e => e.target.select()}
                     min={0}
                     max={100}
                     value={split.protein}
@@ -393,7 +393,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
                   <label className="label">Fat %</label>
                   <input
                     className="input"
-                    type="number"
+                    type="number" onFocus={e => e.target.select()}
                     min={0}
                     max={100}
                     value={split.fat}

@@ -250,7 +250,7 @@ export default function WeeklyTemplateEditor() {
               <label className="label">Week number</label>
               <input
                 className="input"
-                type="number"
+                type="number" onFocus={e => e.target.select()}
                 min="1"
                 value={form.week_number}
                 onChange={e => setField('week_number', e.target.value)}
@@ -262,7 +262,7 @@ export default function WeeklyTemplateEditor() {
               <label className="label">Daily calorie target</label>
               <input
                 className="input"
-                type="number"
+                type="number" onFocus={e => e.target.select()}
                 min="1"
                 value={form.calorie_target}
                 onChange={e => setField('calorie_target', e.target.value)}

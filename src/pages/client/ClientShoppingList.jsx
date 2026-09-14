@@ -227,7 +227,7 @@ export default function ClientShoppingList() {
                       {mealMap[editedSlots[s.key]]?.name || s.label}
                     </span>
                     <input
-                      type="number"
+                      type="number" onFocus={e => e.target.select()}
                       min="0"
                       max="7"
                       value={selections[s.key] ?? 0}

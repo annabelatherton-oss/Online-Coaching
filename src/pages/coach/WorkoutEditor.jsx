@@ -65,7 +65,7 @@ function ExRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown, libra
             <ExerciseThumb videoUrl={ex.video_url} size="sm" />
           </a>
         )}
-        <input className="input py-1.5 text-sm w-14 text-center" type="number" min={1} placeholder="Sets"
+        <input className="input py-1.5 text-sm w-14 text-center" type="number" onFocus={e => e.target.select()} min={1} placeholder="Sets"
           value={ex.sets ?? ''} onChange={e => onChange('sets', e.target.value ? parseInt(e.target.value) : null)} />
         <input className="input py-1.5 text-sm w-20 text-center" placeholder="Reps"
           value={ex.reps ?? ''} onChange={e => onChange('reps', e.target.value)} />
@@ -88,7 +88,7 @@ function ExRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown, libra
           </div>
           <div>
             <label className="text-xs text-gray-400 block mb-1">Rest (seconds)</label>
-            <input type="number" min={0} className="input w-full py-1.5 text-sm" placeholder="e.g. 90" value={ex.rest_seconds ?? ''} onChange={e => onChange('rest_seconds', e.target.value ? parseInt(e.target.value) : null)} />
+            <input type="number" onFocus={e => e.target.select()} min={0} className="input w-full py-1.5 text-sm" placeholder="e.g. 90" value={ex.rest_seconds ?? ''} onChange={e => onChange('rest_seconds', e.target.value ? parseInt(e.target.value) : null)} />
           </div>
           <div className="col-span-2">
             <label className="text-xs text-gray-400 block mb-1">Notes</label>

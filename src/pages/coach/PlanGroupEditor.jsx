@@ -222,7 +222,7 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
           </span>
           <span className="w-16 flex items-center justify-end gap-1">
             <input
-              type="number"
+              type="number" onFocus={e => e.target.select()}
               className="w-11 text-right bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1 py-0.5"
               value={ing.quantity_g}
               onChange={e => onChangeQty(ing.id, e.target.value)}

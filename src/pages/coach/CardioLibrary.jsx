@@ -103,7 +103,7 @@ function CardioModal({ session, onSave, onClose }) {
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Distance (km, optional)</label>
-              <input type="number" min={0} step={0.1} className="input w-full" placeholder="5.0" value={form.distance_km} onChange={e => set('distance_km', e.target.value)} />
+              <input type="number" onFocus={e => e.target.select()} min={0} step={0.1} className="input w-full" placeholder="5.0" value={form.distance_km} onChange={e => set('distance_km', e.target.value)} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Pace</label>
@@ -111,11 +111,11 @@ function CardioModal({ session, onSave, onClose }) {
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Incline (%)</label>
-              <input type="number" min={0} step={0.5} className="input w-full" placeholder="12" value={form.incline} onChange={e => set('incline', e.target.value)} />
+              <input type="number" onFocus={e => e.target.select()} min={0} step={0.5} className="input w-full" placeholder="12" value={form.incline} onChange={e => set('incline', e.target.value)} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Speed (km/h)</label>
-              <input type="number" min={0} step={0.5} className="input w-full" placeholder="5.0" value={form.speed} onChange={e => set('speed', e.target.value)} />
+              <input type="number" onFocus={e => e.target.select()} min={0} step={0.5} className="input w-full" placeholder="5.0" value={form.speed} onChange={e => set('speed', e.target.value)} />
             </div>
           </div>
           <div>

@@ -17,7 +17,7 @@ import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import DislikePicker from '../../components/DislikePicker'
 import SwapRulePicker from '../../components/SwapRulePicker'
 import TargetDateBanner from '../../components/TargetDateBanner'
-import { MacroTargetInfo } from '../../components/MealPlanView'
+import { MacroTargetInfo, MacroBadge, MACRO_META } from '../../components/MealPlanView'
 
 const TABS = ['Overview', 'Meal Plan', 'Training', 'Daily Plan', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
 
@@ -698,7 +698,7 @@ function OverviewTab({ client, onSaved }) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="label">Height (cm)</label>
-            <input className="input" type="number" step="0.1" min="0" value={form.height_cm} onChange={e => set('height_cm', e.target.value)} placeholder="e.g. 165" />
+            <input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" value={form.height_cm} onChange={e => set('height_cm', e.target.value)} placeholder="e.g. 165" />
           </div>
           <div>
             <label className="label">Sex</label>
@@ -754,7 +754,7 @@ function OverviewTab({ client, onSaved }) {
           <div>
             <label className="label">Access (weeks)</label>
             <div className="flex gap-2 items-center">
-              <input className="input" type="number" min={1} max={520} value={form.access_weeks} onChange={e => set('access_weeks', e.target.value)} />
+              <input className="input" type="number" onFocus={e => e.target.select()} min={1} max={520} value={form.access_weeks} onChange={e => set('access_weeks', e.target.value)} />
               <button
                 type="button"
                 className="btn-secondary whitespace-nowrap text-sm py-2 px-3"
@@ -793,7 +793,7 @@ function OverviewTab({ client, onSaved }) {
         </div>
         <div>
           <label className="label">Calories (kcal/day)</label>
-          <input className="input" type="number" min={0} value={form.current_calories} onChange={e => setCalories(e.target.value)} placeholder="e.g. 1800" />
+          <input className="input" type="number" onFocus={e => e.target.select()} min={0} value={form.current_calories} onChange={e => setCalories(e.target.value)} placeholder="e.g. 1800" />
           {!form.current_calories && (
             <div className="mt-1.5">
               <CalorieSuggestionPanel client={client} currentTarget={null} onApply={v => setCalories(String(v))} compact />
@@ -805,17 +805,17 @@ function OverviewTab({ client, onSaved }) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-1">
             <div>
               <label className="label">Carbs %</label>
-              <input className="input" type="number" min={0} max={100} value={split.carbs} onChange={e => setSplitPct('carbs', e.target.value)} />
+              <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100} value={split.carbs} onChange={e => setSplitPct('carbs', e.target.value)} />
               <p className="text-xs text-gray-400 mt-1">{form.current_carbs || 0}g</p>
             </div>
             <div>
               <label className="label">Protein %</label>
-              <input className="input" type="number" min={0} max={100} value={split.protein} onChange={e => setSplitPct('protein', e.target.value)} />
+              <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100} value={split.protein} onChange={e => setSplitPct('protein', e.target.value)} />
               <p className="text-xs text-gray-400 mt-1">{form.current_protein || 0}g</p>
             </div>
             <div>
               <label className="label">Fat %</label>
-              <input className="input" type="number" min={0} max={100} value={split.fat} onChange={e => setSplitPct('fat', e.target.value)} />
+              <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100} value={split.fat} onChange={e => setSplitPct('fat', e.target.value)} />
               <p className="text-xs text-gray-400 mt-1">{form.current_fat || 0}g</p>
             </div>
           </div>
@@ -833,19 +833,19 @@ function OverviewTab({ client, onSaved }) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="label">Steps goal</label>
-            <input className="input" type="number" min={0} step={500} value={form.steps_target}
+            <input className="input" type="number" onFocus={e => e.target.select()} min={0} step={500} value={form.steps_target}
               onChange={e => set('steps_target', e.target.value)} placeholder="e.g. 10000" />
             <p className="text-xs text-gray-400 mt-1">steps/day</p>
           </div>
           <div>
             <label className="label">Water goal</label>
-            <input className="input" type="number" min={0} step={0.5} value={form.water_target_litres}
+            <input className="input" type="number" onFocus={e => e.target.select()} min={0} step={0.5} value={form.water_target_litres}
               onChange={e => set('water_target_litres', e.target.value)} placeholder="e.g. 2.5" />
             <p className="text-xs text-gray-400 mt-1">litres/day</p>
           </div>
           <div>
             <label className="label">Sleep goal</label>
-            <input className="input" type="number" min={0} step={0.5} value={form.sleep_target_hours}
+            <input className="input" type="number" onFocus={e => e.target.select()} min={0} step={0.5} value={form.sleep_target_hours}
               onChange={e => set('sleep_target_hours', e.target.value)} placeholder="e.g. 8" />
             <p className="text-xs text-gray-400 mt-1">hours/night</p>
           </div>
@@ -987,7 +987,7 @@ function WeightTab({ clientId }) {
       {showForm && (
         <form onSubmit={addEntry} className="card flex flex-col sm:flex-row gap-3 items-end">
           <div className="flex-1"><label className="label">Date</label><input className="input" type="date" required value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
-          <div className="flex-1"><label className="label">Weight (kg)</label><input className="input" type="number" step="0.1" min="0" required value={form.weight_kg} onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder="e.g. 72.5" /></div>
+          <div className="flex-1"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" required value={form.weight_kg} onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder="e.g. 72.5" /></div>
           <button type="submit" disabled={saving} className="btn-primary whitespace-nowrap">{saving ? 'Saving…' : 'Add'}</button>
         </form>
       )}
@@ -1066,7 +1066,7 @@ function MeasurementsTab({ clientId }) {
           <div><label className="label">Date</label><input className="input" type="date" required value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {[['chest_cm','Chest (cm)'],['waist_cm','Waist (cm)'],['hips_cm','Hips (cm)'],['thighs_cm','Thighs (cm)'],['arms_cm','Arms (cm)']].map(([key, label]) => (
-              <div key={key}><label className="label">{label}</label><input className="input" type="number" step="0.1" min="0" value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} placeholder="—" /></div>
+              <div key={key}><label className="label">{label}</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} placeholder="—" /></div>
             ))}
           </div>
           <div className="flex gap-3">
@@ -1513,9 +1513,9 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
         <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300 pb-1">
           <span className="flex-1">Meal total</span>
           <span className="tabular-nums w-16 text-right">{Math.round(totCal)} kcal</span>
-          <span className="tabular-nums w-10 text-right">{Math.round(totCarb)}g</span>
-          <span className="tabular-nums w-10 text-right">{Math.round(totProt)}g</span>
-          <span className="tabular-nums w-10 text-right">{Math.round(totFat)}g</span>
+          <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(totCarb)}g</span>
+          <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(totProt)}g</span>
+          <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(totFat)}g</span>
         </div>
       )}
 
@@ -1539,9 +1539,9 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
             <span className="flex-1">Ingredient</span>
             <span className="w-16 text-right">g</span>
             <span className="w-16 text-right">kcal</span>
-            <span className="w-10 text-right">C</span>
-            <span className="w-10 text-right">P</span>
-            <span className="w-10 text-right">F</span>
+            <span className={`w-10 text-right ${MACRO_META.carb.text}`}>C</span>
+            <span className={`w-10 text-right ${MACRO_META.prot.text}`}>P</span>
+            <span className={`w-10 text-right ${MACRO_META.fat.text}`}>F</span>
             <span className="w-4" />
           </div>
           {ingredients.map((ing, i) => {
@@ -1577,7 +1577,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
                 )}
                 <span className={`flex-1 min-w-0 break-words ${ing._isAdded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`}>{ing.name}</span>
                 <input
-                  type="number"
+                  type="number" onFocus={e => e.target.select()}
                   min={libIng?.min_amount ?? 0}
                   step={libIng?.serving_step ?? 1}
                   className={`w-16 text-right text-xs py-0.5 px-1 rounded border tabular-nums focus:outline-none focus:ring-1 focus:ring-brand-400 ${
@@ -1603,9 +1603,9 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
                   }}
                 />
                 <span className="tabular-nums w-16 text-right text-gray-500 dark:text-gray-400">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
-                <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.carbs_g) || 0)}g</span>
-                <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.protein_g) || 0)}g</span>
-                <span className="tabular-nums w-10 text-right text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.fat_g) || 0)}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(parseFloat(ing.carbs_g) || 0)}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(parseFloat(ing.protein_g) || 0)}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(parseFloat(ing.fat_g) || 0)}g</span>
                 {isStatic ? (
                   <span className="w-4 flex-shrink-0" />
                 ) : (
@@ -1683,7 +1683,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
           {addSelected ? (
             <div className="flex items-center gap-2">
               <input
-                type="number"
+                type="number" onFocus={e => e.target.select()}
                 className="input py-1 text-xs w-20"
                 placeholder="grams"
                 min={addSelected.min_amount ?? 0}
@@ -2662,7 +2662,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
               <div className="space-y-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/40">
                 <div className="flex items-center gap-2">
                   <input
-                    type="number" min="0" step="25" autoFocus
+                    type="number" onFocus={e => e.target.select()} min="0" step="25" autoFocus
                     className="input py-1.5 w-32"
                     value={calorieDraft}
                     onChange={e => setCalorieDraft(e.target.value)}

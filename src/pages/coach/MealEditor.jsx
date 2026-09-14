@@ -635,7 +635,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, instru
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5">
-                      <input className="input py-1.5 text-sm w-20" type="number" min={ing._library?.min_amount ?? 0} step={ing._library?.serving_step ?? 0.1} value={ing.quantity_g} onChange={e => updateAmount(idx, e.target.value)} onBlur={() => blurAmount(idx)} placeholder="0" />
+                      <input className="input py-1.5 text-sm w-20" type="number" onFocus={e => e.target.select()} min={ing._library?.min_amount ?? 0} step={ing._library?.serving_step ?? 0.1} value={ing.quantity_g} onChange={e => updateAmount(idx, e.target.value)} onBlur={() => blurAmount(idx)} placeholder="0" />
                       {ing._library && <span className="text-xs text-gray-400 whitespace-nowrap">{ing._library.serving_unit}</span>}
                     </div>
                   </td>
@@ -644,7 +644,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, instru
                       {ing.ingredient_id ? (
                         <span className="text-sm text-gray-500 dark:text-gray-400 px-1">{ing[field] || 0}</span>
                       ) : (
-                        <input className="input py-1.5 text-sm w-20" type="number" min="0" step="0.1" value={ing[field]} onChange={e => updateRow(idx, { [field]: e.target.value })} placeholder="0" />
+                        <input className="input py-1.5 text-sm w-20" type="number" onFocus={e => e.target.select()} min="0" step="0.1" value={ing[field]} onChange={e => updateRow(idx, { [field]: e.target.value })} placeholder="0" />
                       )}
                     </td>
                   ))}
@@ -1088,7 +1088,7 @@ function CalorieTiersTab({ mealId, coachId, category, mealSplit }) {
                             <td className="py-2 text-gray-800 dark:text-gray-200 text-sm font-medium pr-2">{ing.name}</td>
                             <td className="py-2 px-3">
                               <input
-                                type="number"
+                                type="number" onFocus={e => e.target.select()}
                                 min={ing._library?.min_amount ?? 0}
                                 step={ing._library?.serving_step ?? 1}
                                 className="input py-1 text-sm w-16"

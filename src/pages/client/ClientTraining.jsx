@@ -404,7 +404,7 @@ export default function ClientTraining() {
                               <div key={i} className="grid grid-cols-[20px_1fr_1fr_56px] gap-1.5 mb-1 items-center">
                                 <p className="text-xs text-gray-400 text-center">{i + 1}</p>
                                 <input
-                                  type="number"
+                                  type="number" onFocus={e => e.target.select()}
                                   inputMode="decimal"
                                   placeholder="—"
                                   value={setInputs[i]?.weight ?? ''}
@@ -413,7 +413,7 @@ export default function ClientTraining() {
                                   className="w-full px-1.5 py-1 text-sm text-center border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                                 <input
-                                  type="number"
+                                  type="number" onFocus={e => e.target.select()}
                                   inputMode="numeric"
                                   placeholder="—"
                                   value={setInputs[i]?.reps ?? ''}

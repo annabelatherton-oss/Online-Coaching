@@ -115,9 +115,9 @@ function ExerciseRow({ ex, idx, total, onChange, onRemove, onMoveUp, onMoveDown 
       </div>
       <input className="flex-1 input py-1 text-sm" placeholder="Exercise name" value={ex.name}
         onChange={e => onChange('name', e.target.value)} />
-      <input type="number" min={0} className="input py-1 text-sm w-20 text-center" placeholder="Work sec"
+      <input type="number" onFocus={e => e.target.select()} min={0} className="input py-1 text-sm w-20 text-center" placeholder="Work sec"
         value={ex.work_seconds ?? ''} onChange={e => onChange('work_seconds', e.target.value ? parseInt(e.target.value) : null)} />
-      <input type="number" min={0} className="input py-1 text-sm w-20 text-center" placeholder="Rest sec"
+      <input type="number" onFocus={e => e.target.select()} min={0} className="input py-1 text-sm w-20 text-center" placeholder="Rest sec"
         value={ex.rest_seconds ?? ''} onChange={e => onChange('rest_seconds', e.target.value ? parseInt(e.target.value) : null)} />
       <button onClick={onRemove} className="text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 text-xl leading-none flex-shrink-0">×</button>
     </div>
@@ -233,11 +233,11 @@ function CircuitCard({ circuit, onSaved, onDelete }) {
           </div>
           <div>
             <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Rounds</label>
-            <input type="number" min={1} className="input w-full" value={form.rounds ?? ''} onChange={e => setF('rounds', e.target.value)} />
+            <input type="number" onFocus={e => e.target.select()} min={1} className="input w-full" value={form.rounds ?? ''} onChange={e => setF('rounds', e.target.value)} />
           </div>
           <div>
             <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Rest between rounds (sec)</label>
-            <input type="number" min={0} className="input w-full" value={form.rest_between_rounds_sec ?? ''} onChange={e => setF('rest_between_rounds_sec', e.target.value)} />
+            <input type="number" onFocus={e => e.target.select()} min={0} className="input w-full" value={form.rest_between_rounds_sec ?? ''} onChange={e => setF('rest_between_rounds_sec', e.target.value)} />
           </div>
           <div>
             <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Notes</label>
@@ -320,11 +320,11 @@ function NewCircuitForm({ onSave, onCancel }) {
         </div>
         <div>
           <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Rounds</label>
-          <input type="number" min={1} className="input w-full" placeholder="e.g. 5" value={form.rounds} onChange={e => setF('rounds', e.target.value)} />
+          <input type="number" onFocus={e => e.target.select()} min={1} className="input w-full" placeholder="e.g. 5" value={form.rounds} onChange={e => setF('rounds', e.target.value)} />
         </div>
         <div>
           <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Rest between rounds (sec)</label>
-          <input type="number" min={0} className="input w-full" placeholder="60" value={form.rest_between_rounds_sec} onChange={e => setF('rest_between_rounds_sec', e.target.value)} />
+          <input type="number" onFocus={e => e.target.select()} min={0} className="input w-full" placeholder="60" value={form.rest_between_rounds_sec} onChange={e => setF('rest_between_rounds_sec', e.target.value)} />
         </div>
         <div>
           <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Notes</label>
