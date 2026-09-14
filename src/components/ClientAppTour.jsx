@@ -101,9 +101,11 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
       clearInterval(poll)
       // Scroll it to the top portion of the screen, clear of the card's zone in the vertical
       // centre - the card sits in the same comfortable spot on every step, so the target needs to
-      // stay out of its way rather than the other way round.
-      el.scrollIntoView({ block: 'start', behavior: 'smooth' })
-      setTimeout(() => {
+      // stay out of its way rather than the other way round. Instant, not smooth: an animated
+      // scroll here would still be mid-flight when the correction below runs, and the two fighting
+      // over the same scroll position is what left the page feeling "stuck" on longer pages.
+      el.scrollIntoView({ block: 'start', behavior: 'auto' })
+      requestAnimationFrame(() => {
         if (cancelled) return
         let r = el.getBoundingClientRect()
         const cardZoneTop = window.innerHeight / 2 - CARD_ZONE_HALF_HEIGHT
@@ -115,7 +117,7 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
           }
         }
         setRect(r)
-      }, 350)
+      })
     }, POLL_MS)
 
     return () => { cancelled = true; clearInterval(poll) }
