@@ -1204,7 +1204,7 @@ export default function PlanGroupEditor() {
                           )}
 
                           {mealId && (
-                            <div className="text-xs">
+                            <div className="text-xs space-y-1">
                               {macros ? (
                                 <span className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
                                   <span className="font-medium text-gray-700 dark:text-gray-300">{macros.calories} kcal</span>
@@ -1215,6 +1215,32 @@ export default function PlanGroupEditor() {
                               ) : (
                                 <span className="text-amber-500" title="Generate this meal's calorie tiers in the Meal Library">
                                   No {activeTier} kcal version
+                                </span>
+                              )}
+                              {/* Option B only - how far this meal is from its Option A sibling, right next
+                                  to its current macros, so it's clear whether it needs changing without
+                                  opening anything. */}
+                              {macros && slot.key.endsWith('2') && siblingMacros?.calories > 0 && (
+                                <span className="flex items-center gap-2 tabular-nums">
+                                  <span className={`font-medium ${macroColour(macros.calories, siblingMacros.calories)}`}>
+                                    {(() => {
+                                      const d = Math.round(siblingMacros.calories - macros.calories)
+                                      return d === 0 ? '±0 kcal' : `${d > 0 ? '+' : ''}${d} kcal`
+                                    })()}
+                                  </span>
+                                  {[
+                                    { type: 'carb', a: macros.carbs_g, r: siblingMacros.carbs_g },
+                                    { type: 'prot', a: macros.protein_g, r: siblingMacros.protein_g },
+                                    { type: 'fat', a: macros.fat_g, r: siblingMacros.fat_g },
+                                  ].map(({ type, a, r }) => {
+                                    const d = Math.round(r - a)
+                                    return (
+                                      <span key={type} className={`flex items-center gap-0.5 ${macroColour(a, r)}`}>
+                                        <MacroBadge type={type} />{d === 0 ? '±0' : d > 0 ? `+${d}` : d}
+                                      </span>
+                                    )
+                                  })}
+                                  <span className="text-gray-400 dark:text-gray-500">vs A</span>
                                 </span>
                               )}
                             </div>
