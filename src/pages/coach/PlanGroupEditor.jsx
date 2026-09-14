@@ -109,14 +109,14 @@ function DayAutoFitSuggestion({ week, slotKeys, tier, targetCal, mealsById, ingr
     // Still says something rather than showing nothing - every eligible ingredient here is either
     // too small to matter or marked Fixed, so closing this gap needs swapping a meal instead.
     return (
-      <p className="text-[11px] text-gray-400 dark:text-gray-500 pl-[4.5rem]">
+      <p className="text-xs text-gray-400 dark:text-gray-500 pl-[4.5rem]">
         No small ingredient change closes this gap without touching something marked Fixed — try swapping a meal instead.
       </p>
     )
   }
   const slotKey = slotOf[suggestion.id]
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] pl-[4.5rem]">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs pl-[4.5rem]">
       <span className="text-brand-600 dark:text-brand-400">
         Fit the day: {suggestion.name} ({slotLabels[slotKey]}) {round1(suggestion.oldQty)}{suggestion.unit} → {round1(suggestion.newQty)}{suggestion.unit}
         {' '}({suggestion.deltaCal > 0 ? '+' : ''}{suggestion.deltaCal} kcal)
@@ -1022,6 +1022,16 @@ export default function PlanGroupEditor() {
             >
               <div className="flex items-center gap-3">
                 <span className="font-semibold text-gray-900 dark:text-white text-sm">Week {week.weekNum}</span>
+                {activeTier != null && (opt1Totals.calories > 0 || opt2Totals.calories > 0) && (
+                  <span className="hidden sm:flex items-center gap-2 text-sm tabular-nums">
+                    {opt1Totals.calories > 0 && (
+                      <span className={deviationColor(opt1Totals.calories, activeTier)}>A: {opt1Totals.calories} kcal</span>
+                    )}
+                    {opt2Totals.calories > 0 && (
+                      <span className={deviationColor(opt2Totals.calories, opt1Totals.calories > 0 ? opt1Totals.calories : activeTier)}>B: {opt2Totals.calories} kcal</span>
+                    )}
+                  </span>
+                )}
                 {isCurrent && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">
                     Current
@@ -1194,15 +1204,15 @@ export default function PlanGroupEditor() {
                             ? (opt1Totals.calories > 0 ? opt1Totals : null)
                             : { calories: activeTier, ...calcStandardMacros(activeTier) }
                           return (
-                            <div className="flex flex-col items-center sm:items-end justify-center gap-0.5 px-3 py-2 sm:w-24 flex-shrink-0 sm:border-l border-t sm:border-t-0 border-gray-100 dark:border-gray-800">
-                              <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 whitespace-nowrap">Day total</span>
-                              <span className={`text-sm font-semibold whitespace-nowrap ${ref ? deviationColor(dayTotals.calories, ref.calories) : 'text-gray-700 dark:text-gray-300'}`}>{dayTotals.calories} kcal</span>
-                              <span className={`flex items-center gap-0.5 text-[10px] tabular-nums whitespace-nowrap ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{dayTotals.carbs_g}g</span>
-                              <span className={`flex items-center gap-0.5 text-[10px] tabular-nums whitespace-nowrap ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{dayTotals.protein_g}g</span>
-                              <span className={`flex items-center gap-0.5 text-[10px] tabular-nums whitespace-nowrap ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{dayTotals.fat_g}g</span>
+                            <div className="flex flex-col items-center sm:items-end justify-center gap-1 px-3 py-2 sm:w-28 flex-shrink-0 sm:border-l border-t sm:border-t-0 border-gray-100 dark:border-gray-800">
+                              <span className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500 whitespace-nowrap">Day total</span>
+                              <span className={`text-base font-semibold whitespace-nowrap ${ref ? deviationColor(dayTotals.calories, ref.calories) : 'text-gray-700 dark:text-gray-300'}`}>{dayTotals.calories} kcal</span>
+                              <span className={`flex items-center gap-1 text-xs tabular-nums whitespace-nowrap ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{dayTotals.carbs_g}g</span>
+                              <span className={`flex items-center gap-1 text-xs tabular-nums whitespace-nowrap ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{dayTotals.protein_g}g</span>
+                              <span className={`flex items-center gap-1 text-xs tabular-nums whitespace-nowrap ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{dayTotals.fat_g}g</span>
                               {ref && (
-                                <div className="flex flex-col items-center sm:items-end gap-0.5 mt-1 pt-1 border-t border-gray-100 dark:border-gray-800">
-                                  <span className={`text-[10px] font-semibold whitespace-nowrap ${deviationColor(dayTotals.calories, ref.calories)}`}>
+                                <div className="flex flex-col items-center sm:items-end gap-1 mt-1 pt-1 border-t border-gray-100 dark:border-gray-800">
+                                  <span className={`text-xs font-semibold whitespace-nowrap ${deviationColor(dayTotals.calories, ref.calories)}`}>
                                     {(() => {
                                       const d = Math.round(ref.calories - dayTotals.calories)
                                       return d === 0 ? '±0 kcal' : `${d > 0 ? '+' : ''}${d} kcal`
@@ -1215,7 +1225,7 @@ export default function PlanGroupEditor() {
                                   ].map(({ type, a, r }) => {
                                     const d = Math.round(r - a)
                                     return (
-                                      <span key={type} className={`flex items-center gap-0.5 text-[10px] tabular-nums whitespace-nowrap ${macroColour(a, r)}`}>
+                                      <span key={type} className={`flex items-center gap-1 text-xs tabular-nums whitespace-nowrap ${macroColour(a, r)}`}>
                                         <MacroBadge type={type} />{d === 0 ? '±0' : d > 0 ? `+${d}` : d}
                                       </span>
                                     )
