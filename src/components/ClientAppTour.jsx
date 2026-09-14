@@ -18,6 +18,7 @@ const STEPS = [
   { kind: 'page', path: '/client/meals', selectors: ['[data-tour="meal-card"]', '[data-tour="meals-heading"]'], title: 'Your meals', body: 'Tap any meal to see the full recipe and ingredients.' },
   { kind: 'page', path: '/client/meals', selectors: ['[data-tour="meal-swap-button"]', '[data-tour="meals-heading"]'], title: 'Swap a meal', body: "Don't fancy it? Tap Swap to pick another option with similar macros." },
   { kind: 'page', path: '/client/meals', selectors: ['[data-tour="meals-daily-totals"]', '[data-tour="meals-heading"]'], title: 'Daily totals', body: 'See your total calories and macros for the day here.' },
+  { kind: 'page', path: '/client/meals', selectors: ['[data-tour="everyday-meals"]', '[data-tour="meals-heading"]'], title: 'Eating the same meals every day', body: "Prefer to have the same breakfast, lunch and dinner every day instead of following the plan above? Pick them here — pre-workout and evening snack can be requested too, but your coach approves those first." },
 
   { kind: 'nav', navSelector: '[data-tour="nav-shopping"]', title: 'Shopping List', body: "Next — your Shopping List. It's in your menu too." },
   { kind: 'page', path: '/client/shopping-list', selectors: ['[data-tour="shopping-day-count"]', '[data-tour="shopping-fallback"]'], title: 'Set your days', body: "This is what builds your shopping list — tell it how many days you'll eat each option. Option A and B are completely interchangeable, so mix and match however suits your week." },

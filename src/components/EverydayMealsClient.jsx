@@ -68,7 +68,7 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
   if (loading) return null
 
   return (
-    <div className="card space-y-4">
+    <div data-tour="everyday-meals" className="card space-y-4">
       <div>
         <h2 className="text-base font-bold text-gray-900 dark:text-white">Meals I eat every day</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
