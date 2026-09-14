@@ -833,7 +833,7 @@ export default function ClientCheckin() {
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Body metrics</h2>
           <div>
             <label className="label">Weight (kg)</label>
-            <input className="input" type="number" step="0.1" min="0" value={form.weight_kg} onChange={e => set('weight_kg', e.target.value)} placeholder="e.g. 72.5" />
+            <input data-tour="checkin-weight" className="input" type="number" step="0.1" min="0" value={form.weight_kg} onChange={e => set('weight_kg', e.target.value)} placeholder="e.g. 72.5" />
           </div>
           {collectMeasurements && (
             <div className="grid grid-cols-2 gap-4">

@@ -167,6 +167,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
   return (
     <div
+      data-tour={meal ? 'meal-card' : undefined}
       className="flex flex-col sm:flex-row rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 cursor-pointer active:opacity-90"
       onClick={() => meal && onViewRecipe(slotKey)}
     >

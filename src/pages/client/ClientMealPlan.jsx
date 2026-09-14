@@ -209,7 +209,7 @@ export default function ClientMealPlan() {
       </div>
 
       {/* Week banner */}
-      <div className="flex items-center gap-4 p-4 rounded-2xl bg-brand-50 dark:bg-brand-900/20">
+      <div data-tour="meals-week-banner" className="flex items-center gap-4 p-4 rounded-2xl bg-brand-50 dark:bg-brand-900/20">
         <div className="w-14 h-14 rounded-xl bg-brand-500 flex flex-col items-center justify-center flex-shrink-0">
           <span className="text-2xl font-bold text-white leading-none">{personalWeek ?? weekNumber}</span>
           <span className="text-xs text-brand-100 uppercase tracking-wide">Week</span>
@@ -272,7 +272,7 @@ export default function ClientMealPlan() {
 
       {/* Daily totals */}
       {(opt1Total.cal > 0 || opt2Total.cal > 0) && (
-        <div className="card space-y-3">
+        <div data-tour="meals-daily-totals" className="card space-y-3">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Daily totals</h2>
           {opt1Total.cal > 0 && (
             <div className="flex items-center justify-between">

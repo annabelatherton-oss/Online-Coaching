@@ -522,7 +522,7 @@ export default function ClientTodoList() {
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">My tasks</h2>
               {!adding && (
-                <button onClick={() => setAdding(true)}
+                <button data-tour="todos-add-task" onClick={() => setAdding(true)}
                   className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-300 font-medium">
                   + Add task
                 </button>

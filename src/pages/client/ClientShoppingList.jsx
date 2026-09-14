@@ -249,7 +249,7 @@ export default function ClientShoppingList() {
           <p className="text-gray-400 dark:text-gray-500">Set at least one meal to 1+ days above to build your list.</p>
         </div>
       ) : (
-        <div className="space-y-5">
+        <div data-tour="shopping-items" className="space-y-5">
           {categoriesPresent.map(cat => (
             <div key={cat} className="card">
               <h3 className="font-semibold text-gray-900 dark:text-white mb-3">{CATEGORY_LABELS[cat] || cat}</h3>
