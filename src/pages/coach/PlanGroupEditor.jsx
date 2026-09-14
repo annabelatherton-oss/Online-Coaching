@@ -82,24 +82,31 @@ function macroColour(actual, target) {
   return deviationColor(actual, target)
 }
 
-// Small coloured dots for a quick glance at a collapsed day's macro match without expanding it.
-// referenceTotals (optional): Option B's target is Option A's actual macros, not the generic tier
-// split — the two need to stay as close to each other as possible since a client eats either one.
+// Signed +/- for calories and each macro, right on the collapsed week header — so it's clear
+// whether Option B needs changing to match Option A without opening the week, let alone an
+// ingredient editor. referenceTotals (optional): Option B's target is Option A's actual macros,
+// not the generic tier split — the two need to stay as close to each other as possible since a
+// client eats either one.
 function MacroDots({ totals, tier, referenceTotals }) {
   if (!totals || totals.calories <= 0 || !totals.complete || tier == null) return null
   const targets = referenceTotals?.calories > 0
     ? referenceTotals
     : calcStandardMacros(tier)
   const dims = [
-    { key: 'C', actual: totals.carbs_g, target: targets.carbs_g },
-    { key: 'P', actual: totals.protein_g, target: targets.protein_g },
-    { key: 'F', actual: totals.fat_g, target: targets.fat_g },
+    { type: 'carb', actual: totals.carbs_g, target: targets.carbs_g },
+    { type: 'prot', actual: totals.protein_g, target: targets.protein_g },
+    { type: 'fat', actual: totals.fat_g, target: targets.fat_g },
   ]
   return (
-    <span className="inline-flex items-center gap-1" title={dims.map(d => `${d.key}: ${d.actual}g / ${d.target}g target`).join('  ·  ')}>
-      {dims.map(d => (
-        <span key={d.key} className={`w-1.5 h-1.5 rounded-full ${macroColour(d.actual, d.target).replace('text-', 'bg-')}`} />
-      ))}
+    <span className="inline-flex items-center gap-1.5 tabular-nums">
+      {dims.map(d => {
+        const diff = Math.round(d.target - d.actual)
+        return (
+          <span key={d.type} className={`flex items-center gap-0.5 ${macroColour(d.actual, d.target)}`} title={`${d.actual}g / ${d.target}g target`}>
+            <MacroBadge type={d.type} />{diff === 0 ? '±0' : diff > 0 ? `+${diff}` : diff}
+          </span>
+        )
+      })}
     </span>
   )
 }
