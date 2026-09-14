@@ -70,27 +70,118 @@ export function deviationColor(actualCal, referenceCal) {
   return 'text-red-500 dark:text-red-400'
 }
 
-// The standard "here's the target, here's this meal, here's how far off the sibling option is"
-// block shown wherever a meal's ingredients can be edited, so it reads the same everywhere:
+// "Add ~141 kcal" / "Remove ~56 kcal" / "On target" - always phrased as the action still needed,
+// never as a restatement of the raw reference number.
+function actionText(actualCal, referenceCal) {
+  const diff = Math.round(referenceCal - actualCal)
+  if (diff === 0) return 'On target'
+  return diff > 0 ? `Add ~${diff} kcal` : `Remove ~${Math.abs(diff)} kcal`
+}
+
+// Compact signed delta for a single macro, e.g. "+12g C" (add) or "−8g P" (remove).
+function macroChip(actualG, referenceG, label) {
+  const diff = Math.round(referenceG - actualG)
+  const sign = diff > 0 ? '+' : diff < 0 ? '−' : '±'
+  return `${sign}${Math.abs(diff)}g ${label}`
+}
+
+// Suggests changing the amount of one editable ingredient to close most of the calorie gap to a
+// reference (the target, or the sibling option) - mirrors what a coach or client would naturally
+// do by hand, e.g. bumping 2 eggs to 3. Rounds to whole units for anything counted in whole items
+// (eggs, scoops, slices, …), nearest 5g/ml otherwise, and only offers a suggestion when some
+// ingredient can close the gap without an unreasonably large change to its own amount (more than
+// 1.5x its current quantity either way) - a spice or garnish that would need to jump tenfold to
+// close the gap is never suggested, since the huge calorie-per-gram mismatch rules it out itself.
+export function suggestAutoFit(ingredients, actualCal, referenceCal, ingredientLib) {
+  if (!referenceCal) return null
+  const gapCal = referenceCal - actualCal
+  if (Math.abs(gapCal) < Math.max(15, referenceCal * 0.03)) return null // already close enough
+
+  let best = null
+  for (const ing of ingredients || []) {
+    if (ing.is_static) continue
+    const qty = parseFloat(ing.quantity_g) || 0
+    const cal = parseFloat(ing.calories) || 0
+    if (qty <= 0 || cal <= 0) continue
+
+    const calPerUnit = cal / qty
+    const rawNewQty = qty + gapCal / calPerUnit
+    if (rawNewQty <= 0) continue
+
+    const unit = libraryUnit(ing, ingredientLib) || (ing.unit !== 'g' ? ing.unit : null)
+    const isCounted = unit && unit !== 'g' && unit !== 'ml'
+    const newQty = isCounted ? Math.round(rawNewQty) : Math.max(5, Math.round(rawNewQty / 5) * 5)
+    if (newQty <= 0 || newQty === qty) continue
+
+    const relChange = Math.abs(newQty - qty) / qty
+    if (relChange > 1.5) continue // too drastic a change to be a sensible suggestion
+
+    if (!best || relChange < best.relChange) {
+      best = {
+        id: ing._tempId || ing.id,
+        name: ing.name,
+        oldQty: qty,
+        newQty,
+        unit: unit || 'g',
+        deltaCal: Math.round(calPerUnit * newQty - cal),
+        relChange,
+      }
+    }
+  }
+  return best
+}
+
+function fmtQty(qty, unit) {
+  if (unit && unit !== 'g' && unit !== 'ml') return `${Number.isInteger(qty) ? qty : Math.round(qty * 10) / 10} ${unit}`
+  return `${Math.round(qty)}${unit || 'g'}`
+}
+
+// The standard "where am I now, and what do I add or remove to fix it" block, shown wherever a
+// meal's ingredients can be edited so it reads the same everywhere. Two clearly separate rows -
+// never a restatement of the raw target/sibling figures, always the gap still to close:
 //  - target: this slot's share of the day's targets (from the coach's meal-split % and the
 //    client's calorie/macro targets) - omit if there's no client target to compare against.
-//  - siblingMacros: the other option for this same meal (e.g. Breakfast A's sibling is B) - omit
-//    for slots with only one option (pre-workout, evening snack).
-export function MacroTargetInfo({ macros, target, siblingMacros, siblingLabel = 'other option' }) {
+//  - siblingMacros: the meal's other, fully interchangeable option (e.g. Breakfast A's sibling is
+//    B - either can be eaten on any given day, so keeping them close together matters as much as
+//    hitting the target itself) - omit for slots with only one option (pre-workout, evening snack).
+// When ingredients/ingredientLib/onAutoFit are all given, a one-tap suggestion for closing the
+// target gap (the biggest lever) appears under the target row - see suggestAutoFit above.
+export function MacroTargetInfo({ macros, target, siblingMacros, siblingLabel = 'other option', ingredients, ingredientLib, onAutoFit }) {
   if (!macros || macros.cal <= 0) return null
+  const suggestion = (target && target.cal > 0 && onAutoFit) ? suggestAutoFit(ingredients, macros.cal, target.cal, ingredientLib) : null
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-1.5">
       {target && target.cal > 0 && (
-        <p className={`text-xs ${deviationColor(macros.cal, target.cal)}`}>
-          Target: {Math.round(target.cal)} kcal · {Math.round(target.carb)}g C · {Math.round(target.prot)}g P · {Math.round(target.fat)}g F
-          <span className="opacity-70"> — this meal: {Math.round(macros.cal)} kcal · {Math.round(macros.carb)}g C · {Math.round(macros.prot)}g P · {Math.round(macros.fat)}g F</span>
-          {' '}({deviationPct(macros.cal, target.cal)}% {macros.cal >= target.cal ? 'over' : 'under'})
-        </p>
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className={`text-xs font-semibold ${deviationColor(macros.cal, target.cal)}`}>
+            {actionText(macros.cal, target.cal)} to hit target
+          </span>
+          <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
+            {macroChip(macros.carb, target.carb, 'C')} · {macroChip(macros.prot, target.prot, 'P')} · {macroChip(macros.fat, target.fat, 'F')}
+          </span>
+        </div>
+      )}
+      {suggestion && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="text-[11px] text-brand-600 dark:text-brand-400">
+            Try {suggestion.name}: {fmtQty(suggestion.oldQty, suggestion.unit)} → {fmtQty(suggestion.newQty, suggestion.unit)}
+            {' '}({suggestion.deltaCal > 0 ? '+' : ''}{suggestion.deltaCal} kcal)
+          </span>
+          <button
+            type="button"
+            onClick={() => onAutoFit(suggestion.id, suggestion.newQty)}
+            className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300 underline flex-shrink-0"
+          >
+            Apply
+          </button>
+        </div>
       )}
       {siblingMacros && siblingMacros.cal > 0 && (
-        <p className={`text-xs ${deviationColor(macros.cal, siblingMacros.cal)}`}>
-          vs {siblingLabel}: {Math.round(Math.abs(macros.cal - siblingMacros.cal))} kcal {macros.cal >= siblingMacros.cal ? 'more' : 'less'} ({deviationPct(macros.cal, siblingMacros.cal)}% different)
-        </p>
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className={`text-xs font-semibold ${deviationColor(macros.cal, siblingMacros.cal)}`}>
+            {macros.cal === siblingMacros.cal ? `Matches ${siblingLabel}` : `${actionText(macros.cal, siblingMacros.cal)} to match ${siblingLabel}`}
+          </span>
+        </div>
       )}
     </div>
   )
@@ -379,7 +470,15 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
               )}
               {macros && (target || siblingMacros) && (
                 <div className="mt-2">
-                  <MacroTargetInfo macros={macros} target={target} siblingMacros={siblingMacros} siblingLabel={siblingLabel} />
+                  <MacroTargetInfo
+                    macros={macros}
+                    target={target}
+                    siblingMacros={siblingMacros}
+                    siblingLabel={siblingLabel}
+                    ingredients={ingredients}
+                    ingredientLib={ingredientLib}
+                    onAutoFit={onUpdateIngredient ? (id, qty) => onUpdateIngredient(slotKey, id, qty) : undefined}
+                  />
                 </div>
               )}
             </div>

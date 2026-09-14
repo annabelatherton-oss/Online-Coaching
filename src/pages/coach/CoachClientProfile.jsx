@@ -1507,6 +1507,32 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
         )}
       </div>
 
+      {/* Kept above the ingredient rows (not below) so it's still on screen once the list is long
+          or the on-screen keyboard is covering the bottom of the page while a quantity is focused. */}
+      {totCal > 0 && (
+        <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300 pb-1">
+          <span className="flex-1">Meal total</span>
+          <span className="tabular-nums w-16 text-right">{Math.round(totCal)} kcal</span>
+          <span className="tabular-nums w-10 text-right">{Math.round(totCarb)}g</span>
+          <span className="tabular-nums w-10 text-right">{Math.round(totProt)}g</span>
+          <span className="tabular-nums w-10 text-right">{Math.round(totFat)}g</span>
+        </div>
+      )}
+
+      {totCal > 0 && (target || siblingMacros) && (
+        <div className="pb-1.5 border-b border-gray-100 dark:border-gray-800">
+          <MacroTargetInfo
+            macros={{ cal: totCal, carb: totCarb, prot: totProt, fat: totFat }}
+            target={target}
+            siblingMacros={siblingMacros}
+            siblingLabel={siblingLabel}
+            ingredients={ingredients}
+            ingredientLib={libraryById}
+            onAutoFit={onQtyChange}
+          />
+        </div>
+      )}
+
       {ingredients.length > 0 && (
         <>
           <div className="flex items-center gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pb-1">
@@ -1599,27 +1625,6 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
       )}
 
       {ingredients.length === 0 && <p className="text-xs text-gray-400 italic">No ingredients recorded</p>}
-
-      {totCal > 0 && (
-        <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-800 pt-1.5">
-          <span className="flex-1">Meal total</span>
-          <span className="tabular-nums w-16 text-right">{Math.round(totCal)} kcal</span>
-          <span className="tabular-nums w-10 text-right">{Math.round(totCarb)}g</span>
-          <span className="tabular-nums w-10 text-right">{Math.round(totProt)}g</span>
-          <span className="tabular-nums w-10 text-right">{Math.round(totFat)}g</span>
-        </div>
-      )}
-
-      {totCal > 0 && (target || siblingMacros) && (
-        <div className="pt-0.5">
-          <MacroTargetInfo
-            macros={{ cal: totCal, carb: totCarb, prot: totProt, fat: totFat }}
-            target={target}
-            siblingMacros={siblingMacros}
-            siblingLabel={siblingLabel}
-          />
-        </div>
-      )}
 
       {removed.length > 0 && (
         <div className="pt-1.5 space-y-1">
