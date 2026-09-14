@@ -115,6 +115,12 @@ function macroDiff(actualG, referenceG) {
 // spice or garnish that would need to jump tenfold to close the gap is never suggested, since the
 // huge calorie-per-gram mismatch rules it out itself.
 //
+// Never touches an ingredient the coach has marked "Fixed" in the Meal Editor (scaling_type) - the
+// same flag the calorie-tier generator already respects for exactly this reason: a Fixed ingredient
+// is one the coach has deliberately said shouldn't move (the protein portion that defines the
+// recipe, a seasoning that would throw off the dish if it doubled), regardless of what the maths
+// says. "Optional" and "flexible" ingredients stay eligible.
+//
 // Picks whichever candidate lands CLOSEST to fully closing the gap after rounding, not whichever
 // needs the smallest % change to itself - a small, fine-grained tweak (+30ml milk, +5g oats) that
 // nails a small leftover gap exactly is a more sensible suggestion than a big whole-unit jump
@@ -128,7 +134,7 @@ export function suggestAutoFit(ingredients, actualCal, referenceCal, ingredientL
 
   let best = null
   for (const ing of ingredients || []) {
-    if (ing.is_static) continue
+    if (ing.is_static || ing.scaling_type === 'fixed') continue
     const qty = parseFloat(ing.quantity_g) || 0
     const cal = parseFloat(ing.calories) || 0
     if (qty <= 0 || cal <= 0) continue

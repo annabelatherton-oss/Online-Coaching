@@ -92,7 +92,7 @@ export default function WeeklyTemplateEditor() {
     const [mealsRes, libRes] = await Promise.all([
       supabase
         .from('meals')
-        .select('id, name, category, meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, unit, ingredient_id, is_static), meal_scaled_versions(id, calorie_target)')
+        .select('id, name, category, meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, unit, ingredient_id, is_static, scaling_type), meal_scaled_versions(id, calorie_target)')
         .eq('coach_id', profile.id)
         .order('name'),
       supabase.from('ingredients').select('*').eq('coach_id', profile.id),

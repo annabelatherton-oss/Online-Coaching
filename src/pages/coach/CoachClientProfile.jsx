@@ -1863,7 +1863,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', false).order('created_at', { ascending: false }),
       supabase.from('meals').select(`
         id, name, category, photo_url, photo_position, diet_tags, standard_eligible,
-        meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, alternative_ingredient_ids),
+        meal_ingredients(id, name, quantity_g, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, scaling_type, alternative_ingredient_ids),
         meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
           meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
       `).eq('coach_id', coachId).order('name'),

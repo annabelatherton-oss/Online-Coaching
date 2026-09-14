@@ -365,7 +365,7 @@ export default function PlanGroupEditor() {
           .from('meals')
           .select(`
             id, name, category, photo_url, photo_position,
-            meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static),
+            meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, scaling_type),
             meal_tier_versions(calorie_tier, calories, protein_g, carbs_g, fat_g,
               meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
           `)
@@ -459,7 +459,7 @@ export default function PlanGroupEditor() {
       .from('meals')
       .select(`
         id, name, category, photo_url, photo_position,
-        meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static),
+        meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, scaling_type),
         meal_tier_versions(calorie_tier, calories, protein_g, carbs_g, fat_g,
           meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
       `)
