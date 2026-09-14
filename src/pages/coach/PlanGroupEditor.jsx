@@ -1079,14 +1079,9 @@ export default function PlanGroupEditor() {
                       onApply={(slotKey, ingId, qty) => changeIngredientOverride(weekIdx, slotKey, ingId, qty)}
                     />
                     <MacroMatchRow label="B" totals={opt2Totals} tier={activeTier} referenceTotals={opt1Totals} />
-                    <DayAutoFitSuggestion
-                      week={week} slotKeys={OPTION_B_KEYS} tier={activeTier}
-                      target={opt1Totals.calories > 0
-                        ? { cal: opt1Totals.calories, carb: opt1Totals.carbs_g, prot: opt1Totals.protein_g, fat: opt1Totals.fat_g }
-                        : { cal: activeTier }}
-                      mealsById={mealsById} ingredientLib={ingredientLib} slotLabels={SLOT_LABELS}
-                      onApply={(slotKey, ingId, qty) => changeIngredientOverride(weekIdx, slotKey, ingId, qty)}
-                    />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 pl-16">
+                      Option B is matched meal-by-meal against its Option A sibling below, not as a single day-total fix — see each meal's own "vs A" line.
+                    </p>
                   </div>
                 )}
                 {SLOTS.map(slot => {
@@ -1208,6 +1203,32 @@ export default function PlanGroupEditor() {
                                   <span className="text-gray-400 dark:text-gray-500">vs A</span>
                                 </span>
                               )}
+                              {/* One-tap fix for THIS meal specifically, using only its own
+                                  ingredients - matches this meal to its sibling, not the day total. */}
+                              {macros && slot.key.endsWith('2') && siblingMacros?.calories > 0 && (() => {
+                                const suggestion = suggestAutoFit(
+                                  previewIngredients,
+                                  { cal: macros.calories, carb: macros.carbs_g, prot: macros.protein_g, fat: macros.fat_g },
+                                  slotTarget,
+                                  ingredientLib
+                                )
+                                if (!suggestion) return null
+                                return (
+                                  <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                    <span className="text-brand-600 dark:text-brand-400">
+                                      Try {suggestion.name}: {round1(suggestion.oldQty)}{suggestion.unit} → {round1(suggestion.newQty)}{suggestion.unit}
+                                      {' '}({suggestion.deltaCal > 0 ? '+' : ''}{suggestion.deltaCal} kcal)
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => changeIngredientOverride(weekIdx, slot.key, suggestion.id, suggestion.newQty)}
+                                      className="font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300 underline"
+                                    >
+                                      Apply
+                                    </button>
+                                  </span>
+                                )
+                              })()}
                             </div>
                           )}
 
@@ -1247,9 +1268,10 @@ export default function PlanGroupEditor() {
                           const isB = slot.key.endsWith('2')
                           const dayTotals = isB ? opt2Totals : opt1Totals
                           if (!dayTotals || dayTotals.calories <= 0) return null
-                          const ref = isB
-                            ? (opt1Totals.calories > 0 ? opt1Totals : null)
-                            : { calories: activeTier, ...calcStandardMacros(activeTier) }
+                          // Option B's match to Option A is judged meal-by-meal (see each meal's own
+                          // "vs A" line above), not by day total, so this column shows B's day total
+                          // for reference only - no target/delta against it.
+                          const ref = isB ? null : { calories: activeTier, ...calcStandardMacros(activeTier) }
                           return (
                             <div className="flex flex-col items-center sm:items-end justify-center gap-1 px-3 py-2 sm:w-28 flex-shrink-0 sm:border-l border-t sm:border-t-0 border-gray-100 dark:border-gray-800">
                               <span className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500 whitespace-nowrap">Day total</span>
