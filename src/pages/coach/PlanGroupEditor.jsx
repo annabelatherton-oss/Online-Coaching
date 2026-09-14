@@ -98,10 +98,12 @@ function MacroMatchRow({ label, totals, tier, referenceTotals }) {
 }
 
 // One-tap "fit the day" suggestion — finds the single best ingredient to nudge across every meal
-// in this option (not just one slot) to close the day's calorie gap. This is the lever for a coach
-// who only cares about the day's total landing right, not which specific meal carries it.
-function DayAutoFitSuggestion({ week, slotKeys, tier, targetCal, mealsById, ingredientLib, slotLabels, onApply }) {
-  if (!targetCal) return null
+// in this option (not just one slot) to close the day's gap to target. This is the lever for a
+// coach who only cares about the day's total landing right, not which specific meal carries it.
+// target: { cal, carb, prot, fat } - carb/prot/fat optional (calorie-only still works) - passing
+// all four lets the pick also help close the macro gap, not just calories (see suggestAutoFit).
+function DayAutoFitSuggestion({ week, slotKeys, tier, target, mealsById, ingredientLib, slotLabels, onApply }) {
+  if (!target?.cal) return null
   const combined = []
   const slotOf = {}
   for (const slotKey of slotKeys) {
@@ -114,12 +116,12 @@ function DayAutoFitSuggestion({ week, slotKeys, tier, targetCal, mealsById, ingr
     }
   }
   if (combined.length === 0) return null
-  const actualCal = combined.reduce((s, i) => s + (parseFloat(i.calories) || 0), 0)
-  if (actualCal <= 0) return null
-  const gapCal = targetCal - actualCal
-  if (Math.abs(gapCal) < Math.max(15, targetCal * 0.03)) return null // already close enough - the totals above already read as "on target"
+  const actualMacros = sumIngredientMacros(combined)
+  if (actualMacros.cal <= 0) return null
+  const gapCal = target.cal - actualMacros.cal
+  if (Math.abs(gapCal) < Math.max(15, target.cal * 0.03)) return null // already close enough - the totals above already read as "on target"
 
-  const suggestion = suggestAutoFit(combined, actualCal, targetCal, ingredientLib)
+  const suggestion = suggestAutoFit(combined, { cal: actualMacros.cal, carb: actualMacros.carb, prot: actualMacros.prot, fat: actualMacros.fat }, target, ingredientLib)
   if (!suggestion) {
     // Still says something rather than showing nothing - every eligible ingredient here is either
     // too small to matter or marked Fixed, so closing this gap needs swapping a meal instead.
@@ -1071,14 +1073,17 @@ export default function PlanGroupEditor() {
                   <div className="px-1 pb-1 space-y-1">
                     <MacroMatchRow label="A" totals={opt1Totals} tier={activeTier} />
                     <DayAutoFitSuggestion
-                      week={week} slotKeys={OPTION_A_KEYS} tier={activeTier} targetCal={activeTier}
+                      week={week} slotKeys={OPTION_A_KEYS} tier={activeTier}
+                      target={activeTier != null ? (() => { const t = calcStandardMacros(activeTier); return { cal: activeTier, carb: t.carbs_g, prot: t.protein_g, fat: t.fat_g } })() : null}
                       mealsById={mealsById} ingredientLib={ingredientLib} slotLabels={SLOT_LABELS}
                       onApply={(slotKey, ingId, qty) => changeIngredientOverride(weekIdx, slotKey, ingId, qty)}
                     />
                     <MacroMatchRow label="B" totals={opt2Totals} tier={activeTier} referenceTotals={opt1Totals} />
                     <DayAutoFitSuggestion
                       week={week} slotKeys={OPTION_B_KEYS} tier={activeTier}
-                      targetCal={opt1Totals.calories > 0 ? opt1Totals.calories : activeTier}
+                      target={opt1Totals.calories > 0
+                        ? { cal: opt1Totals.calories, carb: opt1Totals.carbs_g, prot: opt1Totals.protein_g, fat: opt1Totals.fat_g }
+                        : { cal: activeTier }}
                       mealsById={mealsById} ingredientLib={ingredientLib} slotLabels={SLOT_LABELS}
                       onApply={(slotKey, ingId, qty) => changeIngredientOverride(weekIdx, slotKey, ingId, qty)}
                     />

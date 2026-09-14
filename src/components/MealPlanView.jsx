@@ -107,8 +107,8 @@ function macroDiff(actualG, referenceG) {
   return `${sign}${Math.abs(diff)}g`
 }
 
-// Suggests changing the amount of one editable ingredient to close the calorie gap to a reference
-// (the target, or the sibling option) - mirrors what a coach or client would naturally do by hand.
+// Suggests changing the amount of one editable ingredient to close the gap to a reference (the
+// target, or the sibling option) - mirrors what a coach or client would naturally do by hand.
 // Rounds to whole units for anything counted in whole items (eggs, scoops, slices, …), nearest
 // 5g/ml otherwise, and only offers a suggestion when some ingredient can close the gap without an
 // unreasonably large change to its own amount (more than 1.5x its current quantity either way) - a
@@ -121,16 +121,28 @@ function macroDiff(actualG, referenceG) {
 // recipe, a seasoning that would throw off the dish if it doubled), regardless of what the maths
 // says. "Optional" and "flexible" ingredients stay eligible.
 //
-// Picks whichever candidate lands CLOSEST to fully closing the gap after rounding, not whichever
-// needs the smallest % change to itself - a small, fine-grained tweak (+30ml milk, +5g oats) that
-// nails a small leftover gap exactly is a more sensible suggestion than a big whole-unit jump
-// (a whole extra egg) that overshoots it by 3x just because that egg's own quantity barely moved.
-// Whole-unit ingredients still win when their own per-unit calories happen to fit the gap closely
-// (2 eggs -> 3 for a ~56kcal gap), since that's genuinely the tightest fit available.
-export function suggestAutoFit(ingredients, actualCal, referenceCal, ingredientLib) {
-  if (!referenceCal) return null
+// Solves for calories (the dominant, most visible lever - closing it is what the rounded quantity
+// is chosen to do) but SELECTS among candidates by whichever leaves the whole macro picture
+// closest afterwards, not just calories - so when actualMacros/referenceMacros carry carbs/
+// protein/fat too, an ingredient whose own macro make-up happens to run the same direction as the
+// carb/protein/fat gap (not just the calorie one) is preferred, since changing it only fixes
+// calories while quietly making a macro worse otherwise. A small, fine-grained tweak (+30ml milk,
+// +5g oats) that nails a small leftover gap exactly is a more sensible suggestion than a big
+// whole-unit jump (a whole extra egg) that overshoots it by 3x just because that egg's own
+// quantity barely moved. Whole-unit ingredients still win when their own portion genuinely fits
+// the gap closely (2 eggs -> 3 for a ~56kcal gap), since that's the tightest fit available.
+//
+// actualMacros/referenceMacros: { cal, carb, prot, fat } - carb/prot/fat are optional (e.g. a
+// calorie-only target still works), in which case only calories drive the scoring.
+export function suggestAutoFit(ingredients, actualMacros, referenceMacros, ingredientLib) {
+  const referenceCal = referenceMacros?.cal
+  const actualCal = actualMacros?.cal
+  if (!referenceCal || actualCal == null) return null
   const gapCal = referenceCal - actualCal
   if (Math.abs(gapCal) < Math.max(15, referenceCal * 0.03)) return null // already close enough
+
+  const hasMacros = referenceMacros.carb != null && referenceMacros.prot != null && referenceMacros.fat != null
+  const WEIGHTS = { cal: 4, carb: 1, prot: 1, fat: 1 }
 
   let best = null
   for (const ing of ingredients || []) {
@@ -151,10 +163,23 @@ export function suggestAutoFit(ingredients, actualCal, referenceCal, ingredientL
     const relChange = Math.abs(newQty - qty) / qty
     if (relChange > 1.5) continue // too drastic a change to be a sensible suggestion
 
-    const newCal = calPerUnit * newQty
-    const leftoverGap = Math.abs(gapCal - (newCal - cal)) // how far off target this candidate still leaves things
+    const ratio = newQty / qty
+    const newCal = cal * ratio
+    const leftoverCal = referenceCal - (actualCal - cal + newCal)
 
-    if (!best || leftoverGap < best.leftoverGap - 0.01 || (Math.abs(leftoverGap - best.leftoverGap) <= 0.01 && relChange < best.relChange)) {
+    // Weighted leftover across every dimension we have targets for - calories dominate (as the
+    // primary lever this function solves for), macros are secondary, exactly like the calorie-tier
+    // generator's own weighting (calorieTierScaling.js).
+    let score = WEIGHTS.cal * leftoverCal * leftoverCal
+    if (hasMacros) {
+      const carb = parseFloat(ing.carbs_g) || 0, prot = parseFloat(ing.protein_g) || 0, fat = parseFloat(ing.fat_g) || 0
+      const leftoverCarb = referenceMacros.carb - ((actualMacros.carb ?? 0) - carb + carb * ratio)
+      const leftoverProt = referenceMacros.prot - ((actualMacros.prot ?? 0) - prot + prot * ratio)
+      const leftoverFat  = referenceMacros.fat  - ((actualMacros.fat  ?? 0) - fat  + fat  * ratio)
+      score += WEIGHTS.carb * leftoverCarb * leftoverCarb + WEIGHTS.prot * leftoverProt * leftoverProt + WEIGHTS.fat * leftoverFat * leftoverFat
+    }
+
+    if (!best || score < best.score - 0.01 || (Math.abs(score - best.score) <= 0.01 && relChange < best.relChange)) {
       best = {
         id: ing._tempId || ing.id,
         name: ing.name,
@@ -163,7 +188,7 @@ export function suggestAutoFit(ingredients, actualCal, referenceCal, ingredientL
         unit: unit || 'g',
         deltaCal: Math.round(newCal - cal),
         relChange,
-        leftoverGap,
+        score,
       }
     }
   }
@@ -187,7 +212,7 @@ function fmtQty(qty, unit) {
 // target gap (the biggest lever) appears under the target row - see suggestAutoFit above.
 export function MacroTargetInfo({ macros, target, siblingMacros, siblingLabel = 'other option', ingredients, ingredientLib, onAutoFit }) {
   if (!macros || macros.cal <= 0) return null
-  const suggestion = (target && target.cal > 0 && onAutoFit) ? suggestAutoFit(ingredients, macros.cal, target.cal, ingredientLib) : null
+  const suggestion = (target && target.cal > 0 && onAutoFit) ? suggestAutoFit(ingredients, macros, target, ingredientLib) : null
   return (
     <div className="space-y-1.5">
       {target && target.cal > 0 && (
