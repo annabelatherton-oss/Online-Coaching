@@ -6,7 +6,10 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { calcStandardMacros } from '../../lib/macros'
-import { getIngredients, formatAmount, hasAnyOverride, normalizeOverrides, mealMacros as sharedMealMacros } from '../../components/MealPlanView'
+import {
+  getIngredients, formatAmount, hasAnyOverride, normalizeOverrides, mealMacros as sharedMealMacros,
+  sumIngredientMacros, MacroTargetInfo, MacroBadge, MACRO_META, deviationColor, suggestAutoFit,
+} from '../../components/MealPlanView'
 import {
   generateTierIngredients, insertTierVersion, tierTargetsForCategory, allIngredientsFixed,
 } from '../../lib/calorieTierScaling'
@@ -65,14 +68,11 @@ function OptionTotal({ label, totals, target }) {
 // Each meal's tier version is generated to hit MACRO_SPLIT of its tier's calories (see
 // tierTargetsForCategory in calorieTierScaling.js), so a day's macro "target" is just that same
 // split applied to the full tier number — comparing against it tells a coach at a glance whether
-// the day's actual ingredient mix landed where the generator meant it to.
-const MACRO_TOLERANCE_PCT = 10
-
+// the day's actual ingredient mix landed where the generator meant it to. Colour bands (yellow
+// within 10%, orange 11-20%, red beyond that) come from deviationColor, same as everywhere else
+// a meal's macros are compared against a target.
 function macroColour(actual, target) {
-  if (!target) return 'text-gray-400 dark:text-gray-500'
-  const diffPct = (actual - target) / target * 100
-  if (Math.abs(diffPct) <= MACRO_TOLERANCE_PCT) return 'text-green-600 dark:text-green-400'
-  return diffPct < 0 ? 'text-amber-500' : 'text-red-500'
+  return deviationColor(actual, target)
 }
 
 // Small coloured dots for a quick glance at a collapsed day's macro match without expanding it.
@@ -80,8 +80,8 @@ function MacroDots({ totals, tier }) {
   if (!totals || totals.calories <= 0 || !totals.complete || tier == null) return null
   const targets = calcStandardMacros(tier)
   const dims = [
-    { key: 'P', actual: totals.protein_g, target: targets.protein_g },
     { key: 'C', actual: totals.carbs_g, target: targets.carbs_g },
+    { key: 'P', actual: totals.protein_g, target: targets.protein_g },
     { key: 'F', actual: totals.fat_g, target: targets.fat_g },
   ]
   return (
@@ -93,8 +93,8 @@ function MacroDots({ totals, tier }) {
   )
 }
 
-// Full breakdown shown inside an expanded day — calories plus protein/carbs/fat each against
-// their MACRO_SPLIT target for this tier, colour-coded the same way as the calorie diff above.
+// Full breakdown shown inside an expanded day — the same "add/remove X to hit target" block used
+// everywhere else a meal's macros are edited, applied to the whole day's tier target.
 function MacroMatchRow({ label, totals, tier }) {
   if (!totals || totals.calories <= 0) return null
   if (tier == null) return null
@@ -107,23 +107,13 @@ function MacroMatchRow({ label, totals, tier }) {
     )
   }
   const targets = calcStandardMacros(tier)
-  const calDiff = tier - totals.calories
-  const calColour = calDiff > UNDER_TARGET_TOLERANCE ? 'text-amber-500' : calDiff < -OVER_TARGET_TOLERANCE ? 'text-red-500' : 'text-green-600 dark:text-green-400'
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-      <span className="font-semibold text-gray-500 dark:text-gray-400 w-16">{label}</span>
-      <span className={calColour}>
-        <span className="font-medium">{totals.calories}</span> / {tier} kcal
-      </span>
-      <span className={macroColour(totals.protein_g, targets.protein_g)}>
-        <span className="font-medium">{totals.protein_g}g</span> / {targets.protein_g}g protein
-      </span>
-      <span className={macroColour(totals.carbs_g, targets.carbs_g)}>
-        <span className="font-medium">{totals.carbs_g}g</span> / {targets.carbs_g}g carbs
-      </span>
-      <span className={macroColour(totals.fat_g, targets.fat_g)}>
-        <span className="font-medium">{totals.fat_g}g</span> / {targets.fat_g}g fat
-      </span>
+    <div className="flex flex-wrap items-start gap-x-4 gap-y-1 text-xs">
+      <span className="font-semibold text-gray-500 dark:text-gray-400 w-16 pt-0.5">{label}</span>
+      <MacroTargetInfo
+        macros={{ cal: totals.calories, carb: totals.carbs_g, prot: totals.protein_g, fat: totals.fat_g }}
+        target={{ cal: tier, carb: targets.carbs_g, prot: targets.protein_g, fat: targets.fat_g }}
+      />
     </div>
   )
 }
@@ -210,9 +200,9 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
           <span className="flex-1">Ingredient</span>
           <span className="w-16 text-right">Amount</span>
           <span className="w-14 text-right">Kcal</span>
-          <span className="w-10 text-right">C</span>
-          <span className="w-10 text-right">P</span>
-          <span className="w-10 text-right">F</span>
+          <span className={`w-10 text-right ${MACRO_META.carb.text}`}>C</span>
+          <span className={`w-10 text-right ${MACRO_META.prot.text}`}>P</span>
+          <span className={`w-10 text-right ${MACRO_META.fat.text}`}>F</span>
         </div>
       )}
       {ingredients.map(ing => (
@@ -230,11 +220,28 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
             <span className="text-gray-400 text-[10px]">{ing.unit || 'g'}</span>
           </span>
           <span className="w-14 text-right text-gray-500 dark:text-gray-400 tabular-nums">{round1(ing.calories)}</span>
-          <span className="w-10 text-right text-gray-500 dark:text-gray-400 tabular-nums">{round1(ing.carbs_g)}</span>
-          <span className="w-10 text-right text-gray-500 dark:text-gray-400 tabular-nums">{round1(ing.protein_g)}</span>
-          <span className="w-10 text-right text-gray-500 dark:text-gray-400 tabular-nums">{round1(ing.fat_g)}</span>
+          <span className={`w-10 text-right tabular-nums ${MACRO_META.carb.text}`}>{round1(ing.carbs_g)}</span>
+          <span className={`w-10 text-right tabular-nums ${MACRO_META.prot.text}`}>{round1(ing.protein_g)}</span>
+          <span className={`w-10 text-right tabular-nums ${MACRO_META.fat.text}`}>{round1(ing.fat_g)}</span>
         </div>
       ))}
+      {ingredients.length > 0 && (() => {
+        const macros = sumIngredientMacros(ingredients)
+        const targets = tierTargetsForCategory(tier, category, mealSplit)
+        const target = { cal: targets.calories, carb: targets.carbs_g, prot: targets.protein_g, fat: targets.fat_g }
+        const libraryById = Object.fromEntries(library.map(l => [l.id, l]))
+        return (
+          <div className="pt-1">
+            <MacroTargetInfo
+              macros={macros}
+              target={target}
+              ingredients={ingredients}
+              ingredientLib={libraryById}
+              onAutoFit={onChangeQty}
+            />
+          </div>
+        )
+      })()}
       <div className="flex items-center justify-between pt-1.5 border-t border-gray-100 dark:border-gray-800">
         <span className="text-[11px] text-gray-400 dark:text-gray-500">
           {overridden ? 'Adjusted for this week only — every other week keeps the default' : "Using this meal's default quantities"}
@@ -1105,9 +1112,11 @@ export default function PlanGroupEditor() {
                           {mealId && (
                             <div className="text-xs">
                               {macros ? (
-                                <span className="text-gray-500 dark:text-gray-400">
+                                <span className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
                                   <span className="font-medium text-gray-700 dark:text-gray-300">{macros.calories} kcal</span>
-                                  {' · '}{macros.protein_g}P {macros.carbs_g}C {macros.fat_g}F
+                                  <span className={`flex items-center gap-0.5 ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{macros.carbs_g}g</span>
+                                  <span className={`flex items-center gap-0.5 ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{macros.protein_g}g</span>
+                                  <span className={`flex items-center gap-0.5 ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{macros.fat_g}g</span>
                                 </span>
                               ) : (
                                 <span className="text-amber-500" title="Generate this meal's calorie tiers in the Meal Library">
