@@ -33,6 +33,9 @@ const STATIC_SLOTS = [
 
 const SLOTS = [...MAIN_SLOTS, ...STATIC_SLOTS]
 const STATIC_SLOT_KEYS = new Set(STATIC_SLOTS.map(s => s.key))
+const SLOT_LABELS = Object.fromEntries(SLOTS.map(s => [s.key, s.label]))
+const OPTION_A_KEYS = ['breakfast1', 'lunch1', 'dinner1', 'preworkout', 'evening_snack']
+const OPTION_B_KEYS = ['breakfast2', 'lunch2', 'dinner2', 'preworkout', 'evening_snack']
 
 // Option B needs to stay as close as possible to Option A (a client eats whichever one on any
 // given day), so each B slot's target is A's own sibling slot rather than a generic tier share.
@@ -124,6 +127,44 @@ function MacroMatchRow({ label, totals, tier, referenceTotals }) {
         macros={{ cal: totals.calories, carb: totals.carbs_g, prot: totals.protein_g, fat: totals.fat_g }}
         target={{ cal: usingReference ? targets.calories : tier, carb: targets.carbs_g, prot: targets.protein_g, fat: targets.fat_g }}
       />
+    </div>
+  )
+}
+
+// One-tap "fit the day" suggestion — finds the single best ingredient to nudge across every meal
+// in this option (not just one slot) to close the day's calorie gap. This is the lever for a coach
+// who only cares about the day's total landing right, not which specific meal carries it.
+function DayAutoFitSuggestion({ week, slotKeys, tier, targetCal, mealsById, ingredientLib, slotLabels, onApply }) {
+  if (!targetCal) return null
+  const combined = []
+  const slotOf = {}
+  for (const slotKey of slotKeys) {
+    const mealId = week.slots[slotKey]
+    const meal = mealId ? mealsById[mealId] : null
+    if (!meal) continue
+    for (const ing of getIngredients(meal, tier, week.overrides?.[slotKey])) {
+      combined.push(ing)
+      slotOf[ing._tempId || ing.id] = slotKey
+    }
+  }
+  if (combined.length === 0) return null
+  const actualCal = combined.reduce((s, i) => s + (parseFloat(i.calories) || 0), 0)
+  const suggestion = suggestAutoFit(combined, actualCal, targetCal, ingredientLib)
+  if (!suggestion) return null
+  const slotKey = slotOf[suggestion.id]
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] pl-[4.5rem]">
+      <span className="text-brand-600 dark:text-brand-400">
+        Fit the day: {suggestion.name} ({slotLabels[slotKey]}) {round1(suggestion.oldQty)}{suggestion.unit} → {round1(suggestion.newQty)}{suggestion.unit}
+        {' '}({suggestion.deltaCal > 0 ? '+' : ''}{suggestion.deltaCal} kcal)
+      </span>
+      <button
+        type="button"
+        onClick={() => onApply(slotKey, suggestion.id, suggestion.newQty)}
+        className="font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300 underline"
+      >
+        Apply
+      </button>
     </div>
   )
 }
@@ -1007,8 +1048,8 @@ export default function PlanGroupEditor() {
         const isOpen = expanded.has(week.weekNum)
         const isCurrent = planGroup && week.weekNum === planGroup.current_week
         const isDirty = dirty.has(week.templateId)
-        const opt1Totals = sumSlotMacros(week, ['breakfast1', 'lunch1', 'dinner1', 'preworkout', 'evening_snack'], activeTier)
-        const opt2Totals = sumSlotMacros(week, ['breakfast2', 'lunch2', 'dinner2', 'preworkout', 'evening_snack'], activeTier)
+        const opt1Totals = sumSlotMacros(week, OPTION_A_KEYS, activeTier)
+        const opt2Totals = sumSlotMacros(week, OPTION_B_KEYS, activeTier)
 
         return (
           <div key={week.templateId} className="card p-0 overflow-hidden">
@@ -1051,7 +1092,18 @@ export default function PlanGroupEditor() {
                 {activeTier != null && (opt1Totals.calories > 0 || opt2Totals.calories > 0) && (
                   <div className="px-1 pb-1 space-y-1">
                     <MacroMatchRow label="A" totals={opt1Totals} tier={activeTier} />
+                    <DayAutoFitSuggestion
+                      week={week} slotKeys={OPTION_A_KEYS} tier={activeTier} targetCal={activeTier}
+                      mealsById={mealsById} ingredientLib={ingredientLib} slotLabels={SLOT_LABELS}
+                      onApply={(slotKey, ingId, qty) => changeIngredientOverride(weekIdx, slotKey, ingId, qty)}
+                    />
                     <MacroMatchRow label="B" totals={opt2Totals} tier={activeTier} referenceTotals={opt1Totals} />
+                    <DayAutoFitSuggestion
+                      week={week} slotKeys={OPTION_B_KEYS} tier={activeTier}
+                      targetCal={opt1Totals.calories > 0 ? opt1Totals.calories : activeTier}
+                      mealsById={mealsById} ingredientLib={ingredientLib} slotLabels={SLOT_LABELS}
+                      onApply={(slotKey, ingId, qty) => changeIngredientOverride(weekIdx, slotKey, ingId, qty)}
+                    />
                   </div>
                 )}
                 {SLOTS.map(slot => {
@@ -1149,12 +1201,6 @@ export default function PlanGroupEditor() {
                             </div>
                           )}
 
-                          {macros && slotTarget && (
-                            <MacroTargetInfo
-                              macros={{ cal: macros.calories, carb: macros.carbs_g, prot: macros.protein_g, fat: macros.fat_g }}
-                              target={slotTarget}
-                            />
-                          )}
 
                           <div className="flex items-center gap-3 pt-0.5">
                             {editKey != null && (
