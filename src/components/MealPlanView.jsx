@@ -52,6 +52,16 @@ export const SWAP_FAT_TOLERANCE = 8
 
 function round1(n) { return Math.round(n * 10) / 10 }
 
+// Whether two macro totals are still "close enough" to be considered interchangeable - same
+// tolerances the swap picker uses to judge which options count as a close match.
+export function withinSwapTolerance(a, b) {
+  if (!a || !b) return true
+  return Math.abs(a.cal - b.cal) <= SWAP_CALORIE_TOLERANCE
+    && Math.abs(a.prot - b.prot) <= SWAP_PROTEIN_TOLERANCE
+    && Math.abs(a.carb - b.carb) <= SWAP_CARB_TOLERANCE
+    && Math.abs(a.fat - b.fat) <= SWAP_FAT_TOLERANCE
+}
+
 export function normalizeOverrides(raw) {
   if (!raw) return { qty: {}, removed: [], added: [] }
   if (raw.qty || raw.removed || raw.added) return { qty: raw.qty || {}, removed: raw.removed || [], added: raw.added || [] }
@@ -271,7 +281,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx, originalMacros, siblingMacros }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
   const [prepDays, setPrepDays] = useState(null)
@@ -332,6 +342,20 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                   <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.prot)}g protein</span>
                   <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.fat)}g fat</span>
                 </div>
+              )}
+              {macros && originalMacros && hasAnyOverride(overrides) && !withinSwapTolerance(macros, originalMacros) && (
+                <p className="mt-2 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                  <span className="flex-shrink-0">⚠️</span>
+                  <span>
+                    {Math.round(macros.cal) > Math.round(originalMacros.cal) ? 'Over' : 'Under'} this meal's usual target ({Math.round(originalMacros.cal)} kcal) by more than a bit — worth checking your edits.
+                  </span>
+                </p>
+              )}
+              {macros && siblingMacros && !withinSwapTolerance(macros, siblingMacros) && (
+                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                  <span className="flex-shrink-0">⚠️</span>
+                  <span>No longer close enough in macros to the other option for this meal to swap freely between them.</span>
+                </p>
               )}
             </div>
 

@@ -5,7 +5,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import {
   MEAL_GROUPS, ALL_SLOT_DEFS, OPTION_1_KEYS, OPTION_2_KEYS,
-  mealMacros, addMacros, getIngredients,
+  mealMacros, addMacros, getIngredients, normalizeOverrides,
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
 import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../lib/mealSwaps'
@@ -167,6 +167,83 @@ export default function ClientMealPlan() {
     setEditedSlots(prev => ({ ...prev, [slotKey]: templateSlots[slotKey] || null }))
     setIngredientOverrides(prev => { const n = { ...prev }; delete n[slotKey]; return n })
     setSlotsDirty(true)
+  }
+
+  // Lets a client tweak the ingredients/quantities within a meal, same mechanism the coach's own
+  // delivery panel uses (client_week_meals.ingredient_overrides) - RecipeModal shows a warning
+  // when the edit drifts too far from the meal's own target or from its sibling option (see
+  // originalMacros/siblingMacros passed into RecipeModal below), but nothing here blocks the edit
+  // itself - it's a nudge, not a hard limit.
+  function handleUpdateIngredient(slotKey, ingKey, newQty) {
+    setIngredientOverrides(prev => {
+      const existing = normalizeOverrides(prev[slotKey])
+      const matchAdded = existing.added.find(a => a._tempId === ingKey)
+      if (matchAdded) {
+        const origQty = parseFloat(matchAdded.quantity_g) || 0
+        const ratio = origQty > 0 ? newQty / origQty : 1
+        const updatedAdded = existing.added.map(a => a._tempId !== ingKey ? a : {
+          ...a,
+          quantity_g: newQty,
+          calories:  Math.round((parseFloat(a.calories)  || 0) * ratio * 10) / 10,
+          protein_g: Math.round((parseFloat(a.protein_g) || 0) * ratio * 10) / 10,
+          carbs_g:   Math.round((parseFloat(a.carbs_g)   || 0) * ratio * 10) / 10,
+          fat_g:     Math.round((parseFloat(a.fat_g)     || 0) * ratio * 10) / 10,
+        })
+        return { ...prev, [slotKey]: { ...existing, added: updatedAdded } }
+      }
+      return { ...prev, [slotKey]: { ...existing, qty: { ...existing.qty, [ingKey]: newQty } } }
+    })
+    setSlotsDirty(true)
+  }
+
+  function handleRemoveIngredient(slotKey, ing) {
+    setIngredientOverrides(prev => {
+      const existing = normalizeOverrides(prev[slotKey])
+      if (ing._isAdded) {
+        return { ...prev, [slotKey]: { ...existing, added: existing.added.filter(a => a._tempId !== ing._tempId) } }
+      }
+      return { ...prev, [slotKey]: { ...existing, removed: [...existing.removed, ing.id] } }
+    })
+    setSlotsDirty(true)
+  }
+
+  function handleAddIngredient(slotKey, libIng) {
+    const tempId = `added-${libIng.id}-${Date.now()}`
+    const newIng = {
+      _tempId: tempId,
+      id: libIng.id,
+      name: libIng.name,
+      quantity_g: libIng.serving_size || 100,
+      unit: libIng.serving_unit || 'g',
+      calories:  libIng.calories_per_serving  || 0,
+      protein_g: libIng.protein_per_serving   || 0,
+      carbs_g:   libIng.carbs_per_serving     || 0,
+      fat_g:     libIng.fat_per_serving       || 0,
+      _isAdded: true,
+    }
+    setIngredientOverrides(prev => {
+      const existing = normalizeOverrides(prev[slotKey])
+      return { ...prev, [slotKey]: { ...existing, added: [...existing.added, newIng] } }
+    })
+    setSlotsDirty(true)
+  }
+
+  function handleRevertIngredients(slotKey) {
+    setIngredientOverrides(prev => {
+      const next = { ...prev }
+      delete next[slotKey]
+      return next
+    })
+    setSlotsDirty(true)
+  }
+
+  // The slot in the same meal group this one is meant to stay interchangeable with (Breakfast A <-> B, etc).
+  function siblingSlotKey(slotKey) {
+    const i1 = OPTION_1_KEYS.indexOf(slotKey)
+    if (i1 !== -1) return OPTION_2_KEYS[i1]
+    const i2 = OPTION_2_KEYS.indexOf(slotKey)
+    if (i2 !== -1) return OPTION_1_KEYS[i2]
+    return null
   }
 
   async function handleSave() {
@@ -377,9 +454,19 @@ export default function ClientMealPlan() {
           ingredientOverrides={ingredientOverrides}
           templateSlots={templateSlots}
           mealsByCategory={mealsByCategory}
+          ingredientLib={ingredientLib}
           onClose={() => setRecipeModal(null)}
           onSwap={(slotKey, label, cat) => { setRecipeModal(null); setSwapModal({ slotKey, label, cat }) }}
           onRevert={handleRevert}
+          onUpdateIngredient={handleUpdateIngredient}
+          onRemoveIngredient={handleRemoveIngredient}
+          onAddIngredient={handleAddIngredient}
+          onRevertIngredients={handleRevertIngredients}
+          originalMacros={mealMacros(editedSlots[recipeModal], mealMap, tier, null, swapCtx)}
+          siblingMacros={(() => {
+            const sibKey = siblingSlotKey(recipeModal)
+            return sibKey ? mealMacros(editedSlots[sibKey], mealMap, tier, ingredientOverrides[sibKey], swapCtx) : null
+          })()}
           swapCtx={swapCtx}
         />
       )}
