@@ -34,6 +34,10 @@ const STATIC_SLOTS = [
 const SLOTS = [...MAIN_SLOTS, ...STATIC_SLOTS]
 const STATIC_SLOT_KEYS = new Set(STATIC_SLOTS.map(s => s.key))
 
+// Option B needs to stay as close as possible to Option A (a client eats whichever one on any
+// given day), so each B slot's target is A's own sibling slot rather than a generic tier share.
+const SIBLING_SLOT = { breakfast1: 'breakfast2', breakfast2: 'breakfast1', lunch1: 'lunch2', lunch2: 'lunch1', dinner1: 'dinner2', dinner2: 'dinner1' }
+
 const UNDER_TARGET_TOLERANCE = 50
 const OVER_TARGET_TOLERANCE = 20
 
@@ -76,9 +80,13 @@ function macroColour(actual, target) {
 }
 
 // Small coloured dots for a quick glance at a collapsed day's macro match without expanding it.
-function MacroDots({ totals, tier }) {
+// referenceTotals (optional): Option B's target is Option A's actual macros, not the generic tier
+// split — the two need to stay as close to each other as possible since a client eats either one.
+function MacroDots({ totals, tier, referenceTotals }) {
   if (!totals || totals.calories <= 0 || !totals.complete || tier == null) return null
-  const targets = calcStandardMacros(tier)
+  const targets = referenceTotals?.calories > 0
+    ? referenceTotals
+    : calcStandardMacros(tier)
   const dims = [
     { key: 'C', actual: totals.carbs_g, target: targets.carbs_g },
     { key: 'P', actual: totals.protein_g, target: targets.protein_g },
@@ -94,8 +102,9 @@ function MacroDots({ totals, tier }) {
 }
 
 // Full breakdown shown inside an expanded day — the same "add/remove X to hit target" block used
-// everywhere else a meal's macros are edited, applied to the whole day's tier target.
-function MacroMatchRow({ label, totals, tier }) {
+// everywhere else a meal's macros are edited. referenceTotals (optional): see MacroDots above —
+// Option B is measured against Option A's actual totals rather than the generic tier split.
+function MacroMatchRow({ label, totals, tier, referenceTotals }) {
   if (!totals || totals.calories <= 0) return null
   if (tier == null) return null
   if (!totals.complete) {
@@ -106,13 +115,14 @@ function MacroMatchRow({ label, totals, tier }) {
       </div>
     )
   }
-  const targets = calcStandardMacros(tier)
+  const usingReference = referenceTotals?.calories > 0
+  const targets = usingReference ? referenceTotals : calcStandardMacros(tier)
   return (
     <div className="flex flex-wrap items-start gap-x-4 gap-y-1 text-xs">
       <span className="font-semibold text-gray-500 dark:text-gray-400 w-16 pt-0.5">{label}</span>
       <MacroTargetInfo
         macros={{ cal: totals.calories, carb: totals.carbs_g, prot: totals.protein_g, fat: totals.fat_g }}
-        target={{ cal: tier, carb: targets.carbs_g, prot: targets.protein_g, fat: targets.fat_g }}
+        target={{ cal: usingReference ? targets.calories : tier, carb: targets.carbs_g, prot: targets.protein_g, fat: targets.fat_g }}
       />
     </div>
   )
@@ -124,7 +134,7 @@ function MacroMatchRow({ label, totals, tier }) {
 // template_meal_slots.ingredient_overrides, exactly like a client's own per-week meal-plan
 // overrides. This means adjusting quantities here only ever affects this one week — every other
 // week showing the same meal keeps using the shared default until it's overridden separately.
-function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRevertAll, onGenerated }) {
+function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRevertAll, onGenerated, overrideTarget }) {
   const [library, setLibrary] = useState([])
   const [baseIngredients, setBaseIngredients] = useState([])
   const [loadingBase, setLoadingBase] = useState(true)
@@ -227,8 +237,11 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
       ))}
       {ingredients.length > 0 && (() => {
         const macros = sumIngredientMacros(ingredients)
+        // Option B's slot editor targets Option A's own sibling slot (passed down as
+        // overrideTarget) rather than the generic category share, so the two stay as close as
+        // possible to each other — see SIBLING_SLOT above.
         const targets = tierTargetsForCategory(tier, category, mealSplit)
-        const target = { cal: targets.calories, carb: targets.carbs_g, prot: targets.protein_g, fat: targets.fat_g }
+        const target = overrideTarget || { cal: targets.calories, carb: targets.carbs_g, prot: targets.protein_g, fat: targets.fat_g }
         const libraryById = Object.fromEntries(library.map(l => [l.id, l]))
         return (
           <div className="pt-1">
@@ -1023,8 +1036,8 @@ export default function PlanGroupEditor() {
                     <MacroDots totals={opt1Totals} tier={activeTier} />
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <OptionTotal label="B" totals={opt2Totals} target={activeTier} />
-                    <MacroDots totals={opt2Totals} tier={activeTier} />
+                    <OptionTotal label="B" totals={opt2Totals} target={opt1Totals.calories > 0 ? opt1Totals.calories : activeTier} />
+                    <MacroDots totals={opt2Totals} tier={activeTier} referenceTotals={opt1Totals} />
                   </span>
                 </div>
                 <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1038,7 +1051,7 @@ export default function PlanGroupEditor() {
                 {activeTier != null && (opt1Totals.calories > 0 || opt2Totals.calories > 0) && (
                   <div className="px-1 pb-1 space-y-1">
                     <MacroMatchRow label="A" totals={opt1Totals} tier={activeTier} />
-                    <MacroMatchRow label="B" totals={opt2Totals} tier={activeTier} />
+                    <MacroMatchRow label="B" totals={opt2Totals} tier={activeTier} referenceTotals={opt1Totals} />
                   </div>
                 )}
                 {SLOTS.map(slot => {
@@ -1047,6 +1060,16 @@ export default function PlanGroupEditor() {
                   const meal = mealId ? mealsById[mealId] : null
                   const overridesForSlot = week.overrides?.[slot.key]
                   const macros = mealMacros(mealId, activeTier, overridesForSlot)
+                  // Option B targets Option A's own sibling slot (not the generic category share)
+                  // so the two stay as close as possible — a client eats whichever one on the day.
+                  const siblingKey = SIBLING_SLOT[slot.key]
+                  const siblingMacros = siblingKey ? mealMacros(week.slots[siblingKey] || '', activeTier, week.overrides?.[siblingKey]) : null
+                  const categoryTarget = activeTier != null ? tierTargetsForCategory(activeTier, slot.cat, mealSplit) : null
+                  const slotTarget = siblingMacros
+                    ? { cal: siblingMacros.calories, carb: siblingMacros.carbs_g, prot: siblingMacros.protein_g, fat: siblingMacros.fat_g }
+                    : categoryTarget
+                    ? { cal: categoryTarget.calories, carb: categoryTarget.carbs_g, prot: categoryTarget.protein_g, fat: categoryTarget.fat_g }
+                    : null
                   const isStatic = STATIC_SLOT_KEYS.has(slot.key)
                   const editKey = mealId && activeTier != null ? `${weekIdx}:${slot.key}` : null
                   const isEditingIngredients = editKey != null && editingIngredients === editKey
@@ -1126,6 +1149,13 @@ export default function PlanGroupEditor() {
                             </div>
                           )}
 
+                          {macros && slotTarget && (
+                            <MacroTargetInfo
+                              macros={{ cal: macros.calories, carb: macros.carbs_g, prot: macros.protein_g, fat: macros.fat_g }}
+                              target={slotTarget}
+                            />
+                          )}
+
                           <div className="flex items-center gap-3 pt-0.5">
                             {editKey != null && (
                               <button
@@ -1164,6 +1194,7 @@ export default function PlanGroupEditor() {
                             onChangeQty={(ingId, val) => changeIngredientOverride(weekIdx, slot.key, ingId, val)}
                             onRevertAll={() => revertSlotOverrides(weekIdx, slot.key)}
                             onGenerated={() => refreshMeal(mealId)}
+                            overrideTarget={slotTarget}
                           />
                         </div>
                       )}
