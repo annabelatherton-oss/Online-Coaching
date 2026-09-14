@@ -31,6 +31,7 @@ const navItems = [
   {
     label: 'My Meal Plan',
     to: '/client/meals',
+    tourKey: 'nav-meals',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -41,6 +42,7 @@ const navItems = [
   {
     label: 'Shopping List',
     to: '/client/shopping-list',
+    tourKey: 'nav-shopping',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -51,6 +53,7 @@ const navItems = [
   {
     label: 'My Training',
     to: '/client/training',
+    tourKey: 'nav-training',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -71,6 +74,7 @@ const navItems = [
   {
     label: 'Check-in',
     to: '/client/checkin',
+    tourKey: 'nav-checkin',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -81,6 +85,7 @@ const navItems = [
   {
     label: 'My Daily Plan',
     to: '/client/todos',
+    tourKey: 'nav-todos',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -91,6 +96,7 @@ const navItems = [
   {
     label: 'Messages',
     to: '/client/messages',
+    tourKey: 'nav-messages',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -228,6 +234,7 @@ export default function ClientLayout() {
               key={item.label}
               to={item.to}
               end={item.end}
+              data-tour={item.tourKey}
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
@@ -330,7 +337,7 @@ export default function ClientLayout() {
         </main>
       </div>
 
-      {showTour && <ClientAppTour onClose={() => setShowTour(false)} />}
+      {showTour && <ClientAppTour onClose={() => setShowTour(false)} setSidebarOpen={setSidebarOpen} />}
     </div>
   )
 }
