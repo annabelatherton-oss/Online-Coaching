@@ -107,13 +107,20 @@ function macroDiff(actualG, referenceG) {
   return `${sign}${Math.abs(diff)}g`
 }
 
-// Suggests changing the amount of one editable ingredient to close most of the calorie gap to a
-// reference (the target, or the sibling option) - mirrors what a coach or client would naturally
-// do by hand, e.g. bumping 2 eggs to 3. Rounds to whole units for anything counted in whole items
-// (eggs, scoops, slices, …), nearest 5g/ml otherwise, and only offers a suggestion when some
-// ingredient can close the gap without an unreasonably large change to its own amount (more than
-// 1.5x its current quantity either way) - a spice or garnish that would need to jump tenfold to
-// close the gap is never suggested, since the huge calorie-per-gram mismatch rules it out itself.
+// Suggests changing the amount of one editable ingredient to close the calorie gap to a reference
+// (the target, or the sibling option) - mirrors what a coach or client would naturally do by hand.
+// Rounds to whole units for anything counted in whole items (eggs, scoops, slices, …), nearest
+// 5g/ml otherwise, and only offers a suggestion when some ingredient can close the gap without an
+// unreasonably large change to its own amount (more than 1.5x its current quantity either way) - a
+// spice or garnish that would need to jump tenfold to close the gap is never suggested, since the
+// huge calorie-per-gram mismatch rules it out itself.
+//
+// Picks whichever candidate lands CLOSEST to fully closing the gap after rounding, not whichever
+// needs the smallest % change to itself - a small, fine-grained tweak (+30ml milk, +5g oats) that
+// nails a small leftover gap exactly is a more sensible suggestion than a big whole-unit jump
+// (a whole extra egg) that overshoots it by 3x just because that egg's own quantity barely moved.
+// Whole-unit ingredients still win when their own per-unit calories happen to fit the gap closely
+// (2 eggs -> 3 for a ~56kcal gap), since that's genuinely the tightest fit available.
 export function suggestAutoFit(ingredients, actualCal, referenceCal, ingredientLib) {
   if (!referenceCal) return null
   const gapCal = referenceCal - actualCal
@@ -138,15 +145,19 @@ export function suggestAutoFit(ingredients, actualCal, referenceCal, ingredientL
     const relChange = Math.abs(newQty - qty) / qty
     if (relChange > 1.5) continue // too drastic a change to be a sensible suggestion
 
-    if (!best || relChange < best.relChange) {
+    const newCal = calPerUnit * newQty
+    const leftoverGap = Math.abs(gapCal - (newCal - cal)) // how far off target this candidate still leaves things
+
+    if (!best || leftoverGap < best.leftoverGap - 0.01 || (Math.abs(leftoverGap - best.leftoverGap) <= 0.01 && relChange < best.relChange)) {
       best = {
         id: ing._tempId || ing.id,
         name: ing.name,
         oldQty: qty,
         newQty,
         unit: unit || 'g',
-        deltaCal: Math.round(calPerUnit * newQty - cal),
+        deltaCal: Math.round(newCal - cal),
         relChange,
+        leftoverGap,
       }
     }
   }
