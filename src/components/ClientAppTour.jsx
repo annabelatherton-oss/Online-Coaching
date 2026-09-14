@@ -39,7 +39,7 @@ const STEPS = [
 
 const STORAGE_KEY = 'clientTourSeen_v1'
 const POLL_MS = 100
-const BOTTOM_CARD_CLEARANCE = 190 // keep spotlighted elements clear of the fixed bottom card
+const CARD_ZONE_HALF_HEIGHT = 110 // keeps spotlighted elements clear of the centred card's vertical band
 
 export function shouldAutoShowTour() {
   try {
@@ -99,15 +99,18 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
       const el = findVisible(selectors)
       if (!el) return
       clearInterval(poll)
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      // Scroll it to the top portion of the screen, clear of the card's zone in the vertical
+      // centre - the card sits in the same comfortable spot on every step, so the target needs to
+      // stay out of its way rather than the other way round.
+      el.scrollIntoView({ block: 'start', behavior: 'smooth' })
       setTimeout(() => {
         if (cancelled) return
         let r = el.getBoundingClientRect()
-        const limit = window.innerHeight - BOTTOM_CARD_CLEARANCE
-        if (r.bottom > limit) {
+        const cardZoneTop = window.innerHeight / 2 - CARD_ZONE_HALF_HEIGHT
+        if (r.bottom > cardZoneTop) {
           const main = document.querySelector('main')
           if (main) {
-            main.scrollTop += (r.bottom - limit)
+            main.scrollTop += (r.bottom - cardZoneTop) + 16
             r = el.getBoundingClientRect()
           }
         }
@@ -138,7 +141,6 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
     width: rect.width + pad * 2,
     height: rect.height + pad * 2,
   }
-  const stillLooking = current.kind !== 'welcome' && !spotlightBox
 
   return (
     <div className="fixed inset-0 z-[70]">
@@ -158,16 +160,11 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
         />
       )}
 
-      {stillLooking && (
-        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white/70 text-sm">
-          Loading…
-        </div>
-      )}
-
-      {/* Always docked to the same spot at the bottom of the screen - the spotlight moves around
-          to show what's being explained, but the card explaining it never jumps around. */}
-      <div className="fixed inset-x-0 bottom-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-        <div className="max-w-sm mx-auto bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-4">
+      {/* Always centred on screen with clear space around it on every side - never flush against
+          the top, bottom, or edges of the phone. The spotlight moves around to show what's being
+          explained; the card explaining it stays put in the same comfortable spot. */}
+      <div className="fixed inset-0 flex items-center justify-center px-6 pointer-events-none">
+        <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-4 pointer-events-auto">
           <div className="flex items-start justify-between gap-3 mb-1">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">{current.title}</h2>
             <button onClick={stop} className="flex-shrink-0 text-[11px] font-medium text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 mt-0.5">
