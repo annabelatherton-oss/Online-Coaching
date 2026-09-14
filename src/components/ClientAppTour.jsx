@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
 // Three kinds of step:
@@ -69,6 +69,8 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
   const location = useLocation()
   const current = STEPS[step]
   const isLast = step === STEPS.length - 1
+  const lastElRef = useRef(null) // the element the previous step actually highlighted
+  const dirRef = useRef(1) // +1 after Next, -1 after Back - used so an auto-skip moves the same way
 
   function stop() {
     try { localStorage.setItem(STORAGE_KEY, 'true') } catch { /* ignore */ }
@@ -77,9 +79,16 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
     onClose()
   }
 
+  function goNext() { dirRef.current = 1; if (isLast) stop(); else setStep(s => s + 1) }
+  function goBack() { dirRef.current = -1; setStep(s => s - 1) }
+
   // Locate this step's target (a nav link or a real page feature), navigating / opening the nav
   // drawer first if needed. Keeps polling for as long as the tour is on this step - no timeout, no
-  // auto-advance. The client always decides when to move on.
+  // auto-advance. The client always decides when to move on - the one exception is a "page" step
+  // that only ever resolves to the exact same fallback heading the previous step already showed
+  // (e.g. several steps in a row on an account with no plan assigned yet, so none of the actual
+  // features exist to point at): showing the identical highlight again with different words looks
+  // like the tour is broken, so those are skipped immediately rather than shown.
   useEffect(() => {
     setRect(null)
 
@@ -99,6 +108,13 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
       const el = findVisible(selectors)
       if (!el) return
       clearInterval(poll)
+
+      if (current.kind === 'page' && el === lastElRef.current) {
+        const next = step + dirRef.current
+        if (next >= 0 && next < STEPS.length) { setStep(next); return }
+      }
+      lastElRef.current = el
+
       // Scroll it to the top portion of the screen, clear of the card's zone in the vertical
       // centre - the card sits in the same comfortable spot on every step, so the target needs to
       // stay out of its way rather than the other way round. Instant, not smooth: an animated
@@ -109,7 +125,10 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
         if (cancelled) return
         let r = el.getBoundingClientRect()
         const cardZoneTop = window.innerHeight / 2 - CARD_ZONE_HALF_HEIGHT
-        if (r.bottom > cardZoneTop) {
+        // Only push it down out of the card's way if it actually fits in the space above the card -
+        // otherwise the push scrolls straight past and clips the top of it off-screen instead,
+        // which is worse than just leaving it (slightly) behind the card.
+        if (r.bottom > cardZoneTop && r.height <= cardZoneTop - 24) {
           const main = document.querySelector('main')
           if (main) {
             main.scrollTop += (r.bottom - cardZoneTop) + 16
@@ -179,12 +198,12 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
             <span className="text-[11px] text-gray-400 dark:text-gray-500">{step + 1} of {STEPS.length}</span>
             <div className="flex items-center gap-3">
               {step > 0 && (
-                <button onClick={() => setStep(s => s - 1)} className="text-xs font-medium text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <button onClick={goBack} className="text-xs font-medium text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                   Back
                 </button>
               )}
               <button
-                onClick={() => (isLast ? stop() : setStep(s => s + 1))}
+                onClick={goNext}
                 className="text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 px-3.5 py-1.5 rounded-lg"
               >
                 {isLast ? "Let's go" : 'Next'}
