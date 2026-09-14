@@ -156,8 +156,20 @@ function DayAutoFitSuggestion({ week, slotKeys, tier, targetCal, mealsById, ingr
   }
   if (combined.length === 0) return null
   const actualCal = combined.reduce((s, i) => s + (parseFloat(i.calories) || 0), 0)
+  if (actualCal <= 0) return null
+  const gapCal = targetCal - actualCal
+  if (Math.abs(gapCal) < Math.max(15, targetCal * 0.03)) return null // already close enough - the totals above already read as "on target"
+
   const suggestion = suggestAutoFit(combined, actualCal, targetCal, ingredientLib)
-  if (!suggestion) return null
+  if (!suggestion) {
+    // Still says something rather than showing nothing - every eligible ingredient here is either
+    // too small to matter or marked Fixed, so closing this gap needs swapping a meal instead.
+    return (
+      <p className="text-[11px] text-gray-400 dark:text-gray-500 pl-[4.5rem]">
+        No small ingredient change closes this gap without touching something marked Fixed — try swapping a meal instead.
+      </p>
+    )
+  }
   const slotKey = slotOf[suggestion.id]
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] pl-[4.5rem]">
