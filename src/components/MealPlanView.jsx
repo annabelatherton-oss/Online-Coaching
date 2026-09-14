@@ -52,14 +52,48 @@ export const SWAP_FAT_TOLERANCE = 8
 
 function round1(n) { return Math.round(n * 10) / 10 }
 
-// Whether two macro totals are still "close enough" to be considered interchangeable - same
-// tolerances the swap picker uses to judge which options count as a close match.
-export function withinSwapTolerance(a, b) {
-  if (!a || !b) return true
-  return Math.abs(a.cal - b.cal) <= SWAP_CALORIE_TOLERANCE
-    && Math.abs(a.prot - b.prot) <= SWAP_PROTEIN_TOLERANCE
-    && Math.abs(a.carb - b.carb) <= SWAP_CARB_TOLERANCE
-    && Math.abs(a.fat - b.fat) <= SWAP_FAT_TOLERANCE
+// Percentage a meal's calories are off from some reference (its target share of the day, or its
+// sibling option's calories) - direction doesn't matter, only distance.
+export function deviationPct(actualCal, referenceCal) {
+  if (!referenceCal) return null
+  return Math.round(Math.abs(actualCal - referenceCal) / Math.abs(referenceCal) * 100)
+}
+
+// Same three bands wherever a meal's macros are compared against something, so the colour always
+// means the same thing: within 10% is yellow, 11-20% is orange, anything beyond that is red -
+// whether the meal is over or under makes no difference to the banding.
+export function deviationColor(actualCal, referenceCal) {
+  const pct = deviationPct(actualCal, referenceCal)
+  if (pct == null) return 'text-gray-400 dark:text-gray-500'
+  if (pct <= 10) return 'text-yellow-600 dark:text-yellow-500'
+  if (pct <= 20) return 'text-orange-500 dark:text-orange-400'
+  return 'text-red-500 dark:text-red-400'
+}
+
+// The standard "here's the target, here's this meal, here's how far off the sibling option is"
+// block shown wherever a meal's ingredients can be edited, so it reads the same everywhere:
+//  - target: this slot's share of the day's targets (from the coach's meal-split % and the
+//    client's calorie/macro targets) - omit if there's no client target to compare against.
+//  - siblingMacros: the other option for this same meal (e.g. Breakfast A's sibling is B) - omit
+//    for slots with only one option (pre-workout, evening snack).
+export function MacroTargetInfo({ macros, target, siblingMacros, siblingLabel = 'other option' }) {
+  if (!macros || macros.cal <= 0) return null
+  return (
+    <div className="space-y-0.5">
+      {target && target.cal > 0 && (
+        <p className={`text-xs ${deviationColor(macros.cal, target.cal)}`}>
+          Target: {Math.round(target.cal)} kcal · {Math.round(target.carb)}g C · {Math.round(target.prot)}g P · {Math.round(target.fat)}g F
+          <span className="opacity-70"> — this meal: {Math.round(macros.cal)} kcal · {Math.round(macros.carb)}g C · {Math.round(macros.prot)}g P · {Math.round(macros.fat)}g F</span>
+          {' '}({deviationPct(macros.cal, target.cal)}% {macros.cal >= target.cal ? 'over' : 'under'})
+        </p>
+      )}
+      {siblingMacros && siblingMacros.cal > 0 && (
+        <p className={`text-xs ${deviationColor(macros.cal, siblingMacros.cal)}`}>
+          vs {siblingLabel}: {Math.round(Math.abs(macros.cal - siblingMacros.cal))} kcal {macros.cal >= siblingMacros.cal ? 'more' : 'less'} ({deviationPct(macros.cal, siblingMacros.cal)}% different)
+        </p>
+      )}
+    </div>
+  )
 }
 
 export function normalizeOverrides(raw) {
@@ -281,7 +315,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx, originalMacros, siblingMacros }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx, target, siblingMacros, siblingLabel }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
   const [prepDays, setPrepDays] = useState(null)
@@ -343,19 +377,10 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                   <span className="text-gray-500 dark:text-gray-400">{Math.round(macros.fat)}g fat</span>
                 </div>
               )}
-              {macros && originalMacros && hasAnyOverride(overrides) && !withinSwapTolerance(macros, originalMacros) && (
-                <p className="mt-2 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
-                  <span className="flex-shrink-0">⚠️</span>
-                  <span>
-                    {Math.round(macros.cal) > Math.round(originalMacros.cal) ? 'Over' : 'Under'} this meal's usual target ({Math.round(originalMacros.cal)} kcal) by more than a bit — worth checking your edits.
-                  </span>
-                </p>
-              )}
-              {macros && siblingMacros && !withinSwapTolerance(macros, siblingMacros) && (
-                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
-                  <span className="flex-shrink-0">⚠️</span>
-                  <span>No longer close enough in macros to the other option for this meal to swap freely between them.</span>
-                </p>
+              {macros && (target || siblingMacros) && (
+                <div className="mt-2">
+                  <MacroTargetInfo macros={macros} target={target} siblingMacros={siblingMacros} siblingLabel={siblingLabel} />
+                </div>
               )}
             </div>
 

@@ -11,6 +11,7 @@ import {
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { calcStandardMacros, normalizeGoalMacroSplits } from '../../lib/macros'
+import { normalizeMealSplit } from '../../lib/calorieSplit'
 import ExerciseThumb from '../../components/ExerciseThumb'
 import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
@@ -145,6 +146,7 @@ function DeltaTag({ delta, invertColors = false, suffix = ' kg' }) {
 function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
   const { profile } = useAuth()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
+  const mealSplit = normalizeMealSplit(profile?.meal_split)
   const [loading, setLoading] = useState(true)
   const [coachNotes, setCoachNotes] = useState(current?.coach_response || '')
   const [calorieTarget, setCalorieTarget] = useState(String(activeAssignment?.calorie_target ?? ''))
@@ -733,6 +735,20 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const targetCal = parseInt(calorieTarget) || 0
   const targetMacros = targetCal > 0 ? calcStandardMacros(targetCal, client?.goal_type, goalSplits) : null
 
+  // A single slot's share of the daily target, for the ingredient-editing modal.
+  function slotTarget(cat) {
+    if (!targetMacros || !mealSplit || targetCal <= 0) return null
+    const pct = (mealSplit[cat] || 0) / 100
+    return { cal: targetCal * pct, prot: targetMacros.protein_g * pct, carb: targetMacros.carbs_g * pct, fat: targetMacros.fat_g * pct }
+  }
+  function siblingSlotKey(slotKey) {
+    const i1 = OPTION_1_KEYS.indexOf(slotKey)
+    if (i1 !== -1) return OPTION_2_KEYS[i1]
+    const i2 = OPTION_2_KEYS.indexOf(slotKey)
+    if (i2 !== -1) return OPTION_1_KEYS[i2]
+    return null
+  }
+
   return (
     <div className="space-y-0">
       {/* Sticky header */}
@@ -1286,6 +1302,12 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
           onRemove={handleRemoveMeal}
+          target={slotTarget(ALL_SLOT_DEFS.find(s => s.key === recipeModal)?.cat)}
+          siblingMacros={(() => {
+            const sibKey = siblingSlotKey(recipeModal)
+            return sibKey ? mealMacros(editedSlots[sibKey], mealMap, tier, ingredientOverrides[sibKey]) : null
+          })()}
+          siblingLabel={ALL_SLOT_DEFS.find(s => s.key === siblingSlotKey(recipeModal))?.optionLabel || 'other option'}
         />
       )}
     </div>

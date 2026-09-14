@@ -17,6 +17,7 @@ import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import DislikePicker from '../../components/DislikePicker'
 import SwapRulePicker from '../../components/SwapRulePicker'
 import TargetDateBanner from '../../components/TargetDateBanner'
+import { MacroTargetInfo } from '../../components/MealPlanView'
 
 const TABS = ['Overview', 'Meal Plan', 'Training', 'Daily Plan', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
 
@@ -1213,6 +1214,7 @@ const MEAL_SLOTS = [
 const EVERYDAY_DIRECT_SLOTS = ['breakfast1', 'lunch1', 'dinner1']
 const EVERYDAY_REQUEST_SLOTS = ['preworkout', 'evening_snack']
 const EVERYDAY_LABELS = { breakfast1: 'Breakfast', lunch1: 'Lunch', dinner1: 'Dinner', preworkout: 'Pre-workout', evening_snack: 'Evening snack' }
+const EVERYDAY_CAT = { breakfast1: 'breakfast', lunch1: 'lunch', dinner1: 'dinner', preworkout: 'pre_workout', evening_snack: 'evening_snack' }
 
 // ─── Food restriction helpers ──────────────────────────────────────────────────
 // getMealConflicts/findSafeMeal/findSafeAlternative now live in src/lib/mealSwaps.js
@@ -1411,7 +1413,7 @@ function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides) {
 // and ingredients can be removed or added just for this client — none of it touches the shared
 // master meal/tier-version data. Quantity overrides rescale that ingredient's macros proportionally;
 // added ingredients are pulled from the coach's ingredient library so their macros are accurate.
-function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange, target }) {
+function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange, target, siblingMacros, siblingLabel }) {
   const [addingOpen, setAddingOpen] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addSelected, setAddSelected] = useState(null)
@@ -1608,22 +1610,16 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
         </div>
       )}
 
-      {totCal > 0 && target && (() => {
-        const gap = target.cal - totCal
-        const overBy = gap < -OVER_TARGET_TOLERANCE ? Math.round(-gap) : null
-        const underBy = gap > UNDER_TARGET_TOLERANCE ? Math.round(gap) : null
-        return (
-          <div className={`flex items-center gap-2 text-xs pt-0.5 ${overBy != null ? 'text-orange-500' : underBy != null ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'}`}>
-            <span className="flex-1">
-              Target{overBy != null ? ` — ${overBy} kcal over` : underBy != null ? ` — ${underBy} kcal under` : ' — on track'}
-            </span>
-            <span className="tabular-nums w-16 text-right">{Math.round(target.cal)} kcal</span>
-            <span className="tabular-nums w-10 text-right">{Math.round(target.carb)}g</span>
-            <span className="tabular-nums w-10 text-right">{Math.round(target.prot)}g</span>
-            <span className="tabular-nums w-10 text-right">{Math.round(target.fat)}g</span>
-          </div>
-        )
-      })()}
+      {totCal > 0 && (target || siblingMacros) && (
+        <div className="pt-0.5">
+          <MacroTargetInfo
+            macros={{ cal: totCal, carb: totCarb, prot: totProt, fat: totFat }}
+            target={target}
+            siblingMacros={siblingMacros}
+            siblingLabel={siblingLabel}
+          />
+        </div>
+      )}
 
       {removed.length > 0 && (
         <div className="pt-1.5 space-y-1">
@@ -2269,6 +2265,12 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
     const overridesForSlot = ingredientOverrides[slotKey]
     const macros = mealMacros(currentId, mealMap, tier, overridesForSlot)
     const slotTgt = slotTarget(cat)
+    const siblingKey = OPTION_1_KEYS.includes(slotKey) ? OPTION_2_KEYS[OPTION_1_KEYS.indexOf(slotKey)]
+      : OPTION_2_KEYS.includes(slotKey) ? OPTION_1_KEYS[OPTION_2_KEYS.indexOf(slotKey)]
+      : null
+    const siblingId = siblingKey ? (editedSlots[siblingKey] || '') : ''
+    const siblingSlotMacros = siblingKey ? mealMacros(siblingId, mealMap, tier, ingredientOverrides[siblingKey]) : null
+    const siblingSlotLabel = siblingKey ? (MEAL_SLOTS.find(s => s.key === siblingKey)?.label || 'other option') : 'other option'
     const isComparing = comparingSlots.has(slotKey)
     const options = mealsByCategory[cat] || []
     const isOverridden = templateSlots[slotKey] !== undefined && (editedSlots[slotKey] || null) !== (templateSlots[slotKey] || null)
@@ -2348,11 +2350,8 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
             {currentId && macros.cal > 0 && <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums ml-auto">{Math.round(macros.cal)} kcal</span>}
           </div>
 
-          {currentId && macros.cal > 0 && slotTgt && (
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              Target: {Math.round(slotTgt.cal)} kcal · {Math.round(slotTgt.carb)}g C · {Math.round(slotTgt.prot)}g P · {Math.round(slotTgt.fat)}g F
-              <span className="text-gray-300 dark:text-gray-600"> — this meal: {Math.round(macros.cal)} kcal · {Math.round(macros.carb)}g C · {Math.round(macros.prot)}g P · {Math.round(macros.fat)}g F</span>
-            </p>
+          {currentId && macros.cal > 0 && (
+            <MacroTargetInfo macros={macros} target={slotTgt} siblingMacros={siblingSlotMacros} siblingLabel={siblingSlotLabel} />
           )}
 
           {isStaticSlot && currentId && (
@@ -2520,6 +2519,8 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
               onToggleStatic={ing => toggleIngredientStatic(currentId, ing)}
               onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(currentId, ing, qty)}
               target={slotTgt}
+              siblingMacros={siblingSlotMacros}
+              siblingLabel={siblingSlotLabel}
             />
           )}
         </div>
@@ -2908,6 +2909,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
                         onAdd={newIng => everydayHandlers.add(slotKey, newIng)}
                         onRemoveAdded={addedId => everydayHandlers.removeAdded(slotKey, addedId)}
                         onRevertAll={() => everydayHandlers.revertAll(slotKey)}
+                        target={slotTarget(EVERYDAY_CAT[slotKey])}
                       />
                     </div>
                   )}
@@ -2965,6 +2967,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits }) {
                         onAdd={newIng => everydayHandlers.add(slotKey, newIng)}
                         onRemoveAdded={addedId => everydayHandlers.removeAdded(slotKey, addedId)}
                         onRevertAll={() => everydayHandlers.revertAll(slotKey)}
+                        target={slotTarget(EVERYDAY_CAT[slotKey])}
                       />
                     </div>
                   )}

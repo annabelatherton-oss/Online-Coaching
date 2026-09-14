@@ -9,6 +9,8 @@ import {
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
 import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../lib/mealSwaps'
+import { normalizeMealSplit } from '../../lib/calorieSplit'
+import { normalizeGoalMacroSplits, splitForGoal, calcMacrosFromSplit } from '../../lib/macros'
 import EverydayMealsClient from '../../components/EverydayMealsClient'
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -34,6 +36,8 @@ export default function ClientMealPlan() {
   const [swapModal, setSwapModal] = useState(null)   // { slotKey, label, cat }
   const [recipeModal, setRecipeModal] = useState(null) // slotKey
   const [swapCtx, setSwapCtx] = useState(null)
+  const [mealSplit, setMealSplit] = useState(null)
+  const [goalMacroSplits, setGoalMacroSplits] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -53,7 +57,7 @@ export default function ClientMealPlan() {
       setWeekNumber(effectiveWeek)
       setPersonalWeek((checkinCount ?? 0) + 1)
 
-      const [{ data: mealsData }, { data: libData }] = await Promise.all([
+      const [{ data: mealsData }, { data: libData }, { data: coachProfile }] = await Promise.all([
         supabase.from('meals').select(`
           id, name, category, instructions, photo_url, photo_position,
           meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static),
@@ -61,7 +65,10 @@ export default function ClientMealPlan() {
             meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
         `).eq('coach_id', clientRow.coach_id).order('name'),
         supabase.from('ingredients').select('id, name, serving_unit').eq('coach_id', clientRow.coach_id),
+        supabase.from('profiles').select('meal_split, goal_macro_splits').eq('id', clientRow.coach_id).single(),
       ])
+      setMealSplit(normalizeMealSplit(coachProfile?.meal_split))
+      setGoalMacroSplits(normalizeGoalMacroSplits(coachProfile?.goal_macro_splits))
 
       const lib = {}
       for (const ing of (libData || [])) lib[ing.id] = ing
@@ -170,10 +177,10 @@ export default function ClientMealPlan() {
   }
 
   // Lets a client tweak the ingredients/quantities within a meal, same mechanism the coach's own
-  // delivery panel uses (client_week_meals.ingredient_overrides) - RecipeModal shows a warning
-  // when the edit drifts too far from the meal's own target or from its sibling option (see
-  // originalMacros/siblingMacros passed into RecipeModal below), but nothing here blocks the edit
-  // itself - it's a nudge, not a hard limit.
+  // delivery panel uses (client_week_meals.ingredient_overrides) - RecipeModal shows the slot's
+  // target and how far the edit has taken it from the sibling option (see target/siblingMacros
+  // passed into RecipeModal below), but nothing here blocks the edit itself - it's a nudge, not a
+  // hard limit.
   function handleUpdateIngredient(slotKey, ingKey, newQty) {
     setIngredientOverrides(prev => {
       const existing = normalizeOverrides(prev[slotKey])
@@ -244,6 +251,23 @@ export default function ClientMealPlan() {
     const i2 = OPTION_2_KEYS.indexOf(slotKey)
     if (i2 !== -1) return OPTION_1_KEYS[i2]
     return null
+  }
+
+  // Full day's macro targets, same goal-phase split used everywhere else in the app (Overview tab,
+  // check-ins) applied to this plan's calorie target — then a slot's own share of that, from the
+  // coach's meal-split %, so "target" means the same thing here as it does on the coach's side.
+  const dailyMacroTargets = assignment?.calorie_target && goalMacroSplits
+    ? { cal: assignment.calorie_target, ...calcMacrosFromSplit(assignment.calorie_target, splitForGoal(clientData?.goal_type, goalMacroSplits)) }
+    : null
+  function slotTarget(cat) {
+    if (!dailyMacroTargets || !mealSplit) return null
+    const pct = (mealSplit[cat] || 0) / 100
+    return {
+      cal:  dailyMacroTargets.cal * pct,
+      prot: dailyMacroTargets.protein_g * pct,
+      carb: dailyMacroTargets.carbs_g * pct,
+      fat:  dailyMacroTargets.fat_g * pct,
+    }
   }
 
   async function handleSave() {
@@ -462,11 +486,12 @@ export default function ClientMealPlan() {
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
           onRevertIngredients={handleRevertIngredients}
-          originalMacros={mealMacros(editedSlots[recipeModal], mealMap, tier, null, swapCtx)}
+          target={slotTarget(ALL_SLOT_DEFS.find(s => s.key === recipeModal)?.cat)}
           siblingMacros={(() => {
             const sibKey = siblingSlotKey(recipeModal)
             return sibKey ? mealMacros(editedSlots[sibKey], mealMap, tier, ingredientOverrides[sibKey], swapCtx) : null
           })()}
+          siblingLabel={ALL_SLOT_DEFS.find(s => s.key === siblingSlotKey(recipeModal))?.optionLabel || 'other option'}
           swapCtx={swapCtx}
         />
       )}
