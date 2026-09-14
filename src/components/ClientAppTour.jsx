@@ -40,7 +40,8 @@ const STEPS = [
 
 const STORAGE_KEY = 'clientTourSeen_v1'
 const POLL_MS = 100
-const CARD_ZONE_HALF_HEIGHT = 110 // keeps spotlighted elements clear of the centred card's vertical band
+const CARD_HEIGHT_ESTIMATE = 170 // rough card height, used to decide which side of the spotlight it fits on
+const EDGE_MARGIN = 24 // minimum gap the card keeps from the very top/bottom of the screen
 
 export function shouldAutoShowTour() {
   try {
@@ -116,27 +117,13 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
       }
       lastElRef.current = el
 
-      // Scroll it to the top portion of the screen, clear of the card's zone in the vertical
-      // centre - the card sits in the same comfortable spot on every step, so the target needs to
-      // stay out of its way rather than the other way round. Instant, not smooth: an animated
-      // scroll here would still be mid-flight when the correction below runs, and the two fighting
-      // over the same scroll position is what left the page feeling "stuck" on longer pages.
-      el.scrollIntoView({ block: 'start', behavior: 'auto' })
+      // Instant, not smooth: an animated scroll here would still be mid-flight when the card's
+      // position gets recalculated a moment later, and the two fighting over the same scroll
+      // position is what left the page feeling "stuck" on longer pages.
+      el.scrollIntoView({ block: 'center', behavior: 'auto' })
       requestAnimationFrame(() => {
         if (cancelled) return
-        let r = el.getBoundingClientRect()
-        const cardZoneTop = window.innerHeight / 2 - CARD_ZONE_HALF_HEIGHT
-        // Only push it down out of the card's way if it actually fits in the space above the card -
-        // otherwise the push scrolls straight past and clips the top of it off-screen instead,
-        // which is worse than just leaving it (slightly) behind the card.
-        if (r.bottom > cardZoneTop && r.height <= cardZoneTop - 24) {
-          const main = document.querySelector('main')
-          if (main) {
-            main.scrollTop += (r.bottom - cardZoneTop) + 16
-            r = el.getBoundingClientRect()
-          }
-        }
-        setRect(r)
+        setRect(el.getBoundingClientRect())
       })
     }, POLL_MS)
 
@@ -164,6 +151,20 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
     height: rect.height + pad * 2,
   }
 
+  // Card follows the spotlight - goes below it if there's more room there, above it otherwise -
+  // but is always clamped to a minimum gap from the very top/bottom of the screen so it can never
+  // end up flush against either edge (or the notch / home-indicator area).
+  const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
+  let cardTop = null
+  if (spotlightBox) {
+    const spaceAbove = spotlightBox.top
+    const spaceBelow = viewportH - spotlightBox.top - spotlightBox.height
+    cardTop = spaceBelow >= spaceAbove
+      ? spotlightBox.top + spotlightBox.height + 16
+      : spotlightBox.top - CARD_HEIGHT_ESTIMATE - 16
+    cardTop = Math.max(EDGE_MARGIN, Math.min(cardTop, viewportH - CARD_HEIGHT_ESTIMATE - EDGE_MARGIN))
+  }
+
   return (
     <div className="fixed inset-0 z-[70]">
       {/* Transparent while a spotlight is up (its own box-shadow paints the dark backdrop),
@@ -182,10 +183,13 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
         />
       )}
 
-      {/* Always centred on screen with clear space around it on every side - never flush against
-          the top, bottom, or edges of the phone. The spotlight moves around to show what's being
-          explained; the card explaining it stays put in the same comfortable spot. */}
-      <div className="fixed inset-0 flex items-center justify-center px-6 pointer-events-none">
+      {/* Follows the spotlight (below it, or above if that has more room) with a comfortable gap on
+          every side - never flush against the top, bottom, or edges of the phone. On the welcome
+          step, with nothing to point at, it's simply centred. */}
+      <div
+        className="fixed inset-x-0 flex justify-center px-6 pointer-events-none transition-[top] duration-300"
+        style={cardTop === null ? { top: '50%', transform: 'translateY(-50%)' } : { top: cardTop }}
+      >
         <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-4 pointer-events-auto">
           <div className="flex items-start justify-between gap-3 mb-1">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">{current.title}</h2>
