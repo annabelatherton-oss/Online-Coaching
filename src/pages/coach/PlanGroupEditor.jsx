@@ -155,7 +155,7 @@ function DayAutoFitSuggestion({ week, slotKeys, tier, target, mealsById, ingredi
 // template_meal_slots.ingredient_overrides, exactly like a client's own per-week meal-plan
 // overrides. This means adjusting quantities here only ever affects this one week — every other
 // week showing the same meal keeps using the shared default until it's overridden separately.
-function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRevertAll, onGenerated, overrideTarget }) {
+function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onRevertAll, onGenerated, overrideTarget }) {
   const [library, setLibrary] = useState([])
   const [baseIngredients, setBaseIngredients] = useState([])
   const [loadingBase, setLoadingBase] = useState(true)
@@ -228,6 +228,7 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
       {error && <p className="text-xs text-red-500">{error}</p>}
       {ingredients.length > 0 && (
         <div className="flex items-center gap-2 text-[10px] text-gray-400 uppercase tracking-wide font-medium pb-1">
+          <span className="w-5 flex-shrink-0" />
           <span className="flex-1">Ingredient</span>
           <span className="w-16 text-right">Amount</span>
           <span className="w-14 text-right">Kcal</span>
@@ -236,8 +237,29 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
           <span className={`w-10 text-right ${MACRO_META.fat.text}`}>F</span>
         </div>
       )}
-      {ingredients.map(ing => (
+      {ingredients.map(ing => {
+        const isStatic = ing.is_static
+        return (
         <div key={ing.id} className="flex items-center gap-2 text-xs">
+          {onRemove && !isStatic && (
+            <button
+              type="button"
+              onClick={() => onRemove(ing.id)}
+              className="w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 transition-colors"
+              title="Remove ingredient"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+          {onRemove && isStatic && (
+            <span className="w-5 h-5 flex items-center justify-center flex-shrink-0 text-amber-400" title="Static ingredient — cannot be removed">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
+              </svg>
+            </span>
+          )}
           <span className={`flex-1 truncate ${overrideQty[ing.id] != null ? 'text-brand-600 dark:text-brand-400 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
             {ing.name}
           </span>
@@ -255,7 +277,8 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
           <span className={`w-10 text-right tabular-nums ${MACRO_META.prot.text}`}>{round1(ing.protein_g)}</span>
           <span className={`w-10 text-right tabular-nums ${MACRO_META.fat.text}`}>{round1(ing.fat_g)}</span>
         </div>
-      ))}
+        )
+      })}
       {ingredients.length > 0 && (() => {
         const macros = sumIngredientMacros(ingredients)
         // Option B's slot editor targets Option A's own sibling slot (passed down as
@@ -544,6 +567,22 @@ export default function PlanGroupEditor() {
       const existing = normalizeOverrides(w.overrides?.[slotKey])
       const nextQty = { ...existing.qty, [ingId]: isNaN(newQty) ? 0 : newQty }
       return { ...w, overrides: { ...w.overrides, [slotKey]: { ...existing, qty: nextQty } } }
+    }))
+    setDirty(prev => new Set(prev).add(currentWeeks[weekIdx].templateId))
+  }
+
+  // Removes a single ingredient for just this (week, slot) — stored as a `removed` override on
+  // top of the meal's shared default recipe, so no other week showing the same meal is affected.
+  function removeIngredientOverride(weekIdx, slotKey, ingId) {
+    const setActiveWeeks = activeTier == null
+      ? setWeeks
+      : updater => setTierWeeks(prev => ({ ...prev, [activeTier]: updater(prev[activeTier] || []) }))
+
+    setActiveWeeks(prev => prev.map((w, i) => {
+      if (i !== weekIdx) return w
+      const existing = normalizeOverrides(w.overrides?.[slotKey])
+      const nextRemoved = [...new Set([...existing.removed, ingId])]
+      return { ...w, overrides: { ...w.overrides, [slotKey]: { ...existing, removed: nextRemoved } } }
     }))
     setDirty(prev => new Set(prev).add(currentWeeks[weekIdx].templateId))
   }
@@ -1317,6 +1356,7 @@ export default function PlanGroupEditor() {
                             mealSplit={mealSplit}
                             overridesForSlot={overridesForSlot}
                             onChangeQty={(ingId, val) => changeIngredientOverride(weekIdx, slot.key, ingId, val)}
+                            onRemove={ingId => removeIngredientOverride(weekIdx, slot.key, ingId)}
                             onRevertAll={() => revertSlotOverrides(weekIdx, slot.key)}
                             onGenerated={() => refreshMeal(mealId)}
                             overrideTarget={slotTarget}
