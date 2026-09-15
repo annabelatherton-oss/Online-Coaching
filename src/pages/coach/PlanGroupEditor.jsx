@@ -153,7 +153,7 @@ function DayAutoFitSuggestion({ week, slotKeys, tier, target, mealsById, ingredi
 // the meal's shared meal_tier_versions/meal_tier_ingredients rows (the same rows the Meal Library
 // edits) — so every week showing this meal at this tier picks up the change immediately, rather
 // than only this one week.
-function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onAdd, onClearOverride, onGenerated, overrideTarget }) {
+function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onAdd, onSetScalingType, onClearOverride, onGenerated, overrideTarget }) {
   const [library, setLibrary] = useState([])
   const [baseIngredients, setBaseIngredients] = useState([])
   const [loadingBase, setLoadingBase] = useState(true)
@@ -255,7 +255,8 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
       {ingredients.map(ing => {
         const isStatic = ing.is_static
         return (
-        <div key={ing.id} className="flex items-center gap-2 text-xs">
+        <div key={ing.id} className="space-y-0.5">
+        <div className="flex items-center gap-2 text-xs">
           {onRemove && !isStatic && (
             <button
               type="button"
@@ -297,6 +298,25 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
           <span className={`w-10 text-right tabular-nums ${MACRO_META.carb.text}`}>{round1(ing.carbs_g)}</span>
           <span className={`w-10 text-right tabular-nums ${MACRO_META.prot.text}`}>{round1(ing.protein_g)}</span>
           <span className={`w-10 text-right tabular-nums ${MACRO_META.fat.text}`}>{round1(ing.fat_g)}</span>
+        </div>
+        {onSetScalingType && !isStatic && (
+          <div className="pl-7">
+            <button
+              type="button"
+              onClick={() => onSetScalingType(ing.id, ing.scaling_type === 'flexible' ? 'optional' : ing.scaling_type === 'optional' ? 'fixed' : 'flexible')}
+              title="Flex: scales with tier  ·  Optional: scales but can be fully removed  ·  Fixed: always stays the same amount"
+              className={`text-[10px] px-1.5 py-0.5 rounded-full border transition-colors whitespace-nowrap ${
+                ing.scaling_type === 'fixed'
+                  ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+                  : ing.scaling_type === 'optional'
+                  ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400'
+                  : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400'
+              }`}
+            >
+              {ing.scaling_type === 'fixed' ? 'Fixed' : ing.scaling_type === 'optional' ? 'Optional' : 'Flex'}
+            </button>
+          </div>
+        )}
         </div>
         )
       })}
@@ -709,6 +729,40 @@ export default function PlanGroupEditor() {
     const totals = calcTotals([...(version.meal_tier_ingredients || []), inserted])
     await supabase.from('meal_tier_versions').update(totals).eq('id', version.id)
     await clearLegacySlotOverride(week, slotKey)
+    await refreshMeal(mealId)
+  }
+
+  // scaling_type ('flexible' | 'optional' | 'fixed') is a property of the RECIPE, not any one
+  // calorie tier — "200g Greek yogurt, fixed" should mean fixed at every tier, not just the one
+  // currently open. So this writes the setting onto the meal's base meal_ingredients row (the
+  // durable source every future tier generation reads from) and mirrors it onto every already-
+  // generated tier version's matching ingredient, keyed by ingredient_id (or name, for a
+  // free-typed ingredient with no library link) — quantities are untouched everywhere, only the
+  // scaling behaviour changes. Lets a coach set this here, on the screen they actually live in,
+  // instead of having to go back to the Meal Library.
+  async function setIngredientScalingType(weekIdx, slotKey, ingId, newType) {
+    if (activeTier == null) return
+    const week = currentWeeks[weekIdx]
+    const mealId = week.slots[slotKey]
+    const meal = mealId ? mealsById[mealId] : null
+    const version = meal?.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
+    if (!version) return
+    const row = (version.meal_tier_ingredients || []).find(r => r.id === ingId)
+    if (!row || row.is_static) return
+
+    const matches = r => row.ingredient_id ? r.ingredient_id === row.ingredient_id : r.name === row.name
+    const writes = [supabase.from('meal_tier_ingredients').update({ scaling_type: newType }).eq('id', ingId)]
+
+    const baseMatch = (meal.meal_ingredients || []).find(matches)
+    if (baseMatch) writes.push(supabase.from('meal_ingredients').update({ scaling_type: newType }).eq('id', baseMatch.id))
+
+    for (const v of meal.meal_tier_versions || []) {
+      if (v.id === version.id) continue
+      const otherMatch = (v.meal_tier_ingredients || []).find(matches)
+      if (otherMatch) writes.push(supabase.from('meal_tier_ingredients').update({ scaling_type: newType }).eq('id', otherMatch.id))
+    }
+
+    await Promise.all(writes)
     await refreshMeal(mealId)
   }
 
@@ -1543,6 +1597,7 @@ export default function PlanGroupEditor() {
                             onChangeQty={(ingId, val) => changeIngredientOverride(weekIdx, slot.key, ingId, val)}
                             onRemove={ingId => removeIngredientOverride(weekIdx, slot.key, ingId)}
                             onAdd={libIng => addTierIngredient(weekIdx, slot.key, libIng)}
+                            onSetScalingType={(ingId, newType) => setIngredientScalingType(weekIdx, slot.key, ingId, newType)}
                             onClearOverride={() => clearLegacySlotOverride(week, slot.key)}
                             onGenerated={() => refreshMeal(mealId)}
                             overrideTarget={slotTarget}
