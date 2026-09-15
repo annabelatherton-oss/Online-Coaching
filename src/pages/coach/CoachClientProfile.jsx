@@ -2355,14 +2355,21 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
             )}
             {hasIngredientEdits && <span className="text-xs text-blue-500" title="Ingredient quantities adjusted for this client">Adjusted</span>}
             {missingTierVersion && <span className="text-xs text-amber-500" title={`This meal has no saved ${tier} kcal version — showing its base portion instead. Generate it in the Meal Library to fix this.`}>No {tier} kcal version</span>}
-            {currentId && macros.cal > 0 && (
-              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs ml-auto" title="Coloured by how closely this meal matches its target — yellow within 10%, orange 11-20%, red beyond that">
-                <span className={`font-semibold tabular-nums ${deviationColor(macros.cal, slotTgt?.cal)}`}>{Math.round(macros.cal)} kcal</span>
-                <span className={`flex items-center gap-0.5 tabular-nums ${deviationColor(macros.carb, slotTgt?.carb)}`}><MacroBadge type="carb" />{Math.round(macros.carb)}g</span>
-                <span className={`flex items-center gap-0.5 tabular-nums ${deviationColor(macros.prot, slotTgt?.prot)}`}><MacroBadge type="prot" />{Math.round(macros.prot)}g</span>
-                <span className={`flex items-center gap-0.5 tabular-nums ${deviationColor(macros.fat, slotTgt?.fat)}`}><MacroBadge type="fat" />{Math.round(macros.fat)}g</span>
-              </span>
-            )}
+            {currentId && macros.cal > 0 && (() => {
+              // Option B (the "2" slots) is coloured against its Option A sibling, not the generic
+              // category/day target — a client eats whichever one on a given day, so what matters
+              // for B is staying close to A, same as everywhere else this comparison is made.
+              const isOption2 = OPTION_2_KEYS.includes(slotKey)
+              const colourTarget = isOption2 && siblingSlotMacros?.cal > 0 ? siblingSlotMacros : slotTgt
+              return (
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs ml-auto" title={isOption2 && siblingSlotMacros?.cal > 0 ? "Coloured by how closely this meal matches its Option A sibling — yellow within 10%, orange 11-20%, red beyond that" : "Coloured by how closely this meal matches its target — yellow within 10%, orange 11-20%, red beyond that"}>
+                  <span className={`font-semibold tabular-nums ${deviationColor(macros.cal, colourTarget?.cal)}`}>{Math.round(macros.cal)} kcal</span>
+                  <span className={`flex items-center gap-0.5 tabular-nums ${deviationColor(macros.carb, colourTarget?.carb)}`}><MacroBadge type="carb" />{Math.round(macros.carb)}g</span>
+                  <span className={`flex items-center gap-0.5 tabular-nums ${deviationColor(macros.prot, colourTarget?.prot)}`}><MacroBadge type="prot" />{Math.round(macros.prot)}g</span>
+                  <span className={`flex items-center gap-0.5 tabular-nums ${deviationColor(macros.fat, colourTarget?.fat)}`}><MacroBadge type="fat" />{Math.round(macros.fat)}g</span>
+                </span>
+              )
+            })()}
           </div>
 
           {currentId && macros.cal > 0 && (
