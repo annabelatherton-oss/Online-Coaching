@@ -870,6 +870,8 @@ function CalorieTiersTab({ mealId, coachId, category, mealSplit }) {
   }
 
   async function createAllFromBase() {
+    const allCreated = CALORIE_TIERS.every(t => tierMap[t])
+    if (allCreated && !confirm(`Regenerate all ${CALORIE_TIERS.length} calorie tiers for this meal from its base recipe? This discards this meal's current tier quantities and rebuilds them from scratch.`)) return
     for (const tier of CALORIE_TIERS) {
       await createFromBase(tier)
     }
@@ -987,15 +989,14 @@ function CalorieTiersTab({ mealId, coachId, category, mealSplit }) {
             Base meal = {Math.round(baseTotals.calories)} kcal. Tiers are created and kept in sync automatically whenever you save ingredients — use the buttons below only to regenerate a tier on its own.
           </p>
         </div>
-        {!allCreated && (
-          <button
-            onClick={createAllFromBase}
-            disabled={!!creating}
-            className="btn-primary whitespace-nowrap text-sm"
-          >
-            {creating ? 'Creating…' : `Create All ${CALORIE_TIERS.length} Tiers`}
-          </button>
-        )}
+        <button
+          onClick={createAllFromBase}
+          disabled={!!creating}
+          title={allCreated ? "Rebuild every tier for this meal from its base recipe, discarding this meal's current tier quantities" : undefined}
+          className="btn-primary whitespace-nowrap text-sm"
+        >
+          {creating ? 'Creating…' : allCreated ? `Regenerate All ${CALORIE_TIERS.length} Tiers` : `Create All ${CALORIE_TIERS.length} Tiers`}
+        </button>
       </div>
 
       {error && (
