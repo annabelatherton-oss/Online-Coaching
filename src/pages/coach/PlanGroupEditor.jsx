@@ -11,7 +11,7 @@ import {
   sumIngredientMacros, MacroTargetInfo, MacroBadge, MACRO_META, deviationColor, suggestAutoFit,
 } from '../../components/MealPlanView'
 import {
-  generateTierIngredients, insertTierVersion, tierTargetsForCategory, allIngredientsFixed,
+  generateTierIngredients, insertTierVersion, tierTargetsForCategory, allIngredientsFixed, balanceDayIngredients,
 } from '../../lib/calorieTierScaling'
 
 const MAIN_SLOTS = [
@@ -372,7 +372,7 @@ export default function PlanGroupEditor() {
           .select('calorie_target')
           .eq('plan_group_id', groupId)
           .eq('active', true),
-        supabase.from('ingredients').select('id, name, serving_size, serving_unit, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', profile.id),
+        supabase.from('ingredients').select('id, name, serving_size, serving_unit, serving_step, min_amount, max_amount, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', profile.id),
       ])
 
       if (group) {
@@ -585,6 +585,51 @@ export default function PlanGroupEditor() {
       return { ...w, overrides: { ...w.overrides, [slotKey]: { ...existing, removed: nextRemoved } } }
     }))
     setDirty(prev => new Set(prev).add(currentWeeks[weekIdx].templateId))
+  }
+
+  // Balances every Option A meal in this week's day against the day's real macro target in one
+  // shot — each meal's CALORIE share stays exactly at its assigned category %, only the
+  // protein/carb/fat mix within that calorie envelope shifts (weighted by how much
+  // flexible-ingredient room each meal has), so the day's macros land closer to target without
+  // a coach needing to open and nudge each meal one at a time. See balanceDayIngredients.
+  function balanceWeekDay(weekIdx) {
+    if (activeTier == null) return
+    const week = currentWeeks[weekIdx]
+    const mealsInDay = []
+    for (const key of OPTION_A_KEYS) {
+      const mealId = week.slots[key]
+      const meal = mealId ? mealsById[mealId] : null
+      if (!meal) continue
+      const slotDef = SLOTS.find(s => s.key === key)
+      const baseIngredients = getIngredients(meal, activeTier, week.overrides?.[key])
+      if (baseIngredients.length === 0) continue
+      mealsInDay.push({ key, category: slotDef.cat, baseIngredients })
+    }
+    if (mealsInDay.length === 0) return
+
+    const dayTarget = { calories: activeTier, ...calcStandardMacros(activeTier) }
+    const library = Object.values(ingredientLib)
+    const results = balanceDayIngredients(mealsInDay, library, dayTarget, mealSplit)
+
+    setTierWeeks(prev => ({
+      ...prev,
+      [activeTier]: (prev[activeTier] || []).map((w, i) => {
+        if (i !== weekIdx) return w
+        const nextOverrides = { ...w.overrides }
+        for (const r of results) {
+          const inputMeal = mealsInDay.find(m => m.key === r.key)
+          const existing = normalizeOverrides(nextOverrides[r.key])
+          const qty = { ...existing.qty }
+          inputMeal.baseIngredients.forEach((ing, idx) => {
+            const newQty = r.ingredients[idx]?.quantity_g
+            if (newQty != null && Math.abs(newQty - (parseFloat(ing.quantity_g) || 0)) > 0.05) qty[ing.id] = newQty
+          })
+          nextOverrides[r.key] = { ...existing, qty }
+        }
+        return { ...w, overrides: nextOverrides }
+      }),
+    }))
+    setDirty(prev => new Set(prev).add(week.templateId))
   }
 
   // Clears every per-week override on a slot, reverting it back to the meal's shared defaults.
@@ -1110,7 +1155,17 @@ export default function PlanGroupEditor() {
               <div className="p-3 space-y-3">
                 {activeTier != null && (opt1Totals.calories > 0 || opt2Totals.calories > 0) && (
                   <div className="px-1 pb-1 space-y-1">
-                    <MacroMatchRow label="A" totals={opt1Totals} tier={activeTier} />
+                    <div className="flex items-center justify-between gap-2">
+                      <MacroMatchRow label="A" totals={opt1Totals} tier={activeTier} />
+                      <button
+                        type="button"
+                        onClick={() => balanceWeekDay(weekIdx)}
+                        className="flex-shrink-0 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300 underline whitespace-nowrap"
+                        title="Rebalance every Option A meal's protein/carb/fat mix to close the day's macro gap, without moving any meal off its calorie %"
+                      >
+                        Balance day
+                      </button>
+                    </div>
                     <DayAutoFitSuggestion
                       week={week} slotKeys={OPTION_A_KEYS} tier={activeTier}
                       target={activeTier != null ? (() => { const t = calcStandardMacros(activeTier); return { cal: activeTier, carb: t.carbs_g, prot: t.protein_g, fat: t.fat_g } })() : null}

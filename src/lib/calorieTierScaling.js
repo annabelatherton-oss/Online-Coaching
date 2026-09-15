@@ -411,6 +411,77 @@ export function generateTierIngredients(baseIngredients, library, targets) {
   return result
 }
 
+// A meal with no flexible ingredients at all can't absorb any of the day's leftover macro gap
+// (there's nothing left to scale), so it gets no weight. Every other meal's weight is its own
+// calorie share — a bigger meal has proportionally more flexible-ingredient room to shift its
+// protein/carb/fat mix by the same relative amount, so it should absorb proportionally more of
+// the gap.
+function dayGapWeight(baseIngredients, calTarget) {
+  return allIngredientsFixed(baseIngredients) ? 0 : Math.max(calTarget, 1)
+}
+
+function sumTotals(a, b) {
+  return {
+    calories:  a.calories  + b.calories,
+    protein_g: a.protein_g + b.protein_g,
+    carbs_g:   a.carbs_g   + b.carbs_g,
+    fat_g:     a.fat_g     + b.fat_g,
+  }
+}
+
+// Balances a whole day's meals against the day's real macro target without letting any single
+// meal's CALORIE share drift off its assigned category % — the coach wants the day's macros to
+// land right, but doesn't want a meal quietly eating another meal's calories to get there.
+//
+// Each meal's own recipe naturally has its own macro ratio (see tierTargetsForCategory), so even
+// when every meal hits its own calorie share exactly, the day's actual protein/carbs/fat can still
+// land off the real day target (e.g. a bodyweight-based protein number). This closes that gap by
+// redistributing it into each meal's protein/carb/fat SUB-target — never its calorie sub-target —
+// weighted by how much flexible-ingredient room each meal actually has (dayGapWeight), then
+// re-solving just that meal with generateTierIngredients as usual.
+//
+// mealsInDay: [{ key, category, baseIngredients }] - one entry per occupied slot for this day,
+// using whatever ingredients (with any existing per-week overrides) currently sit in that slot.
+// dayTarget: { calories, protein_g, carbs_g, fat_g } - the day's real target.
+// Returns: [{ key, ingredients, totals }] - one entry per input meal, in the same order.
+export function balanceDayIngredients(mealsInDay, library, dayTarget, mealSplit) {
+  const pass1 = mealsInDay.map(m => {
+    const baseTotals = calcTotals(m.baseIngredients)
+    const target = tierTargetsForCategory(dayTarget.calories, m.category, mealSplit, baseTotals)
+    const ingredients = generateTierIngredients(m.baseIngredients, library, target)
+    return { key: m.key, baseIngredients: m.baseIngredients, target, ingredients, totals: calcTotals(ingredients) }
+  })
+
+  const achieved = pass1.reduce((s, m) => sumTotals(s, m.totals), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 })
+  const gap = {
+    protein_g: dayTarget.protein_g - achieved.protein_g,
+    carbs_g:   dayTarget.carbs_g   - achieved.carbs_g,
+    fat_g:     dayTarget.fat_g     - achieved.fat_g,
+  }
+  if (Math.abs(gap.protein_g) < 1 && Math.abs(gap.carbs_g) < 1 && Math.abs(gap.fat_g) < 1) {
+    return pass1.map(m => ({ key: m.key, ingredients: m.ingredients, totals: m.totals }))
+  }
+
+  const weights = pass1.map(m => dayGapWeight(m.baseIngredients, m.target.calories))
+  const totalWeight = weights.reduce((s, w) => s + w, 0)
+  if (totalWeight <= 0) return pass1.map(m => ({ key: m.key, ingredients: m.ingredients, totals: m.totals }))
+
+  // Pass 2: only meals with room absorb a share of the gap, proportional to their weight — their
+  // calorie sub-target is untouched, only protein/carb/fat move within that same calorie envelope.
+  return pass1.map((m, i) => {
+    if (weights[i] <= 0) return { key: m.key, ingredients: m.ingredients, totals: m.totals }
+    const share = weights[i] / totalWeight
+    const adjustedTarget = {
+      calories:  m.target.calories,
+      protein_g: Math.max(0, m.target.protein_g + gap.protein_g * share),
+      carbs_g:   Math.max(0, m.target.carbs_g   + gap.carbs_g   * share),
+      fat_g:     Math.max(0, m.target.fat_g     + gap.fat_g     * share),
+    }
+    const ingredients = generateTierIngredients(m.baseIngredients, library, adjustedTarget)
+    return { key: m.key, ingredients, totals: calcTotals(ingredients) }
+  })
+}
+
 export async function insertTierVersion(mealId, tier, ingredients) {
   const totals = calcTotals(ingredients)
   const { data: version, error } = await supabase
