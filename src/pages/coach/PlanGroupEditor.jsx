@@ -1315,44 +1315,45 @@ export default function PlanGroupEditor() {
         </div>
       )}
 
-      {availableTiers.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button
+          onClick={() => selectTier(null)}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTier == null
+              ? 'bg-brand-500 text-white'
+              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+          }`}
+        >
+          Standard
+        </button>
+        {CALORIE_TIERS.map(tier => (
           <button
-            onClick={() => selectTier(null)}
+            key={tier}
+            onClick={() => selectTier(tier)}
+            disabled={forking}
+            title={availableTiers.includes(tier) ? '' : 'No client is currently assigned this calorie target on this plan yet'}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              activeTier == null
+              activeTier === tier
                 ? 'bg-brand-500 text-white'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                : availableTiers.includes(tier)
+                ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                : 'bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
           >
-            Standard
+            {tier} kcal{!tierWeeks[tier] ? ' (not set up yet)' : ''}
           </button>
-          {availableTiers.map(tier => (
-            <button
-              key={tier}
-              onClick={() => selectTier(tier)}
-              disabled={forking}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTier === tier
-                  ? 'bg-brand-500 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              {tier} kcal{!tierWeeks[tier] ? ' (not set up yet)' : ''}
-            </button>
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
 
       {activeTier != null ? (
         <p className="text-xs text-gray-400 dark:text-gray-500">
           Editing the {activeTier} kcal version of this plan. Which meal appears each week is shared across every calorie tier and the Standard template — changing a meal here, swapping it, or optimising also updates every other tier, so every client eats the same meal at their own portion size. Only ingredient quantities (and per-week corrections) are specific to this tier. Expand a week to see how closely each day's macros match the target.
         </p>
-      ) : availableTiers.length > 0 ? (
+      ) : (
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          Editing the standard version of this plan. Changing which meal appears each week here also updates every calorie tier, so every client eats the same meal at their own portion size. Select a calorie tier above to see how closely each day matches that tier's calorie and macro targets, or to adjust that tier's ingredient quantities.
+          Editing the standard version of this plan. Changing which meal appears each week here also updates every calorie tier, so every client eats the same meal at their own portion size. Select a calorie tier above to see how closely each day matches that tier's calorie and macro targets, or to adjust that tier's ingredient quantities — every tier is available here whether or not a client is assigned to it yet.
         </p>
-      ) : null}
+      )}
 
       {forking ? (
         <LoadingSpinner size="md" className="py-10" />
