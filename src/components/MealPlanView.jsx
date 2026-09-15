@@ -299,14 +299,10 @@ export function sumIngredientMacros(ingredients) {
 export function mealMacros(mealId, mealMap, tier, overridesForSlot, swapCtx) {
   if (!mealId || !mealMap[mealId]) return null
   const meal = mealMap[mealId]
-  const hasDislikes = !!swapCtx?.dislikes?.length
-  if (tier) {
-    const v = (meal.meal_tier_versions || []).find(v => v.calorie_tier === tier)
-    if (v) {
-      if (!hasAnyOverride(overridesForSlot) && !hasDislikes) return { cal: parseFloat(v.calories) || 0, prot: parseFloat(v.protein_g) || 0, carb: parseFloat(v.carbs_g) || 0, fat: parseFloat(v.fat_g) || 0 }
-      return sumIngredientMacros(getIngredients(meal, tier, overridesForSlot, swapCtx))
-    }
-  }
+  // Always sum the actual ingredient rows rather than trusting a meal_tier_versions row's own
+  // cached calories/protein_g/carbs_g/fat_g columns — those can drift out of sync with its
+  // meal_tier_ingredients (e.g. after a direct ingredient edit that didn't also re-save the
+  // version's aggregate), which silently showed a meal as 0 kcal despite real ingredients underneath.
   return sumIngredientMacros(getIngredients(meal, tier, overridesForSlot, swapCtx))
 }
 

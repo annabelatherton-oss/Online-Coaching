@@ -7,7 +7,7 @@ import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { calcStandardMacros } from '../../lib/macros'
 import {
-  getIngredients, formatAmount, mealMacros as sharedMealMacros,
+  getIngredients, formatAmount, mealMacros as sharedMealMacros, hasAnyOverride,
   sumIngredientMacros, MacroTargetInfo, MacroBadge, MACRO_META, deviationColor, suggestAutoFit,
 } from '../../components/MealPlanView'
 import {
@@ -153,7 +153,7 @@ function DayAutoFitSuggestion({ week, slotKeys, tier, target, mealsById, ingredi
 // the meal's shared meal_tier_versions/meal_tier_ingredients rows (the same rows the Meal Library
 // edits) — so every week showing this meal at this tier picks up the change immediately, rather
 // than only this one week.
-function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onGenerated, overrideTarget }) {
+function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onClearOverride, onGenerated, overrideTarget }) {
   const [library, setLibrary] = useState([])
   const [baseIngredients, setBaseIngredients] = useState([])
   const [loadingBase, setLoadingBase] = useState(true)
@@ -221,11 +221,25 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
   }
 
   const ingredients = getIngredients(meal, tier, overridesForSlot)
+  // An old per-week tweak (from before edits here became the shared standard) can still have every
+  // ingredient marked removed for just this one week, which would otherwise look identical to the
+  // meal genuinely having no ingredients — offer to clear it so the shared default shows again.
+  const emptiedByLegacyOverride = ingredients.length === 0 && hasAnyOverride(overridesForSlot) && (version.meal_tier_ingredients || []).length > 0
 
   return (
     <div className="space-y-1 py-2 px-2">
       {fixedWarning}
       {error && <p className="text-xs text-red-500">{error}</p>}
+      {emptiedByLegacyOverride && onClearOverride && (
+        <div className="flex items-center justify-between gap-3 py-2 px-2 bg-amber-50 dark:bg-amber-900/10 rounded-lg">
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            An old per-week tweak removed every ingredient for just this week, hiding this meal's real default.
+          </p>
+          <button type="button" onClick={onClearOverride} className="text-xs btn-secondary py-1 px-2.5 whitespace-nowrap flex-shrink-0">
+            Restore default
+          </button>
+        </div>
+      )}
       {ingredients.length > 0 && (
         <div className="flex items-center gap-2 text-[10px] text-gray-400 uppercase tracking-wide font-medium pb-1">
           <span className="w-5 flex-shrink-0" />
@@ -1435,6 +1449,7 @@ export default function PlanGroupEditor() {
                             overridesForSlot={overridesForSlot}
                             onChangeQty={(ingId, val) => changeIngredientOverride(weekIdx, slot.key, ingId, val)}
                             onRemove={ingId => removeIngredientOverride(weekIdx, slot.key, ingId)}
+                            onClearOverride={() => clearLegacySlotOverride(week, slot.key)}
                             onGenerated={() => refreshMeal(mealId)}
                             overrideTarget={slotTarget}
                           />

@@ -1315,15 +1315,14 @@ function tierVersionExists(mealId, mealMap, tier) {
 
 // Get macros for a meal at a given calorie tier, falling back to base ingredients.
 // overridesForSlot holds this client's gram tweaks / removed / added ingredients for the slot.
+// Always sums the actual ingredient rows rather than trusting a meal_tier_versions row's own
+// cached calories/protein_g/carbs_g/fat_g columns — those can drift out of sync with its
+// meal_tier_ingredients, which silently showed a meal as 0 kcal despite real ingredients underneath.
 function mealMacros(mealId, mealMap, tier, overridesForSlot) {
   if (!mealId || !mealMap[mealId]) return { cal: 0, prot: 0, carb: 0, fat: 0 }
-  const hasOverrides = hasAnyOverride(overridesForSlot)
   if (tier) {
     const v = (mealMap[mealId].meal_tier_versions || []).find(v => v.calorie_tier === tier)
-    if (v) {
-      if (!hasOverrides) return { cal: parseFloat(v.calories) || 0, prot: parseFloat(v.protein_g) || 0, carb: parseFloat(v.carbs_g) || 0, fat: parseFloat(v.fat_g) || 0 }
-      return sumIngredientMacros(applyIngredientOverrides(v.meal_tier_ingredients || [], overridesForSlot))
-    }
+    if (v) return sumIngredientMacros(applyIngredientOverrides(v.meal_tier_ingredients || [], overridesForSlot))
   }
   return sumIngredientMacros(applyIngredientOverrides(mealMap[mealId].meal_ingredients || [], overridesForSlot))
 }
