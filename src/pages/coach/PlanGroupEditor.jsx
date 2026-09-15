@@ -440,8 +440,15 @@ export default function PlanGroupEditor() {
   const [optimizing, setOptimizing] = useState(false)
   // `${weekIdx}:${slotKey}` of the ingredient editor currently open, or null.
   const [editingIngredients, setEditingIngredients] = useState(null)
+  // Currently-edited default meal for whichever scope (Standard or a specific tier) is active —
+  // kept in sync with preworkoutByTier/eveningSnackByTier below whenever the tier tab changes.
   const [defaultPreworkout, setDefaultPreworkout] = useState('')
   const [defaultEveningSnack, setDefaultEveningSnack] = useState('')
+  // Saved per-tier defaults: { [tier]: mealId }. The Standard scope's default lives directly on
+  // plan_groups (default_preworkout_meal_id / default_evening_snack_meal_id) since it isn't tied to
+  // any tier.
+  const [preworkoutByTier, setPreworkoutByTier] = useState({})
+  const [eveningSnackByTier, setEveningSnackByTier] = useState({})
   const [savingDefaults, setSavingDefaults] = useState(false)
   const [savedDefaults, setSavedDefaults] = useState(false)
   // { weekIdx, slotKey } of the swap picker currently open, or null.
@@ -481,6 +488,8 @@ export default function PlanGroupEditor() {
         setPlanGroup(group)
         setDefaultPreworkout(group.default_preworkout_meal_id || '')
         setDefaultEveningSnack(group.default_evening_snack_meal_id || '')
+        setPreworkoutByTier(group.default_preworkout_by_tier || {})
+        setEveningSnackByTier(group.default_evening_snack_by_tier || {})
       }
 
       const byCategory = {}
@@ -571,6 +580,11 @@ export default function PlanGroupEditor() {
 
   async function selectTier(tier) {
     setActiveTier(tier)
+    // Default pre-workout/evening-snack are set per scope (Standard, or a specific tier) — swap
+    // the editable inputs to whichever scope is now active.
+    setDefaultPreworkout(tier == null ? (planGroup?.default_preworkout_meal_id || '') : (preworkoutByTier[tier] ?? ''))
+    setDefaultEveningSnack(tier == null ? (planGroup?.default_evening_snack_meal_id || '') : (eveningSnackByTier[tier] ?? ''))
+    setSavedDefaults(false)
     if (tier != null && !tierWeeks[tier]) await forkTier(tier)
   }
 
@@ -883,21 +897,38 @@ export default function PlanGroupEditor() {
     setPlanGroup(prev => ({ ...prev, current_week: week }))
   }
 
+  // Default pre-workout/evening-snack meals are set per scope: the Standard template has its own
+  // default (plan_groups.default_preworkout_meal_id / default_evening_snack_meal_id), and each
+  // calorie tier can set a different one (plan_groups.default_preworkout_by_tier /
+  // default_evening_snack_by_tier, keyed by tier) — a 1200 kcal client's evening snack doesn't have
+  // to be the same as a 3000 kcal client's. Only the currently active scope is written here.
   async function handleSaveDefaults() {
     setSavingDefaults(true)
     setSavedDefaults(false)
 
-    // Persist on the plan group record
-    await supabase.from('plan_groups').update({
-      default_preworkout_meal_id:    defaultPreworkout    || null,
-      default_evening_snack_meal_id: defaultEveningSnack || null,
-    }).eq('id', groupId)
+    if (activeTier == null) {
+      await supabase.from('plan_groups').update({
+        default_preworkout_meal_id:    defaultPreworkout    || null,
+        default_evening_snack_meal_id: defaultEveningSnack || null,
+      }).eq('id', groupId)
+      setPlanGroup(prev => ({ ...prev, default_preworkout_meal_id: defaultPreworkout || null, default_evening_snack_meal_id: defaultEveningSnack || null }))
+    } else {
+      const nextPreworkoutByTier = { ...preworkoutByTier, [activeTier]: defaultPreworkout || null }
+      const nextEveningSnackByTier = { ...eveningSnackByTier, [activeTier]: defaultEveningSnack || null }
+      await supabase.from('plan_groups').update({
+        default_preworkout_by_tier: nextPreworkoutByTier,
+        default_evening_snack_by_tier: nextEveningSnackByTier,
+      }).eq('id', groupId)
+      setPreworkoutByTier(nextPreworkoutByTier)
+      setEveningSnackByTier(nextEveningSnackByTier)
+    }
 
-    // Write into every template in this plan group (master + all calorie-tier forks)
-    const allWeeks = [...weeks, ...Object.values(tierWeeks).flat()]
-    const allTemplateIds = allWeeks.map(w => w.templateId)
+    // Write into every template for the active scope only (Standard = master weeks, a tier =
+    // just that tier's forked weeks) — every OTHER tier keeps whatever its own default is.
+    const scopedWeeks = activeTier == null ? weeks : (tierWeeks[activeTier] || [])
+    const templateIds = scopedWeeks.map(w => w.templateId)
 
-    if (allTemplateIds.length) {
+    if (templateIds.length) {
       const slotsToReplace = [
         ...(defaultPreworkout    ? ['preworkout']    : []),
         ...(defaultEveningSnack  ? ['evening_snack'] : []),
@@ -907,11 +938,11 @@ export default function PlanGroupEditor() {
       if (slotsToReplace.length) {
         await supabase.from('template_meal_slots')
           .delete()
-          .in('template_id', allTemplateIds)
+          .in('template_id', templateIds)
           .in('slot_type', slotsToReplace)
 
         const rows = []
-        for (const templateId of allTemplateIds) {
+        for (const templateId of templateIds) {
           if (defaultPreworkout)
             rows.push({ template_id: templateId, slot_type: 'preworkout',    meal_id: defaultPreworkout,   scaled_version_id: null })
           if (defaultEveningSnack)
@@ -937,12 +968,11 @@ export default function PlanGroupEditor() {
           overrides: nextOverrides,
         }
       })
-      setWeeks(applyDefaults)
-      setTierWeeks(prev => {
-        const next = {}
-        for (const [tier, tw] of Object.entries(prev)) next[tier] = applyDefaults(tw)
-        return next
-      })
+      if (activeTier == null) {
+        setWeeks(applyDefaults)
+      } else {
+        setTierWeeks(prev => ({ ...prev, [activeTier]: applyDefaults(prev[activeTier] || []) }))
+      }
       setDirty(new Set())
     }
 
@@ -1241,9 +1271,11 @@ export default function PlanGroupEditor() {
       {planGroup && (
         <div className="card space-y-3">
           <div>
-            <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Default static meals</h3>
+            <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
+              Default static meals <span className="font-normal text-gray-400 dark:text-gray-500">— {activeTier == null ? 'Standard' : `${activeTier} kcal`}</span>
+            </h3>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-              These meals are automatically pinned when this rotation is assigned to a client.
+              Pinned automatically for every week in {activeTier == null ? 'the Standard template' : `the ${activeTier} kcal tier`} — each tier can set its own.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1401,8 +1433,16 @@ export default function PlanGroupEditor() {
                   </div>
                 )}
                 {SLOTS.map(slot => {
-                  const options = mealsByCategory[slot.cat] || []
                   const mealId = week.slots[slot.key] || ''
+                  // A client eats every one of this day's slots, so the same meal can never sit in
+                  // two of them at once — exclude anything already used elsewhere in this week from
+                  // the picker, but keep this slot's OWN current meal selectable even if it happens
+                  // to be a pre-existing duplicate (fixed by picking something else below).
+                  const usedElsewhereThisWeek = new Set(
+                    SLOTS.map(s => s.key).filter(k => k !== slot.key).map(k => week.slots[k]).filter(Boolean)
+                  )
+                  const isDuplicateMeal = mealId && usedElsewhereThisWeek.has(mealId)
+                  const options = (mealsByCategory[slot.cat] || []).filter(m => m.id === mealId || !usedElsewhereThisWeek.has(m.id))
                   const meal = mealId ? mealsById[mealId] : null
                   const overridesForSlot = week.overrides?.[slot.key]
                   const macros = mealMacros(mealId, activeTier, overridesForSlot)
@@ -1456,6 +1496,11 @@ export default function PlanGroupEditor() {
                           {isStatic && (
                             <span className="absolute bottom-2 left-2 text-[10px] font-medium bg-white/90 dark:bg-gray-900/90 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full backdrop-blur-sm shadow-sm">
                               Same every week
+                            </span>
+                          )}
+                          {isDuplicateMeal && (
+                            <span className="absolute top-2 right-2 text-xs font-semibold bg-red-500 text-white px-2 py-0.5 rounded-full shadow-sm" title="This meal is also used elsewhere in this same day — pick a different meal for one of them">
+                              Duplicate
                             </span>
                           )}
                         </div>
@@ -1664,7 +1709,7 @@ export default function PlanGroupEditor() {
                           </div>
                           <div className="space-y-0.5 max-h-52 overflow-y-auto">
                             {(mealsByCategory[slot.cat] || [])
-                              .filter(m => m.id !== mealId)
+                              .filter(m => m.id !== mealId && !usedElsewhereThisWeek.has(m.id))
                               .map(candidate => {
                                 const candMacros = mealMacros(candidate.id, activeTier)
                                 const hasTierVersion = activeTier == null || candMacros != null
