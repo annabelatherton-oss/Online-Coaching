@@ -255,8 +255,7 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
       {ingredients.map(ing => {
         const isStatic = ing.is_static
         return (
-        <div key={ing.id} className="space-y-0.5">
-        <div className="flex items-center gap-2 text-xs">
+        <div key={ing.id} className="flex items-center gap-2 text-xs">
           {onRemove && !isStatic && (
             <button
               type="button"
@@ -276,8 +275,24 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
               </svg>
             </span>
           )}
-          <span className="flex-1 truncate text-gray-600 dark:text-gray-300">
-            {ing.name}
+          <span className="flex-1 min-w-0 flex items-center gap-1.5">
+            <span className="truncate text-gray-600 dark:text-gray-300">{ing.name}</span>
+            {onSetScalingType && !isStatic && (
+              <button
+                type="button"
+                onClick={() => onSetScalingType(ing.id, ing.scaling_type === 'flexible' ? 'optional' : ing.scaling_type === 'optional' ? 'fixed' : 'flexible')}
+                title="Flex: scales with tier  ·  Optional: scales but can be fully removed  ·  Fixed: always stays the same amount"
+                className={`flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border transition-colors whitespace-nowrap ${
+                  ing.scaling_type === 'fixed'
+                    ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+                    : ing.scaling_type === 'optional'
+                    ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400'
+                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400'
+                }`}
+              >
+                {ing.scaling_type === 'fixed' ? 'Fixed' : ing.scaling_type === 'optional' ? 'Optional' : 'Flex'}
+              </button>
+            )}
           </span>
           <span className="w-16 flex items-center justify-end gap-1">
             <input
@@ -298,25 +313,6 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
           <span className={`w-10 text-right tabular-nums ${MACRO_META.carb.text}`}>{round1(ing.carbs_g)}</span>
           <span className={`w-10 text-right tabular-nums ${MACRO_META.prot.text}`}>{round1(ing.protein_g)}</span>
           <span className={`w-10 text-right tabular-nums ${MACRO_META.fat.text}`}>{round1(ing.fat_g)}</span>
-        </div>
-        {onSetScalingType && !isStatic && (
-          <div className="pl-7">
-            <button
-              type="button"
-              onClick={() => onSetScalingType(ing.id, ing.scaling_type === 'flexible' ? 'optional' : ing.scaling_type === 'optional' ? 'fixed' : 'flexible')}
-              title="Flex: scales with tier  ·  Optional: scales but can be fully removed  ·  Fixed: always stays the same amount"
-              className={`text-[10px] px-1.5 py-0.5 rounded-full border transition-colors whitespace-nowrap ${
-                ing.scaling_type === 'fixed'
-                  ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
-                  : ing.scaling_type === 'optional'
-                  ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400'
-                  : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400'
-              }`}
-            >
-              {ing.scaling_type === 'fixed' ? 'Fixed' : ing.scaling_type === 'optional' ? 'Optional' : 'Flex'}
-            </button>
-          </div>
-        )}
         </div>
         )
       })}
@@ -1378,11 +1374,21 @@ export default function PlanGroupEditor() {
                   // so the two stay as close as possible — a client eats whichever one on the day.
                   const siblingKey = SIBLING_SLOT[slot.key]
                   const siblingMacros = siblingKey ? mealMacros(week.slots[siblingKey] || '', activeTier, week.overrides?.[siblingKey]) : null
-                  const categoryTarget = activeTier != null ? tierTargetsForCategory(activeTier, slot.cat, mealSplit) : null
+                  // Option A (and the static pre-workout/evening-snack slots) target what this
+                  // meal would need to be if it alone closed the DAY's current gap to its real
+                  // target — not this meal's own isolated % share of the tier — so the "+/- to hit
+                  // target" line and auto-fit suggestion in Edit ingredients reflect the day total,
+                  // matching "Balance day"/"Fit the day" above rather than a per-meal quota.
+                  const dayTarget = activeTier != null ? { calories: activeTier, ...calcStandardMacros(activeTier) } : null
                   const slotTarget = siblingMacros
                     ? { cal: siblingMacros.calories, carb: siblingMacros.carbs_g, prot: siblingMacros.protein_g, fat: siblingMacros.fat_g }
-                    : categoryTarget
-                    ? { cal: categoryTarget.calories, carb: categoryTarget.carbs_g, prot: categoryTarget.protein_g, fat: categoryTarget.fat_g }
+                    : (macros && dayTarget && opt1Totals?.calories > 0)
+                    ? {
+                        cal:  macros.calories  + (dayTarget.calories  - opt1Totals.calories),
+                        carb: macros.carbs_g   + (dayTarget.carbs_g   - opt1Totals.carbs_g),
+                        prot: macros.protein_g + (dayTarget.protein_g - opt1Totals.protein_g),
+                        fat:  macros.fat_g     + (dayTarget.fat_g     - opt1Totals.fat_g),
+                      }
                     : null
                   const isStatic = STATIC_SLOT_KEYS.has(slot.key)
                   const editKey = mealId && activeTier != null ? `${weekIdx}:${slot.key}` : null
