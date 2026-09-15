@@ -1392,22 +1392,27 @@ export default function PlanGroupEditor() {
               key={tier}
               onClick={() => selectTier(tier)}
               disabled={forking}
-              title={
-                isCurrent ? 'A client is currently assigned this calorie target'
-                  : wasEverSent ? 'No client is currently on this calorie target, but a week has been sent on it before'
-                  : 'No client is currently assigned this calorie target on this plan yet'
-              }
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              title={[
+                isCurrent ? 'A client is currently assigned this calorie target' : 'No client is currently assigned this calorie target',
+                wasEverSent ? 'a week has been sent out on it before' : "hasn't been sent out before",
+              ].join(' — ')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 activeTier === tier
                   ? 'bg-brand-500 text-white'
                   : isCurrent
                   ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30'
-                  : wasEverSent
-                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30'
                   : 'bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
             >
               {tier} kcal
+              {wasEverSent && (
+                <svg
+                  className={`w-3.5 h-3.5 flex-shrink-0 ${activeTier === tier ? 'text-white' : 'text-green-500 dark:text-green-400'}`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
             </button>
           )
         })}
