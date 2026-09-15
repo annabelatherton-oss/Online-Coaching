@@ -550,6 +550,10 @@ export default function PlanGroupEditor() {
 
   const currentWeeks = activeTier == null ? weeks : (tierWeeks[activeTier] || [])
   const mealSplit = normalizeMealSplit(profile.meal_split)
+  // Which tiers have ever had at least one week sent (see sentSnapshots/plan_week_sends) — lets
+  // the tier tab bar distinguish "no client now, but this tier has gone out before" from "never
+  // used at all", regardless of whether a client is currently on it.
+  const sentTierSet = new Set(Object.keys(sentSnapshots).map(k => k.split(':')[0]))
 
   // A meal's macros at the tier being edited — its tier version's numbers (with any per-week
   // ingredient override applied) if one exists for this tier, or its base recipe's totals when
@@ -1380,23 +1384,33 @@ export default function PlanGroupEditor() {
         >
           Standard
         </button>
-        {CALORIE_TIERS.map(tier => (
-          <button
-            key={tier}
-            onClick={() => selectTier(tier)}
-            disabled={forking}
-            title={availableTiers.includes(tier) ? 'A client is currently assigned this calorie target' : 'No client is currently assigned this calorie target on this plan yet'}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              activeTier === tier
-                ? 'bg-brand-500 text-white'
-                : availableTiers.includes(tier)
-                ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30'
-                : 'bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800'
-            }`}
-          >
-            {tier} kcal
-          </button>
-        ))}
+        {CALORIE_TIERS.map(tier => {
+          const isCurrent = availableTiers.includes(tier)
+          const wasEverSent = sentTierSet.has(String(tier))
+          return (
+            <button
+              key={tier}
+              onClick={() => selectTier(tier)}
+              disabled={forking}
+              title={
+                isCurrent ? 'A client is currently assigned this calorie target'
+                  : wasEverSent ? 'No client is currently on this calorie target, but a week has been sent on it before'
+                  : 'No client is currently assigned this calorie target on this plan yet'
+              }
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                activeTier === tier
+                  ? 'bg-brand-500 text-white'
+                  : isCurrent
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30'
+                  : wasEverSent
+                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30'
+                  : 'bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              {tier} kcal
+            </button>
+          )
+        })}
       </div>
 
       {activeTier != null ? (
