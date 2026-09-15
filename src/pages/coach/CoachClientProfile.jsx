@@ -17,7 +17,7 @@ import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import DislikePicker from '../../components/DislikePicker'
 import SwapRulePicker from '../../components/SwapRulePicker'
 import TargetDateBanner from '../../components/TargetDateBanner'
-import { MacroTargetInfo, MacroBadge, MACRO_META } from '../../components/MealPlanView'
+import { MacroTargetInfo, MacroBadge, MACRO_META, deviationColor } from '../../components/MealPlanView'
 
 const TABS = ['Overview', 'Meal Plan', 'Training', 'Daily Plan', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
 
@@ -2355,7 +2355,14 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
             )}
             {hasIngredientEdits && <span className="text-xs text-blue-500" title="Ingredient quantities adjusted for this client">Adjusted</span>}
             {missingTierVersion && <span className="text-xs text-amber-500" title={`This meal has no saved ${tier} kcal version — showing its base portion instead. Generate it in the Meal Library to fix this.`}>No {tier} kcal version</span>}
-            {currentId && macros.cal > 0 && <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums ml-auto">{Math.round(macros.cal)} kcal</span>}
+            {currentId && macros.cal > 0 && (
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs ml-auto" title="Coloured by how closely this meal matches its target — yellow within 10%, orange 11-20%, red beyond that">
+                <span className={`font-semibold tabular-nums ${deviationColor(macros.cal, slotTgt?.cal)}`}>{Math.round(macros.cal)} kcal</span>
+                <span className={`flex items-center gap-0.5 tabular-nums ${deviationColor(macros.carb, slotTgt?.carb)}`}><MacroBadge type="carb" />{Math.round(macros.carb)}g</span>
+                <span className={`flex items-center gap-0.5 tabular-nums ${deviationColor(macros.prot, slotTgt?.prot)}`}><MacroBadge type="prot" />{Math.round(macros.prot)}g</span>
+                <span className={`flex items-center gap-0.5 tabular-nums ${deviationColor(macros.fat, slotTgt?.fat)}`}><MacroBadge type="fat" />{Math.round(macros.fat)}g</span>
+              </span>
+            )}
           </div>
 
           {currentId && macros.cal > 0 && (

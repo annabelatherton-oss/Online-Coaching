@@ -1602,11 +1602,11 @@ export default function PlanGroupEditor() {
                           {mealId && (
                             <div className="text-xs space-y-1">
                               {macros ? (
-                                <span className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                                  <span className="font-medium text-gray-700 dark:text-gray-300">{macros.calories} kcal</span>
-                                  <span className={`flex items-center gap-0.5 ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{macros.carbs_g}g</span>
-                                  <span className={`flex items-center gap-0.5 ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{macros.protein_g}g</span>
-                                  <span className={`flex items-center gap-0.5 ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{macros.fat_g}g</span>
+                                <span className="flex items-center gap-2" title="Coloured by how closely this meal matches its target — yellow within 10%, orange 11-20%, red beyond that">
+                                  <span className={`font-medium ${macroColour(macros.calories, slotTarget?.cal)}`}>{macros.calories} kcal</span>
+                                  <span className={`flex items-center gap-0.5 ${macroColour(macros.carbs_g, slotTarget?.carb)}`}><MacroBadge type="carb" />{macros.carbs_g}g</span>
+                                  <span className={`flex items-center gap-0.5 ${macroColour(macros.protein_g, slotTarget?.prot)}`}><MacroBadge type="prot" />{macros.protein_g}g</span>
+                                  <span className={`flex items-center gap-0.5 ${macroColour(macros.fat_g, slotTarget?.fat)}`}><MacroBadge type="fat" />{macros.fat_g}g</span>
                                 </span>
                               ) : (
                                 <span className="text-amber-500" title="Generate this meal's calorie tiers in the Meal Library">
