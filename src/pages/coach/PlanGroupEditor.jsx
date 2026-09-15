@@ -7,11 +7,11 @@ import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { calcStandardMacros } from '../../lib/macros'
 import {
-  getIngredients, formatAmount, hasAnyOverride, normalizeOverrides, mealMacros as sharedMealMacros,
+  getIngredients, formatAmount, mealMacros as sharedMealMacros,
   sumIngredientMacros, MacroTargetInfo, MacroBadge, MACRO_META, deviationColor, suggestAutoFit,
 } from '../../components/MealPlanView'
 import {
-  generateTierIngredients, insertTierVersion, tierTargetsForCategory, allIngredientsFixed, balanceDayIngredients,
+  generateTierIngredients, insertTierVersion, tierTargetsForCategory, allIngredientsFixed, balanceDayIngredients, calcTotals,
 } from '../../lib/calorieTierScaling'
 
 const MAIN_SLOTS = [
@@ -149,18 +149,20 @@ function DayAutoFitSuggestion({ week, slotKeys, tier, target, mealsById, ingredi
   )
 }
 
-// Inline editor for ONE week's occurrence of a meal. Quantities are stored as an override on top
-// of the meal's shared default recipe for this tier (meal_tier_versions / meal_tier_ingredients —
-// the same rows the Meal Library edits), keyed to this specific (week, slot) via
-// template_meal_slots.ingredient_overrides, exactly like a client's own per-week meal-plan
-// overrides. This means adjusting quantities here only ever affects this one week — every other
-// week showing the same meal keeps using the shared default until it's overridden separately.
-function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onRevertAll, onGenerated, overrideTarget }) {
+// Inline editor for a meal's ingredients at ONE calorie tier. Quantities are written straight into
+// the meal's shared meal_tier_versions/meal_tier_ingredients rows (the same rows the Meal Library
+// edits) — so every week showing this meal at this tier picks up the change immediately, rather
+// than only this one week.
+function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onGenerated, overrideTarget }) {
   const [library, setLibrary] = useState([])
   const [baseIngredients, setBaseIngredients] = useState([])
   const [loadingBase, setLoadingBase] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState('')
+  // Local-only draft text while typing an amount — committed (written straight into this meal's
+  // shared tier default) on blur, not per keystroke, since every keystroke would otherwise fire a
+  // write that instantly becomes every week's standard.
+  const [drafts, setDrafts] = useState({})
 
   const version = (meal?.meal_tier_versions || []).find(v => v.calorie_tier === tier)
 
@@ -219,8 +221,6 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
   }
 
   const ingredients = getIngredients(meal, tier, overridesForSlot)
-  const overridden = hasAnyOverride(overridesForSlot)
-  const { qty: overrideQty } = normalizeOverrides(overridesForSlot)
 
   return (
     <div className="space-y-1 py-2 px-2">
@@ -260,15 +260,21 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
               </svg>
             </span>
           )}
-          <span className={`flex-1 truncate ${overrideQty[ing.id] != null ? 'text-brand-600 dark:text-brand-400 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
+          <span className="flex-1 truncate text-gray-600 dark:text-gray-300">
             {ing.name}
           </span>
           <span className="w-16 flex items-center justify-end gap-1">
             <input
               type="number" onFocus={e => e.target.select()}
               className="w-11 text-right bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1 py-0.5"
-              value={ing.quantity_g}
-              onChange={e => onChangeQty(ing.id, e.target.value)}
+              value={drafts[ing.id] ?? ing.quantity_g}
+              onChange={e => setDrafts(d => ({ ...d, [ing.id]: e.target.value }))}
+              onBlur={e => {
+                const val = e.target.value
+                setDrafts(d => { const next = { ...d }; delete next[ing.id]; return next })
+                const parsed = parseFloat(val)
+                if (!isNaN(parsed) && Math.abs(parsed - (parseFloat(ing.quantity_g) || 0)) > 0.05) onChangeQty(ing.id, val)
+              }}
             />
             <span className="text-gray-400 text-[10px]">{ing.unit || 'g'}</span>
           </span>
@@ -299,15 +305,10 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
           </div>
         )
       })()}
-      <div className="flex items-center justify-between pt-1.5 border-t border-gray-100 dark:border-gray-800">
+      <div className="pt-1.5 border-t border-gray-100 dark:border-gray-800">
         <span className="text-[11px] text-gray-400 dark:text-gray-500">
-          {overridden ? 'Adjusted for this week only — every other week keeps the default' : "Using this meal's default quantities"}
+          Editing here updates this meal's {tier} kcal default everywhere it's used — every week showing it will pick up the change.
         </span>
-        {overridden && (
-          <button onClick={onRevertAll} className="text-xs text-orange-500 hover:text-orange-700 dark:hover:text-orange-400 font-medium">
-            Revert to default
-          </button>
-        )}
       </div>
     </div>
   )
@@ -554,56 +555,98 @@ export default function PlanGroupEditor() {
     })
   }
 
-  // Adjusts a single ingredient's quantity for just this (week, slot) — stored as an override on
-  // top of the meal's shared default recipe, so no other week showing the same meal is affected.
-  function changeIngredientOverride(weekIdx, slotKey, ingId, newQtyStr) {
-    const newQty = parseFloat(newQtyStr)
-    const setActiveWeeks = activeTier == null
-      ? setWeeks
-      : updater => setTierWeeks(prev => ({ ...prev, [activeTier]: updater(prev[activeTier] || []) }))
-
-    setActiveWeeks(prev => prev.map((w, i) => {
-      if (i !== weekIdx) return w
-      const existing = normalizeOverrides(w.overrides?.[slotKey])
-      const nextQty = { ...existing.qty, [ingId]: isNaN(newQty) ? 0 : newQty }
-      return { ...w, overrides: { ...w.overrides, [slotKey]: { ...existing, qty: nextQty } } }
+  // Old versions of this screen stored ingredient edits as a per-week override on top of the
+  // meal's shared recipe, so a tweak only ever applied to that one week (hence the "Adjusted"
+  // badge and "Revert to default" button). The coach wants edits here to become the new standard
+  // for that calorie tier instead, so changeIngredientOverride/removeIngredientOverride/
+  // balanceWeekDay below now write straight into the meal's shared meal_tier_ingredients /
+  // meal_tier_versions rows — every week showing that meal at this tier picks it up immediately.
+  // If an older per-week override still exists on a slot we touch, it would otherwise keep
+  // masking the freshly-written standard, so it's cleared here too.
+  async function clearLegacySlotOverride(week, slotKey) {
+    if (!week.overrides?.[slotKey]) return
+    await supabase.from('template_meal_slots').update({ ingredient_overrides: null })
+      .eq('template_id', week.templateId).eq('slot_type', slotKey)
+    setTierWeeks(prev => ({
+      ...prev,
+      [activeTier]: (prev[activeTier] || []).map(w => {
+        if (w.templateId !== week.templateId) return w
+        const nextOverrides = { ...w.overrides }
+        delete nextOverrides[slotKey]
+        return { ...w, overrides: nextOverrides }
+      }),
     }))
-    setDirty(prev => new Set(prev).add(currentWeeks[weekIdx].templateId))
   }
 
-  // Removes a single ingredient for just this (week, slot) — stored as a `removed` override on
-  // top of the meal's shared default recipe, so no other week showing the same meal is affected.
-  function removeIngredientOverride(weekIdx, slotKey, ingId) {
-    const setActiveWeeks = activeTier == null
-      ? setWeeks
-      : updater => setTierWeeks(prev => ({ ...prev, [activeTier]: updater(prev[activeTier] || []) }))
+  // Adjusts a single ingredient's quantity by writing it straight into this meal's shared tier
+  // default (see the note above) rather than a one-week-only override.
+  async function changeIngredientOverride(weekIdx, slotKey, ingId, newQtyStr) {
+    if (activeTier == null) return
+    const newQty = parseFloat(newQtyStr)
+    if (isNaN(newQty) || newQty < 0) return
+    const week = currentWeeks[weekIdx]
+    const mealId = week.slots[slotKey]
+    const meal = mealId ? mealsById[mealId] : null
+    const version = meal?.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
+    if (!version) return
+    const rows = version.meal_tier_ingredients || []
+    const row = rows.find(r => r.id === ingId)
+    if (!row || row.is_static) return
 
-    setActiveWeeks(prev => prev.map((w, i) => {
-      if (i !== weekIdx) return w
-      const existing = normalizeOverrides(w.overrides?.[slotKey])
-      const nextRemoved = [...new Set([...existing.removed, ingId])]
-      return { ...w, overrides: { ...w.overrides, [slotKey]: { ...existing, removed: nextRemoved } } }
-    }))
-    setDirty(prev => new Set(prev).add(currentWeeks[weekIdx].templateId))
+    const origQty = parseFloat(row.quantity_g) || 0
+    const ratio = origQty > 0 ? newQty / origQty : 1
+    const updated = {
+      quantity_g: newQty,
+      calories:  round1((parseFloat(row.calories)  || 0) * ratio),
+      protein_g: round1((parseFloat(row.protein_g) || 0) * ratio),
+      carbs_g:   round1((parseFloat(row.carbs_g)   || 0) * ratio),
+      fat_g:     round1((parseFloat(row.fat_g)     || 0) * ratio),
+    }
+    await supabase.from('meal_tier_ingredients').update(updated).eq('id', ingId)
+    const totals = calcTotals(rows.map(r => r.id === ingId ? { ...r, ...updated } : r))
+    await supabase.from('meal_tier_versions').update(totals).eq('id', version.id)
+    await clearLegacySlotOverride(week, slotKey)
+    await refreshMeal(mealId)
+  }
+
+  // Removes an ingredient by deleting it straight out of this meal's shared tier default — same
+  // "becomes the standard" behaviour as changeIngredientOverride above.
+  async function removeIngredientOverride(weekIdx, slotKey, ingId) {
+    if (activeTier == null) return
+    const week = currentWeeks[weekIdx]
+    const mealId = week.slots[slotKey]
+    const meal = mealId ? mealsById[mealId] : null
+    const version = meal?.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
+    if (!version) return
+    const rows = version.meal_tier_ingredients || []
+    const row = rows.find(r => r.id === ingId)
+    if (!row || row.is_static) return
+
+    await supabase.from('meal_tier_ingredients').delete().eq('id', ingId)
+    const totals = calcTotals(rows.filter(r => r.id !== ingId))
+    await supabase.from('meal_tier_versions').update(totals).eq('id', version.id)
+    await clearLegacySlotOverride(week, slotKey)
+    await refreshMeal(mealId)
   }
 
   // Balances every Option A meal in this week's day against the day's real macro target in one
   // shot — each meal's CALORIE share stays exactly at its assigned category %, only the
   // protein/carb/fat mix within that calorie envelope shifts (weighted by how much
-  // flexible-ingredient room each meal has), so the day's macros land closer to target without
-  // a coach needing to open and nudge each meal one at a time. See balanceDayIngredients.
-  function balanceWeekDay(weekIdx) {
+  // flexible-ingredient room each meal has) — and writes the result straight into each meal's
+  // shared tier default, same as the single-ingredient edits above, so it becomes every week's
+  // standard rather than just this one week's.
+  async function balanceWeekDay(weekIdx) {
     if (activeTier == null) return
     const week = currentWeeks[weekIdx]
     const mealsInDay = []
     for (const key of OPTION_A_KEYS) {
       const mealId = week.slots[key]
       const meal = mealId ? mealsById[mealId] : null
-      if (!meal) continue
+      const version = meal?.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
+      const rows = version?.meal_tier_ingredients || []
+      if (!version || rows.length === 0) continue
       const slotDef = SLOTS.find(s => s.key === key)
-      const baseIngredients = getIngredients(meal, activeTier, week.overrides?.[key])
-      if (baseIngredients.length === 0) continue
-      mealsInDay.push({ key, category: slotDef.cat, baseIngredients })
+      mealsInDay.push({ key, mealId, versionId: version.id, category: slotDef.cat, baseIngredients: rows })
     }
     if (mealsInDay.length === 0) return
 
@@ -611,40 +654,26 @@ export default function PlanGroupEditor() {
     const library = Object.values(ingredientLib)
     const results = balanceDayIngredients(mealsInDay, library, dayTarget, mealSplit)
 
-    setTierWeeks(prev => ({
-      ...prev,
-      [activeTier]: (prev[activeTier] || []).map((w, i) => {
-        if (i !== weekIdx) return w
-        const nextOverrides = { ...w.overrides }
-        for (const r of results) {
-          const inputMeal = mealsInDay.find(m => m.key === r.key)
-          const existing = normalizeOverrides(nextOverrides[r.key])
-          const qty = { ...existing.qty }
-          inputMeal.baseIngredients.forEach((ing, idx) => {
-            const newQty = r.ingredients[idx]?.quantity_g
-            if (newQty != null && Math.abs(newQty - (parseFloat(ing.quantity_g) || 0)) > 0.05) qty[ing.id] = newQty
-          })
-          nextOverrides[r.key] = { ...existing, qty }
-        }
-        return { ...w, overrides: nextOverrides }
-      }),
+    await Promise.all(results.map(async r => {
+      const input = mealsInDay.find(m => m.key === r.key)
+      const nextRows = input.baseIngredients.map((row, idx) => {
+        const changed = r.ingredients[idx]
+        return changed ? { ...row, ...changed } : row
+      })
+      const toUpdate = nextRows.filter((row, idx) =>
+        Math.abs((parseFloat(row.quantity_g) || 0) - (parseFloat(input.baseIngredients[idx].quantity_g) || 0)) > 0.05
+      )
+      if (toUpdate.length === 0) return
+      await Promise.all(toUpdate.map(row =>
+        supabase.from('meal_tier_ingredients').update({
+          quantity_g: row.quantity_g, calories: row.calories, protein_g: row.protein_g, carbs_g: row.carbs_g, fat_g: row.fat_g,
+        }).eq('id', row.id)
+      ))
+      const totals = calcTotals(nextRows)
+      await supabase.from('meal_tier_versions').update(totals).eq('id', input.versionId)
+      await clearLegacySlotOverride(week, input.key)
     }))
-    setDirty(prev => new Set(prev).add(week.templateId))
-  }
-
-  // Clears every per-week override on a slot, reverting it back to the meal's shared defaults.
-  function revertSlotOverrides(weekIdx, slotKey) {
-    const setActiveWeeks = activeTier == null
-      ? setWeeks
-      : updater => setTierWeeks(prev => ({ ...prev, [activeTier]: updater(prev[activeTier] || []) }))
-
-    setActiveWeeks(prev => prev.map((w, i) => {
-      if (i !== weekIdx) return w
-      const nextOverrides = { ...w.overrides }
-      delete nextOverrides[slotKey]
-      return { ...w, overrides: nextOverrides }
-    }))
-    setDirty(prev => new Set(prev).add(currentWeeks[weekIdx].templateId))
+    await Promise.all(mealsInDay.map(m => refreshMeal(m.mealId)))
   }
 
   function handleSwap(weekIdx, slotKey, candidateId) {
@@ -1198,7 +1227,6 @@ export default function PlanGroupEditor() {
                   const editKey = mealId && activeTier != null ? `${weekIdx}:${slot.key}` : null
                   const isEditingIngredients = editKey != null && editingIngredients === editKey
                   const previewIngredients = meal ? getIngredients(meal, activeTier, overridesForSlot) : []
-                  const isOverridden = hasAnyOverride(overridesForSlot)
                   const isSwapOpen = swapPicker?.weekIdx === weekIdx && swapPicker?.slotKey === slot.key
                   return (
                     <div key={slot.key} className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
@@ -1216,11 +1244,6 @@ export default function PlanGroupEditor() {
                           <span className="absolute top-2 left-2 text-xs font-semibold bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded-full backdrop-blur-sm shadow-sm">
                             {slot.label}
                           </span>
-                          {isOverridden && (
-                            <span className="absolute top-2 right-2 text-xs font-semibold bg-brand-500 text-white px-2 py-0.5 rounded-full shadow-sm" title="Ingredient quantities adjusted for this week only">
-                              Adjusted
-                            </span>
-                          )}
                           {isStatic && (
                             <span className="absolute bottom-2 left-2 text-[10px] font-medium bg-white/90 dark:bg-gray-900/90 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full backdrop-blur-sm shadow-sm">
                               Same every week
@@ -1412,7 +1435,6 @@ export default function PlanGroupEditor() {
                             overridesForSlot={overridesForSlot}
                             onChangeQty={(ingId, val) => changeIngredientOverride(weekIdx, slot.key, ingId, val)}
                             onRemove={ingId => removeIngredientOverride(weekIdx, slot.key, ingId)}
-                            onRevertAll={() => revertSlotOverrides(weekIdx, slot.key)}
                             onGenerated={() => refreshMeal(mealId)}
                             overrideTarget={slotTarget}
                           />
