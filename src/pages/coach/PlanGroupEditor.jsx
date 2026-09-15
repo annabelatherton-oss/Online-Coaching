@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
@@ -58,6 +58,41 @@ function calorieRangeColor(actual, target) {
   if (diff > UNDER_TARGET_TOLERANCE) return 'text-amber-500'
   if (diff < -OVER_TARGET_TOLERANCE) return 'text-red-500'
   return 'text-green-600 dark:text-green-400'
+}
+
+// Same ±20kcal pass/fail band as calorieRangeColor, as a bar-fill colour instead of text.
+function calorieBarColor(actual, target) {
+  if (!target) return 'bg-gray-300 dark:bg-gray-600'
+  const diff = target - actual
+  if (diff > UNDER_TARGET_TOLERANCE) return 'bg-amber-400'
+  if (diff < -OVER_TARGET_TOLERANCE) return 'bg-red-400'
+  return 'bg-green-500'
+}
+
+// Small horizontal bar-chart dropped between meal categories (breakfast/lunch/dinner) so a coach
+// scrolling through a week's meals can see at a glance how far Option A and Option B currently sit
+// from the day's target, without scrolling back up to the day-level summary above the meal list.
+function DayTargetBars({ target, a, b }) {
+  if (!target) return null
+  const max = Math.max(target, a || 0, b || 0, 1) * 1.05
+  const rows = [
+    { label: 'Target', value: target, color: 'bg-gray-400 dark:bg-gray-500' },
+    { label: 'A', value: a, color: calorieBarColor(a, target) },
+    { label: 'B', value: b, color: calorieBarColor(b, target) },
+  ]
+  return (
+    <div className="flex flex-col gap-1 py-2 px-3 my-1 bg-gray-50/60 dark:bg-gray-800/30 rounded-xl">
+      {rows.map(r => (
+        <div key={r.label} className="flex items-center gap-2">
+          <span className="w-11 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide flex-shrink-0">{r.label}</span>
+          <div className="flex-1 h-2 bg-gray-200/70 dark:bg-gray-700/70 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all ${r.color}`} style={{ width: `${Math.min(100, ((r.value || 0) / max) * 100)}%` }} />
+          </div>
+          <span className="w-12 text-right text-[11px] tabular-nums text-gray-500 dark:text-gray-400 flex-shrink-0">{Math.round(r.value || 0)}</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // Each meal's tier version is generated to hit MACRO_SPLIT of its tier's calories (see
@@ -1395,8 +1430,13 @@ export default function PlanGroupEditor() {
                   const isEditingIngredients = editKey != null && editingIngredients === editKey
                   const previewIngredients = meal ? getIngredients(meal, activeTier, overridesForSlot) : []
                   const isSwapOpen = swapPicker?.weekIdx === weekIdx && swapPicker?.slotKey === slot.key
+                  // A quick visual checkpoint dropped after each A/B category (breakfast, lunch)
+                  // so a coach scrolling through the meals can see how close A and B currently
+                  // sit to the day's target without scrolling back up to the summary above.
+                  const showDayBarsAfter = (slot.key === 'breakfast2' || slot.key === 'lunch2') && activeTier != null
                   return (
-                    <div key={slot.key} className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
+                    <Fragment key={slot.key}>
+                    <div className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
                       <div className="flex flex-col sm:flex-row">
                         <div className="relative w-full sm:w-32 aspect-[16/9] sm:aspect-square bg-gray-100 dark:bg-gray-800 flex-shrink-0">
                           {meal?.photo_url ? (
@@ -1661,6 +1701,8 @@ export default function PlanGroupEditor() {
                         </div>
                       )}
                     </div>
+                    {showDayBarsAfter && <DayTargetBars target={activeTier} a={opt1Totals.calories} b={opt2Totals.calories} />}
+                    </Fragment>
                   )
                 })}
               </div>
