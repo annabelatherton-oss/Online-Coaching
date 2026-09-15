@@ -1430,10 +1430,10 @@ export default function PlanGroupEditor() {
                   const isEditingIngredients = editKey != null && editingIngredients === editKey
                   const previewIngredients = meal ? getIngredients(meal, activeTier, overridesForSlot) : []
                   const isSwapOpen = swapPicker?.weekIdx === weekIdx && swapPicker?.slotKey === slot.key
-                  // A quick visual checkpoint dropped after each A/B category (breakfast, lunch)
-                  // so a coach scrolling through the meals can see how close A and B currently
-                  // sit to the day's target without scrolling back up to the summary above.
-                  const showDayBarsAfter = (slot.key === 'breakfast2' || slot.key === 'lunch2') && activeTier != null
+                  // A quick visual checkpoint dropped after every meal (not just once per
+                  // category) so a coach scrolling through the meals can see how close A and B
+                  // currently sit to the day's target without scrolling back up to the summary.
+                  const showDayBarsAfter = MAIN_SLOTS.some(s => s.key === slot.key) && activeTier != null
                   return (
                     <Fragment key={slot.key}>
                     <div className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
