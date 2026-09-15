@@ -394,6 +394,9 @@ export default function PlanGroupEditor() {
   const [savedDefaults, setSavedDefaults] = useState(false)
   // { weekIdx, slotKey } of the swap picker currently open, or null.
   const [swapPicker, setSwapPicker] = useState(null)
+  // { weekIdx, status: 'working'|'done'|'empty'|'error', text } for the last "Balance day" click,
+  // so the coach always sees SOME feedback even when there's genuinely nothing to change.
+  const [dayBalance, setDayBalance] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -717,43 +720,61 @@ export default function PlanGroupEditor() {
   // standard rather than just this one week's.
   async function balanceWeekDay(weekIdx) {
     if (activeTier == null) return
-    const week = currentWeeks[weekIdx]
-    const mealsInDay = []
-    for (const key of OPTION_A_KEYS) {
-      const mealId = week.slots[key]
-      const meal = mealId ? mealsById[mealId] : null
-      const version = meal?.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
-      const rows = version?.meal_tier_ingredients || []
-      if (!version || rows.length === 0) continue
-      const slotDef = SLOTS.find(s => s.key === key)
-      mealsInDay.push({ key, mealId, versionId: version.id, category: slotDef.cat, baseIngredients: rows })
+    setDayBalance({ weekIdx, status: 'working', text: 'Balancing…' })
+    try {
+      const week = currentWeeks[weekIdx]
+      const mealsInDay = []
+      const skipped = []
+      for (const key of OPTION_A_KEYS) {
+        const mealId = week.slots[key]
+        if (!mealId) continue
+        const meal = mealsById[mealId]
+        const version = meal?.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
+        const rows = version?.meal_tier_ingredients || []
+        if (!version || rows.length === 0) { skipped.push(SLOT_LABELS[key] || key); continue }
+        const slotDef = SLOTS.find(s => s.key === key)
+        mealsInDay.push({ key, mealId, versionId: version.id, category: slotDef.cat, baseIngredients: rows })
+      }
+      if (mealsInDay.length === 0) {
+        setDayBalance({ weekIdx, status: 'empty', text: `No Option A meal here has a generated ${activeTier} kcal version yet — use "Generate now" in each meal's ingredient editor first.` })
+        return
+      }
+
+      const dayTarget = { calories: activeTier, ...calcStandardMacros(activeTier) }
+      const library = Object.values(ingredientLib)
+      const results = balanceDayIngredients(mealsInDay, library, dayTarget, mealSplit)
+
+      let changedMeals = 0
+      await Promise.all(results.map(async r => {
+        const input = mealsInDay.find(m => m.key === r.key)
+        const nextRows = input.baseIngredients.map((row, idx) => {
+          const changed = r.ingredients[idx]
+          return changed ? { ...row, ...changed } : row
+        })
+        const toUpdate = nextRows.filter((row, idx) =>
+          Math.abs((parseFloat(row.quantity_g) || 0) - (parseFloat(input.baseIngredients[idx].quantity_g) || 0)) > 0.05
+        )
+        if (toUpdate.length === 0) return
+        changedMeals++
+        await Promise.all(toUpdate.map(row =>
+          supabase.from('meal_tier_ingredients').update({
+            quantity_g: row.quantity_g, calories: row.calories, protein_g: row.protein_g, carbs_g: row.carbs_g, fat_g: row.fat_g,
+          }).eq('id', row.id)
+        ))
+        const totals = calcTotals(nextRows)
+        await supabase.from('meal_tier_versions').update(totals).eq('id', input.versionId)
+        await clearLegacySlotOverride(week, input.key)
+      }))
+      await Promise.all(mealsInDay.map(m => refreshMeal(m.mealId)))
+
+      if (changedMeals === 0) {
+        setDayBalance({ weekIdx, status: 'empty', text: `Already close to target — no changes needed${skipped.length ? ` (skipped: ${skipped.join(', ')}, no tier version yet)` : ''}.` })
+      } else {
+        setDayBalance({ weekIdx, status: 'done', text: `Updated ${changedMeals} meal${changedMeals === 1 ? '' : 's'}.` })
+      }
+    } catch (err) {
+      setDayBalance({ weekIdx, status: 'error', text: `Couldn't balance this day: ${err.message || err}` })
     }
-    if (mealsInDay.length === 0) return
-
-    const dayTarget = { calories: activeTier, ...calcStandardMacros(activeTier) }
-    const library = Object.values(ingredientLib)
-    const results = balanceDayIngredients(mealsInDay, library, dayTarget, mealSplit)
-
-    await Promise.all(results.map(async r => {
-      const input = mealsInDay.find(m => m.key === r.key)
-      const nextRows = input.baseIngredients.map((row, idx) => {
-        const changed = r.ingredients[idx]
-        return changed ? { ...row, ...changed } : row
-      })
-      const toUpdate = nextRows.filter((row, idx) =>
-        Math.abs((parseFloat(row.quantity_g) || 0) - (parseFloat(input.baseIngredients[idx].quantity_g) || 0)) > 0.05
-      )
-      if (toUpdate.length === 0) return
-      await Promise.all(toUpdate.map(row =>
-        supabase.from('meal_tier_ingredients').update({
-          quantity_g: row.quantity_g, calories: row.calories, protein_g: row.protein_g, carbs_g: row.carbs_g, fat_g: row.fat_g,
-        }).eq('id', row.id)
-      ))
-      const totals = calcTotals(nextRows)
-      await supabase.from('meal_tier_versions').update(totals).eq('id', input.versionId)
-      await clearLegacySlotOverride(week, input.key)
-    }))
-    await Promise.all(mealsInDay.map(m => refreshMeal(m.mealId)))
   }
 
   function handleSwap(weekIdx, slotKey, candidateId) {
@@ -1269,12 +1290,18 @@ export default function PlanGroupEditor() {
                       <button
                         type="button"
                         onClick={() => balanceWeekDay(weekIdx)}
-                        className="flex-shrink-0 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300 underline whitespace-nowrap"
+                        disabled={dayBalance?.weekIdx === weekIdx && dayBalance.status === 'working'}
+                        className="flex-shrink-0 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300 underline whitespace-nowrap disabled:opacity-50 disabled:no-underline"
                         title="Rebalance every Option A meal's protein/carb/fat mix to close the day's macro gap, without moving any meal off its calorie %"
                       >
-                        Balance day
+                        {dayBalance?.weekIdx === weekIdx && dayBalance.status === 'working' ? 'Balancing…' : 'Balance day'}
                       </button>
                     </div>
+                    {dayBalance?.weekIdx === weekIdx && dayBalance.status !== 'working' && (
+                      <p className={`text-xs pl-16 ${dayBalance.status === 'error' ? 'text-red-500' : dayBalance.status === 'done' ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                        {dayBalance.text}
+                      </p>
+                    )}
                     <DayAutoFitSuggestion
                       week={week} slotKeys={OPTION_A_KEYS} tier={activeTier}
                       target={activeTier != null ? (() => { const t = calcStandardMacros(activeTier); return { cal: activeTier, carb: t.carbs_g, prot: t.protein_g, fat: t.fat_g } })() : null}
