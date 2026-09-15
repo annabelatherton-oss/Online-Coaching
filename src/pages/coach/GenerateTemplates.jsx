@@ -146,6 +146,22 @@ class DeckPool {
 
 const WEEK_COUNT = 50
 
+// Picks the best replacement for a slot when the source rotation's own meal doesn't qualify for
+// the target diet — same category, preferring the closest match to the original meal's subtype
+// (and, for dinner, its carb side too) so a "chicken + rice" dinner becomes another "? + rice"
+// dish rather than something structurally unrelated. Within the best-matching tier, picks
+// whichever qualifying meal has been used least so far, for variety across the 50 weeks — and
+// never a meal already placed elsewhere in the same day (candidates already exclude those).
+function pickSubstitute(pool, subtype, carb, usageCounts) {
+  if (pool.length === 0) return null
+  const tier = m => (subtype && carb && m._subtype === subtype && m._carb === carb) ? 3
+    : (subtype && m._subtype === subtype) ? 2 : 1
+  const maxTier = Math.max(...pool.map(tier))
+  const atTier = pool.filter(m => tier(m) === maxTier)
+  atTier.sort((a, b) => (usageCounts.get(a.id) || 0) - (usageCounts.get(b.id) || 0))
+  return atTier[0]
+}
+
 // A cycler hands out every item in a pool once (in shuffled order) before any item repeats,
 // guaranteeing full coverage as long as it's asked for at least `pool.length` items overall.
 function buildCycler(pool) {
@@ -336,6 +352,21 @@ export default function GenerateTemplates() {
   const [saveProgress, setSaveProgress] = useState('')
   const [saveError, setSaveError] = useState('')
 
+  // "Create a diet variant" — clones an existing plan's Standard rotation week-for-week, only
+  // substituting meals that don't qualify for the target diet, instead of generating a brand-new
+  // arrangement from scratch (see handleCloneVariant below).
+  const [existingPlans, setExistingPlans] = useState([])
+  const [sourcePlanId, setSourcePlanId] = useState('')
+  const [variantDiet, setVariantDiet] = useState('vegetarian')
+  const [cloning, setCloning] = useState(false)
+  const [cloneError, setCloneError] = useState('')
+  const [cloneSummary, setCloneSummary] = useState(null)
+
+  useEffect(() => {
+    supabase.from('plan_groups').select('id, name').eq('coach_id', profile.id).order('name')
+      .then(({ data }) => setExistingPlans(data || []))
+  }, [profile.id])
+
   useEffect(() => {
     supabase
       .from('meals')
@@ -485,6 +516,82 @@ export default function GenerateTemplates() {
     const generated = generateWeeks(withOverrides(), excluded)
     setWeeks(generated)
     saveDraft(generated)
+    setCloneSummary(null)
+    setExpanded(new Set())
+    setPhase('review')
+    window.scrollTo(0, 0)
+  }
+
+  // Clones another plan's Standard 50-week rotation week-for-week: keeps the exact same meal in
+  // every slot that already qualifies for the target diet, and only swaps out the ones that don't
+  // — closest-matching subtype first (see pickSubstitute) — instead of generating an unrelated
+  // rotation from scratch. Lands in the same review/save flow as "Generate 50 Weeks" above, so
+  // everything gets a final look before it's saved as its own new plan.
+  async function handleCloneVariant() {
+    if (!sourcePlanId || !variantDiet) return
+    setCloning(true)
+    setCloneError('')
+    setCloneSummary(null)
+
+    const { data: templates, error } = await supabase
+      .from('weekly_templates')
+      .select('week_number, template_meal_slots(slot_type, meal_id)')
+      .eq('plan_group_id', sourcePlanId)
+      .is('calorie_tier', null)
+      .order('week_number')
+
+    if (error) { setCloneError(error.message); setCloning(false); return }
+    if (!templates || templates.length === 0) {
+      setCloneError("That plan has no Standard-template weeks to copy from.")
+      setCloning(false)
+      return
+    }
+
+    // Exclusions are computed fresh for the target diet here rather than reusing the `excluded`
+    // state — that reflects whichever diet button was last clicked in the OTHER (from-scratch)
+    // flow above, defaulting to Standard, which would wrongly exclude a meat/dairy-substitute meal
+    // (e.g. a Quorn dish marked "not Standard-eligible") that's actually fine for this diet.
+    const overridden = withOverrides()
+    const overrideMap = Object.fromEntries(overridden.map(m => [m.id, m]))
+    const qualifies = m => !m.excluded_from_templates && mealQualifiesForDiet(m, variantDiet)
+    const poolByCategory = {}
+    for (const cat of ['breakfast', 'lunch', 'dinner']) {
+      poolByCategory[cat] = overridden.filter(m => m.category === cat && qualifies(m))
+    }
+
+    const usageCounts = new Map()
+    let kept = 0, substituted = 0, blank = 0
+    const blankSpots = []
+
+    const resolvedWeeks = [...templates].sort((a, b) => a.week_number - b.week_number).map(t => {
+      const slotsById = Object.fromEntries((t.template_meal_slots || []).map(s => [s.slot_type, s.meal_id]))
+      const week = { weekNum: t.week_number }
+      const usedTodayIds = new Set()
+      for (const s of SLOTS) {
+        const origMeal = slotsById[s.key] ? overrideMap[slotsById[s.key]] : null
+        let chosen = null
+        if (origMeal && !usedTodayIds.has(origMeal.id) && qualifies(origMeal)) {
+          chosen = origMeal
+          kept++
+        } else {
+          const pool = (poolByCategory[s.cat] || []).filter(m => !usedTodayIds.has(m.id))
+          const sub = pickSubstitute(pool, origMeal?._subtype, origMeal?._carb, usageCounts)
+          if (sub) { chosen = sub; substituted++ }
+          else { blank++; blankSpots.push(`Week ${t.week_number} ${s.label}`) }
+        }
+        week[s.key] = chosen
+        if (chosen) { usedTodayIds.add(chosen.id); usageCounts.set(chosen.id, (usageCounts.get(chosen.id) || 0) + 1) }
+      }
+      return week
+    })
+
+    setWeeks(resolvedWeeks)
+    saveDraft(resolvedWeeks)
+    const sourceName = existingPlans.find(p => p.id === sourcePlanId)?.name || 'plan'
+    setPlanName(`${DIET_LABELS[variantDiet]} ${WEEK_COUNT} Week Plan`)
+    setSelectedDiet(variantDiet)
+    setCloneSummary({ kept, substituted, blank, blankSpots, sourceName })
+    setCloning(false)
     setExpanded(new Set())
     setPhase('review')
     window.scrollTo(0, 0)
@@ -612,6 +719,48 @@ export default function GenerateTemplates() {
             ))}
           </div>
         </div>
+
+        {existingPlans.length > 0 && (
+          <div className="card space-y-3">
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Or: create a diet variant from an existing plan</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                Copies another plan's Standard rotation week-for-week — every meal that already fits the diet stays exactly where it is; only
+                the ones that don't get swapped for the closest match in the same category. Much closer to the original than generating from
+                scratch. You'll still land on the review screen to check it over before saving.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label text-xs">Copy from</label>
+                <select className="input text-sm" value={sourcePlanId} onChange={e => setSourcePlanId(e.target.value)}>
+                  <option value="">— Select a plan —</option>
+                  {existingPlans.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label text-xs">Diet</label>
+                <select className="input text-sm" value={variantDiet} onChange={e => setVariantDiet(e.target.value)}>
+                  {DIETS.map(d => (
+                    <option key={d} value={d}>{DIET_LABELS[d]}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleCloneVariant}
+                disabled={!sourcePlanId || cloning}
+                className="btn-secondary text-sm"
+              >
+                {cloning ? 'Creating variant…' : `Create ${DIET_LABELS[variantDiet]} variant →`}
+              </button>
+              {cloneError && <span className="text-xs text-red-500">{cloneError}</span>}
+            </div>
+          </div>
+        )}
 
         <div className="card bg-pink-50/60 dark:bg-pink-900/10 border-pink-100 dark:border-pink-900/30">
           <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -782,12 +931,12 @@ export default function GenerateTemplates() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => { clearDraft(); setPhase('setup'); setWeeks([]) }}
+            onClick={() => { clearDraft(); setPhase('setup'); setWeeks([]); setCloneSummary(null) }}
             className="text-sm text-gray-400 hover:text-red-500 transition-colors"
           >
             Discard
           </button>
-          <button onClick={handleGenerate} className="btn-secondary text-sm">
+          <button onClick={cloneSummary ? handleCloneVariant : handleGenerate} className="btn-secondary text-sm">
             Regenerate
           </button>
           <button onClick={handleSaveAll} disabled={saving} className="btn-primary">
@@ -799,6 +948,21 @@ export default function GenerateTemplates() {
       {saveError && (
         <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
           <p className="text-sm text-red-700 dark:text-red-400">{saveError}</p>
+        </div>
+      )}
+
+      {cloneSummary && (
+        <div className="card bg-brand-50/60 dark:bg-brand-900/10 border-brand-100 dark:border-brand-900/30 space-y-1">
+          <p className="text-sm text-gray-700 dark:text-gray-300">
+            Cloned from <strong>{cloneSummary.sourceName}</strong>: <strong>{cloneSummary.kept}</strong> slots kept unchanged,{' '}
+            <strong>{cloneSummary.substituted}</strong> swapped for a {DIET_LABELS[selectedDiet] || 'diet'}-friendly match
+            {cloneSummary.blank > 0 && <>, and <strong className="text-amber-600 dark:text-amber-400">{cloneSummary.blank}</strong> left blank</>}.
+          </p>
+          {cloneSummary.blankSpots.length > 0 && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              No qualifying meal was available for: {cloneSummary.blankSpots.join(', ')}. Add one in the Meal Library, or fill these in manually below.
+            </p>
+          )}
         </div>
       )}
 
