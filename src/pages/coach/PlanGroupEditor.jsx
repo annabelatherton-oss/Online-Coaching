@@ -153,7 +153,7 @@ function DayAutoFitSuggestion({ week, slotKeys, tier, target, mealsById, ingredi
 // the meal's shared meal_tier_versions/meal_tier_ingredients rows (the same rows the Meal Library
 // edits) — so every week showing this meal at this tier picks up the change immediately, rather
 // than only this one week.
-function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onClearOverride, onGenerated, overrideTarget }) {
+function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onAdd, onClearOverride, onGenerated, overrideTarget }) {
   const [library, setLibrary] = useState([])
   const [baseIngredients, setBaseIngredients] = useState([])
   const [loadingBase, setLoadingBase] = useState(true)
@@ -163,6 +163,7 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
   // shared tier default) on blur, not per keystroke, since every keystroke would otherwise fire a
   // write that instantly becomes every week's standard.
   const [drafts, setDrafts] = useState({})
+  const [addSearch, setAddSearch] = useState('')
 
   const version = (meal?.meal_tier_versions || []).find(v => v.calorie_tier === tier)
 
@@ -316,6 +317,37 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
               ingredientLib={libraryById}
               onAutoFit={onChangeQty}
             />
+          </div>
+        )
+      })()}
+      {onAdd && (() => {
+        const searchMatches = addSearch.length >= 2
+          ? library.filter(l => l.name.toLowerCase().includes(addSearch.toLowerCase())).slice(0, 8)
+          : []
+        return (
+          <div className="pt-1">
+            <input
+              type="text"
+              placeholder="Add an ingredient…"
+              value={addSearch}
+              onChange={e => setAddSearch(e.target.value)}
+              className="input w-full text-xs py-1"
+            />
+            {searchMatches.length > 0 && (
+              <div className="mt-1 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden max-h-40 overflow-y-auto">
+                {searchMatches.map(lib => (
+                  <button
+                    key={lib.id}
+                    type="button"
+                    onClick={() => { onAdd(lib); setAddSearch('') }}
+                    className="w-full text-left px-2.5 py-1.5 hover:bg-brand-50 dark:hover:bg-brand-900/10 border-b border-gray-100 dark:border-gray-800 last:border-0 text-xs"
+                  >
+                    <span className="font-medium text-gray-900 dark:text-white">{lib.name}</span>
+                    <span className="text-gray-400 dark:text-gray-500"> — {lib.serving_size || '?'}{lib.serving_unit || 'g'} · {Math.round(lib.calories_per_serving || 0)} kcal</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )
       })()}
@@ -638,6 +670,40 @@ export default function PlanGroupEditor() {
 
     await supabase.from('meal_tier_ingredients').delete().eq('id', ingId)
     const totals = calcTotals(rows.filter(r => r.id !== ingId))
+    await supabase.from('meal_tier_versions').update(totals).eq('id', version.id)
+    await clearLegacySlotOverride(week, slotKey)
+    await refreshMeal(mealId)
+  }
+
+  // Adds a brand-new ingredient straight into this meal's shared tier default — same
+  // "becomes the standard" behaviour as changeIngredientOverride/removeIngredientOverride above.
+  async function addTierIngredient(weekIdx, slotKey, libIng) {
+    if (activeTier == null) return
+    const week = currentWeeks[weekIdx]
+    const mealId = week.slots[slotKey]
+    const meal = mealId ? mealsById[mealId] : null
+    const version = meal?.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
+    if (!version) return
+
+    const qty = libIng.serving_size || 100
+    const f = libIng.serving_size > 0 ? qty / libIng.serving_size : 0
+    const newRow = {
+      tier_version_id: version.id,
+      name: libIng.name,
+      quantity_g: qty,
+      unit: libIng.serving_unit || 'g',
+      calories:  round1(f * libIng.calories_per_serving),
+      protein_g: round1(f * libIng.protein_per_serving),
+      carbs_g:   round1(f * libIng.carbs_per_serving),
+      fat_g:     round1(f * libIng.fat_per_serving),
+      ingredient_id: libIng.id,
+      scaling_type: 'flexible',
+      is_static: false,
+    }
+    const { data: inserted, error } = await supabase.from('meal_tier_ingredients').insert(newRow).select().single()
+    if (error || !inserted) return
+
+    const totals = calcTotals([...(version.meal_tier_ingredients || []), inserted])
     await supabase.from('meal_tier_versions').update(totals).eq('id', version.id)
     await clearLegacySlotOverride(week, slotKey)
     await refreshMeal(mealId)
@@ -1449,6 +1515,7 @@ export default function PlanGroupEditor() {
                             overridesForSlot={overridesForSlot}
                             onChangeQty={(ingId, val) => changeIngredientOverride(weekIdx, slot.key, ingId, val)}
                             onRemove={ingId => removeIngredientOverride(weekIdx, slot.key, ingId)}
+                            onAdd={libIng => addTierIngredient(weekIdx, slot.key, libIng)}
                             onClearOverride={() => clearLegacySlotOverride(week, slot.key)}
                             onGenerated={() => refreshMeal(mealId)}
                             overrideTarget={slotTarget}
