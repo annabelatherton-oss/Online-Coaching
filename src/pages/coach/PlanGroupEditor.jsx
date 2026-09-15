@@ -69,10 +69,11 @@ function calorieBarColor(actual, target) {
   return 'bg-green-500'
 }
 
-// Small horizontal bar-chart dropped between meal categories (breakfast/lunch/dinner) so a coach
-// scrolling through a week's meals can see at a glance how far Option A and Option B currently sit
-// from the day's target, without scrolling back up to the day-level summary above the meal list.
-function DayTargetBars({ target, a, b }) {
+// Small horizontal bar-chart shown once per meal category (breakfast/lunch/dinner) — that
+// category's own share of the tier vs Option A's vs Option B's actual calories for that specific
+// meal, so a coach can see at a glance how each option compares to ITS meal's own target, not the
+// day as a whole.
+function MealTargetBars({ target, a, b }) {
   if (!target) return null
   const max = Math.max(target, a || 0, b || 0, 1) * 1.05
   const rows = [
@@ -1430,10 +1431,11 @@ export default function PlanGroupEditor() {
                   const isEditingIngredients = editKey != null && editingIngredients === editKey
                   const previewIngredients = meal ? getIngredients(meal, activeTier, overridesForSlot) : []
                   const isSwapOpen = swapPicker?.weekIdx === weekIdx && swapPicker?.slotKey === slot.key
-                  // A quick visual checkpoint dropped after every meal (not just once per
-                  // category) so a coach scrolling through the meals can see how close A and B
-                  // currently sit to the day's target without scrolling back up to the summary.
-                  const showDayBarsAfter = MAIN_SLOTS.some(s => s.key === slot.key) && activeTier != null
+                  // One checkpoint per meal category (after its Option B card) comparing that
+                  // category's own tier share against Option A's and Option B's actual calories
+                  // for that specific meal — not the day as a whole.
+                  const showMealBarsAfter = slot.key === 'breakfast2' || slot.key === 'lunch2' || slot.key === 'dinner2'
+                  const mealCategoryTarget = showMealBarsAfter && activeTier != null ? tierTargetsForCategory(activeTier, slot.cat, mealSplit).calories : null
                   return (
                     <Fragment key={slot.key}>
                     <div className="rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
@@ -1701,7 +1703,7 @@ export default function PlanGroupEditor() {
                         </div>
                       )}
                     </div>
-                    {showDayBarsAfter && <DayTargetBars target={activeTier} a={opt1Totals.calories} b={opt2Totals.calories} />}
+                    {showMealBarsAfter && <MealTargetBars target={mealCategoryTarget} a={siblingMacros?.calories} b={macros?.calories} />}
                     </Fragment>
                   )
                 })}
