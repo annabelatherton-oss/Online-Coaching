@@ -41,6 +41,13 @@ const OPTION_B_KEYS = ['breakfast2', 'lunch2', 'dinner2', 'preworkout', 'evening
 // given day), so each B slot's target is A's own sibling slot rather than a generic tier share.
 const SIBLING_SLOT = { breakfast1: 'breakfast2', breakfast2: 'breakfast1', lunch1: 'lunch2', lunch2: 'lunch1', dinner1: 'dinner2', dinner2: 'dinner1' }
 
+// A week's meal assignment as a plain, comparable object — used both to snapshot what was
+// actually live for a tier when the coach moves off that week, and to compare today's assignment
+// against that snapshot (see weekSendStatus in the component below).
+function buildCombination(week) {
+  return Object.fromEntries(SLOTS.map(s => [s.key, week.slots[s.key] || null]))
+}
+
 function round1(n) {
   return Math.round(n * 10) / 10
 }
@@ -456,10 +463,15 @@ export default function PlanGroupEditor() {
   // { weekIdx, status: 'working'|'done'|'empty'|'error', text } for the last "Balance day" click,
   // so the coach always sees SOME feedback even when there's genuinely nothing to change.
   const [dayBalance, setDayBalance] = useState(null)
+  // What was actually live (current_week) for each (tier, week) the last time the coach moved off
+  // it — keyed by `${tier}:${weekNum}` → { [slotKey]: mealId }. Lets a week be flagged "unchanged
+  // since it was last sent" (safe to reuse once the rotation cycles back to it) vs "edited since"
+  // (worth a check) — see weekSendStatus below.
+  const [sentSnapshots, setSentSnapshots] = useState({})
 
   useEffect(() => {
     async function load() {
-      const [{ data: group }, { data: templates }, { data: meals }, { data: assignments }, { data: ingredientsData }] = await Promise.all([
+      const [{ data: group }, { data: templates }, { data: meals }, { data: assignments }, { data: ingredientsData }, { data: sends }] = await Promise.all([
         supabase.from('plan_groups').select('*').eq('id', groupId).single(),
         supabase
           .from('weekly_templates')
@@ -482,6 +494,7 @@ export default function PlanGroupEditor() {
           .eq('plan_group_id', groupId)
           .eq('active', true),
         supabase.from('ingredients').select('id, name, serving_size, serving_unit, serving_step, min_amount, max_amount, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', profile.id),
+        supabase.from('plan_week_sends').select('calorie_tier, week_number, meal_combination').eq('plan_group_id', groupId),
       ])
 
       if (group) {
@@ -491,6 +504,10 @@ export default function PlanGroupEditor() {
         setPreworkoutByTier(group.default_preworkout_by_tier || {})
         setEveningSnackByTier(group.default_evening_snack_by_tier || {})
       }
+
+      const snapshots = {}
+      for (const row of (sends || [])) snapshots[`${row.calorie_tier}:${row.week_number}`] = row.meal_combination
+      setSentSnapshots(snapshots)
 
       const byCategory = {}
       const byId = {}
@@ -892,9 +909,46 @@ export default function PlanGroupEditor() {
     setSwapPicker(null)
   }
 
-  async function updateCurrentWeek(week) {
-    await supabase.from('plan_groups').update({ current_week: week }).eq('id', groupId)
-    setPlanGroup(prev => ({ ...prev, current_week: week }))
+  // Whether THIS tier's version of a week still matches what was last actually live for it (see
+  // sentSnapshots) — 'new' (never recorded as sent), 'unchanged' (safe to reuse as-is once the
+  // rotation cycles back to it), or 'changed' (edited since it was last sent — worth a check).
+  function weekSendStatus(tier, week) {
+    if (tier == null) return null
+    const snap = sentSnapshots[`${tier}:${week.weekNum}`]
+    if (!snap) return 'new'
+    const current = buildCombination(week)
+    const same = SLOTS.every(s => (snap[s.key] || null) === (current[s.key] || null))
+    return same ? 'unchanged' : 'changed'
+  }
+
+  // Advancing the plan's current week is the moment every client currently assigned a tier on this
+  // plan actually finishes receiving whatever week is being left behind — so that outgoing week's
+  // meal combination gets snapshotted per tier here, which is what weekSendStatus above compares
+  // future edits against.
+  async function updateCurrentWeek(newWeek) {
+    const outgoingWeekNum = planGroup?.current_week
+    if (outgoingWeekNum != null && availableTiers.length > 0) {
+      const rows = availableTiers
+        .map(tier => {
+          const w = (tierWeeks[tier] || weeks).find(w => w.weekNum === outgoingWeekNum)
+          return w ? { plan_group_id: groupId, calorie_tier: tier, week_number: outgoingWeekNum, meal_combination: buildCombination(w) } : null
+        })
+        .filter(Boolean)
+      if (rows.length) {
+        const { data: upserted } = await supabase.from('plan_week_sends')
+          .upsert(rows, { onConflict: 'plan_group_id,calorie_tier,week_number' })
+          .select('calorie_tier, week_number, meal_combination')
+        if (upserted) {
+          setSentSnapshots(prev => {
+            const next = { ...prev }
+            for (const r of upserted) next[`${r.calorie_tier}:${r.week_number}`] = r.meal_combination
+            return next
+          })
+        }
+      }
+    }
+    await supabase.from('plan_groups').update({ current_week: newWeek }).eq('id', groupId)
+    setPlanGroup(prev => ({ ...prev, current_week: newWeek }))
   }
 
   // Default pre-workout/evening-snack meals are set per scope: the Standard template has its own
@@ -1363,6 +1417,7 @@ export default function PlanGroupEditor() {
         const isDirty = dirty.has(week.templateId)
         const opt1Totals = sumSlotMacros(week, OPTION_A_KEYS, activeTier)
         const opt2Totals = sumSlotMacros(week, OPTION_B_KEYS, activeTier)
+        const sendStatus = weekSendStatus(activeTier, week)
 
         return (
           <div key={week.templateId} className="card p-0 overflow-hidden">
@@ -1390,6 +1445,16 @@ export default function PlanGroupEditor() {
                 {isDirty && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                     Unsaved
+                  </span>
+                )}
+                {sendStatus === 'unchanged' && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" title="Unchanged since this week was last live for this calorie tier — safe to reuse as-is">
+                    Unchanged since sent
+                  </span>
+                )}
+                {sendStatus === 'changed' && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Edited since this week was last live for this calorie tier — worth a check before it's reused">
+                    Edited since sent
                   </span>
                 )}
               </div>
