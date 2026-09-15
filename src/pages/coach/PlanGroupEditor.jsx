@@ -1385,16 +1385,16 @@ export default function PlanGroupEditor() {
             key={tier}
             onClick={() => selectTier(tier)}
             disabled={forking}
-            title={availableTiers.includes(tier) ? '' : 'No client is currently assigned this calorie target on this plan yet'}
+            title={availableTiers.includes(tier) ? 'A client is currently assigned this calorie target' : 'No client is currently assigned this calorie target on this plan yet'}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               activeTier === tier
                 ? 'bg-brand-500 text-white'
                 : availableTiers.includes(tier)
-                ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30'
                 : 'bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
           >
-            {tier} kcal{!tierWeeks[tier] ? ' (not set up yet)' : ''}
+            {tier} kcal
           </button>
         ))}
       </div>
