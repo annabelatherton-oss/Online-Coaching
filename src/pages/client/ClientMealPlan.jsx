@@ -427,6 +427,7 @@ export default function ClientMealPlan() {
         mealsByCategory={mealsByCategory}
         ingredientLib={ingredientLib}
         tier={tier}
+        dailyMacroTargets={dailyMacroTargets}
       />
 
       {/* Swap impact — shows exactly how today's totals have shifted from the original plan, so a
