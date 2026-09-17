@@ -247,6 +247,11 @@ export function MacroTargetInfo({ macros, target, siblingMacros, siblingLabel = 
           <span className={`text-xs font-semibold ${deviationColor(macros.cal, siblingMacros.cal)}`}>
             {macros.cal === siblingMacros.cal ? `Matches ${siblingLabel}` : `${actionText(macros.cal, siblingMacros.cal)} to match ${siblingLabel}`}
           </span>
+          <span className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+            <span className="flex items-center gap-0.5"><MacroBadge type="carb" />{macroDiff(macros.carb, siblingMacros.carb)}</span>
+            <span className="flex items-center gap-0.5"><MacroBadge type="prot" />{macroDiff(macros.prot, siblingMacros.prot)}</span>
+            <span className="flex items-center gap-0.5"><MacroBadge type="fat" />{macroDiff(macros.fat, siblingMacros.fat)}</span>
+          </span>
         </div>
       )}
     </div>
