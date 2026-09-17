@@ -22,6 +22,17 @@
   * {
     @apply transition-colors duration-150;
   }
+
+  /* iOS/Android Safari and Chrome auto-zoom the page in when a tapped input, select or textarea
+     has a computed font-size under 16px, then leave it zoomed in after the field loses focus —
+     forcing the visitor to manually pinch back out. Below the same breakpoint the rest of the app
+     already treats as "phone", every form control gets bumped to 16px so tapping into one never
+     triggers that zoom in the first place. */
+  @media (max-width: 640px) {
+    input, select, textarea {
+      font-size: 16px;
+    }
+  }
 }
 
 @layer components {
