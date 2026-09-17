@@ -915,7 +915,7 @@ export default function ClientCheckin() {
                   </div>
                   <textarea
                     className="input resize-none"
-                    rows={2}
+                    rows={3}
                     value={form.struggle_comments?.[row.label] ?? ''}
                     onChange={e => setStruggleComment(row.label, e.target.value)}
                     placeholder="How's it going with this one?"
@@ -929,8 +929,8 @@ export default function ClientCheckin() {
         {/* Struggles */}
         <div className="card space-y-4">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">What are you most struggling with?</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Select all that apply — this helps your coach know where to focus.</p>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Select any that you're struggling with</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Only pick what actually applies — leave it blank if nothing here is an issue right now.</p>
           </div>
           <div className="space-y-3">
             {STRUGGLE_GROUPS.map(group => (
@@ -964,7 +964,7 @@ export default function ClientCheckin() {
             </label>
             <textarea
               className="input resize-none"
-              rows={2}
+              rows={3}
               value={form.struggles_other}
               onChange={e => set('struggles_other', e.target.value)}
               placeholder={
