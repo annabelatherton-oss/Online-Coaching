@@ -76,59 +76,29 @@ function calorieBarColor(actual, target) {
   return 'bg-green-500'
 }
 
-// Small comparison chart shown once per meal category (breakfast/lunch/dinner) — that category's
-// own share of the tier vs Option A's vs Option B's actual calories for that specific meal, so a
-// coach can see at a glance how each option compares to ITS meal's own target, not the day as a
-// whole. The axis is zoomed to a tight window around the values instead of starting at 0, so a
-// 5-10 kcal gap that would be invisible on a full-scale bar actually shows up — and the shaded
-// band marks the same ±20kcal window used everywhere else in this file to mean "close enough",
-// so it's visible at a glance whether A/B fall inside or outside it, not just their raw numbers.
+// Small horizontal bar-chart shown once per meal category (breakfast/lunch/dinner) — that
+// category's own share of the tier vs Option A's vs Option B's actual calories for that specific
+// meal, so a coach can see at a glance how each option compares to ITS meal's own target, not the
+// day as a whole.
 function MealTargetBars({ target, a, b }) {
   if (!target) return null
-  const values = [target, a, b].filter(v => v != null && v > 0)
-  if (values.length === 0) return null
-  const spread = Math.max(...values) - Math.min(...values)
-  // Window big enough to comfortably fit the tolerance band and every value, but never so wide
-  // that a real gap gets flattened back to looking tiny again.
-  const halfWindow = Math.max(UNDER_TARGET_TOLERANCE * 1.8, spread * 0.65, 15)
-  const lo = target - halfWindow
-  const hi = target + halfWindow
-  const pct = v => Math.min(100, Math.max(0, ((v - lo) / (hi - lo)) * 100))
-  const tolLoPct = pct(target - UNDER_TARGET_TOLERANCE)
-  const tolHiPct = pct(target + OVER_TARGET_TOLERANCE)
-
-  const markers = [
-    { label: 'A', value: a },
-    { label: 'B', value: b },
-  ].filter(m => m.value != null && m.value > 0)
-
+  const max = Math.max(target, a || 0, b || 0, 1) * 1.05
+  const rows = [
+    { label: 'Target', value: target, color: 'bg-gray-400 dark:bg-gray-500' },
+    { label: 'A', value: a, color: calorieBarColor(a, target) },
+    { label: 'B', value: b, color: calorieBarColor(b, target) },
+  ]
   return (
-    <div className="py-2.5 px-3 my-1 bg-gray-50/60 dark:bg-gray-800/30 rounded-xl space-y-2.5">
-      <div className="relative h-5">
-        <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-1.5 bg-gray-200/70 dark:bg-gray-700/70 rounded-full" />
-        <div
-          className="absolute top-1/2 -translate-y-1/2 h-1.5 bg-green-200/80 dark:bg-green-800/40 rounded-full"
-          title="Within 20 kcal of target — the acceptable range"
-          style={{ left: `${tolLoPct}%`, width: `${Math.max(0, tolHiPct - tolLoPct)}%` }}
-        />
-        <div className="absolute top-0 bottom-0 w-0.5 bg-gray-500 dark:bg-gray-400" style={{ left: `${pct(target)}%` }} title={`Target: ${Math.round(target)} kcal`} />
-        {markers.map(m => (
-          <div
-            key={m.label}
-            className="absolute top-1/2 flex items-center justify-center w-5 h-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white dark:border-gray-900 text-[9px] font-bold text-white shadow-sm"
-            style={{ left: `${pct(m.value)}%` }}
-          >
-            <span className={`absolute inset-0 rounded-full ${calorieBarColor(m.value, target)}`} />
-            <span className="relative">{m.label}</span>
+    <div className="flex flex-col gap-1 py-2 px-3 my-1 bg-gray-50/60 dark:bg-gray-800/30 rounded-xl">
+      {rows.map(r => (
+        <div key={r.label} className="flex items-center gap-2">
+          <span className="w-11 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide flex-shrink-0">{r.label}</span>
+          <div className="flex-1 h-2 bg-gray-200/70 dark:bg-gray-700/70 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all ${r.color}`} style={{ width: `${Math.min(100, ((r.value || 0) / max) * 100)}%` }} />
           </div>
-        ))}
-      </div>
-      <div className="flex items-center justify-between text-[11px] tabular-nums">
-        <span className="text-gray-400 dark:text-gray-500">Target {Math.round(target)}</span>
-        {markers.map(m => (
-          <span key={m.label} className={`font-semibold ${calorieRangeColor(m.value, target)}`}>{m.label} {Math.round(m.value)}</span>
-        ))}
-      </div>
+          <span className="w-12 text-right text-[11px] tabular-nums text-gray-500 dark:text-gray-400 flex-shrink-0">{Math.round(r.value || 0)}</span>
+        </div>
+      ))}
     </div>
   )
 }
