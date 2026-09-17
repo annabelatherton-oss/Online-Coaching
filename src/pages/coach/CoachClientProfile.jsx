@@ -1412,7 +1412,7 @@ function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides) {
 // and ingredients can be removed or added just for this client — none of it touches the shared
 // master meal/tier-version data. Quantity overrides rescale that ingredient's macros proportionally;
 // added ingredients are pulled from the coach's ingredient library so their macros are accurate.
-function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange, target, siblingMacros, siblingLabel }) {
+function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange, target, siblingMacros, siblingLabel, showTargetNumbers }) {
   const [addingOpen, setAddingOpen] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addSelected, setAddSelected] = useState(null)
@@ -1528,6 +1528,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
             ingredients={ingredients}
             ingredientLib={libraryById}
             onAutoFit={onQtyChange}
+            showTargetNumbers={showTargetNumbers}
           />
         </div>
       )}
@@ -1788,6 +1789,18 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     await supabase.from('client_everyday_meals').update({ requested_meal_id: null, needs_coach_review: false }).eq('id', row.id)
     await loadEverydayMeals()
     await loadMealSwapAcks()
+  }
+
+  // Lets the coach set (or change) a client's everyday breakfast/lunch/dinner directly, regardless
+  // of what the client themselves currently has picked — same table the client's own picker
+  // writes to, so this simply overrides it. Ingredient overrides are cleared since they were keyed
+  // to the old meal's ingredients and wouldn't make sense against a different meal.
+  async function changeEverydayMeal(slotKey, mealId) {
+    await supabase.from('client_everyday_meals').upsert(
+      { client_id: client.id, slot_type: slotKey, meal_id: mealId || null, requested_meal_id: null, needs_coach_review: false, ingredient_overrides: {}, updated_at: new Date().toISOString() },
+      { onConflict: 'client_id,slot_type' }
+    )
+    await loadEverydayMeals()
   }
 
   async function loadMealSwapAcks() {
@@ -2895,35 +2908,43 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
               The client picks their own breakfast, lunch and dinner to repeat daily — adjust portions here if needed.
               Pre-workout and evening snack changes need your approval first.
             </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              These replace that meal slot entirely while active — they're a separate fixed choice, not interchangeable with the Option A/B meals in the plan above.
+            </p>
           </div>
 
           <div className="space-y-2">
             {EVERYDAY_DIRECT_SLOTS.map(slotKey => {
               const row = everydayRows[slotKey]
-              if (!row?.meal_id) {
-                return (
-                  <p key={slotKey} className="text-xs text-gray-400 dark:text-gray-500">
-                    <span className="uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>Not chosen yet
-                  </p>
-                )
-              }
               const isExpanded = expandedEveryday.has(slotKey)
+              const slotOptions = mealsByCategory[EVERYDAY_CAT[slotKey]] || []
               return (
                 <div key={slotKey} className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => toggleExpandedEveryday(slotKey)}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-gray-50/50 dark:hover:bg-gray-800/30"
-                  >
-                    <span className="text-sm text-gray-800 dark:text-gray-200">
-                      <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
-                      {mealMap[row.meal_id]?.name || 'Unknown meal'}
-                    </span>
-                    <svg className={`w-3.5 h-3.5 text-gray-300 dark:text-gray-600 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                  {isExpanded && (
+                  <div className="w-full flex items-center justify-between gap-2 px-3 py-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide flex-shrink-0">{EVERYDAY_LABELS[slotKey]}</span>
+                      <select
+                        className="text-sm text-gray-800 dark:text-gray-200 bg-transparent border-0 p-0 focus:ring-0 cursor-pointer truncate flex-1 min-w-0"
+                        value={row?.meal_id || ''}
+                        onChange={e => changeEverydayMeal(slotKey, e.target.value)}
+                      >
+                        <option value="">Not chosen yet</option>
+                        {slotOptions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                    </div>
+                    {row?.meal_id && (
+                      <button
+                        type="button"
+                        onClick={() => toggleExpandedEveryday(slotKey)}
+                        className="flex-shrink-0 text-gray-300 dark:text-gray-600 hover:text-brand-500 dark:hover:text-brand-400"
+                      >
+                        <svg className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  {isExpanded && row?.meal_id && (
                     <div className="px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
                       <TierIngredientList
                         mealId={row.meal_id}
@@ -2940,6 +2961,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                         onRemoveAdded={addedId => everydayHandlers.removeAdded(slotKey, addedId)}
                         onRevertAll={() => everydayHandlers.revertAll(slotKey)}
                         target={slotTarget(EVERYDAY_CAT[slotKey])}
+                        showTargetNumbers
                       />
                     </div>
                   )}
