@@ -210,23 +210,11 @@ function fmtQty(qty, unit) {
 //    hitting the target itself) - omit for slots with only one option (pre-workout, evening snack).
 // When ingredients/ingredientLib/onAutoFit are all given, a one-tap suggestion for closing the
 // target gap (the biggest lever) appears under the target row - see suggestAutoFit above.
-export function MacroTargetInfo({ macros, target, siblingMacros, siblingLabel = 'other option', ingredients, ingredientLib, onAutoFit, showTargetNumbers }) {
+export function MacroTargetInfo({ macros, target, siblingMacros, siblingLabel = 'other option', ingredients, ingredientLib, onAutoFit }) {
   if (!macros || macros.cal <= 0) return null
   const suggestion = (target && target.cal > 0 && onAutoFit) ? suggestAutoFit(ingredients, macros, target, ingredientLib) : null
   return (
     <div className="space-y-1.5">
-      {/* Plain target figures alongside the "Meal total" (current) row above it, so a coach can
-          see current vs. target side by side rather than having to infer target from the gap text
-          below — most useful for a fixed everyday meal, edited directly rather than swapped. */}
-      {target && target.cal > 0 && showTargetNumbers && (
-        <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
-          <span className="flex-1">Target</span>
-          <span className="tabular-nums w-16 text-right">{Math.round(target.cal)} kcal</span>
-          <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(target.carb)}g</span>
-          <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(target.prot)}g</span>
-          <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(target.fat)}g</span>
-        </div>
-      )}
       {target && target.cal > 0 && (
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span className={`text-xs font-semibold ${deviationColor(macros.cal, target.cal)}`}>

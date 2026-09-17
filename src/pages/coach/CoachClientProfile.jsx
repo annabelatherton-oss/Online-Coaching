@@ -1412,7 +1412,7 @@ function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides) {
 // and ingredients can be removed or added just for this client — none of it touches the shared
 // master meal/tier-version data. Quantity overrides rescale that ingredient's macros proportionally;
 // added ingredients are pulled from the coach's ingredient library so their macros are accurate.
-function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange, target, siblingMacros, siblingLabel, showTargetNumbers }) {
+function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange, target, siblingMacros, siblingLabel }) {
   const [addingOpen, setAddingOpen] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addSelected, setAddSelected] = useState(null)
@@ -1424,17 +1424,10 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
   if (!meal) return null
 
   let baseIngredients = []
-  let label = 'Base recipe'
 
   if (tier) {
     const v = (meal.meal_tier_versions || []).find(v => v.calorie_tier === tier)
-    if (v) {
-      baseIngredients = v.meal_tier_ingredients || []
-      label = `${tier} kcal version`
-    } else {
-      baseIngredients = meal.meal_ingredients || []
-      label = 'Base recipe (no tier version set)'
-    }
+    baseIngredients = v ? (v.meal_tier_ingredients || []) : (meal.meal_ingredients || [])
   } else {
     baseIngredients = meal.meal_ingredients || []
   }
@@ -1489,9 +1482,8 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
 
   return (
     <div className="space-y-1 pt-1">
-      <div className="flex items-center justify-between gap-2 mb-1.5">
-        <p className="text-xs text-gray-400 dark:text-gray-500 italic">{label}</p>
-        {overridden && (
+      {overridden && (
+        <div className="flex items-center justify-end gap-2 mb-1.5">
           <button
             type="button"
             onClick={onRevertAll}
@@ -1503,8 +1495,8 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
             </svg>
             Revert to original
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Kept above the ingredient rows (not below) so it's still on screen once the list is long
           or the on-screen keyboard is covering the bottom of the page while a quantity is focused. */}
@@ -1528,7 +1520,6 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
             ingredients={ingredients}
             ingredientLib={libraryById}
             onAutoFit={onQtyChange}
-            showTargetNumbers={showTargetNumbers}
           />
         </div>
       )}
@@ -2100,15 +2091,17 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     }
   }
 
-  // Everyday meals, in the order a day actually unfolds — used to show each one's running "left
-  // for the rest of the day" (so the coach can see, meal by meal, how much room is left to work
-  // with while editing) and the full day's total at the bottom of the section.
+  // Everyday meals, in the order a day actually unfolds — used to show each one's running daily
+  // total and what's left for the day after it (so the coach can see, meal by meal, how the day
+  // is adding up while editing), and the full day's total at the bottom of the section.
   const everydayOrder = [...EVERYDAY_DIRECT_SLOTS, ...EVERYDAY_REQUEST_SLOTS].filter(slotKey => everydayRows[slotKey]?.meal_id)
+  const everydayCumulativeAfter = {}
   const everydayRemainingAfter = {}
   let everydayRunning = { cal: 0, prot: 0, carb: 0, fat: 0 }
   for (const slotKey of everydayOrder) {
     const m = mealMacros(everydayRows[slotKey].meal_id, mealMap, null, everydayOverrides[slotKey])
     everydayRunning = { cal: everydayRunning.cal + m.cal, prot: everydayRunning.prot + m.prot, carb: everydayRunning.carb + m.carb, fat: everydayRunning.fat + m.fat }
+    everydayCumulativeAfter[slotKey] = everydayRunning
     everydayRemainingAfter[slotKey] = remainingFor(everydayRunning)
   }
   const everydayDailyTotal = everydayRunning
@@ -2122,6 +2115,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const isExpanded = expandedEveryday.has(slotKey)
     const isChanging = changingEveryday.has(slotKey)
     const slotOptions = mealsByCategory[EVERYDAY_CAT[slotKey]] || []
+    const cumulative = everydayCumulativeAfter[slotKey]
     const remaining = everydayRemainingAfter[slotKey]
     return (
       <div key={slotKey} className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -2159,9 +2153,18 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         )}
         {isExpanded && row?.meal_id && (
           <div className="px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
-            {remaining && (
+            {cumulative && (
               <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 pt-1.5 mb-1">
-                <span className="flex-1">Left for the rest of the day</span>
+                <span className="flex-1">Daily total</span>
+                <span className="tabular-nums w-16 text-right">{Math.round(cumulative.cal)} kcal</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(cumulative.carb)}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(cumulative.prot)}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(cumulative.fat)}g</span>
+              </div>
+            )}
+            {remaining && (
+              <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 mb-1">
+                <span className="flex-1">Remaining for the day</span>
                 <span className="tabular-nums w-16 text-right">{remaining.cal} kcal</span>
                 <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{remaining.carb}g</span>
                 <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{remaining.prot}g</span>
@@ -2182,8 +2185,6 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
               onAdd={newIng => everydayHandlers.add(slotKey, newIng)}
               onRemoveAdded={addedId => everydayHandlers.removeAdded(slotKey, addedId)}
               onRevertAll={() => everydayHandlers.revertAll(slotKey)}
-              target={slotTarget(EVERYDAY_CAT[slotKey])}
-              showTargetNumbers
             />
           </div>
         )}
