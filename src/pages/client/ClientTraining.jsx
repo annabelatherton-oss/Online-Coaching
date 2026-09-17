@@ -80,9 +80,20 @@ export default function ClientTraining() {
       supabase.from('exercise_variations').select('*').eq('exercise_id', ex.exercise_id).order('order_index'),
       supabase.from('exercise_alternatives').select('alternative_exercise_id, exercises:alternative_exercise_id(id, name)').eq('exercise_id', ex.exercise_id).order('order_index'),
     ])
+    // Exercises that already show up later in this week's plan — suggesting a swap into one of
+    // these would just mean the client does the same exercise twice, once now and once again
+    // further down the plan. Checks each later slot's actual exercise (its own swap, if any, not
+    // just its original one) since that's what the client would really end up seeing twice.
+    const flat = sessions.flatMap(s => s.exercises)
+    const currentIdx = flat.findIndex(e => e.id === ex.id)
+    const laterExerciseIds = new Set(
+      (currentIdx >= 0 ? flat.slice(currentIdx + 1) : [])
+        .map(e => swaps[e.id]?.swapped_exercise_id || e.exercise_id)
+        .filter(Boolean)
+    )
     setSwapOptions({
       variations: variations || [],
-      alternatives: (alts || []).filter(a => a.exercises).map(a => a.exercises),
+      alternatives: (alts || []).filter(a => a.exercises && !laterExerciseIds.has(a.exercises.id)).map(a => a.exercises),
     })
   }
 
