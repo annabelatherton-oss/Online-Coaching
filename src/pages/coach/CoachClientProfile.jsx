@@ -3035,12 +3035,36 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           </div>
 
           {everydayDailyTotal.cal > 0 && (
-            <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300 pt-2 border-t border-gray-100 dark:border-gray-800">
-              <span className="flex-1">Daily total</span>
-              <span className="tabular-nums w-16 text-right">{Math.round(everydayDailyTotal.cal)} kcal</span>
-              <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(everydayDailyTotal.carb)}g</span>
-              <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(everydayDailyTotal.prot)}g</span>
-              <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(everydayDailyTotal.fat)}g</span>
+            <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-1">
+              <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                <span className="flex-1">Daily total</span>
+                <span className="tabular-nums w-16 text-right">{Math.round(everydayDailyTotal.cal)} kcal</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(everydayDailyTotal.carb)}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(everydayDailyTotal.prot)}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(everydayDailyTotal.fat)}g</span>
+              </div>
+              {dailyMacroTargets && (
+                <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+                  <span className="flex-1">Target</span>
+                  <span className="tabular-nums w-16 text-right">{Math.round(dailyMacroTargets.cal)} kcal</span>
+                  <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(dailyMacroTargets.carbs_g)}g</span>
+                  <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(dailyMacroTargets.protein_g)}g</span>
+                  <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(dailyMacroTargets.fat_g)}g</span>
+                </div>
+              )}
+              {dailyMacroTargets && (() => {
+                const remaining = remainingFor(everydayDailyTotal)
+                const color = deviationColor(everydayDailyTotal.cal, dailyMacroTargets.cal)
+                return (
+                  <div className="flex items-center gap-2 text-xs font-semibold">
+                    <span className={`flex-1 ${color}`}>Remaining to target</span>
+                    <span className={`tabular-nums w-16 text-right ${color}`}>{remaining.cal} kcal</span>
+                    <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{remaining.carb}g</span>
+                    <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{remaining.prot}g</span>
+                    <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{remaining.fat}g</span>
+                  </div>
+                )
+              })()}
             </div>
           )}
 
