@@ -2091,21 +2091,17 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     }
   }
 
-  // Everyday meals, in the order a day actually unfolds — used to show each one's running daily
-  // total and what's left for the day after it (so the coach can see, meal by meal, how the day
-  // is adding up while editing), and the full day's total at the bottom of the section.
+  // Everyday meals, in the order a day actually unfolds — used to show each one's "remaining for
+  // the day" (the budget still available going into that meal — i.e. before its own calories are
+  // subtracted, so it reads as "how much room I have to play with for this meal", not "what's
+  // left once this one's also spent") and the full day's total at the bottom of the section.
   const everydayOrder = [...EVERYDAY_DIRECT_SLOTS, ...EVERYDAY_REQUEST_SLOTS].filter(slotKey => everydayRows[slotKey]?.meal_id)
-  const everydayCumulativeAfter = {}
-  // "Remaining" is the budget still available going into this meal — i.e. before its own
-  // calories are subtracted — so it reads as "how much room I have to play with for this meal",
-  // not "what's left once this one's also spent."
   const everydayRemainingBefore = {}
   let everydayRunning = { cal: 0, prot: 0, carb: 0, fat: 0 }
   for (const slotKey of everydayOrder) {
     everydayRemainingBefore[slotKey] = remainingFor(everydayRunning)
     const m = mealMacros(everydayRows[slotKey].meal_id, mealMap, null, everydayOverrides[slotKey])
     everydayRunning = { cal: everydayRunning.cal + m.cal, prot: everydayRunning.prot + m.prot, carb: everydayRunning.carb + m.carb, fat: everydayRunning.fat + m.fat }
-    everydayCumulativeAfter[slotKey] = everydayRunning
   }
   const everydayDailyTotal = everydayRunning
 
@@ -2118,7 +2114,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const isExpanded = expandedEveryday.has(slotKey)
     const isChanging = changingEveryday.has(slotKey)
     const slotOptions = mealsByCategory[EVERYDAY_CAT[slotKey]] || []
-    const cumulative = everydayCumulativeAfter[slotKey]
+    const macros = row?.meal_id ? mealMacros(row.meal_id, mealMap, null, everydayOverrides[slotKey]) : null
     const remaining = everydayRemainingBefore[slotKey]
     return (
       <div key={slotKey} className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -2142,6 +2138,28 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
             </svg>
           </button>
         </div>
+        {(macros || remaining) && (
+          <div className="px-3 pb-2 space-y-1">
+            {macros && macros.cal > 0 && (
+              <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                <span className="flex-1">This meal</span>
+                <span className="tabular-nums w-16 text-right">{Math.round(macros.cal)} kcal</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(macros.carb)}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(macros.prot)}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(macros.fat)}g</span>
+              </div>
+            )}
+            {remaining && (
+              <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+                <span className="flex-1">Remaining for the day</span>
+                <span className="tabular-nums w-16 text-right">{remaining.cal} kcal</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{remaining.carb}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{remaining.prot}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{remaining.fat}g</span>
+              </div>
+            )}
+          </div>
+        )}
         {isChanging && (
           <div className="px-3 pb-2.5">
             <select
@@ -2156,24 +2174,6 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         )}
         {isExpanded && row?.meal_id && (
           <div className="px-3 pb-3 bg-gray-50/40 dark:bg-gray-800/20">
-            {cumulative && (
-              <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 pt-1.5 mb-1">
-                <span className="flex-1">Daily total</span>
-                <span className="tabular-nums w-16 text-right">{Math.round(cumulative.cal)} kcal</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(cumulative.carb)}g</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(cumulative.prot)}g</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(cumulative.fat)}g</span>
-              </div>
-            )}
-            {remaining && (
-              <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 mb-1">
-                <span className="flex-1">Remaining for the day</span>
-                <span className="tabular-nums w-16 text-right">{remaining.cal} kcal</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{remaining.carb}g</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{remaining.prot}g</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{remaining.fat}g</span>
-              </div>
-            )}
             <TierIngredientList
               mealId={row.meal_id}
               mealMap={mealMap}
