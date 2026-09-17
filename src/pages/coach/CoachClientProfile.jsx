@@ -2091,19 +2091,17 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     }
   }
 
-  // Everyday meals, in the order a day actually unfolds — used to show each one's "remaining for
-  // the day" (the budget still available going into that meal — i.e. before its own calories are
-  // subtracted, so it reads as "how much room I have to play with for this meal", not "what's
-  // left once this one's also spent") and the full day's total at the bottom of the section.
-  const everydayOrder = [...EVERYDAY_DIRECT_SLOTS, ...EVERYDAY_REQUEST_SLOTS].filter(slotKey => everydayRows[slotKey]?.meal_id)
-  const everydayRemainingBefore = {}
-  let everydayRunning = { cal: 0, prot: 0, carb: 0, fat: 0 }
-  for (const slotKey of everydayOrder) {
-    everydayRemainingBefore[slotKey] = remainingFor(everydayRunning)
-    const m = mealMacros(everydayRows[slotKey].meal_id, mealMap, null, everydayOverrides[slotKey])
-    everydayRunning = { cal: everydayRunning.cal + m.cal, prot: everydayRunning.prot + m.prot, carb: everydayRunning.carb + m.carb, fat: everydayRunning.fat + m.fat }
-  }
-  const everydayDailyTotal = everydayRunning
+  // Everyday meals' full day total (every one currently set, added together) and what's left
+  // against the client's real target — the SAME two figures on every meal's card, since the point
+  // is "how much room is there in the whole day" to freely allocate across meals, not a running
+  // total that changes depending on which order the cards happen to be listed in.
+  const everydayDailyTotal = [...EVERYDAY_DIRECT_SLOTS, ...EVERYDAY_REQUEST_SLOTS]
+    .filter(slotKey => everydayRows[slotKey]?.meal_id)
+    .reduce((acc, slotKey) => {
+      const m = mealMacros(everydayRows[slotKey].meal_id, mealMap, null, everydayOverrides[slotKey])
+      return { cal: acc.cal + m.cal, prot: acc.prot + m.prot, carb: acc.carb + m.carb, fat: acc.fat + m.fat }
+    }, { cal: 0, prot: 0, carb: 0, fat: 0 })
+  const everydayRemaining = remainingFor(everydayDailyTotal)
 
   // One everyday-meal row — its name/toggle is the click target to expand the ingredient editor;
   // the corner arrow instead reveals a picker to change which meal this slot is (independent of
@@ -2115,7 +2113,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const isChanging = changingEveryday.has(slotKey)
     const slotOptions = mealsByCategory[EVERYDAY_CAT[slotKey]] || []
     const macros = row?.meal_id ? mealMacros(row.meal_id, mealMap, null, everydayOverrides[slotKey]) : null
-    const remaining = everydayRemainingBefore[slotKey]
+    const remaining = everydayRemaining
     return (
       <div key={slotKey} className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
         <div className="w-full flex items-center gap-2 px-3 py-2">
@@ -3057,15 +3055,14 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 </div>
               )}
               {dailyMacroTargets && (() => {
-                const remaining = remainingFor(everydayDailyTotal)
                 const color = deviationColor(everydayDailyTotal.cal, dailyMacroTargets.cal)
                 return (
                   <div className="flex items-center gap-2 text-xs font-semibold">
                     <span className={`flex-1 ${color}`}>Remaining to target</span>
-                    <span className={`tabular-nums w-16 text-right ${color}`}>{remaining.cal} kcal</span>
-                    <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{remaining.carb}g</span>
-                    <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{remaining.prot}g</span>
-                    <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{remaining.fat}g</span>
+                    <span className={`tabular-nums w-16 text-right ${color}`}>{everydayRemaining.cal} kcal</span>
+                    <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{everydayRemaining.carb}g</span>
+                    <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{everydayRemaining.prot}g</span>
+                    <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{everydayRemaining.fat}g</span>
                   </div>
                 )
               })()}
