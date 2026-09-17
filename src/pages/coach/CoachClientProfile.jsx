@@ -2383,10 +2383,11 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const isExpanded = expandedSlots.has(slotKey)
     const overridesForSlot = ingredientOverrides[slotKey]
     const macros = mealMacros(currentId, mealMap, tier, overridesForSlot)
-    const slotTgt = slotTarget(cat)
-    const siblingKey = OPTION_1_KEYS.includes(slotKey) ? OPTION_2_KEYS[OPTION_1_KEYS.indexOf(slotKey)]
-      : OPTION_2_KEYS.includes(slotKey) ? OPTION_1_KEYS[OPTION_2_KEYS.indexOf(slotKey)]
-      : null
+    // Option A only ever needs to hit the day's category target; Option B only ever needs to
+    // match Option A — never the other way round, and never both at once.
+    const isOptionB = OPTION_2_KEYS.includes(slotKey)
+    const slotTgt = isOptionB ? null : slotTarget(cat)
+    const siblingKey = isOptionB ? OPTION_1_KEYS[OPTION_2_KEYS.indexOf(slotKey)] : null
     const siblingId = siblingKey ? (editedSlots[siblingKey] || '') : ''
     const siblingSlotMacros = siblingKey ? mealMacros(siblingId, mealMap, tier, ingredientOverrides[siblingKey]) : null
     const siblingSlotLabel = siblingKey ? (MEAL_SLOTS.find(s => s.key === siblingKey)?.label || 'other option') : 'other option'

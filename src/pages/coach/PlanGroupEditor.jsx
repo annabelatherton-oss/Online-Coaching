@@ -1598,7 +1598,9 @@ export default function PlanGroupEditor() {
                   // target" line and auto-fit suggestion in Edit ingredients reflect the day total,
                   // matching "Balance day"/"Fit the day" above rather than a per-meal quota.
                   const dayTarget = activeTier != null ? { calories: activeTier, ...calcStandardMacros(activeTier) } : null
-                  const slotTarget = siblingMacros
+                  // Only Option B targets its sibling (matching A) — Option A always targets the
+                  // day gap, never "match B", even though SIBLING_SLOT is looked up both ways.
+                  const slotTarget = slot.key.endsWith('2') && siblingMacros
                     ? { cal: siblingMacros.calories, carb: siblingMacros.carbs_g, prot: siblingMacros.protein_g, fat: siblingMacros.fat_g }
                     : (macros && dayTarget && opt1Totals?.calories > 0)
                     ? {

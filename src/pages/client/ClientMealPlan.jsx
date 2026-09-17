@@ -493,11 +493,11 @@ export default function ClientMealPlan() {
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
           onRevertIngredients={handleRevertIngredients}
-          target={slotTarget(ALL_SLOT_DEFS.find(s => s.key === recipeModal)?.cat)}
-          siblingMacros={(() => {
+          target={OPTION_2_KEYS.includes(recipeModal) ? null : slotTarget(ALL_SLOT_DEFS.find(s => s.key === recipeModal)?.cat)}
+          siblingMacros={OPTION_2_KEYS.includes(recipeModal) ? (() => {
             const sibKey = siblingSlotKey(recipeModal)
             return sibKey ? mealMacros(editedSlots[sibKey], mealMap, tier, ingredientOverrides[sibKey], swapCtx) : null
-          })()}
+          })() : null}
           siblingLabel={ALL_SLOT_DEFS.find(s => s.key === siblingSlotKey(recipeModal))?.optionLabel || 'other option'}
           swapCtx={swapCtx}
         />
