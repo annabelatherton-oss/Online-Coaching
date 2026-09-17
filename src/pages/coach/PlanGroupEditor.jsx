@@ -1727,14 +1727,16 @@ export default function PlanGroupEditor() {
                             scanning down the day, without scrolling back to the top or expanding
                             anything. Option A's reference is the tier target; Option B's is Option
                             A's own actual day total, since B needs to match A, not the tier split. */}
-                        {activeTier != null && (() => {
+                        {(() => {
                           const isB = slot.key.endsWith('2')
                           const dayTotals = isB ? opt2Totals : opt1Totals
                           if (!dayTotals || dayTotals.calories <= 0) return null
                           // Option B's match to Option A is judged meal-by-meal (see each meal's own
                           // "vs A" line above), not by day total, so this column shows B's day total
-                          // for reference only - no target/delta against it.
-                          const ref = isB ? null : { calories: activeTier, ...calcStandardMacros(activeTier) }
+                          // for reference only - no target/delta against it. On the Standard template
+                          // (no activeTier) there's no fixed calorie number to compare A against
+                          // either, so it shows the same way - raw totals only, no colour/delta.
+                          const ref = (isB || activeTier == null) ? null : { calories: activeTier, ...calcStandardMacros(activeTier) }
                           return (
                             <div className="flex flex-col items-center sm:items-end justify-center gap-1 px-3 py-2 sm:w-28 flex-shrink-0 sm:border-l border-t sm:border-t-0 border-gray-100 dark:border-gray-800">
                               <span className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500 whitespace-nowrap">Day total</span>
