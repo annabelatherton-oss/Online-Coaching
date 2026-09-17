@@ -9,6 +9,7 @@ import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 import { DIETS, DIET_LABELS, mealQualifiesForDiets, ingredientQualifiesForDiets } from '../../lib/diets'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
+import { writeCalorieTarget } from '../../lib/calorieTarget'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import { getMealConflicts, findSafeMeal, findSafeAlternative } from '../../lib/mealSwaps'
@@ -519,8 +520,30 @@ function OverviewTab({ client, onSaved }) {
     { protein_g: client.current_protein, carbs_g: client.current_carbs, fat_g: client.current_fat },
     client.current_calories
   ))
+  // Calories here is the same number the Meal Plan tab calls calorie_target (client_plan_
+  // assignments) — this fetches that assignment's id so handleSave can keep both in sync.
+  const [planAssignmentId, setPlanAssignmentId] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('client_plan_assignments').select('id').eq('client_id', client.id).eq('active', true)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => { if (!cancelled) setPlanAssignmentId(data?.id || null) })
+    return () => { cancelled = true }
+  }, [client.id])
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
+
+  // Snaps to the nearest 100 kcal on blur (not while typing) so it lines up with a meal-plan
+  // calorie tier (1500/1600/.../2500) once it's mirrored into client_plan_assignments below.
+  function snapCalories() {
+    setForm(f => {
+      if (!f.current_calories) return f
+      const snapped = Math.round(parseFloat(f.current_calories) / 100) * 100
+      if (snapped === parseFloat(f.current_calories)) return f
+      const grams = calcMacrosFromSplit(snapped, split)
+      return { ...f, current_calories: snapped, current_protein: String(grams.protein_g), current_carbs: String(grams.carbs_g), current_fat: String(grams.fat_g) }
+    })
+  }
 
   // Auto-fills Current Nutrition Targets from the client's stats (height, age, sex, activity
   // level) and latest weight the moment there's enough info to do so and nothing's been entered
@@ -668,6 +691,12 @@ function OverviewTab({ client, onSaved }) {
       setError("Nothing was actually saved — the app couldn't confirm it has permission to update this client. Please tell your developer: client update returned 0 rows.")
       return
     }
+    // Mirrors onto the active plan assignment too, so the Meal Plan tab (and shopping list,
+    // everyday meals, etc — everything sized off client_plan_assignments.calorie_target) picks up
+    // a calorie change made from here without the coach having to also go set it there.
+    if (planAssignmentId) {
+      await supabase.from('client_plan_assignments').update({ calorie_target: payload.current_calories }).eq('id', planAssignmentId)
+    }
     setSaved(true); setTimeout(() => setSaved(false), 2500)
     onSaved()
   }
@@ -793,7 +822,7 @@ function OverviewTab({ client, onSaved }) {
         </div>
         <div>
           <label className="label">Calories (kcal/day)</label>
-          <input className="input" type="number" onFocus={e => e.target.select()} min={0} value={form.current_calories} onChange={e => setCalories(e.target.value)} placeholder="e.g. 1800" />
+          <input className="input" type="number" onFocus={e => e.target.select()} onBlur={snapCalories} min={0} value={form.current_calories} onChange={e => setCalories(e.target.value)} placeholder="e.g. 1800" />
           {!form.current_calories && (
             <div className="mt-1.5">
               <CalorieSuggestionPanel client={client} currentTarget={null} onApply={v => setCalories(String(v))} compact />
@@ -1697,7 +1726,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
 
 // ─── Meal Plan Tab ────────────────────────────────────────────────────────────
 
-function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg }) {
+function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg, onCalorieTargetChanged }) {
   const [clientWeightKg, setClientWeightKg] = useState(null)
   const [planGroups, setPlanGroups] = useState([])
   const [assignment, setAssignment] = useState(null)
@@ -1904,8 +1933,9 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
       if (!asgn.calorie_target) {
         const suggested = await estimateStartingCalorieTarget()
         if (suggested) {
-          await supabase.from('client_plan_assignments').update({ calorie_target: suggested }).eq('id', asgn.id)
+          await writeCalorieTarget({ clientId: client.id, assignmentId: asgn.id, value: suggested })
           asgn = { ...asgn, calorie_target: suggested }
+          onCalorieTargetChanged?.()
         }
       }
       setAssignment(asgn)
@@ -2326,6 +2356,10 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     }).select('id').single()
     if (err) { setSaving(false); setError(err.message); return }
 
+    if (form.calorie_target) {
+      await supabase.from('clients').update({ current_calories: parseInt(form.calorie_target) }).eq('id', client.id)
+    }
+
     // Auto-apply default static meals configured on the plan group
     if (newAssignment && (group?.default_preworkout_meal_id || group?.default_evening_snack_meal_id)) {
       const defaults = {}
@@ -2341,6 +2375,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     }
 
     setSaving(false); setShowForm(false); load()
+    if (form.calorie_target) onCalorieTargetChanged?.()
   }
 
   async function handleSaveOverride(e) {
@@ -2366,10 +2401,11 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   async function saveCalorieTarget() {
     const value = calorieDraft ? parseInt(calorieDraft) : null
     setSavingCalorie(true)
-    await supabase.from('client_plan_assignments').update({ calorie_target: value }).eq('id', assignment.id)
+    await writeCalorieTarget({ clientId: client.id, assignmentId: assignment.id, value })
     setAssignment(prev => prev ? { ...prev, calorie_target: value } : prev)
     setSavingCalorie(false)
     setEditingCalorie(false)
+    onCalorieTargetChanged?.()
   }
 
   // Shared card renderer for every meal slot (breakfast/lunch/dinner rotations and the two
@@ -4185,7 +4221,7 @@ export default function CoachClientProfile() {
 
       <div>
         {activeTab === 'Overview'    && <OverviewTab client={client} onSaved={loadClient} />}
-        {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} mealSplit={normalizeMealSplit(profile.meal_split)} goalMacroSplits={normalizeGoalMacroSplits(profile.goal_macro_splits)} proteinPerKg={normalizeProteinPerKg(profile.protein_g_per_kg)} />}
+        {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} mealSplit={normalizeMealSplit(profile.meal_split)} goalMacroSplits={normalizeGoalMacroSplits(profile.goal_macro_splits)} proteinPerKg={normalizeProteinPerKg(profile.protein_g_per_kg)} onCalorieTargetChanged={loadClient} />}
         {activeTab === 'Training'   && <TrainingTab client={client} coachId={profile.id} onSaved={loadClient} />}
         {activeTab === 'Daily Plan' && <DailyPlanTab client={client} />}
         {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} />}

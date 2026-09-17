@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
+import { writeCalorieTarget } from '../../lib/calorieTarget'
 import {
   MEAL_GROUPS, ALL_SLOT_DEFS, OPTION_1_KEYS, OPTION_2_KEYS,
   normalizeOverrides, hasAnyOverride,
@@ -637,6 +638,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     await supabase.from('client_plan_assignments')
       .update({ week_override: nextTemplateWeek, calorie_target: newCalTarget, removed_meal_slots: removedMealSlots })
       .eq('id', activeAssignment.id)
+    // Mirrors onto clients.current_calories too, so the Overview tab's own copy of the target
+    // (and the client's task checklist) reflect a calorie change made from a check-in response.
+    await supabase.from('clients').update({ current_calories: newCalTarget }).eq('id', client.id)
 
     supabase.from('weekly_deliveries').insert({
       client_id: client.id,
@@ -1447,7 +1451,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     if (!activeAssignment) return
     const value = calorieDraft ? parseInt(calorieDraft) : null
     setSavingCalorie(true)
-    await supabase.from('client_plan_assignments').update({ calorie_target: value }).eq('id', activeAssignment.id)
+    await writeCalorieTarget({ clientId: client.id, assignmentId: activeAssignment.id, value })
     setActiveAssignment(prev => prev ? { ...prev, calorie_target: value } : prev)
     setSavingCalorie(false)
     setEditingCalorie(false)
