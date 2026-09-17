@@ -5,6 +5,8 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
 import { useSignedProgressPhotos, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import TargetDateBanner from '../../components/TargetDateBanner'
+import StrengthProgress from '../../components/StrengthProgress'
+import { computeLiftProgress } from '../../lib/liftProgress'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
@@ -215,27 +217,12 @@ export default function ClientProgress() {
     ? (parseFloat(currentWeight) - parseFloat(startWeight)).toFixed(1)
     : null
 
-  // Build strength progress: for each lift name, find earliest and latest entry
-  const liftMap = {} // name -> { first: {weight_kg, reps, personalWeek}, latest: ... }
+  // Personal week = 1-based position in ascending week_number order — used by the photo
+  // comparison section below.
   const sorted = [...checkins].sort((a, b) => a.week_number - b.week_number)
-  // Personal week = 1-based position in ascending sorted order
   const weekToPersonal = {}
   sorted.forEach((ci, i) => { weekToPersonal[ci.week_number] = i + 1 })
-  sorted.forEach((ci, i) => {
-    const pw = i + 1
-    ;(ci.lift_results || []).filter(l => l?.name && l.weight_kg != null && l.reps != null).forEach(l => {
-      if (!liftMap[l.name]) liftMap[l.name] = { first: null, latest: null }
-      if (!liftMap[l.name].first) liftMap[l.name].first = { weight_kg: parseFloat(l.weight_kg), reps: parseInt(l.reps), personalWeek: pw }
-      liftMap[l.name].latest = { weight_kg: parseFloat(l.weight_kg), reps: parseInt(l.reps), personalWeek: pw }
-    })
-  })
-  const liftProgress = Object.entries(liftMap)
-    .filter(([, v]) => v.first && v.latest)
-    .map(([name, { first, latest }]) => {
-      const kgIncrease = Math.round((latest.weight_kg - first.weight_kg) * 10) / 10
-      const pctIncrease = first.weight_kg > 0 ? Math.round((kgIncrease / first.weight_kg) * 100) : null
-      return { name, first, latest, kgIncrease, pctIncrease }
-    })
+  const liftProgress = computeLiftProgress(checkins)
 
   return (
     <div className="space-y-6">
@@ -278,48 +265,7 @@ export default function ClientProgress() {
       </div>
 
       {/* Strength progress */}
-      {liftProgress.length > 0 && (
-        <div className="card space-y-4">
-          <h2 className="font-semibold text-gray-900 dark:text-white">Strength Progress</h2>
-          <div className="space-y-3">
-            {liftProgress.map(({ name, first, latest, kgIncrease, pctIncrease }) => (
-              <div key={name} className="space-y-1.5">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{name}</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {/* Start */}
-                  <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
-                    <p className="text-[10px] text-gray-400 mb-0.5 uppercase tracking-wider">Start · Wk {first.personalWeek}</p>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">
-                      {first.weight_kg} kg
-                    </p>
-                    <p className="text-xs text-gray-400 tabular-nums">× {first.reps} reps</p>
-                  </div>
-                  {/* Now */}
-                  <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
-                    <p className="text-[10px] text-gray-400 mb-0.5 uppercase tracking-wider">Now · Wk {latest.personalWeek}</p>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">
-                      {latest.weight_kg} kg
-                    </p>
-                    <p className="text-xs text-gray-400 tabular-nums">× {latest.reps} reps</p>
-                  </div>
-                  {/* Increase */}
-                  <div className={`p-2.5 rounded-xl ${kgIncrease > 0 ? 'bg-green-50 dark:bg-green-900/20' : kgIncrease < 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-800'}`}>
-                    <p className="text-[10px] text-gray-400 mb-0.5 uppercase tracking-wider">Increase</p>
-                    <p className={`text-sm font-bold tabular-nums ${kgIncrease > 0 ? 'text-green-600 dark:text-green-400' : kgIncrease < 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-400'}`}>
-                      {kgIncrease > 0 ? '+' : ''}{kgIncrease} kg
-                    </p>
-                    {pctIncrease !== null && (
-                      <p className={`text-xs font-semibold tabular-nums ${kgIncrease > 0 ? 'text-green-500 dark:text-green-400' : kgIncrease < 0 ? 'text-red-400' : 'text-gray-400'}`}>
-                        {pctIncrease > 0 ? '+' : ''}{pctIncrease}%
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <StrengthProgress liftProgress={liftProgress} />
 
       {/* Photo comparison — first vs most recent, grouped by angle */}
       {checkins.length > 0 && (() => {

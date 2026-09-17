@@ -10,6 +10,8 @@ import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 import { DIETS, DIET_LABELS, mealQualifiesForDiets, ingredientQualifiesForDiets } from '../../lib/diets'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { writeCalorieTarget } from '../../lib/calorieTarget'
+import { computeLiftProgress } from '../../lib/liftProgress'
+import StrengthProgress from '../../components/StrengthProgress'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import { getMealConflicts, findSafeMeal, findSafeAlternative } from '../../lib/mealSwaps'
@@ -975,6 +977,7 @@ function OverviewTab({ client, onSaved }) {
 
 function WeightTab({ clientId }) {
   const [entries, setEntries] = useState([])
+  const [liftProgress, setLiftProgress] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], weight_kg: '' })
@@ -983,17 +986,20 @@ function WeightTab({ clientId }) {
   async function load() {
     const [{ data: weightData }, { data: checkinData }] = await Promise.all([
       supabase.from('weight_entries').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false }),
-      supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', clientId).not('weight_kg', 'is', null),
+      supabase.from('client_checkins').select('week_number, weight_kg, submitted_at, updated_at, lift_results').eq('client_id', clientId),
     ])
     const manual = weightData || []
     const manualDates = new Set(manual.map(e => e.recorded_at))
+    const withWeight = (checkinData || []).filter(c => c.weight_kg != null)
     // Add check-in weights only for dates not already covered by a manual entry
     // (recent check-ins are synced automatically so they'd already be in weight_entries)
-    const fromCheckins = (checkinData || [])
+    const fromCheckins = withWeight
       .map(c => ({ id: null, weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0], source: 'checkin' }))
       .filter(c => c.recorded_at && !manualDates.has(c.recorded_at))
     const combined = [...manual, ...fromCheckins].sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
-    setEntries(combined); setLoading(false)
+    setEntries(combined)
+    setLiftProgress(computeLiftProgress(checkinData || []))
+    setLoading(false)
   }
   useEffect(() => { load() }, [clientId])
 
@@ -1009,6 +1015,7 @@ function WeightTab({ clientId }) {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="card"><h3 className="font-semibold text-gray-900 dark:text-white mb-4">Weight Trend</h3><WeightChart data={entries} /></div>
+      <StrengthProgress liftProgress={liftProgress} />
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-gray-900 dark:text-white">Entries</h3>
         <button onClick={() => setShowForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showForm ? 'Cancel' : 'Add Entry'}</button>
