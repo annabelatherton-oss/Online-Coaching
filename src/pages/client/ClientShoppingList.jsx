@@ -143,6 +143,14 @@ export default function ClientShoppingList() {
   }
 
   function setCount(slotKey, value) {
+    // An emptied box is kept empty rather than snapped back to 0, so backspacing to clear it
+    // actually leaves it blank instead of the "0" reappearing after every keystroke.
+    if (value === '') {
+      const next = { ...selections, [slotKey]: '' }
+      setSelections(next)
+      persist(next, checkedItems)
+      return
+    }
     const count = Math.max(0, Math.min(7, parseInt(value, 10) || 0))
     const next = { ...selections, [slotKey]: count }
     setSelections(next)
@@ -230,7 +238,7 @@ export default function ClientShoppingList() {
                       type="number" onFocus={e => e.target.select()}
                       min="0"
                       max="7"
-                      value={selections[s.key] ?? 0}
+                      value={selections[s.key] || ''}
                       onChange={e => setCount(s.key, e.target.value)}
                       className="w-14 text-center border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white py-1 text-sm"
                     />
