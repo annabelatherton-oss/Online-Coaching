@@ -2096,13 +2096,16 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   // is adding up while editing), and the full day's total at the bottom of the section.
   const everydayOrder = [...EVERYDAY_DIRECT_SLOTS, ...EVERYDAY_REQUEST_SLOTS].filter(slotKey => everydayRows[slotKey]?.meal_id)
   const everydayCumulativeAfter = {}
-  const everydayRemainingAfter = {}
+  // "Remaining" is the budget still available going into this meal — i.e. before its own
+  // calories are subtracted — so it reads as "how much room I have to play with for this meal",
+  // not "what's left once this one's also spent."
+  const everydayRemainingBefore = {}
   let everydayRunning = { cal: 0, prot: 0, carb: 0, fat: 0 }
   for (const slotKey of everydayOrder) {
+    everydayRemainingBefore[slotKey] = remainingFor(everydayRunning)
     const m = mealMacros(everydayRows[slotKey].meal_id, mealMap, null, everydayOverrides[slotKey])
     everydayRunning = { cal: everydayRunning.cal + m.cal, prot: everydayRunning.prot + m.prot, carb: everydayRunning.carb + m.carb, fat: everydayRunning.fat + m.fat }
     everydayCumulativeAfter[slotKey] = everydayRunning
-    everydayRemainingAfter[slotKey] = remainingFor(everydayRunning)
   }
   const everydayDailyTotal = everydayRunning
 
@@ -2116,7 +2119,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const isChanging = changingEveryday.has(slotKey)
     const slotOptions = mealsByCategory[EVERYDAY_CAT[slotKey]] || []
     const cumulative = everydayCumulativeAfter[slotKey]
-    const remaining = everydayRemainingAfter[slotKey]
+    const remaining = everydayRemainingBefore[slotKey]
     return (
       <div key={slotKey} className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
         <div className="w-full flex items-center gap-2 px-3 py-2">
