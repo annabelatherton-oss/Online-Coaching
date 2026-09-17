@@ -2305,7 +2305,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const currentMealViolatesDiet = meal && !mealQualifiesForDiets(meal, dietsToCheck)
 
     return (
-      <div key={slotKey} className="flex flex-col sm:flex-row rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
+      <div key={slotKey} className="flex flex-col sm:flex-row sm:items-start rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
         <div className="relative w-full sm:w-40 aspect-[16/9] sm:aspect-square bg-gray-100 dark:bg-gray-800 flex-shrink-0">
           {meal?.photo_url ? (
             <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
@@ -2507,18 +2507,26 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 const m_macros = mealMacros(m.id, mealMap, tier, m.id === currentId ? overridesForSlot : null)
                 const isCurrent = m.id === currentId
                 return (
-                  <div key={m.id} className={`flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs ${isCurrent ? 'bg-brand-50 dark:bg-brand-900/10' : ''}`}>
+                  <button
+                    type="button"
+                    key={m.id}
+                    disabled={isCurrent}
+                    onClick={() => { setEditedSlots(prev => ({ ...prev, [slotKey]: m.id })); setSlotsDirty(true) }}
+                    className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs text-left ${
+                      isCurrent ? 'bg-brand-50 dark:bg-brand-900/10 cursor-default' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                    }`}
+                  >
                     <span className={`truncate ${isCurrent ? 'font-semibold text-brand-700 dark:text-brand-400' : 'text-gray-600 dark:text-gray-300'}`}>
                       {isCurrent && '✓ '}{m.name}
                     </span>
                     <span className="text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">
                       {Math.round(m_macros.cal)} kcal · {Math.round(m_macros.carb)}C · {Math.round(m_macros.prot)}P · {Math.round(m_macros.fat)}F
                     </span>
-                  </div>
+                  </button>
                 )
               })}
               <p className="px-2.5 py-1.5 text-[11px] text-gray-400 bg-gray-50 dark:bg-gray-800/50">
-                Every option for this slot is scaled to the same calorie tier, so any of them are safe to swap in for each other.
+                Tap an option to switch this meal to it — every option here is scaled to the same calorie tier, so any of them are safe to swap in for each other.
               </p>
             </div>
           )}
