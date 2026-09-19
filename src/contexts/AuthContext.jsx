@@ -31,16 +31,26 @@ export function AuthProvider({ children }) {
       setProfileReady(true)
     })
 
+    // supabase-js holds an internal lock for the duration of this callback - awaiting another
+    // Supabase call (fetchProfile) directly inside it can deadlock against the signIn() call that
+    // triggered the event in the first place, since both end up waiting on the same lock. This is
+    // exactly the "login freezes, only works after leaving and coming back" symptom: the first
+    // sign-in hangs forever, and it only "works" on the next attempt because that page load's
+    // getSession() (above) isn't blocked by a signIn() call still holding the lock. Deferring the
+    // callback's body with setTimeout breaks out of that call stack, matching Supabase's own
+    // documented workaround for this deadlock.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session)
-        if (session?.user) {
-          const p = await fetchProfile(session.user.id)
-          setProfile(p)
-        } else {
-          setProfile(null)
-        }
-        setProfileReady(true)
+      (_event, session) => {
+        setTimeout(async () => {
+          setSession(session)
+          if (session?.user) {
+            const p = await fetchProfile(session.user.id)
+            setProfile(p)
+          } else {
+            setProfile(null)
+          }
+          setProfileReady(true)
+        }, 0)
       }
     )
 
