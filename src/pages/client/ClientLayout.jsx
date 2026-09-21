@@ -167,7 +167,7 @@ export default function ClientLayout() {
       .eq('profile_id', session.user.id)
       .maybeSingle()
       .then(({ data }) => {
-        if (data?.id) registerPushNotifications(data.id)
+        if (data?.id) registerPushNotifications({ clientId: data.id })
       })
   }, [session?.user?.id])
 

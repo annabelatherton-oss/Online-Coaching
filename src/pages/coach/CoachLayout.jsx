@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation, useNavigationType } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import DarkModeToggle from '../../components/DarkModeToggle'
+import { registerPushNotifications } from '../../lib/pushNotifications'
 
 const navItems = [
   {
@@ -153,6 +154,12 @@ export default function CoachLayout() {
   const navigationType = useNavigationType()
   const mainRef = useRef(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Register for push notifications once after login — used for things like the Friday 7am
+  // "check-ins are due" reminder.
+  useEffect(() => {
+    if (profile?.id) registerPushNotifications({ coachId: profile.id })
+  }, [profile?.id])
 
   // Save scroll position continuously so it's always up to date.
   useEffect(() => {

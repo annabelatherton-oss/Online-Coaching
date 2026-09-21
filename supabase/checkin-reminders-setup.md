@@ -76,3 +76,25 @@ Change to `'0 6 * * 5'` during winter when the UK is UTC+0.
 - **Recommended**: Friday (reminder sent)
 - **Grace period**: through Tuesday
 - **Closed**: Wednesday (shows "opens Thursday" message)
+
+---
+
+## Coach reminder (Friday 7am — "check-ins are due, go review them")
+
+Same VAPID keys and infrastructure, separate everything else — separate service worker
+(`public/coach-sw.js`, scoped to `/coach/`) so the notification text and link differ from the
+client one, separate `coach_id` column on `push_subscriptions` (added by
+`coach-push-subscriptions-migration.sql`), separate Edge Function
+(`send-coach-checkin-reminder`), separate cron job.
+
+Setup, on top of everything above:
+1. Run `supabase/coach-push-subscriptions-migration.sql` in the SQL Editor.
+2. Deploy the new function: `npx supabase functions deploy send-coach-checkin-reminder`
+   (uses the same VAPID secrets already configured for `send-checkin-reminders`).
+3. Run `supabase/setup-coach-checkin-cron.sql` in the SQL Editor.
+4. A coach registers for push automatically the next time they load the app (same
+   ask-for-permission flow as clients), from `CoachLayout.jsx`.
+
+The coach gets one notification every Friday at 7am UK time regardless of how many clients
+they have or how recently they were onboarded — there's no "too new" exclusion like the
+client-side reminder has, since reviewing check-ins is always relevant once a coach has any.
