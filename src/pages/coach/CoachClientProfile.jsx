@@ -555,25 +555,26 @@ function OverviewTab({ client, onSaved }) {
   }, [client.id])
 
   // The Weight tab is where a coach logs/reviews the full history — this just surfaces the
-  // single latest figure here too, since it's useful context while looking at everything else
-  // on Overview without having to switch tabs. Same "manual entry, else most recent check-in"
-  // sourcing as the Weight tab itself, so the two never disagree.
+  // latest and earliest figures here too, since they're useful context while looking at
+  // everything else on Overview without having to switch tabs. Same "manual entry, else most
+  // recent/earliest check-in" sourcing as the Weight tab itself, so none of these ever disagree.
   const [latestWeight, setLatestWeight] = useState(null)
+  const [startWeight, setStartWeight] = useState(null)
   useEffect(() => {
     let cancelled = false
-    async function loadLatestWeight() {
+    async function loadWeights() {
       const [{ data: weightRows }, { data: checkinRows }] = await Promise.all([
-        supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', client.id).order('recorded_at', { ascending: false }).limit(1),
-        supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', client.id).not('weight_kg', 'is', null).order('updated_at', { ascending: false }).limit(1),
+        supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', client.id).order('recorded_at', { ascending: true }),
+        supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', client.id).not('weight_kg', 'is', null).order('updated_at', { ascending: true }),
       ])
       if (cancelled) return
-      const fromEntry = weightRows?.[0] ? { weight_kg: weightRows[0].weight_kg, recorded_at: weightRows[0].recorded_at } : null
-      const ci = checkinRows?.[0]
-      const fromCheckin = ci ? { weight_kg: ci.weight_kg, recorded_at: (ci.submitted_at || ci.updated_at || '').split('T')[0] } : null
-      const latest = [fromEntry, fromCheckin].filter(Boolean).sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))[0] || null
-      setLatestWeight(latest)
+      const fromEntries = (weightRows || []).map(r => ({ weight_kg: r.weight_kg, recorded_at: r.recorded_at }))
+      const fromCheckins = (checkinRows || []).map(c => ({ weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0] }))
+      const all = [...fromEntries, ...fromCheckins].filter(w => w.recorded_at).sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))
+      setStartWeight(all[0] || null)
+      setLatestWeight(all[all.length - 1] || null)
     }
-    loadLatestWeight()
+    loadWeights()
     return () => { cancelled = true }
   }, [client.id])
 
@@ -755,15 +756,34 @@ function OverviewTab({ client, onSaved }) {
     <div className="space-y-6 max-w-2xl">
     <TargetDateBanner targetDate={client.target_date} targetEventName={client.target_event_name} />
     <ClientPauseCard clientId={client.id} />
-    {latestWeight && (
-      <div className="card flex items-center justify-between">
-        <div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Current weight</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{latestWeight.weight_kg} <span className="text-sm font-normal text-gray-400">kg</span></p>
+    {latestWeight && (() => {
+      const hasChange = startWeight && startWeight.recorded_at !== latestWeight.recorded_at
+      const change = hasChange ? Math.round((parseFloat(latestWeight.weight_kg) - parseFloat(startWeight.weight_kg)) * 10) / 10 : null
+      return (
+        <div className="card grid grid-cols-3 gap-3 text-center">
+          <div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Start</p>
+            <p className="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{startWeight?.weight_kg ?? '—'} <span className="text-xs font-normal text-gray-400">kg</span></p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{startWeight ? new Date(startWeight.recorded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Current</p>
+            <p className="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{latestWeight.weight_kg} <span className="text-xs font-normal text-gray-400">kg</span></p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{new Date(latestWeight.recorded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Change</p>
+            {hasChange ? (
+              <p className={`text-xl font-bold tabular-nums ${change < 0 ? 'text-green-500' : change > 0 ? 'text-red-400' : 'text-gray-900 dark:text-white'}`}>
+                {change > 0 ? '+' : ''}{change} <span className="text-xs font-normal text-gray-400">kg</span>
+              </p>
+            ) : (
+              <p className="text-xl font-bold text-gray-300 dark:text-gray-600">—</p>
+            )}
+          </div>
         </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500">as of {new Date(latestWeight.recorded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-      </div>
-    )}
+      )
+    })()}
     <form onSubmit={handleSave} className="space-y-6">
 
       {/* Personal Info — from intake form */}
@@ -2839,7 +2859,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
               {planGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label">Calorie target (kcal/day)</label>
               <select className="input" value={form.calorie_target} onChange={e => setForm(f => ({ ...f, calorie_target: e.target.value }))}>
@@ -3257,6 +3277,13 @@ function TrainingTab({ client, coachId, onSaved }) {
   const [assignedSessions, setAssignedSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  // The assign/change form lives at the top of the page, but "Change" is clicked from the
+  // current-programme card further down — without this, clicking it looked like nothing
+  // happened, since the form appeared off-screen above the fold.
+  const assignFormRef = useRef(null)
+  useEffect(() => {
+    if (showForm) assignFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [showForm])
   const [form, setForm] = useState({ block: '', days: '' })
   const [saving, setSaving] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
@@ -3424,7 +3451,7 @@ function TrainingTab({ client, coachId, onSaved }) {
       )}
 
       {showForm && (
-        <form onSubmit={handleAssign} className="card space-y-4">
+        <form ref={assignFormRef} onSubmit={handleAssign} className="card space-y-4">
           <h3 className="font-semibold text-gray-900 dark:text-white">{assignment ? 'Change Programme' : 'Assign Training Programme'}</h3>
           <div>
             <label className="label">Block</label>
