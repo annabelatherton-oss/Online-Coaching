@@ -1274,16 +1274,16 @@ function ProgressTab({ clientId }) {
   return (
     <div className="space-y-10">
       <div>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Photos</h2>
+        <PhotosTab clientId={clientId} />
+      </div>
+      <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Weight</h2>
         <WeightTab clientId={clientId} />
       </div>
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Measurements</h2>
         <MeasurementsTab clientId={clientId} />
-      </div>
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Photos</h2>
-        <PhotosTab clientId={clientId} />
       </div>
     </div>
   )
