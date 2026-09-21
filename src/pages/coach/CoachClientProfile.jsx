@@ -533,6 +533,29 @@ function OverviewTab({ client, onSaved }) {
     return () => { cancelled = true }
   }, [client.id])
 
+  // The Weight tab is where a coach logs/reviews the full history — this just surfaces the
+  // single latest figure here too, since it's useful context while looking at everything else
+  // on Overview without having to switch tabs. Same "manual entry, else most recent check-in"
+  // sourcing as the Weight tab itself, so the two never disagree.
+  const [latestWeight, setLatestWeight] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    async function loadLatestWeight() {
+      const [{ data: weightRows }, { data: checkinRows }] = await Promise.all([
+        supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', client.id).order('recorded_at', { ascending: false }).limit(1),
+        supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', client.id).not('weight_kg', 'is', null).order('updated_at', { ascending: false }).limit(1),
+      ])
+      if (cancelled) return
+      const fromEntry = weightRows?.[0] ? { weight_kg: weightRows[0].weight_kg, recorded_at: weightRows[0].recorded_at } : null
+      const ci = checkinRows?.[0]
+      const fromCheckin = ci ? { weight_kg: ci.weight_kg, recorded_at: (ci.submitted_at || ci.updated_at || '').split('T')[0] } : null
+      const latest = [fromEntry, fromCheckin].filter(Boolean).sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))[0] || null
+      setLatestWeight(latest)
+    }
+    loadLatestWeight()
+    return () => { cancelled = true }
+  }, [client.id])
+
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
 
   // Snaps to the nearest 100 kcal on blur (not while typing) so it lines up with a meal-plan
@@ -711,6 +734,15 @@ function OverviewTab({ client, onSaved }) {
     <div className="space-y-6 max-w-2xl">
     <TargetDateBanner targetDate={client.target_date} targetEventName={client.target_event_name} />
     <ClientPauseCard clientId={client.id} />
+    {latestWeight && (
+      <div className="card flex items-center justify-between">
+        <div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Current weight</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{latestWeight.weight_kg} <span className="text-sm font-normal text-gray-400">kg</span></p>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500">as of {new Date(latestWeight.recorded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+      </div>
+    )}
     <form onSubmit={handleSave} className="space-y-6">
 
       {/* Personal Info — from intake form */}
