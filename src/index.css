@@ -32,6 +32,25 @@
     input, select, textarea {
       font-size: 16px;
     }
+
+    /* A native date input's own internal layout (the calendar icon plus its text) imposes a
+       minimum width wider than most phone-width grid/flex cells — width: 100% alone doesn't
+       override that, since form controls default to min-width: auto (their intrinsic content
+       size) rather than min-width: 0 like a normal block element. That's what was pushing date
+       fields past the screen edge. */
+    input[type="date"] {
+      min-width: 0;
+    }
+  }
+
+  /* A quick double-tap on a button (a stepper, a toggle, an arrow — anything a visitor might tap
+     twice in succession) is otherwise read by the phone's browser as the "double-tap to zoom"
+     gesture, zooming the whole page in until it's manually pinched back out. touch-action:
+     manipulation tells the browser these elements only ever need single taps, dropping that
+     gesture on them specifically rather than disabling pinch-zoom everywhere (which would be an
+     accessibility regression). */
+  button, a, [role="button"] {
+    touch-action: manipulation;
   }
 }
 
