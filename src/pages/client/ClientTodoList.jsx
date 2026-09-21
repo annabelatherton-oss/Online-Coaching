@@ -18,6 +18,18 @@ function stripDay(name) {
   return name
 }
 
+// Pulls a step count out of a cardio item's label (e.g. "15k steps" or "15,000 Steps" on an
+// active rest day) so that day's step target can replace the standard one instead of showing
+// alongside it as a separate, redundant task.
+function parseStepCount(label) {
+  if (!label) return null
+  const m = label.match(/(\d[\d,]*)\s*(k)?\s*steps/i)
+  if (!m) return null
+  const n = parseInt(m[1].replace(/,/g, ''), 10)
+  if (isNaN(n)) return null
+  return m[2] ? n * 1000 : n
+}
+
 // Build the system task list from client data + that day's schedule
 function buildSystemTasks(client, schedItems) {
   const tasks = []
@@ -38,7 +50,18 @@ function buildSystemTasks(client, schedItems) {
   const water = client?.water_target_litres ?? 2.5
   tasks.push({ key: 'water', label: `Drink ${water}L of water` })
 
-  const steps = client?.steps_target ?? 10000
+  // A cardio item that states its own step count (e.g. "15k steps" added to an active rest day)
+  // replaces the standard daily steps target for that day rather than showing as a second,
+  // separate task alongside it — it's the same habit, just a different number for today.
+  const cardioItems = (schedItems || []).filter(i => i.item_type === 'cardio')
+  let daySteps = null
+  let stepsCardioItemId = null
+  for (const item of cardioItems) {
+    const stepCount = parseStepCount(item.custom_label || item.cardio_sessions?.name)
+    if (stepCount) { daySteps = stepCount; stepsCardioItemId = item.id; break }
+  }
+
+  const steps = daySteps ?? (client?.steps_target ?? 10000)
   tasks.push({ key: 'steps', label: `Hit ${Number(steps).toLocaleString()} steps` })
 
   const sleep = client?.sleep_target_hours ?? 8
@@ -54,9 +77,8 @@ function buildSystemTasks(client, schedItems) {
     tasks.push({ key: idx === 0 ? 'training' : `training_${idx}`, label })
   })
 
-  // Cardio — one task per cardio item
-  const cardioItems = (schedItems || []).filter(i => i.item_type === 'cardio')
-  cardioItems.forEach((item, idx) => {
+  // Cardio — one task per cardio item, except the one already folded into the steps task above
+  cardioItems.filter(item => item.id !== stepsCardioItemId).forEach((item, idx) => {
     const name = item.custom_label || item.cardio_sessions?.name
     const zoneBpm = item.heart_rate_zone ? formatZoneBpm(client?.date_of_birth, item.heart_rate_zone) : null
     const label = `Complete ${name || 'your cardio'}${item.duration_minutes ? ` (${item.duration_minutes} min)` : ''}${item.heart_rate_zone ? ` · ${item.heart_rate_zone}${zoneBpm ? ` (${zoneBpm})` : ''}` : ''}`

@@ -46,13 +46,34 @@ function _planStripDay(name) {
   }
   return name
 }
+// Pulls a step count out of a cardio item's label (e.g. "15k steps" or "15,000 Steps" on an
+// active rest day) so that day's step target can replace the standard one instead of showing
+// alongside it as a separate, redundant task.
+function _parseStepCount(label) {
+  if (!label) return null
+  const m = label.match(/(\d[\d,]*)\s*(k)?\s*steps/i)
+  if (!m) return null
+  const n = parseInt(m[1].replace(/,/g, ''), 10)
+  if (isNaN(n)) return null
+  return m[2] ? n * 1000 : n
+}
+
 function _buildCoachSystemTasks(client, schedItems) {
   const tasks = []
   if (client?.current_calories) tasks.push({ key:'calories', label:`Stay within ${client.current_calories.toLocaleString()} kcal` })
   if (client?.current_protein)  tasks.push({ key:'protein',  label:`Hit ${client.current_protein}g protein goal` })
   if (!client?.current_calories && !client?.current_protein) tasks.push({ key:'macros', label:'Hit your macros' })
   tasks.push({ key:'water', label:`Drink ${client?.water_target_litres ?? 2.5}L of water` })
-  tasks.push({ key:'steps', label:`Hit ${Number(client?.steps_target ?? 10000).toLocaleString()} steps` })
+
+  const cardioItems = (schedItems || []).filter(i => i.item_type === 'cardio')
+  let daySteps = null
+  let stepsCardioItemId = null
+  for (const item of cardioItems) {
+    const stepCount = _parseStepCount(item.custom_label || item.cardio_sessions?.name)
+    if (stepCount) { daySteps = stepCount; stepsCardioItemId = item.id; break }
+  }
+  tasks.push({ key:'steps', label:`Hit ${Number(daySteps ?? client?.steps_target ?? 10000).toLocaleString()} steps` })
+
   tasks.push({ key:'sleep', label:`Get ${client?.sleep_target_hours ?? 8} hours of sleep` })
   ;(schedItems || []).filter(i => i.item_type === 'workout' || i.item_type === 'hiit').forEach((item, idx) => {
     const name = item.item_type === 'workout'
@@ -60,7 +81,7 @@ function _buildCoachSystemTasks(client, schedItems) {
       : (item.hiit_circuits?.name || item.custom_label || 'HIIT')
     tasks.push({ key: idx === 0 ? 'training' : `training_${idx}`, label: name ? `Complete ${name} session` : 'Complete your training session' })
   })
-  ;(schedItems || []).filter(i => i.item_type === 'cardio').forEach((item, idx) => {
+  cardioItems.filter(item => item.id !== stepsCardioItemId).forEach((item, idx) => {
     const label = item.custom_label ? `Complete ${item.custom_label}` : item.cardio_sessions?.name ? `Complete ${item.cardio_sessions.name}` : 'Complete your cardio'
     tasks.push({ key: idx === 0 ? 'cardio' : `cardio_${idx}`, label })
   })
