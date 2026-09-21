@@ -1,22 +1,45 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import ClientModal from './ClientModal'
 import LoadingSpinner from '../../components/LoadingSpinner'
 
-function StatusBadge({ client }) {
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+function clientStatus(client) {
+  if (client.is_archived) return 'archived'
   const now = new Date()
   const exp = client.access_expires_at ? new Date(client.access_expires_at) : null
   const expired = exp && exp < now
+  const expiringSoon = exp && !expired && exp <= new Date(now.getTime() + SEVEN_DAYS_MS)
+  if (client.is_paused) return 'paused'
+  if (expired) return 'expired'
+  if (expiringSoon) return 'expiring'
+  if (client.is_active) return 'active'
+  return 'inactive'
+}
 
-  if (client.is_paused)
-    return <span className="badge bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">Paused</span>
-  if (expired)
-    return <span className="badge bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Expired</span>
-  if (client.is_active)
-    return <span className="badge bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Active</span>
-  return <span className="badge bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">Inactive</span>
+function StatusBadge({ client, onClick }) {
+  const status = clientStatus(client)
+  const clickable = (status === 'expiring' || status === 'expired') && onClick
+  const badge = {
+    archived: ['Archived', 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'],
+    paused: ['Paused', 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'],
+    expired: ['Expired', 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'],
+    expiring: ['Expiring soon', 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'],
+    active: ['Active', 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'],
+    inactive: ['Inactive', 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'],
+  }[status]
+  const [label, classes] = badge
+  if (clickable) {
+    return (
+      <button type="button" onClick={onClick} className={`badge ${classes} hover:opacity-75 transition-opacity cursor-pointer`} title="Add access time">
+        {label}
+      </button>
+    )
+  }
+  return <span className={`badge ${classes}`}>{label}</span>
 }
 
 function TagChip({ tag }) {
@@ -27,19 +50,103 @@ function TagChip({ tag }) {
   )
 }
 
+// Two ways to add access time: a number of weeks on top of whatever's there (the common case —
+// mirrors the old "+4w" button but lets the coach pick how many), or an exact new expiry date
+// for when a specific date matters more than a round number of weeks.
+function ExtendAccessModal({ client, onClose, onAddWeeks, onSetExactDate, busy }) {
+  const [mode, setMode] = useState('weeks')
+  const [weeks, setWeeks] = useState(4)
+  const [exactDate, setExactDate] = useState(
+    client.access_expires_at ? new Date(client.access_expires_at).toISOString().split('T')[0] : ''
+  )
+  const currentExpiry = client.access_expires_at
+    ? new Date(client.access_expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '—'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Extend access — {client.profiles?.full_name || 'this client'}
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Currently expires {currentExpiry}.</p>
+        </div>
+
+        <div className="flex gap-2 p-1 rounded-lg bg-gray-100 dark:bg-gray-800">
+          <button
+            type="button"
+            onClick={() => setMode('weeks')}
+            className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'weeks' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
+          >
+            Add weeks
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('date')}
+            className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'date' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
+          >
+            Set exact date
+          </button>
+        </div>
+
+        {mode === 'weeks' ? (
+          <div>
+            <label className="label">Additional weeks</label>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              onFocus={e => e.target.select()}
+              value={weeks}
+              onChange={e => setWeeks(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div>
+            <label className="label">New expiry date</label>
+            <input
+              className="input"
+              type="date"
+              value={exactDate}
+              onChange={e => setExactDate(e.target.value)}
+            />
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+          <button
+            type="button"
+            disabled={busy || (mode === 'weeks' ? !weeks || parseInt(weeks) < 1 : !exactDate)}
+            onClick={() => mode === 'weeks' ? onAddWeeks(parseInt(weeks)) : onSetExactDate(exactDate)}
+            className="btn-primary flex-1"
+          >
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ClientsList() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState('All')
+  // Deep-linkable from the dashboard's Expiring Soon / Expired stat cards (?status=expiring / ?status=expired).
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'All')
   const [showModal, setShowModal] = useState(false)
   const [editClient, setEditClient] = useState(null)
   const [duplicateData, setDuplicateData] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
   const [pauseClientIds, setPauseClientIds] = useState(new Set())
+  const [extendClient, setExtendClient] = useState(null)
 
   async function loadClients() {
     const { data, error } = await supabase
@@ -47,7 +154,7 @@ export default function ClientsList() {
       .select(`
         id, coach_id, profile_id, goal, current_calories, current_protein,
         current_carbs, current_fat, start_date, access_weeks, access_expires_at,
-        is_active, is_paused, tags, created_at,
+        is_active, is_paused, is_archived, tags, created_at,
         profiles!clients_profile_id_fkey(full_name, email)
       `)
       .eq('coach_id', profile.id)
@@ -70,6 +177,11 @@ export default function ClientsList() {
 
   useEffect(() => { loadClients() }, [profile.id])
 
+  function setStatus(value) {
+    setStatusFilter(value)
+    setSearchParams(value === 'All' ? {} : { status: value })
+  }
+
   async function togglePause(client) {
     setActionLoading(client.id)
     await supabase
@@ -80,15 +192,44 @@ export default function ClientsList() {
     setActionLoading(null)
   }
 
-  async function extendAccess(client) {
+  // Archiving hides a client from every list/dashboard count without touching any of their
+  // data (meal plans, check-ins, weight history, etc) — unlike Delete, which removes the row
+  // (and everything that cascades from it) for good. Unarchiving just brings them back.
+  async function toggleArchive(client) {
     setActionLoading(client.id)
-    const newWeeks = parseInt(client.access_weeks) + 4
     await supabase
       .from('clients')
-      .update({ access_weeks: newWeeks })
+      .update({ is_archived: !client.is_archived })
       .eq('id', client.id)
     await loadClients()
     setActionLoading(null)
+  }
+
+  // Adding weeks goes through access_weeks (the clients_set_expires DB trigger recomputes
+  // access_expires_at from start_date + access_weeks automatically). Setting an exact date
+  // writes access_expires_at directly instead — since that update doesn't touch start_date or
+  // access_weeks, the trigger doesn't fire and doesn't overwrite it, at least until the next
+  // access_weeks change recomputes it again.
+  async function addWeeks(client, weeks) {
+    setActionLoading(client.id)
+    await supabase
+      .from('clients')
+      .update({ access_weeks: parseInt(client.access_weeks || 0) + weeks })
+      .eq('id', client.id)
+    await loadClients()
+    setActionLoading(null)
+    setExtendClient(null)
+  }
+
+  async function setExactExpiry(client, isoDate) {
+    setActionLoading(client.id)
+    await supabase
+      .from('clients')
+      .update({ access_expires_at: isoDate })
+      .eq('id', client.id)
+    await loadClients()
+    setActionLoading(null)
+    setExtendClient(null)
   }
 
   async function deleteClient(client) {
@@ -128,7 +269,11 @@ export default function ClientsList() {
     const q = search.toLowerCase()
     const matchesSearch = name.includes(q) || email.includes(q)
     const matchesTag = tagFilter === 'All' || (c.tags || []).includes(tagFilter)
-    return matchesSearch && matchesTag
+    // "All" means all non-archived clients — archived ones only show up when that filter is
+    // picked explicitly, so archiving actually keeps them off the dashboard/list by default.
+    const status = clientStatus(c)
+    const matchesStatus = statusFilter === 'All' ? status !== 'archived' : status === statusFilter.toLowerCase()
+    return matchesSearch && matchesTag && matchesStatus
   })
 
   function formatDate(d) {
@@ -156,7 +301,7 @@ export default function ClientsList() {
         </button>
       </div>
 
-      {/* Search + tag filter */}
+      {/* Search + status/tag filter */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -169,6 +314,18 @@ export default function ClientsList() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+        <select
+          className="input sm:w-48"
+          value={statusFilter}
+          onChange={e => setStatus(e.target.value)}
+        >
+          <option value="All">All statuses</option>
+          <option value="Active">Active</option>
+          <option value="Paused">Paused</option>
+          <option value="Expiring">Expiring soon</option>
+          <option value="Expired">Expired</option>
+          <option value="Archived">Archived</option>
+        </select>
         {allTags.length > 0 && (
           <select
             className="input sm:w-48"
@@ -240,7 +397,7 @@ export default function ClientsList() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <StatusBadge client={client} />
+                        <StatusBadge client={client} onClick={() => setExtendClient(client)} />
                         {pauseClientIds.has(client.id) && (
                           <span className="badge bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">🌴 Pause pending</span>
                         )}
@@ -281,12 +438,20 @@ export default function ClientsList() {
                           {client.is_paused ? 'Resume' : 'Pause'}
                         </button>
                         <button
-                          onClick={() => extendAccess(client)}
+                          onClick={() => setExtendClient(client)}
                           disabled={actionLoading === client.id}
                           className="btn-secondary py-1.5 px-3 text-xs"
-                          title="Extend access by 4 weeks"
+                          title="Add access time"
                         >
-                          +4w
+                          Extend…
+                        </button>
+                        <button
+                          onClick={() => toggleArchive(client)}
+                          disabled={actionLoading === client.id}
+                          className="btn-secondary py-1.5 px-3 text-xs"
+                          title={client.is_archived ? 'Bring this client back onto your dashboard' : "Hide this client from your dashboard — their data stays intact"}
+                        >
+                          {client.is_archived ? 'Unarchive' : 'Archive'}
                         </button>
                         <button
                           onClick={() => setConfirmDelete(client)}
@@ -321,7 +486,7 @@ export default function ClientsList() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <StatusBadge client={client} />
+                    <StatusBadge client={client} onClick={() => setExtendClient(client)} />
                     {pauseClientIds.has(client.id) && (
                       <span className="badge bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">🌴 Pause pending</span>
                     )}
@@ -340,13 +505,25 @@ export default function ClientsList() {
                   <button onClick={() => { setEditClient(client); setDuplicateData(null); setShowModal(true) }} className="btn-secondary py-1.5 px-3 text-xs">Edit</button>
                   <button onClick={() => openDuplicate(client)} className="btn-secondary py-1.5 px-3 text-xs">Dupe</button>
                   <button onClick={() => togglePause(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">{client.is_paused ? 'Resume' : 'Pause'}</button>
-                  <button onClick={() => extendAccess(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">+4 weeks</button>
+                  <button onClick={() => setExtendClient(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">Extend…</button>
+                  <button onClick={() => toggleArchive(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">{client.is_archived ? 'Unarchive' : 'Archive'}</button>
                   <button onClick={() => setConfirmDelete(client)} className="py-1.5 px-3 text-xs rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 transition-colors">Delete</button>
                 </div>
               </div>
             ))}
           </div>
         </>
+      )}
+
+      {/* Extend access modal */}
+      {extendClient && (
+        <ExtendAccessModal
+          client={extendClient}
+          onClose={() => setExtendClient(null)}
+          onAddWeeks={weeks => addWeeks(extendClient, weeks)}
+          onSetExactDate={date => setExactExpiry(extendClient, date)}
+          busy={actionLoading === extendClient.id}
+        />
       )}
 
       {/* Add/Edit/Duplicate modal */}

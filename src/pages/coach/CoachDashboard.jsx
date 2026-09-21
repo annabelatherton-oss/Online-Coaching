@@ -59,6 +59,9 @@ export default function CoachDashboard() {
         .from('clients')
         .select('id, is_active, is_paused, access_expires_at, target_date, target_event_name, profiles!clients_profile_id_fkey(full_name, email)')
         .eq('coach_id', profile.id)
+        // Archived clients are meant to disappear from the dashboard entirely — their counts,
+        // Needs Attention, Recent Clients, everything — while keeping their data intact.
+        .eq('is_archived', false)
 
       if (clients) {
         const now = new Date()
@@ -69,6 +72,7 @@ export default function CoachDashboard() {
           const exp = new Date(c.access_expires_at)
           return exp > now && exp <= sevenDays
         })
+        const expired = clients.filter(c => c.access_expires_at && new Date(c.access_expires_at) < now)
 
         const clientIds = clients.map(c => c.id)
         let pendingCheckins = 0
@@ -197,6 +201,7 @@ export default function CoachDashboard() {
           active: active.length,
           paused: clients.filter(c => c.is_paused).length,
           expiringSoon: expiringSoon.length,
+          expired: expired.length,
           pendingCheckins,
         })
         setRecentClients(clients.slice(0, 5))
@@ -228,7 +233,7 @@ export default function CoachDashboard() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <StatCard
           title="Total Clients"
           value={stats?.total ?? '—'}
@@ -245,6 +250,7 @@ export default function CoachDashboard() {
         <StatCard
           title="Paused Clients"
           value={stats?.paused ?? '—'}
+          to="/coach/clients?status=Paused"
           color="bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400"
           icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -257,11 +263,25 @@ export default function CoachDashboard() {
           title="Expiring Soon"
           value={stats?.expiringSoon ?? '—'}
           subtitle="within 7 days"
+          to="/coach/clients?status=Expiring"
           color="bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400"
           icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          }
+        />
+        <StatCard
+          title="Expired"
+          value={stats?.expired ?? '—'}
+          subtitle="access has ended"
+          to="/coach/clients?status=Expired"
+          color="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
+          icon={
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12" />
             </svg>
           }
         />
@@ -407,7 +427,11 @@ export default function CoachDashboard() {
               const exp = client.access_expires_at ? new Date(client.access_expires_at) : null
               const expired = exp && exp < new Date()
               return (
-                <div key={client.id} className="flex items-center justify-between py-3">
+                <Link
+                  key={client.id}
+                  to={`/coach/clients/${client.id}`}
+                  className="flex items-center justify-between py-3 -mx-2 px-2 rounded-lg hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors"
+                >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center">
                       <span className="text-xs font-semibold text-brand-700 dark:text-brand-400">
@@ -438,7 +462,7 @@ export default function CoachDashboard() {
                       </span>
                     )}
                   </div>
-                </div>
+                </Link>
               )
             })}
           </div>

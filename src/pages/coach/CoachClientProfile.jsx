@@ -486,6 +486,8 @@ function StatusBadge({ client }) {
   const now = new Date()
   const exp = client.access_expires_at ? new Date(client.access_expires_at) : null
   const expired = exp && exp < now
+  if (client.is_archived)
+    return <span className="badge bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">Archived</span>
   if (client.is_paused)
     return <span className="badge bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">Paused</span>
   if (expired)
@@ -4240,7 +4242,7 @@ export default function CoachClientProfile() {
       id, coach_id, profile_id, goal, current_calories, current_protein,
       current_carbs, current_fat, steps_target, water_target_litres, sleep_target_hours,
       start_date, access_weeks, access_expires_at,
-      is_active, is_paused, notes, created_at, tags, collect_measurements, top_lifts,
+      is_active, is_paused, is_archived, notes, created_at, tags, collect_measurements, top_lifts,
       allergies, dietary_requirements, dislikes, phone, date_of_birth, height_cm, sex, activity_level, goal_type, target_date, target_event_name, intake_form,
       profiles!clients_profile_id_fkey(full_name, email)
     `).eq('id', clientId).eq('coach_id', profile.id).single()
@@ -4250,6 +4252,11 @@ export default function CoachClientProfile() {
   }
 
   useEffect(() => { loadClient() }, [clientId])
+
+  async function toggleArchive() {
+    await supabase.from('clients').update({ is_archived: !client.is_archived }).eq('id', client.id)
+    loadClient()
+  }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
   if (error) return (
@@ -4267,7 +4274,7 @@ export default function CoachClientProfile() {
           <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           Back to Clients
         </button>
-        <div className="flex items-center gap-3 sm:ml-2 min-w-0">
+        <div className="flex items-center gap-3 sm:ml-2 min-w-0 flex-1">
           <div className="w-10 h-10 rounded-full bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
             <span className="font-semibold text-brand-700 dark:text-brand-400 text-sm">{client.profiles?.full_name?.charAt(0)?.toUpperCase() || '?'}</span>
           </div>
@@ -4279,6 +4286,13 @@ export default function CoachClientProfile() {
             <p className="text-sm text-gray-500 dark:text-gray-400">{client.profiles?.email}</p>
           </div>
         </div>
+        <button
+          onClick={toggleArchive}
+          className="btn-secondary py-1.5 px-3 text-xs flex-shrink-0"
+          title={client.is_archived ? 'Bring this client back onto your dashboard' : "Hide this client from your dashboard — their data stays intact"}
+        >
+          {client.is_archived ? 'Unarchive client' : 'Archive client'}
+        </button>
       </div>
 
       <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-800 -mx-1 px-1">

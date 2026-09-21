@@ -39,6 +39,7 @@ export default function CoachMessages() {
         .from('clients')
         .select('id, profiles!clients_profile_id_fkey(full_name)')
         .eq('coach_id', profile.id)
+        .eq('is_archived', false)
         .order('created_at'),
       supabase
         .from('messages')

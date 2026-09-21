@@ -2035,7 +2035,7 @@ export default function CoachCheckins() {
 
   async function load() {
     const [{ data: clientData }, { data: checkinData }] = await Promise.all([
-      supabase.from('clients').select('id, collect_measurements, height_cm, date_of_birth, sex, activity_level, goal_type, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id),
+      supabase.from('clients').select('id, collect_measurements, height_cm, date_of_birth, sex, activity_level, goal_type, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id).eq('is_archived', false),
       supabase.from('client_checkins').select('*').eq('coach_id', profile.id).order('week_number', { ascending: false }),
     ])
     const mapped = (clientData || []).map(c => ({ ...c, full_name: c.profiles?.full_name }))

@@ -120,6 +120,7 @@ export default function CoachReports() {
           .from('clients')
           .select('id, is_active, is_paused, access_expires_at, profiles!clients_profile_id_fkey(full_name)')
           .eq('coach_id', profile.id)
+          .eq('is_archived', false)
           .order('created_at', { ascending: false }),
         supabase
           .from('client_checkins')
