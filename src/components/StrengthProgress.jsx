@@ -48,8 +48,23 @@ function LiftChart({ history }) {
 // trend, for every lift that's been logged across check-ins — shown on both the client's own
 // Progress page and the coach's view of that client, so both see the exact same numbers the
 // exact same way.
-export default function StrengthProgress({ liftProgress }) {
-  if (liftProgress.length === 0) return null
+//
+// configuredLiftNames (coach view only) says which lifts are currently set up to be requested —
+// passing it is what tells "nothing logged yet" apart from "nothing configured at all", which
+// otherwise both look identical (the whole card just isn't there), leaving a coach with no way
+// to tell whether it's working or not.
+export default function StrengthProgress({ liftProgress, configuredLiftNames }) {
+  if (liftProgress.length === 0) {
+    if (!configuredLiftNames || configuredLiftNames.length === 0) return null
+    return (
+      <div className="card">
+        <h2 className="font-semibold text-gray-900 dark:text-white mb-1">Strength Progress</h2>
+        <p className="text-sm text-gray-400 dark:text-gray-500">
+          Tracking {configuredLiftNames.join(', ')} — nothing to show yet until the client submits a check-in with those weights logged.
+        </p>
+      </div>
+    )
+  }
   return (
     <div className="card space-y-4">
       <h2 className="font-semibold text-gray-900 dark:text-white">Strength Progress</h2>

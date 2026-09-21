@@ -1036,18 +1036,24 @@ function OverviewTab({ client, onSaved }) {
   )
 }
 
-function WeightTab({ clientId }) {
+function WeightTab({ clientId, client }) {
   const [entries, setEntries] = useState([])
   const [liftProgress, setLiftProgress] = useState([])
+  const [configuredLiftNames, setConfiguredLiftNames] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], weight_kg: '' })
   const [saving, setSaving] = useState(false)
 
   async function load() {
-    const [{ data: weightData }, { data: checkinData }] = await Promise.all([
+    const [{ data: weightData }, { data: checkinData }, { data: trainingAsgn }] = await Promise.all([
       supabase.from('weight_entries').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false }),
       supabase.from('client_checkins').select('week_number, weight_kg, submitted_at, updated_at, lift_results').eq('client_id', clientId),
+      // Same "training block's own top lifts, else the client-level override" fallback the
+      // check-in form itself uses — so this can tell "nothing configured" apart from "configured
+      // but no check-in submitted yet", instead of both looking like an empty section.
+      supabase.from('client_training_assignments').select('program_id').eq('client_id', clientId).eq('active', true)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle(),
     ])
     const manual = weightData || []
     const manualDates = new Set(manual.map(e => e.recorded_at))
@@ -1060,6 +1066,14 @@ function WeightTab({ clientId }) {
     const combined = [...manual, ...fromCheckins].sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
     setEntries(combined)
     setLiftProgress(computeLiftProgress(checkinData || []))
+
+    let trainingLifts = []
+    if (trainingAsgn?.program_id) {
+      const { data: prog } = await supabase.from('training_programs').select('top_lifts').eq('id', trainingAsgn.program_id).maybeSingle()
+      trainingLifts = (prog?.top_lifts || []).filter(l => l?.name)
+    }
+    const clientLifts = (client?.top_lifts || []).filter(l => l?.name)
+    setConfiguredLiftNames((trainingLifts.length > 0 ? trainingLifts : clientLifts).map(l => l.name))
     setLoading(false)
   }
   useEffect(() => { load() }, [clientId])
@@ -1076,7 +1090,7 @@ function WeightTab({ clientId }) {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="card"><h3 className="font-semibold text-gray-900 dark:text-white mb-4">Weight Trend</h3><WeightChart data={entries} /></div>
-      <StrengthProgress liftProgress={liftProgress} />
+      <StrengthProgress liftProgress={liftProgress} configuredLiftNames={configuredLiftNames} />
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-gray-900 dark:text-white">Entries</h3>
         <button onClick={() => setShowForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showForm ? 'Cancel' : 'Add Entry'}</button>
@@ -1270,7 +1284,7 @@ function PhotosTab({ clientId }) {
   )
 }
 
-function ProgressTab({ clientId }) {
+function ProgressTab({ clientId, client }) {
   return (
     <div className="space-y-10">
       <div>
@@ -1279,7 +1293,7 @@ function ProgressTab({ clientId }) {
       </div>
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Weight</h2>
-        <WeightTab clientId={clientId} />
+        <WeightTab clientId={clientId} client={client} />
       </div>
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Measurements</h2>
@@ -4272,7 +4286,7 @@ export default function CoachClientProfile() {
         {activeTab === 'Training'   && <TrainingTab client={client} coachId={profile.id} onSaved={loadClient} />}
         {activeTab === 'Daily Plan' && <DailyPlanTab client={client} />}
         {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} />}
-        {activeTab === 'Progress'   && <ProgressTab clientId={client.id} />}
+        {activeTab === 'Progress'   && <ProgressTab clientId={client.id} client={client} />}
       </div>
     </div>
   )
