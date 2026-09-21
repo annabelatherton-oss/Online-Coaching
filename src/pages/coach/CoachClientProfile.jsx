@@ -2510,8 +2510,10 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const clientDiets = client.dietary_requirements || []
     const dietsToCheck = clientDiets.length > 0 ? clientDiets : ['']
     const dietFiltered = options.filter(m => mealQualifiesForDiets(m, dietsToCheck))
-    const currentMealInDietList = dietFiltered.some(m => m.id === currentId)
-    const selectOptions = currentMealInDietList || !meal ? dietFiltered : [meal, ...dietFiltered]
+    // The already-assigned meal stays pickable (and shows first) even if it doesn't comply —
+    // e.g. it was set via the Standard template override — but every OTHER option offered here
+    // is diet-compliant, so a coach can't accidentally swap onto a non-compliant meal.
+    const compareOptions = (meal && !dietFiltered.some(m => m.id === currentId)) ? [meal, ...dietFiltered] : dietFiltered
     const currentMealViolatesDiet = meal && !mealQualifiesForDiets(meal, dietsToCheck)
 
     return (
@@ -2539,15 +2541,9 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         </div>
 
         <div className="p-3 space-y-2 flex-1 min-w-0">
-          <select
-            className="w-full text-sm font-medium text-gray-900 dark:text-white bg-transparent border-0 p-0 focus:ring-0 cursor-pointer"
-            value={currentId}
-            onClick={e => e.stopPropagation()}
-            onChange={e => { setEditedSlots(prev => ({ ...prev, [slotKey]: e.target.value || null })); setSlotsDirty(true) }}
-          >
-            <option value="">— None —</option>
-            {selectOptions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
+          <p className={`w-full text-sm font-medium truncate ${currentId ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500 italic'}`}>
+            {meal?.name || '— None —'}
+          </p>
 
           <div className="flex flex-wrap items-center gap-1.5">
             {currentMealViolatesDiet && (
@@ -2699,7 +2695,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 {isExpanded ? 'Hide ingredients' : 'Edit ingredients'}
               </button>
             )}
-            {options.length > 1 && (
+            {compareOptions.length > 1 && (
               <button
                 onClick={e => { e.stopPropagation(); toggleCompare(slotKey) }}
                 className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 flex items-center gap-1"
@@ -2707,7 +2703,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 <svg className={`w-3 h-3 transition-transform ${isComparing ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
-                {isComparing ? 'Hide other options' : `Compare ${options.length - 1} other option${options.length - 1 === 1 ? '' : 's'}`}
+                {isComparing ? 'Hide other options' : `Compare ${compareOptions.length - 1} other option${compareOptions.length - 1 === 1 ? '' : 's'}`}
               </button>
             )}
           </div>
@@ -2717,7 +2713,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
               className="rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden"
               onClick={e => e.stopPropagation()}
             >
-              {options.map(m => {
+              {compareOptions.map(m => {
                 const m_macros = mealMacros(m.id, mealMap, tier, m.id === currentId ? overridesForSlot : null)
                 const isCurrent = m.id === currentId
                 return (
