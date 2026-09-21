@@ -608,10 +608,13 @@ function OverviewTab({ client, onSaved }) {
       const latestWeight = weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null
       const maintenance = latestWeight ? estimateMaintenanceCalories(client, latestWeight) : null
       if (!maintenance) return
-      const nearestTier = CALORIE_TIERS.reduce((best, t) => Math.abs(t - maintenance) < Math.abs(best - maintenance) ? t : best, CALORIE_TIERS[0])
+      // Rounded to the nearest 25, not snapped to a 100kcal-wide calorie tier — this is meant to
+      // be an accurate starting estimate the coach reviews and rounds down themselves (e.g. to a
+      // tier-friendly number), not one the app has already coarsened before they've seen the maths.
+      const suggested = Math.round(maintenance / 25) * 25
       const preset = splitForGoal(form.goal_type, goalSplits)
       setSplit(preset)
-      applySplit(nearestTier, preset)
+      applySplit(suggested, preset)
     }
     autofill()
     return () => { cancelled = true }
