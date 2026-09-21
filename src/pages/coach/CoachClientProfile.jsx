@@ -22,7 +22,7 @@ import SwapRulePicker from '../../components/SwapRulePicker'
 import TargetDateBanner from '../../components/TargetDateBanner'
 import { MacroTargetInfo, MacroBadge, MACRO_META, deviationColor } from '../../components/MealPlanView'
 
-const TABS = ['Overview', 'Meal Plan', 'Training', 'Daily Plan', 'Check-ins', 'Weight', 'Measurements', 'Photos', 'Notes']
+const TABS = ['Overview', 'Meal Plan', 'Training', 'Daily Plan', 'Check-ins', 'Progress']
 
 // ── Helpers shared by DailyPlanTab ───────────────────────────────────────────
 const _PLAN_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
@@ -1270,27 +1270,21 @@ function PhotosTab({ clientId }) {
   )
 }
 
-function NotesTab({ client }) {
-  const [notes, setNotes] = useState(client.notes || '')
-  const [saving, setSaving] = useState(false)
-  const [savedMsg, setSavedMsg] = useState(false)
-
-  async function handleBlur() {
-    if (notes === (client.notes || '')) return
-    setSaving(true)
-    await supabase.from('clients').update({ notes }).eq('id', client.id)
-    setSaving(false); setSavedMsg(true); setTimeout(() => setSavedMsg(false), 2000)
-  }
-
+function ProgressTab({ clientId }) {
   return (
-    <div className="space-y-4 max-w-2xl">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-gray-900 dark:text-white">Coach Notes</h3>
-        {saving && <span className="text-xs text-gray-400">Saving…</span>}
-        {savedMsg && <span className="text-xs text-green-600 dark:text-green-400 font-medium">Saved</span>}
+    <div className="space-y-10">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Weight</h2>
+        <WeightTab clientId={clientId} />
       </div>
-      <textarea className="input resize-y min-h-[300px]" value={notes} onChange={e => setNotes(e.target.value)} onBlur={handleBlur} placeholder="Private notes about this client — auto-saves on blur." />
-      <p className="text-xs text-gray-400 dark:text-gray-500">Private and only visible to you.</p>
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Measurements</h2>
+        <MeasurementsTab clientId={clientId} />
+      </div>
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Photos</h2>
+        <PhotosTab clientId={clientId} />
+      </div>
     </div>
   )
 }
@@ -4211,7 +4205,7 @@ export default function CoachClientProfile() {
       id, coach_id, profile_id, goal, current_calories, current_protein,
       current_carbs, current_fat, steps_target, water_target_litres, sleep_target_hours,
       start_date, access_weeks, access_expires_at,
-      is_active, is_paused, is_archived, notes, created_at, tags, collect_measurements, top_lifts,
+      is_active, is_paused, is_archived, created_at, tags, collect_measurements, top_lifts,
       allergies, dietary_requirements, dislikes, phone, date_of_birth, height_cm, sex, activity_level, goal_type, target_date, target_event_name, intake_form,
       profiles!clients_profile_id_fkey(full_name, email)
     `).eq('id', clientId).eq('coach_id', profile.id).single()
@@ -4278,10 +4272,7 @@ export default function CoachClientProfile() {
         {activeTab === 'Training'   && <TrainingTab client={client} coachId={profile.id} onSaved={loadClient} />}
         {activeTab === 'Daily Plan' && <DailyPlanTab client={client} />}
         {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} />}
-        {activeTab === 'Weight'     && <WeightTab clientId={client.id} />}
-        {activeTab === 'Measurements' && <MeasurementsTab clientId={client.id} />}
-        {activeTab === 'Photos'     && <PhotosTab clientId={client.id} />}
-        {activeTab === 'Notes'      && <NotesTab client={client} />}
+        {activeTab === 'Progress'   && <ProgressTab clientId={client.id} />}
       </div>
     </div>
   )

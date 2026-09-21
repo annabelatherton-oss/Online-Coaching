@@ -248,7 +248,7 @@ export default function CoachMessages() {
                 { label: 'Check-ins', tab: 'Check-ins' },
                 { label: 'Meal Plan', tab: 'Meal Plan' },
                 { label: 'Training', tab: 'Training' },
-                { label: 'Progress', tab: 'Weight' },
+                { label: 'Progress', tab: 'Progress' },
               ].map(link => (
                 <button
                   key={link.tab}
