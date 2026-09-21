@@ -1638,7 +1638,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
 
       {ingredients.length > 0 && (
         <>
-          <div className="flex items-center gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pb-1">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-gray-400 uppercase tracking-wide font-medium pb-1">
             <span className="flex-1">Ingredient</span>
             <span className="w-16 text-right">g</span>
             <span className="w-16 text-right">kcal</span>
@@ -1652,7 +1652,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
             const overridden = !ing._isAdded && overrideQty[ing.id] != null
             const isStatic = ing.is_static && !ing._isAdded
             return (
-              <div key={ing.id || i} className="flex items-center gap-2 text-xs">
+              <div key={ing.id || i} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
                 {onToggleStatic && !ing._isAdded && (
                   <button
                     type="button"
@@ -1678,7 +1678,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
                     </svg>
                   </span>
                 )}
-                <span className={`flex-1 min-w-0 break-words ${ing._isAdded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`}>{ing.name}</span>
+                <span className={`basis-full sm:basis-0 sm:flex-1 min-w-0 break-words ${ing._isAdded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`}>{ing.name}</span>
                 <input
                   type="number" onFocus={e => e.target.select()}
                   min={libIng?.min_amount ?? 0}
@@ -1826,7 +1826,6 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   const [ingredientOverrides, setIngredientOverrides] = useState({})
   const [expandedSlots, setExpandedSlots] = useState(new Set())
   const [comparingSlots, setComparingSlots] = useState(new Set())
-  const [dietOverrideSlots, setDietOverrideSlots] = useState(new Set())
   const [openSwapRule, setOpenSwapRule] = useState(null) // { slotKey, dislike, removeId, quantity_g }
   const [swapRuleSaved, setSwapRuleSaved] = useState('')
   const [staticEdits, setStaticEdits] = useState({ preworkout_meal_id: null, evening_snack_meal_id: null })
@@ -2355,10 +2354,6 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     setComparingSlots(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
   }
 
-  function toggleDietOverride(key) {
-    setDietOverrideSlots(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
-  }
-
   function dayTotalViolations() {
     return [
       option1Subtotal.cal > 0 ? suggestion1 : null,
@@ -2521,22 +2516,25 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const hasConflicts = !!conflicts && (conflicts.allergens.length > 0 || conflicts.dislikes.length > 0)
     const canSwap = hasConflicts && !!findSafeMeal(cat, currentId, clientAllergies, clientDislikes, mealMap, mealsByCategory, tier)
 
-    // Meals this client can't be given without an explicit override, based on their dietary
-    // requirements — hidden from the picker by default rather than just warned about after the
-    // fact, since a diet requirement (unlike an allergy/dislike) isn't optional. A client with no
-    // dietary requirements is checked against Standard instead (''), which excludes only meals
-    // marked "not Standard-eligible" in the Meal Editor (built around a substitute like Quorn/tofu)
-    // — so those don't clutter a general client's picker either, unless overridden.
+    // Meals this client can't be given, based on their dietary requirements — never offered in
+    // the picker, since a diet requirement (unlike an allergy/dislike) isn't optional. A client
+    // with no dietary requirements is checked against Standard instead (''), which excludes only
+    // meals marked "not Standard-eligible" in the Meal Editor (built around a substitute like
+    // Quorn/tofu). A coach who wants a specific off-diet meal available adds it to the Standard
+    // template instead of overriding it here.
     const clientDiets = client.dietary_requirements || []
     const dietsToCheck = clientDiets.length > 0 ? clientDiets : ['']
-    const dietOverridden = dietOverrideSlots.has(slotKey)
-    const dietFiltered = dietOverridden ? options : options.filter(m => mealQualifiesForDiets(m, dietsToCheck))
+    const dietFiltered = options.filter(m => mealQualifiesForDiets(m, dietsToCheck))
     const currentMealInDietList = dietFiltered.some(m => m.id === currentId)
     const selectOptions = currentMealInDietList || !meal ? dietFiltered : [meal, ...dietFiltered]
     const currentMealViolatesDiet = meal && !mealQualifiesForDiets(meal, dietsToCheck)
 
     return (
-      <div key={slotKey} className="flex flex-col sm:flex-row sm:items-start rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900">
+      <div
+        key={slotKey}
+        className={`flex flex-col sm:flex-row sm:items-start rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 ${currentId ? 'cursor-pointer hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors' : ''}`}
+        onClick={currentId ? () => toggleSlot(slotKey) : undefined}
+      >
         <div className="relative w-full sm:w-40 aspect-[16/9] sm:aspect-square bg-gray-100 dark:bg-gray-800 flex-shrink-0">
           {meal?.photo_url ? (
             <img src={meal.photo_url} alt={meal.name} className="w-full h-full object-cover" style={{ objectPosition: meal.photo_position || '50% 50%' }} />
@@ -2559,18 +2557,12 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           <select
             className="w-full text-sm font-medium text-gray-900 dark:text-white bg-transparent border-0 p-0 focus:ring-0 cursor-pointer"
             value={currentId}
+            onClick={e => e.stopPropagation()}
             onChange={e => { setEditedSlots(prev => ({ ...prev, [slotKey]: e.target.value || null })); setSlotsDirty(true) }}
           >
             <option value="">— None —</option>
             {selectOptions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
-
-          <label className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-pointer">
-            <input type="checkbox" checked={dietOverridden} onChange={() => toggleDietOverride(slotKey)} className="w-3.5 h-3.5 rounded accent-brand-500" />
-            {clientDiets.length > 0
-              ? `Show meals that don't follow ${clientDiets.map(d => DIET_LABELS[d]).join(', ')}`
-              : "Show meals built for a specific diet (e.g. Quorn, tofu)"}
-          </label>
 
           <div className="flex flex-wrap items-center gap-1.5">
             {currentMealViolatesDiet && (
@@ -2609,7 +2601,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
 
           {isStaticSlot && currentId && (
             <button
-              onClick={() => isStatic ? useTemplateDefault(staticEditKey, staticFlagKey) : makeStatic(staticEditKey, staticFlagKey, currentId)}
+              onClick={e => { e.stopPropagation(); isStatic ? useTemplateDefault(staticEditKey, staticFlagKey) : makeStatic(staticEditKey, staticFlagKey, currentId) }}
               className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium"
               title={isStatic ? 'Stop pinning — revert to the plan template each week' : 'Pin this meal so it carries forward every week automatically'}
             >
@@ -2618,7 +2610,10 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           )}
 
           {hasConflicts && (
-            <div className="px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 space-y-1.5">
+            <div
+              className="px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 space-y-1.5"
+              onClick={e => e.stopPropagation()}
+            >
               {conflicts.allergens.map(c => {
                 const safeAlt = findSafeAlternative(c, clientAllergies, clientDislikes, library)
                 return (
@@ -2710,7 +2705,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           <div className="flex items-center gap-3">
             {currentId && (
               <button
-                onClick={() => toggleSlot(slotKey)}
+                onClick={e => { e.stopPropagation(); toggleSlot(slotKey) }}
                 className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 flex items-center gap-1"
               >
                 <svg className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2721,7 +2716,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
             )}
             {options.length > 1 && (
               <button
-                onClick={() => toggleCompare(slotKey)}
+                onClick={e => { e.stopPropagation(); toggleCompare(slotKey) }}
                 className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 flex items-center gap-1"
               >
                 <svg className={`w-3 h-3 transition-transform ${isComparing ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2733,7 +2728,10 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           </div>
 
           {isComparing && (
-            <div className="rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+            <div
+              className="rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
               {options.map(m => {
                 const m_macros = mealMacros(m.id, mealMap, tier, m.id === currentId ? overridesForSlot : null)
                 const isCurrent = m.id === currentId
@@ -2763,26 +2761,28 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           )}
 
           {isExpanded && currentId && (
-            <TierIngredientList
-              mealId={currentId}
-              mealMap={mealMap}
-              tier={tier}
-              overrides={overridesForSlot}
-              library={library}
-              libraryById={libraryById}
-              dietaryRequirements={client.dietary_requirements}
-              onQtyChange={(ingId, val) => slotHandlers.changeQty(slotKey, ingId, val)}
-              onRemove={ingId => slotHandlers.remove(slotKey, ingId)}
-              onRestore={ingId => slotHandlers.restore(slotKey, ingId)}
-              onAdd={newIng => slotHandlers.add(slotKey, newIng)}
-              onRemoveAdded={addedId => slotHandlers.removeAdded(slotKey, addedId)}
-              onRevertAll={() => slotHandlers.revertAll(slotKey)}
-              onToggleStatic={ing => toggleIngredientStatic(currentId, ing)}
-              onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(currentId, ing, qty)}
-              target={slotTgt}
-              siblingMacros={siblingSlotMacros}
-              siblingLabel={siblingSlotLabel}
-            />
+            <div onClick={e => e.stopPropagation()}>
+              <TierIngredientList
+                mealId={currentId}
+                mealMap={mealMap}
+                tier={tier}
+                overrides={overridesForSlot}
+                library={library}
+                libraryById={libraryById}
+                dietaryRequirements={client.dietary_requirements}
+                onQtyChange={(ingId, val) => slotHandlers.changeQty(slotKey, ingId, val)}
+                onRemove={ingId => slotHandlers.remove(slotKey, ingId)}
+                onRestore={ingId => slotHandlers.restore(slotKey, ingId)}
+                onAdd={newIng => slotHandlers.add(slotKey, newIng)}
+                onRemoveAdded={addedId => slotHandlers.removeAdded(slotKey, addedId)}
+                onRevertAll={() => slotHandlers.revertAll(slotKey)}
+                onToggleStatic={ing => toggleIngredientStatic(currentId, ing)}
+                onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(currentId, ing, qty)}
+                target={slotTgt}
+                siblingMacros={siblingSlotMacros}
+                siblingLabel={siblingSlotLabel}
+              />
+            </div>
           )}
         </div>
       </div>
