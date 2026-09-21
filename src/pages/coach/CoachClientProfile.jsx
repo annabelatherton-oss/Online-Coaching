@@ -652,11 +652,19 @@ function OverviewTab({ client, onSaved }) {
   // Changing the goal phase auto-applies its default split — a coach can still edit the
   // %s afterwards for this client, that edit just won't be overwritten again until the
   // phase changes (or they click "Use default split") once more.
-  function handleGoalTypeChange(value) {
+  //
+  // This also saves goal_type straight to the client row rather than waiting for the coach to
+  // hit "Save Changes" at the bottom of the page — everything else on Overview is a batch of
+  // edits meant to be reviewed before saving, but a phase change is commonly the ONLY thing
+  // being changed here, right before jumping to another tab, and losing it on tab-switch (since
+  // the rest of the form is unsaved local state) was exactly the "keeps disappearing" bug.
+  async function handleGoalTypeChange(value) {
     set('goal_type', value)
     const preset = splitForGoal(value, goalSplits)
     setSplit(preset)
     applySplit(form.current_calories, preset)
+    await supabase.from('clients').update({ goal_type: value || null }).eq('id', client.id)
+    onSaved()
   }
 
   const splitTotal = (Number(split.carbs) || 0) + (Number(split.protein) || 0) + (Number(split.fat) || 0)
