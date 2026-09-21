@@ -535,7 +535,6 @@ function OverviewTab({ client, onSaved }) {
     intake_meal_preference: client.intake_form?.meal_preference || '',
     intake_other_info: client.intake_form?.other_info || '',
   })
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   // The carbs/protein/fat split (% of calories) driving the gram fields below.
@@ -544,7 +543,7 @@ function OverviewTab({ client, onSaved }) {
     client.current_calories
   ))
   // Calories here is the same number the Meal Plan tab calls calorie_target (client_plan_
-  // assignments) — this fetches that assignment's id so handleSave can keep both in sync.
+  // assignments) — this fetches that assignment's id so saveNutritionTargets can keep both in sync.
   const [planAssignmentId, setPlanAssignmentId] = useState(null)
   useEffect(() => {
     let cancelled = false
@@ -580,16 +579,66 @@ function OverviewTab({ client, onSaved }) {
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
 
-  // Snaps to the nearest 100 kcal on blur (not while typing) so it lines up with a meal-plan
-  // calorie tier (1500/1600/.../2500) once it's mirrored into client_plan_assignments below.
-  function snapCalories() {
-    setForm(f => {
-      if (!f.current_calories) return f
-      const snapped = Math.round(parseFloat(f.current_calories) / 100) * 100
-      if (snapped === parseFloat(f.current_calories)) return f
-      const grams = calcMacrosFromSplit(snapped, split)
-      return { ...f, current_calories: snapped, current_protein: String(grams.protein_g), current_carbs: String(grams.carbs_g), current_fat: String(grams.fat_g) }
+  // Writes straight to the client row and flashes a small "Saved" confirmation — every field on
+  // this tab autosaves this way (on change for checkboxes/selects/dates, on blur for free-typed
+  // text/numbers) instead of batching edits behind a single "Save Changes" button, since losing
+  // an edit made right before switching tabs (nothing here persisted until that click) was a
+  // recurring complaint.
+  async function saveField(payload) {
+    const { error: err } = await supabase.from('clients').update(payload).eq('id', client.id)
+    if (err) { setError(err.message); return }
+    setError('')
+    setSaved(true); setTimeout(() => setSaved(false), 1500)
+    onSaved()
+  }
+
+  // Mirrors onto the active plan assignment too, so the Meal Plan tab (and shopping list,
+  // everyday meals, etc — everything sized off client_plan_assignments.calorie_target) picks up
+  // a calorie change made from here without the coach having to also go set it there.
+  async function saveNutritionTargets(calories, protein, carbs, fat) {
+    const payload = {
+      current_calories: calories ? parseInt(calories) : null,
+      current_protein: protein ? parseInt(protein) : null,
+      current_carbs: carbs ? parseInt(carbs) : null,
+      current_fat: fat ? parseInt(fat) : null,
+    }
+    await saveField(payload)
+    if (planAssignmentId) {
+      await supabase.from('client_plan_assignments').update({ calorie_target: payload.current_calories }).eq('id', planAssignmentId)
+    }
+  }
+
+  function saveIntakeForm() {
+    saveField({
+      intake_form: {
+        motivators: form.intake_motivators || null,
+        barriers: form.intake_barriers || null,
+        health_history: form.intake_health_history || null,
+        plan_interest: form.intake_plan_interest || null,
+        current_diet: form.intake_current_diet || null,
+        current_training: form.intake_current_training || null,
+        cardio_preferences: form.intake_cardio_preferences || null,
+        food_preferences: form.intake_food_preferences || null,
+        meal_preference: form.intake_meal_preference || null,
+        other_info: form.intake_other_info || null,
+      },
     })
+  }
+
+  // Snaps to the nearest 100 kcal on blur (not while typing) so it lines up with a meal-plan
+  // calorie tier (1500/1600/.../2500) once it's mirrored into client_plan_assignments below, then
+  // saves — this is the one point every path that changes calories/macros (typing, applying a
+  // suggestion, changing the split) funnels through before it's persisted.
+  function snapCalories() {
+    if (!form.current_calories) return
+    const snapped = Math.round(parseFloat(form.current_calories) / 100) * 100
+    if (snapped === parseFloat(form.current_calories)) {
+      saveNutritionTargets(form.current_calories, form.current_protein, form.current_carbs, form.current_fat)
+      return
+    }
+    const grams = calcMacrosFromSplit(snapped, split)
+    setForm(f => ({ ...f, current_calories: snapped, current_protein: String(grams.protein_g), current_carbs: String(grams.carbs_g), current_fat: String(grams.fat_g) }))
+    saveNutritionTargets(snapped, grams.protein_g, grams.carbs_g, grams.fat_g)
   }
 
   // Auto-fills Current Nutrition Targets from the client's stats (height, age, sex, activity
@@ -620,21 +669,28 @@ function OverviewTab({ client, onSaved }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Returns the { current_calories, current_protein, current_carbs, current_fat } this split
+  // produces, so a caller that needs to save immediately (a button/select, not free typing) has
+  // the just-computed values in hand rather than reading `form` before the state update lands.
   function applySplit(calories, splitPct) {
     const grams = calcMacrosFromSplit(calories, splitPct)
-    setForm(f => ({
-      ...f,
+    const next = {
       current_calories: calories,
       current_protein: calories ? String(grams.protein_g) : '',
       current_carbs: calories ? String(grams.carbs_g) : '',
       current_fat: calories ? String(grams.fat_g) : '',
-    }))
+    }
+    setForm(f => ({ ...f, ...next }))
+    return next
   }
 
+  // Typing a calorie value only updates local state — it saves on blur (snapCalories), not on
+  // every keystroke.
   function setCalories(value) {
     applySplit(value, split)
   }
 
+  // Same for the split %s — local state while typing, saved on blur.
   function setSplitPct(field, value) {
     const pct = value === '' ? '' : Number(value)
     const nextSplit = { ...split, [field]: pct }
@@ -642,121 +698,32 @@ function OverviewTab({ client, onSaved }) {
     applySplit(form.current_calories, { carbs: nextSplit.carbs || 0, protein: nextSplit.protein || 0, fat: nextSplit.fat || 0 })
   }
 
+  // A button click, not typing — saves immediately.
   function resetToStandardSplit() {
     const preset = splitForGoal(form.goal_type, goalSplits)
     setSplit(preset)
-    applySplit(form.current_calories, preset)
+    const next = applySplit(form.current_calories, preset)
+    saveNutritionTargets(next.current_calories, next.current_protein, next.current_carbs, next.current_fat)
   }
 
   // Changing the goal phase auto-applies its default split — a coach can still edit the
   // %s afterwards for this client, that edit just won't be overwritten again until the
   // phase changes (or they click "Use default split") once more.
   //
-  // This also saves goal_type straight to the client row rather than waiting for the coach to
-  // hit "Save Changes" at the bottom of the page — everything else on Overview is a batch of
-  // edits meant to be reviewed before saving, but a phase change is commonly the ONLY thing
-  // being changed here, right before jumping to another tab, and losing it on tab-switch (since
-  // the rest of the form is unsaved local state) was exactly the "keeps disappearing" bug.
-  async function handleGoalTypeChange(value) {
+  // This also saves goal_type (and the recomputed split, if there's already a calorie number)
+  // straight to the client row rather than waiting for the coach to hit a "Save Changes" button —
+  // a phase change is commonly the ONLY thing being changed here, right before jumping to another
+  // tab, and losing it on tab-switch was exactly the "keeps disappearing" bug.
+  function handleGoalTypeChange(value) {
     set('goal_type', value)
     const preset = splitForGoal(value, goalSplits)
     setSplit(preset)
-    applySplit(form.current_calories, preset)
-    await supabase.from('clients').update({ goal_type: value || null }).eq('id', client.id)
-    onSaved()
+    const next = applySplit(form.current_calories, preset)
+    saveField({ goal_type: value || null })
+    if (form.current_calories) saveNutritionTargets(next.current_calories, next.current_protein, next.current_carbs, next.current_fat)
   }
 
   const splitTotal = (Number(split.carbs) || 0) + (Number(split.protein) || 0) + (Number(split.fat) || 0)
-
-  async function handleSave(e) {
-    e.preventDefault()
-    setSaving(true); setError(''); setSaved(false)
-    const payload = {
-      goal: form.goal,
-      current_calories: form.current_calories ? parseInt(form.current_calories) : null,
-      current_protein: form.current_protein ? parseInt(form.current_protein) : null,
-      current_carbs: form.current_carbs ? parseInt(form.current_carbs) : null,
-      current_fat: form.current_fat ? parseInt(form.current_fat) : null,
-      steps_target: form.steps_target !== '' ? parseInt(form.steps_target) : 10000,
-      water_target_litres: form.water_target_litres !== '' ? parseFloat(form.water_target_litres) : 2.5,
-      sleep_target_hours: form.sleep_target_hours !== '' ? parseFloat(form.sleep_target_hours) : 8,
-      start_date: form.start_date,
-      access_weeks: parseInt(form.access_weeks),
-      is_paused: form.is_paused,
-      collect_measurements: form.collect_measurements,
-      allergies: form.allergies,
-      dietary_requirements: form.dietary_requirements || [],
-      dislikes: form.dislikes || [],
-      phone: form.phone || null,
-      date_of_birth: form.date_of_birth || null,
-      height_cm: form.height_cm ? parseFloat(form.height_cm) : null,
-      sex: form.sex || null,
-      activity_level: form.activity_level || null,
-      goal_type: form.goal_type || null,
-      target_date: form.target_date || null,
-      target_event_name: form.target_event_name || null,
-      intake_form: {
-        motivators: form.intake_motivators || null,
-        barriers: form.intake_barriers || null,
-        health_history: form.intake_health_history || null,
-        plan_interest: form.intake_plan_interest || null,
-        current_diet: form.intake_current_diet || null,
-        current_training: form.intake_current_training || null,
-        cardio_preferences: form.intake_cardio_preferences || null,
-        food_preferences: form.intake_food_preferences || null,
-        meal_preference: form.intake_meal_preference || null,
-        other_info: form.intake_other_info || null,
-      },
-    }
-    let { error: err, data: rows } = await supabase.from('clients').update(payload).eq('id', client.id).select('id')
-    // sex/activity_level/goal_type are new columns — if the database migration adding them
-    // hasn't been run yet, PostgREST rejects the whole update and NOTHING gets saved, not
-    // just those three fields. Retry without them so the rest of the form isn't silently lost.
-    // PostgREST phrases this as "Could not find the 'sex' column of 'clients' in the schema
-    // cache" — the field name comes before the word "column", not after — so match either order.
-    if (err && /column/i.test(err.message || '') && /(sex|activity_level|goal_type)/i.test(err.message || '')) {
-      const { sex, activity_level, goal_type, ...rest } = payload
-      const retry = await supabase.from('clients').update(rest).eq('id', client.id).select('id')
-      err = retry.error
-      rows = retry.data
-      if (!err && rows?.length) {
-        setSaving(false)
-        setError("Saved everything except Sex/Activity level/Goal phase — those need a database update first (ask your developer to run the latest SQL migration).")
-        onSaved()
-        return
-      }
-    }
-    // Same guard for target_date/target_event_name, in case that migration hasn't been run yet.
-    if (err && /column/i.test(err.message || '') && /(target_date|target_event_name)/i.test(err.message || '')) {
-      const { target_date, target_event_name, ...rest } = payload
-      const retry = await supabase.from('clients').update(rest).eq('id', client.id).select('id')
-      err = retry.error
-      rows = retry.data
-      if (!err && rows?.length) {
-        setSaving(false)
-        setError("Saved everything except the target date — that needs a database update first (ask your developer to run the latest SQL migration).")
-        onSaved()
-        return
-      }
-    }
-    setSaving(false)
-    if (err) { setError(err.message); return }
-    // update()/select() returning zero rows means the write silently matched nothing (almost
-    // always a permissions/RLS mismatch) — without this check that looks identical to a
-    // successful save, which is exactly the "says Saved but reverts" bug this is guarding against.
-    if (!rows || rows.length === 0) {
-      setError("Nothing was actually saved — the app couldn't confirm it has permission to update this client. Please tell your developer: client update returned 0 rows.")
-      return
-    }
-    // Mirrors onto the active plan assignment too, so the Meal Plan tab (and shopping list,
-    // everyday meals, etc — everything sized off client_plan_assignments.calorie_target) picks up
-    // a calorie change made from here without the coach having to also go set it there.
-    if (planAssignmentId) {
-      await supabase.from('client_plan_assignments').update({ calorie_target: payload.current_calories }).eq('id', planAssignmentId)
-    }
-    setSaved(true); setTimeout(() => setSaved(false), 2500)
-    onSaved()
-  }
 
   const expiry = client.access_expires_at
     ? new Date(client.access_expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -766,6 +733,11 @@ function OverviewTab({ client, onSaved }) {
     <div className="space-y-6 max-w-2xl">
     <TargetDateBanner targetDate={client.target_date} targetEventName={client.target_event_name} />
     <ClientPauseCard clientId={client.id} />
+    {/* Every field on this tab saves itself the moment it changes — no separate Save button. */}
+    <div className="flex items-center justify-end h-4">
+      {saved && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
+    </div>
+    {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"><p className="text-sm text-red-700 dark:text-red-400">{error}</p></div>}
     {latestWeight && (() => {
       const hasChange = startWeight && startWeight.recorded_at !== latestWeight.recorded_at
       const change = hasChange ? Math.round((parseFloat(latestWeight.weight_kg) - parseFloat(startWeight.weight_kg)) * 10) / 10 : null
@@ -794,7 +766,7 @@ function OverviewTab({ client, onSaved }) {
         </div>
       )
     })()}
-    <form onSubmit={handleSave} className="space-y-6">
+    <div className="space-y-6">
 
       {/* Personal Info — from intake form */}
       <div className="card space-y-4">
@@ -802,21 +774,21 @@ function OverviewTab({ client, onSaved }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Phone number</label>
-            <input className="input" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="e.g. 07700 900 000" />
+            <input className="input" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} onBlur={() => saveField({ phone: form.phone || null })} placeholder="e.g. 07700 900 000" />
           </div>
           <div>
             <label className="label">Date of birth</label>
-            <input className="input" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
+            <input className="input" type="date" value={form.date_of_birth} onChange={e => { set('date_of_birth', e.target.value); saveField({ date_of_birth: e.target.value || null }) }} />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Height (cm)</label>
-            <input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" value={form.height_cm} onChange={e => set('height_cm', e.target.value)} placeholder="e.g. 165" />
+            <input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" value={form.height_cm} onChange={e => set('height_cm', e.target.value)} onBlur={() => saveField({ height_cm: form.height_cm ? parseFloat(form.height_cm) : null })} placeholder="e.g. 165" />
           </div>
           <div>
             <label className="label">Sex</label>
-            <select className="input" value={form.sex} onChange={e => set('sex', e.target.value)}>
+            <select className="input" value={form.sex} onChange={e => { set('sex', e.target.value); saveField({ sex: e.target.value || null }) }}>
               <option value="">—</option>
               <option value="female">Female</option>
               <option value="male">Male</option>
@@ -825,7 +797,7 @@ function OverviewTab({ client, onSaved }) {
         </div>
         <div>
           <label className="label">Activity level</label>
-          <select className="input" value={form.activity_level} onChange={e => set('activity_level', e.target.value)}>
+          <select className="input" value={form.activity_level} onChange={e => { set('activity_level', e.target.value); saveField({ activity_level: e.target.value || null }) }}>
             <option value="">—</option>
             {Object.entries(ACTIVITY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
           </select>
@@ -837,7 +809,7 @@ function OverviewTab({ client, onSaved }) {
         <h3 className="font-semibold text-gray-900 dark:text-white">Programme Details</h3>
         <div>
           <label className="label">Goal</label>
-          <textarea className="input resize-none" rows={3} value={form.goal} onChange={e => set('goal', e.target.value)} placeholder="e.g. Lose 10kg, build lean muscle" />
+          <textarea className="input resize-none" rows={3} value={form.goal} onChange={e => set('goal', e.target.value)} onBlur={() => saveField({ goal: form.goal })} placeholder="e.g. Lose 10kg, build lean muscle" />
         </div>
         <div>
           <label className="label">Current phase</label>
@@ -850,11 +822,11 @@ function OverviewTab({ client, onSaved }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Target date</label>
-            <input className="input" type="date" value={form.target_date} onChange={e => set('target_date', e.target.value)} />
+            <input className="input" type="date" value={form.target_date} onChange={e => { set('target_date', e.target.value); saveField({ target_date: e.target.value || null }) }} />
           </div>
           <div>
             <label className="label">Target event</label>
-            <input className="input" type="text" value={form.target_event_name} onChange={e => set('target_event_name', e.target.value)} placeholder="e.g. Wedding, holiday" />
+            <input className="input" type="text" value={form.target_event_name} onChange={e => set('target_event_name', e.target.value)} onBlur={() => saveField({ target_event_name: form.target_event_name || null })} placeholder="e.g. Wedding, holiday" />
           </div>
         </div>
         {form.target_date && (
@@ -863,16 +835,20 @@ function OverviewTab({ client, onSaved }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Start date</label>
-            <input className="input" type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} />
+            <input className="input" type="date" value={form.start_date} onChange={e => { set('start_date', e.target.value); saveField({ start_date: e.target.value }) }} />
           </div>
           <div>
             <label className="label">Access (weeks)</label>
             <div className="flex flex-wrap gap-2 items-center">
-              <input className="input flex-1 min-w-[70px]" type="number" onFocus={e => e.target.select()} min={1} max={520} value={form.access_weeks} onChange={e => set('access_weeks', e.target.value)} />
+              <input className="input flex-1 min-w-[70px]" type="number" onFocus={e => e.target.select()} min={1} max={520} value={form.access_weeks} onChange={e => set('access_weeks', e.target.value)} onBlur={() => saveField({ access_weeks: parseInt(form.access_weeks) })} />
               <button
                 type="button"
                 className="btn-secondary whitespace-nowrap text-sm py-2 px-3 flex-shrink-0"
-                onClick={() => set('access_weeks', String(parseInt(form.access_weeks || 0) + 12))}
+                onClick={() => {
+                  const next = String(parseInt(form.access_weeks || 0) + 12)
+                  set('access_weeks', next)
+                  saveField({ access_weeks: parseInt(next) })
+                }}
               >
                 + 12 weeks
               </button>
@@ -883,11 +859,11 @@ function OverviewTab({ client, onSaved }) {
           Access expires: <span className="font-medium text-gray-700 dark:text-gray-200">{expiry}</span>
         </div>
         <div className="flex items-center gap-2">
-          <input id="is_paused" type="checkbox" checked={form.is_paused} onChange={e => set('is_paused', e.target.checked)} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
+          <input id="is_paused" type="checkbox" checked={form.is_paused} onChange={e => { set('is_paused', e.target.checked); saveField({ is_paused: e.target.checked }) }} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
           <label htmlFor="is_paused" className="text-sm text-gray-700 dark:text-gray-300">Pause client access</label>
         </div>
         <div className="flex items-center gap-2">
-          <input id="collect_measurements" type="checkbox" checked={form.collect_measurements} onChange={e => set('collect_measurements', e.target.checked)} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
+          <input id="collect_measurements" type="checkbox" checked={form.collect_measurements} onChange={e => { set('collect_measurements', e.target.checked); saveField({ collect_measurements: e.target.checked }) }} className="w-4 h-4 rounded text-brand-500 focus:ring-brand-500" />
           <label htmlFor="collect_measurements" className="text-sm text-gray-700 dark:text-gray-300">Collect measurements in check-ins (waist, hips)</label>
         </div>
       </div>
@@ -910,7 +886,7 @@ function OverviewTab({ client, onSaved }) {
           <input className="input" type="number" onFocus={e => e.target.select()} onBlur={snapCalories} min={0} value={form.current_calories} onChange={e => setCalories(e.target.value)} placeholder="e.g. 1800" />
           {!form.current_calories && (
             <div className="mt-1.5">
-              <CalorieSuggestionPanel client={client} currentTarget={null} onApply={v => setCalories(String(v))} compact />
+              <CalorieSuggestionPanel client={client} currentTarget={null} onApply={v => { const next = applySplit(String(v), split); saveNutritionTargets(next.current_calories, next.current_protein, next.current_carbs, next.current_fat) }} compact />
             </div>
           )}
         </div>
@@ -919,17 +895,17 @@ function OverviewTab({ client, onSaved }) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-1">
             <div>
               <label className="label">Carbs %</label>
-              <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100} value={split.carbs} onChange={e => setSplitPct('carbs', e.target.value)} />
+              <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100} value={split.carbs} onChange={e => setSplitPct('carbs', e.target.value)} onBlur={() => saveNutritionTargets(form.current_calories, form.current_protein, form.current_carbs, form.current_fat)} />
               <p className="text-xs text-gray-400 mt-1">{form.current_carbs || 0}g</p>
             </div>
             <div>
               <label className="label">Protein %</label>
-              <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100} value={split.protein} onChange={e => setSplitPct('protein', e.target.value)} />
+              <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100} value={split.protein} onChange={e => setSplitPct('protein', e.target.value)} onBlur={() => saveNutritionTargets(form.current_calories, form.current_protein, form.current_carbs, form.current_fat)} />
               <p className="text-xs text-gray-400 mt-1">{form.current_protein || 0}g</p>
             </div>
             <div>
               <label className="label">Fat %</label>
-              <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100} value={split.fat} onChange={e => setSplitPct('fat', e.target.value)} />
+              <input className="input" type="number" onFocus={e => e.target.select()} min={0} max={100} value={split.fat} onChange={e => setSplitPct('fat', e.target.value)} onBlur={() => saveNutritionTargets(form.current_calories, form.current_protein, form.current_carbs, form.current_fat)} />
               <p className="text-xs text-gray-400 mt-1">{form.current_fat || 0}g</p>
             </div>
           </div>
@@ -948,19 +924,19 @@ function OverviewTab({ client, onSaved }) {
           <div>
             <label className="label">Steps goal</label>
             <input className="input" type="number" onFocus={e => e.target.select()} min={0} step={500} value={form.steps_target}
-              onChange={e => set('steps_target', e.target.value)} placeholder="e.g. 10000" />
+              onChange={e => set('steps_target', e.target.value)} onBlur={() => saveField({ steps_target: form.steps_target !== '' ? parseInt(form.steps_target) : 10000 })} placeholder="e.g. 10000" />
             <p className="text-xs text-gray-400 mt-1">steps/day</p>
           </div>
           <div>
             <label className="label">Water goal</label>
             <input className="input" type="number" onFocus={e => e.target.select()} min={0} step={0.5} value={form.water_target_litres}
-              onChange={e => set('water_target_litres', e.target.value)} placeholder="e.g. 2.5" />
+              onChange={e => set('water_target_litres', e.target.value)} onBlur={() => saveField({ water_target_litres: form.water_target_litres !== '' ? parseFloat(form.water_target_litres) : 2.5 })} placeholder="e.g. 2.5" />
             <p className="text-xs text-gray-400 mt-1">litres/day</p>
           </div>
           <div>
             <label className="label">Sleep goal</label>
             <input className="input" type="number" onFocus={e => e.target.select()} min={0} step={0.5} value={form.sleep_target_hours}
-              onChange={e => set('sleep_target_hours', e.target.value)} placeholder="e.g. 8" />
+              onChange={e => set('sleep_target_hours', e.target.value)} onBlur={() => saveField({ sleep_target_hours: form.sleep_target_hours !== '' ? parseFloat(form.sleep_target_hours) : 8 })} placeholder="e.g. 8" />
             <p className="text-xs text-gray-400 mt-1">hours/night</p>
           </div>
         </div>
@@ -981,10 +957,11 @@ function OverviewTab({ client, onSaved }) {
                 <input
                   type="checkbox"
                   checked={form.allergies.includes(a)}
-                  onChange={e => set('allergies', e.target.checked
-                    ? [...form.allergies, a]
-                    : form.allergies.filter(x => x !== a)
-                  )}
+                  onChange={e => {
+                    const next = e.target.checked ? [...form.allergies, a] : form.allergies.filter(x => x !== a)
+                    set('allergies', next)
+                    saveField({ allergies: next })
+                  }}
                   className="w-4 h-4 rounded accent-red-500 flex-shrink-0"
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">{ALLERGEN_LABELS[a]}</span>
@@ -1000,10 +977,11 @@ function OverviewTab({ client, onSaved }) {
                 <input
                   type="checkbox"
                   checked={form.dietary_requirements.includes(d)}
-                  onChange={e => set('dietary_requirements', e.target.checked
-                    ? [...form.dietary_requirements, d]
-                    : form.dietary_requirements.filter(x => x !== d)
-                  )}
+                  onChange={e => {
+                    const next = e.target.checked ? [...form.dietary_requirements, d] : form.dietary_requirements.filter(x => x !== d)
+                    set('dietary_requirements', next)
+                    saveField({ dietary_requirements: next })
+                  }}
                   className="w-4 h-4 rounded accent-brand-500 flex-shrink-0"
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">{DIET_LABELS[d]}</span>
@@ -1013,7 +991,7 @@ function OverviewTab({ client, onSaved }) {
         </div>
         <div>
           <label className="label">Dislikes / Intolerances</label>
-          <DislikePicker coachId={client.coach_id} value={form.dislikes} onChange={v => set('dislikes', v)} />
+          <DislikePicker coachId={client.coach_id} value={form.dislikes} onChange={v => { set('dislikes', v); saveField({ dislikes: v }) }} />
         </div>
       </div>
 
@@ -1042,18 +1020,13 @@ function OverviewTab({ client, onSaved }) {
               rows={2}
               value={form[key]}
               onChange={e => set(key, e.target.value)}
+              onBlur={saveIntakeForm}
               placeholder="—"
             />
           </div>
         ))}
       </div>
-
-      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"><p className="text-sm text-red-700 dark:text-red-400">{error}</p></div>}
-      <div className="flex items-center gap-3">
-        <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving…' : 'Save Changes'}</button>
-        {saved && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
-      </div>
-    </form>
+    </div>
     </div>
   )
 }
