@@ -2813,7 +2813,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           <div>
             <label className="label">Plan</label>
             <select className="input" required value={form.plan_group_id}
-              onChange={e => setForm(f => ({ ...f, plan_group_id: e.target.value, starting_week: '1' }))}>
+              onChange={e => setForm(f => ({ ...f, plan_group_id: e.target.value }))}>
               <option value="">Select a plan…</option>
               {planGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
@@ -3393,6 +3393,45 @@ function TrainingTab({ client, coachId, onSaved }) {
 
   return (
     <div className="space-y-5 max-w-2xl">
+      {!assignment && !showForm && (
+        <div className="card text-center py-12">
+          <p className="text-gray-400 dark:text-gray-500 text-sm mb-4">No training programme assigned.</p>
+          {programs.length === 0
+            ? <p className="text-xs text-gray-400">Create a training programme from the Training page first.</p>
+            : <button onClick={() => setShowForm(true)} className="btn-primary">Assign Programme</button>}
+        </div>
+      )}
+
+      {showForm && (
+        <form onSubmit={handleAssign} className="card space-y-4">
+          <h3 className="font-semibold text-gray-900 dark:text-white">{assignment ? 'Change Programme' : 'Assign Training Programme'}</h3>
+          <div>
+            <label className="label">Block</label>
+            <select className="input" required value={form.block} onChange={e => setForm(f => ({ ...f, block: e.target.value, days: '' }))}>
+              <option value="">Select a block…</option>
+              {TRAINING_BLOCKS.filter(b => programs.some(p => p.name?.includes(b.key))).map(b => (
+                <option key={b.key} value={b.key}>{b.label}</option>
+              ))}
+            </select>
+          </div>
+          {form.block && (
+            <div>
+              <label className="label">Training days per week</label>
+              <select className="input" required value={form.days} onChange={e => setForm(f => ({ ...f, days: e.target.value }))}>
+                <option value="">Select training days…</option>
+                {availableDays.map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button type="submit" disabled={saving || !selectedProgram} className="btn-primary">{saving ? 'Saving…' : 'Assign'}</button>
+            <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+          </div>
+        </form>
+      )}
+
       <ClientWeeklyPlan key={reloadKey} clientId={client.id} coachId={coachId} assignment={assignment} />
 
       <div className="card space-y-4">
@@ -3465,45 +3504,6 @@ function TrainingTab({ client, coachId, onSaved }) {
           )}
         </div>
       </div>
-
-      {!assignment && !showForm && (
-        <div className="card text-center py-12">
-          <p className="text-gray-400 dark:text-gray-500 text-sm mb-4">No training programme assigned.</p>
-          {programs.length === 0
-            ? <p className="text-xs text-gray-400">Create a training programme from the Training page first.</p>
-            : <button onClick={() => setShowForm(true)} className="btn-primary">Assign Programme</button>}
-        </div>
-      )}
-
-      {showForm && (
-        <form onSubmit={handleAssign} className="card space-y-4">
-          <h3 className="font-semibold text-gray-900 dark:text-white">{assignment ? 'Change Programme' : 'Assign Training Programme'}</h3>
-          <div>
-            <label className="label">Block</label>
-            <select className="input" required value={form.block} onChange={e => setForm(f => ({ ...f, block: e.target.value, days: '' }))}>
-              <option value="">Select a block…</option>
-              {TRAINING_BLOCKS.filter(b => programs.some(p => p.name?.includes(b.key))).map(b => (
-                <option key={b.key} value={b.key}>{b.label}</option>
-              ))}
-            </select>
-          </div>
-          {form.block && (
-            <div>
-              <label className="label">Training days per week</label>
-              <select className="input" required value={form.days} onChange={e => setForm(f => ({ ...f, days: e.target.value }))}>
-                <option value="">Select training days…</option>
-                {availableDays.map(d => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="flex gap-3">
-            <button type="submit" disabled={saving || !selectedProgram} className="btn-primary">{saving ? 'Saving…' : 'Assign'}</button>
-            <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
-          </div>
-        </form>
-      )}
 
       {assignment && prog && (
         <div className="card space-y-4">
