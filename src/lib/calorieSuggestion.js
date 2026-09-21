@@ -17,17 +17,24 @@
  *    calorie cut, since that's usually the better lever for a small shortfall.
  */
 
+// Matches calculator.net's Calorie Calculator exactly — it uses a finer 6-level activity scale
+// than the more commonly-seen 5-level one, and its "moderate" tier (exercise 4-5 days/wk) is a
+// distinct, lower multiplier (1.465) from what used to sit under "moderate" here (1.55) — that
+// mismatch was the entire cause of the app's estimate coming out higher than a coach's own
+// calculator.net calculation for the same client.
 export const ACTIVITY_LABELS = {
   sedentary: 'Sedentary (little/no exercise)',
   light: 'Light (exercise 1-3 days/wk)',
-  moderate: 'Moderate (exercise 3-5 days/wk)',
-  very_active: 'Very active (hard exercise 6-7 days/wk)',
-  extra_active: 'Extra active (very hard exercise or physical job)',
+  moderate: 'Moderate (exercise 4-5 days/wk)',
+  active: 'Active (daily exercise, or intense exercise 3-4 days/wk)',
+  very_active: 'Very active (intense exercise 6-7 days/wk)',
+  extra_active: 'Extra active (very intense exercise daily, or physical job)',
 }
 const ACTIVITY_MULTIPLIERS = {
   sedentary: 1.2,
   light: 1.375,
-  moderate: 1.55,
+  moderate: 1.465,
+  active: 1.55,
   very_active: 1.725,
   extra_active: 1.9,
 }
