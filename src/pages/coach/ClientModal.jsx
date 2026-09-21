@@ -6,9 +6,8 @@ import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 import { DIETS, DIET_LABELS } from '../../lib/diets'
 import DislikePicker from '../../components/DislikePicker'
 
-export default function ClientModal({ client, onClose, onSaved, duplicateData }) {
+export default function ClientModal({ onClose, onSaved, duplicateData }) {
   const { profile } = useAuth()
-  const isEdit = Boolean(client)
 
   const [form, setForm] = useState({
     full_name: '',
@@ -34,30 +33,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
   const [split, setSplit] = useState({ ...MACRO_SPLIT })
 
   useEffect(() => {
-    if (client) {
-      setForm({
-        full_name: client.profiles?.full_name || '',
-        email: client.profiles?.email || '',
-        password: '',
-        goal: client.goal || '',
-        current_calories: client.current_calories || '',
-        current_protein: client.current_protein || '',
-        current_carbs: client.current_carbs || '',
-        current_fat: client.current_fat || '',
-        access_weeks: client.access_weeks || 12,
-        start_date: client.start_date
-          ? client.start_date.split('T')[0]
-          : new Date().toISOString().split('T')[0],
-        tags: client.tags || [],
-        allergies: client.allergies || [],
-        dietary_requirements: client.dietary_requirements || [],
-        dislikes: client.dislikes || [],
-      })
-      setSplit(splitPercentFromGrams(
-        { protein_g: client.current_protein, carbs_g: client.current_carbs, fat_g: client.current_fat },
-        client.current_calories
-      ))
-    } else if (duplicateData) {
+    if (duplicateData) {
       setForm(f => ({
         ...f,
         goal: duplicateData.goal || '',
@@ -73,7 +49,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
         duplicateData.current_calories
       ))
     }
-  }, [client, duplicateData])
+  }, [duplicateData])
 
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }))
@@ -128,95 +104,67 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
     setError('')
     setSaving(true)
     try {
-      if (isEdit) {
-        // Update profile name
-        await supabase
-          .from('profiles')
-          .update({ full_name: form.full_name })
-          .eq('id', client.profile_id)
+      // Create auth user via secondary client (won't displace coach session)
+      let newUserId = null
+      const { data: signUpData, error: signUpErr } = await supabaseAdmin.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: { data: { full_name: form.full_name } },
+      })
 
-        // Update client row
-        const { error: clientErr } = await supabase
-          .from('clients')
-          .update({
-            goal: form.goal,
-            current_calories: form.current_calories ? parseInt(form.current_calories) : null,
-            current_protein: form.current_protein ? parseInt(form.current_protein) : null,
-            current_carbs: form.current_carbs ? parseInt(form.current_carbs) : null,
-            current_fat: form.current_fat ? parseInt(form.current_fat) : null,
-            access_weeks: parseInt(form.access_weeks),
-            start_date: form.start_date,
-            tags: form.tags,
-            allergies: form.allergies,
-            dietary_requirements: form.dietary_requirements || [],
-            dislikes: form.dislikes || [],
-          })
-          .eq('id', client.id)
-
-        if (clientErr) throw clientErr
-      } else {
-        // Create auth user via secondary client (won't displace coach session)
-        let newUserId = null
-        const { data: signUpData, error: signUpErr } = await supabaseAdmin.auth.signUp({
-          email: form.email,
-          password: form.password,
-          options: { data: { full_name: form.full_name } },
-        })
-
-        // Use the returned user ID if available, otherwise fall back to RPC lookup
-        if (signUpData?.user?.id) {
-          newUserId = signUpData.user.id
-        } else if (signUpErr) {
-          // User likely already exists — look them up via RPC (bypasses RLS)
-          const { data: existingId } = await supabase
-            .rpc('get_profile_id_by_email', { email_address: form.email })
-          if (!existingId) throw new Error(`Could not find account for ${form.email}. Error: ${signUpErr.message}`)
-          newUserId = existingId
-        }
-
-        if (!newUserId) throw new Error('Failed to create user account.')
-
-        // Ensure profile is correct
-        await supabase.from('profiles').upsert({
-          id: newUserId,
-          role: 'client',
-          full_name: form.full_name,
-          email: form.email,
-        })
-
-        // Create client row (delete any orphaned previous attempt first)
-        await supabase.from('clients').delete().eq('profile_id', newUserId)
-        const newClientPayload = {
-          coach_id: profile.id,
-          profile_id: newUserId,
-          goal: form.goal,
-          current_calories: form.current_calories ? parseInt(form.current_calories) : null,
-          current_protein: form.current_protein ? parseInt(form.current_protein) : null,
-          current_carbs: form.current_carbs ? parseInt(form.current_carbs) : null,
-          current_fat: form.current_fat ? parseInt(form.current_fat) : null,
-          access_weeks: parseInt(form.access_weeks),
-          start_date: form.start_date,
-          is_active: true,
-          is_paused: false,
-          tags: form.tags,
-          allergies: form.allergies,
-          dietary_requirements: form.dietary_requirements || [],
-          dislikes: form.dislikes || [],
-          activity_level: 'moderate',
-        }
-        let { error: clientErr } = await supabase.from('clients').insert(newClientPayload)
-        // activity_level / dietary_requirements are newer columns — if either migration hasn't
-        // been run yet, don't let that block creating the client entirely.
-        if (clientErr && /column/i.test(clientErr.message || '') && /activity_level/i.test(clientErr.message || '')) {
-          const { activity_level, ...rest } = newClientPayload
-          clientErr = (await supabase.from('clients').insert(rest)).error
-        }
-        if (clientErr && /column/i.test(clientErr.message || '') && /dietary_requirements/i.test(clientErr.message || '')) {
-          const { dietary_requirements, ...rest } = newClientPayload
-          clientErr = (await supabase.from('clients').insert(rest)).error
-        }
-        if (clientErr) throw clientErr
+      // Use the returned user ID if available, otherwise fall back to RPC lookup
+      if (signUpData?.user?.id) {
+        newUserId = signUpData.user.id
+      } else if (signUpErr) {
+        // User likely already exists — look them up via RPC (bypasses RLS)
+        const { data: existingId } = await supabase
+          .rpc('get_profile_id_by_email', { email_address: form.email })
+        if (!existingId) throw new Error(`Could not find account for ${form.email}. Error: ${signUpErr.message}`)
+        newUserId = existingId
       }
+
+      if (!newUserId) throw new Error('Failed to create user account.')
+
+      // Ensure profile is correct
+      await supabase.from('profiles').upsert({
+        id: newUserId,
+        role: 'client',
+        full_name: form.full_name,
+        email: form.email,
+      })
+
+      // Create client row (delete any orphaned previous attempt first)
+      await supabase.from('clients').delete().eq('profile_id', newUserId)
+      const newClientPayload = {
+        coach_id: profile.id,
+        profile_id: newUserId,
+        goal: form.goal,
+        current_calories: form.current_calories ? parseInt(form.current_calories) : null,
+        current_protein: form.current_protein ? parseInt(form.current_protein) : null,
+        current_carbs: form.current_carbs ? parseInt(form.current_carbs) : null,
+        current_fat: form.current_fat ? parseInt(form.current_fat) : null,
+        access_weeks: parseInt(form.access_weeks),
+        start_date: form.start_date,
+        is_active: true,
+        is_paused: false,
+        tags: form.tags,
+        allergies: form.allergies,
+        dietary_requirements: form.dietary_requirements || [],
+        dislikes: form.dislikes || [],
+        activity_level: 'moderate',
+      }
+      let { error: clientErr } = await supabase.from('clients').insert(newClientPayload)
+      // activity_level / dietary_requirements are newer columns — if either migration hasn't
+      // been run yet, don't let that block creating the client entirely.
+      if (clientErr && /column/i.test(clientErr.message || '') && /activity_level/i.test(clientErr.message || '')) {
+        const { activity_level, ...rest } = newClientPayload
+        clientErr = (await supabase.from('clients').insert(rest)).error
+      }
+      if (clientErr && /column/i.test(clientErr.message || '') && /dietary_requirements/i.test(clientErr.message || '')) {
+        const { dietary_requirements, ...rest } = newClientPayload
+        clientErr = (await supabase.from('clients').insert(rest)).error
+      }
+      if (clientErr) throw clientErr
       onSaved()
     } catch (err) {
       setError(err.message || 'Something went wrong.')
@@ -225,7 +173,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
     }
   }
 
-  const title = isEdit ? 'Edit Client' : duplicateData ? 'Duplicate Client' : 'Add New Client'
+  const title = duplicateData ? 'Duplicate Client' : 'Add New Client'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -261,33 +209,27 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
               className="input"
               type="email"
               required
-              disabled={isEdit}
               value={form.email}
               onChange={e => set('email', e.target.value)}
               placeholder="jane@example.com"
             />
-            {isEdit && (
-              <p className="text-xs text-gray-400 mt-1">Email cannot be changed after account creation.</p>
-            )}
           </div>
 
-          {!isEdit && (
-            <div>
-              <label className="label">Temporary password</label>
-              <input
-                className="input"
-                type="password"
-                required
-                minLength={6}
-                value={form.password}
-                onChange={e => set('password', e.target.value)}
-                placeholder="Min. 6 characters"
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                Share this with your client so they can log in. They can change it later.
-              </p>
-            </div>
-          )}
+          <div>
+            <label className="label">Temporary password</label>
+            <input
+              className="input"
+              type="password"
+              required
+              minLength={6}
+              value={form.password}
+              onChange={e => set('password', e.target.value)}
+              placeholder="Min. 6 characters"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Share this with your client so they can log in. They can change it later.
+            </p>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -500,7 +442,7 @@ export default function ClientModal({ client, onClose, onSaved, duplicateData })
               Cancel
             </button>
             <button type="submit" disabled={saving} className="btn-primary flex-1">
-              {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Client'}
+              {saving ? 'Saving…' : 'Create Client'}
             </button>
           </div>
         </form>

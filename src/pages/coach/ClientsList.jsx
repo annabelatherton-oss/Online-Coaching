@@ -141,7 +141,6 @@ export default function ClientsList() {
   // Deep-linkable from the dashboard's Expiring Soon / Expired stat cards (?status=expiring / ?status=expired).
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'All')
   const [showModal, setShowModal] = useState(false)
-  const [editClient, setEditClient] = useState(null)
   const [duplicateData, setDuplicateData] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
@@ -250,13 +249,11 @@ export default function ClientsList() {
       access_weeks: client.access_weeks,
       tags: client.tags,
     })
-    setEditClient(null)
     setShowModal(true)
   }
 
   function closeModal() {
     setShowModal(false)
-    setEditClient(null)
     setDuplicateData(null)
   }
 
@@ -291,7 +288,7 @@ export default function ClientsList() {
           </p>
         </div>
         <button
-          onClick={() => { setEditClient(null); setDuplicateData(null); setShowModal(true) }}
+          onClick={() => { setDuplicateData(null); setShowModal(true) }}
           className="btn-primary"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -348,7 +345,7 @@ export default function ClientsList() {
             <>
               <p className="text-gray-400 dark:text-gray-500 mb-3">You haven't added any clients yet.</p>
               <button
-                onClick={() => { setEditClient(null); setDuplicateData(null); setShowModal(true) }}
+                onClick={() => { setDuplicateData(null); setShowModal(true) }}
                 className="btn-primary"
               >
                 Add your first client
@@ -374,7 +371,11 @@ export default function ClientsList() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {filtered.map(client => (
-                  <tr key={client.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                  <tr
+                    key={client.id}
+                    onClick={() => navigate(`/coach/clients/${client.id}`)}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer"
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
@@ -395,7 +396,7 @@ export default function ClientsList() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <StatusBadge client={client} onClick={() => setExtendClient(client)} />
                         {pauseClientIds.has(client.id) && (
@@ -409,20 +410,8 @@ export default function ClientsList() {
                     <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
                       {formatDate(client.access_expires_at)}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => navigate(`/coach/clients/${client.id}`)}
-                          className="btn-secondary py-1.5 px-3 text-xs"
-                        >
-                          View
-                        </button>
-                        <button
-                          onClick={() => { setEditClient(client); setDuplicateData(null); setShowModal(true) }}
-                          className="btn-secondary py-1.5 px-3 text-xs"
-                        >
-                          Edit
-                        </button>
                         <button
                           onClick={() => openDuplicate(client)}
                           className="btn-secondary py-1.5 px-3 text-xs"
@@ -470,7 +459,7 @@ export default function ClientsList() {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {filtered.map(client => (
-              <div key={client.id} className="card">
+              <div key={client.id} onClick={() => navigate(`/coach/clients/${client.id}`)} className="card cursor-pointer">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
@@ -485,7 +474,7 @@ export default function ClientsList() {
                       <p className="text-xs text-gray-400">{client.profiles?.email}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
                     <StatusBadge client={client} onClick={() => setExtendClient(client)} />
                     {pauseClientIds.has(client.id) && (
                       <span className="badge bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">🌴 Pause pending</span>
@@ -500,9 +489,7 @@ export default function ClientsList() {
                 <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 space-y-1">
                   <p>Access: {client.access_weeks} weeks · Expires: {formatDate(client.access_expires_at)}</p>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button onClick={() => navigate(`/coach/clients/${client.id}`)} className="btn-secondary py-1.5 px-3 text-xs">View</button>
-                  <button onClick={() => { setEditClient(client); setDuplicateData(null); setShowModal(true) }} className="btn-secondary py-1.5 px-3 text-xs">Edit</button>
+                <div className="mt-3 flex flex-wrap gap-2" onClick={e => e.stopPropagation()}>
                   <button onClick={() => openDuplicate(client)} className="btn-secondary py-1.5 px-3 text-xs">Dupe</button>
                   <button onClick={() => togglePause(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">{client.is_paused ? 'Resume' : 'Pause'}</button>
                   <button onClick={() => setExtendClient(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">Extend…</button>
@@ -526,10 +513,9 @@ export default function ClientsList() {
         />
       )}
 
-      {/* Add/Edit/Duplicate modal */}
+      {/* Add/Duplicate modal */}
       {showModal && (
         <ClientModal
-          client={editClient}
           duplicateData={duplicateData}
           onClose={closeModal}
           onSaved={() => { closeModal(); loadClients() }}
