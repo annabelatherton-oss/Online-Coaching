@@ -716,7 +716,7 @@ function OverviewTab({ client, onSaved }) {
       {/* Personal Info — from intake form */}
       <div className="card space-y-4">
         <h3 className="font-semibold text-gray-900 dark:text-white">Personal Information</h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Phone number</label>
             <input className="input" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="e.g. 07700 900 000" />
@@ -726,7 +726,7 @@ function OverviewTab({ client, onSaved }) {
             <input className="input" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Height (cm)</label>
             <input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" value={form.height_cm} onChange={e => set('height_cm', e.target.value)} placeholder="e.g. 165" />
@@ -764,7 +764,7 @@ function OverviewTab({ client, onSaved }) {
           </select>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Drives the calorie-target suggestion on the Meal Plan tab, and sets the default macro split below.</p>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Target date</label>
             <input className="input" type="date" value={form.target_date} onChange={e => set('target_date', e.target.value)} />
@@ -777,7 +777,7 @@ function OverviewTab({ client, onSaved }) {
         {form.target_date && (
           <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">Highlighted on the client's Check-in and Progress pages, and shown on your dashboard as it gets closer.</p>
         )}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Start date</label>
             <input className="input" type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} />
