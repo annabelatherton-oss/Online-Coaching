@@ -45,7 +45,9 @@ function onFormSubmit(e) {
     gender:                get('gender'),
     sex:                   get('sex'),
     motivators:            get('motivators'),
-    barriers:              get('barriers'),
+    // "What a has prevented you from achieving these goals until now?" — doesn't contain the
+    // word "barriers", so match on "prevented" instead.
+    barriers:              get('prevented'),
     health_history:        get('health history'),
     plan_interest:         get('most interested'),
     current_diet:          get('current diet'),
@@ -59,7 +61,9 @@ function onFormSubmit(e) {
     other_info:            get('other information'),
     target_date:           formatDate(get('target date')),
     target_event_name:     get('target event'),
-    goal_phase:            get('phase')
+    // The cut/bulk/maintain question is actually titled "What are you interested in doing?"
+    // (Bulking/Cutting/Maintaining/Other) — there's no question containing the word "phase".
+    goal_phase:            get('interested in doing')
   };
 
   Logger.log('Sending for email: ' + email);
