@@ -52,6 +52,7 @@ serve(async (req) => {
     diet,
     meal_preference,
     other_info,
+    training_days,
     target_date,
     event_date,
     important_date,
@@ -220,6 +221,7 @@ serve(async (req) => {
     food_preferences: food_preferences || null,
     meal_preference: meal_preference || null,
     other_info: other_info || null,
+    training_days: training_days || null,
   }
 
   const dislikesArray: string[] = dislikes

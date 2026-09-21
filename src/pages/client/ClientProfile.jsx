@@ -27,6 +27,7 @@ function buildInfoForm(c) {
     intake_plan_interest: c.intake_form?.plan_interest || '',
     intake_current_diet: c.intake_form?.current_diet || '',
     intake_current_training: c.intake_form?.current_training || '',
+    intake_training_days: c.intake_form?.training_days || '',
     intake_cardio_preferences: c.intake_form?.cardio_preferences || '',
     intake_food_preferences: c.intake_form?.food_preferences || '',
     intake_meal_preference: c.intake_form?.meal_preference || '',
@@ -127,6 +128,7 @@ export default function ClientProfile() {
         plan_interest: infoForm.intake_plan_interest || null,
         current_diet: infoForm.intake_current_diet || null,
         current_training: infoForm.intake_current_training || null,
+        training_days: infoForm.intake_training_days || null,
         cardio_preferences: infoForm.intake_cardio_preferences || null,
         food_preferences: infoForm.intake_food_preferences || null,
         meal_preference: infoForm.intake_meal_preference || null,
@@ -213,14 +215,15 @@ export default function ClientProfile() {
               <textarea className="input resize-none" rows={2} value={infoForm.goal} onChange={e => setInfoForm(f => ({ ...f, goal: e.target.value }))} placeholder="e.g. Lose weight and feel stronger" />
             </div>
             {[
-              { key: 'intake_motivators', label: 'Main motivators' },
               { key: 'intake_barriers', label: 'Barriers to your goals' },
               { key: 'intake_health_history', label: 'Health history / concerns' },
               { key: 'intake_current_diet', label: 'Current diet' },
               { key: 'intake_current_training', label: 'Current training' },
+              { key: 'intake_training_days', label: 'Days per week able to train' },
               { key: 'intake_cardio_preferences', label: 'Cardio preferences' },
               { key: 'intake_food_preferences', label: 'Food preferences' },
               { key: 'intake_other_info', label: 'Anything else' },
+              { key: 'intake_motivators', label: 'Main motivators' },
             ].map(({ key, label }) => (
               <div key={key}>
                 <label className="label">{label}</label>

@@ -59,8 +59,14 @@ function onFormSubmit(e) {
     dietary_requirements:  get('dietary'),
     meal_preference:       get('specific meals'),
     other_info:            get('other information'),
-    target_date:           formatDate(get('target date')),
-    target_event_name:     get('target event'),
+    // There's no separate "target date"/"target event" question — "Do you have a specific
+    // timescale for wanting to see changes?" is the one that covers both: if the answer parses
+    // as a date, formatDate() picks it up for target_date; the raw text always goes into
+    // target_event_name too, since that field has no format constraint.
+    target_date:           formatDate(get('timescale')),
+    target_event_name:     get('timescale'),
+    // "How many days will you realistically be able to train per week?" (2/3/4/5 days)
+    training_days:         get('per week'),
     // The cut/bulk/maintain question is actually titled "What are you interested in doing?"
     // (Bulking/Cutting/Maintaining/Other) — there's no question containing the word "phase".
     goal_phase:            get('interested in doing')

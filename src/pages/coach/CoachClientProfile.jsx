@@ -532,6 +532,7 @@ function OverviewTab({ client, onSaved }) {
     intake_plan_interest: client.intake_form?.plan_interest || '',
     intake_current_diet: client.intake_form?.current_diet || '',
     intake_current_training: client.intake_form?.current_training || '',
+    intake_training_days: client.intake_form?.training_days || '',
     intake_cardio_preferences: client.intake_form?.cardio_preferences || '',
     intake_food_preferences: client.intake_form?.food_preferences || '',
     intake_meal_preference: client.intake_form?.meal_preference || '',
@@ -619,6 +620,7 @@ function OverviewTab({ client, onSaved }) {
         plan_interest: form.intake_plan_interest || null,
         current_diet: form.intake_current_diet || null,
         current_training: form.intake_current_training || null,
+        training_days: form.intake_training_days || null,
         cardio_preferences: form.intake_cardio_preferences || null,
         food_preferences: form.intake_food_preferences || null,
         meal_preference: form.intake_meal_preference || null,
@@ -1004,16 +1006,17 @@ function OverviewTab({ client, onSaved }) {
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Populated automatically from the client's onboarding form. Editable by you and the client.</p>
         </div>
         {[
-          { key: 'intake_motivators', label: 'Main motivators' },
           { key: 'intake_barriers', label: 'Barriers to achieving goals' },
           { key: 'intake_health_history', label: 'Health history / concerns' },
           { key: 'intake_plan_interest', label: 'Interested in (training / diet / both)' },
           { key: 'intake_current_diet', label: 'Current diet' },
           { key: 'intake_current_training', label: 'Current training routine' },
+          { key: 'intake_training_days', label: 'Days per week able to train' },
           { key: 'intake_cardio_preferences', label: 'Cardio preferences' },
           { key: 'intake_food_preferences', label: 'Food preferences' },
           { key: 'intake_meal_preference', label: 'Meal preference (specific meals / macros)' },
           { key: 'intake_other_info', label: 'Other information' },
+          { key: 'intake_motivators', label: 'Main motivators' },
         ].map(({ key, label }) => (
           <div key={key}>
             <label className="label">{label}</label>
