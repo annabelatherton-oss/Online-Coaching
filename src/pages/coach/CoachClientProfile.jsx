@@ -1509,7 +1509,7 @@ function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides) {
 // and ingredients can be removed or added just for this client — none of it touches the shared
 // master meal/tier-version data. Quantity overrides rescale that ingredient's macros proportionally;
 // added ingredients are pulled from the coach's ingredient library so their macros are accurate.
-function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange, target, siblingMacros, siblingLabel }) {
+function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange }) {
   const [addingOpen, setAddingOpen] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addSelected, setAddSelected] = useState(null)
@@ -1531,10 +1531,6 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
 
   const { qty: overrideQty, removed } = normalizeOverrides(overrides)
   const ingredients = applyIngredientOverrides(baseIngredients, overrides)
-  const totCal  = ingredients.reduce((s, i) => s + (parseFloat(i.calories)  || 0), 0)
-  const totCarb = ingredients.reduce((s, i) => s + (parseFloat(i.carbs_g)   || 0), 0)
-  const totProt = ingredients.reduce((s, i) => s + (parseFloat(i.protein_g) || 0), 0)
-  const totFat  = ingredients.reduce((s, i) => s + (parseFloat(i.fat_g)     || 0), 0)
 
   function handleBlur(ing) {
     const libIng = ing.ingredient_id ? libraryById[ing.ingredient_id] : null
@@ -1595,31 +1591,8 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
         </div>
       )}
 
-      {/* Kept above the ingredient rows (not below) so it's still on screen once the list is long
-          or the on-screen keyboard is covering the bottom of the page while a quantity is focused. */}
-      {totCal > 0 && (
-        <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300 pb-1">
-          <span className="flex-1">Meal total</span>
-          <span className="tabular-nums w-16 text-right">{Math.round(totCal)} kcal</span>
-          <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(totCarb)}g</span>
-          <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(totProt)}g</span>
-          <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(totFat)}g</span>
-        </div>
-      )}
-
-      {totCal > 0 && (target || siblingMacros) && (
-        <div className="pb-1.5 border-b border-gray-100 dark:border-gray-800">
-          <MacroTargetInfo
-            macros={{ cal: totCal, carb: totCarb, prot: totProt, fat: totFat }}
-            target={target}
-            siblingMacros={siblingMacros}
-            siblingLabel={siblingLabel}
-            ingredients={ingredients}
-            ingredientLib={libraryById}
-            onAutoFit={onQtyChange}
-          />
-        </div>
-      )}
+      {/* Meal total and the target/actual comparison are already shown just above, in the card's
+          always-visible section — not repeated here to avoid showing the same numbers twice. */}
 
       {ingredients.length > 0 && (
         <>
@@ -2759,9 +2732,6 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 onRevertAll={() => slotHandlers.revertAll(slotKey)}
                 onToggleStatic={ing => toggleIngredientStatic(currentId, ing)}
                 onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(currentId, ing, qty)}
-                target={slotTgt}
-                siblingMacros={siblingSlotMacros}
-                siblingLabel={siblingSlotLabel}
               />
             </div>
           )}
