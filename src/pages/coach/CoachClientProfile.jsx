@@ -608,10 +608,9 @@ function OverviewTab({ client, onSaved }) {
       const latestWeight = weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null
       const maintenance = latestWeight ? estimateMaintenanceCalories(client, latestWeight) : null
       if (!maintenance) return
-      // Rounded to the nearest 25, not snapped to a 100kcal-wide calorie tier — this is meant to
-      // be an accurate starting estimate the coach reviews and rounds down themselves (e.g. to a
-      // tier-friendly number), not one the app has already coarsened before they've seen the maths.
-      const suggested = Math.round(maintenance / 25) * 25
+      // Rounded down to the nearest 100 (not to the nearest, and not snapped to a calorie tier) —
+      // maintenance is an upper bound on what keeps weight stable, so rounding up would overshoot it.
+      const suggested = Math.floor(maintenance / 100) * 100
       const preset = splitForGoal(form.goal_type, goalSplits)
       setSplit(preset)
       applySplit(suggested, preset)
@@ -868,11 +867,11 @@ function OverviewTab({ client, onSaved }) {
           </div>
           <div>
             <label className="label">Access (weeks)</label>
-            <div className="flex gap-2 items-center">
-              <input className="input" type="number" onFocus={e => e.target.select()} min={1} max={520} value={form.access_weeks} onChange={e => set('access_weeks', e.target.value)} />
+            <div className="flex flex-wrap gap-2 items-center">
+              <input className="input flex-1 min-w-[70px]" type="number" onFocus={e => e.target.select()} min={1} max={520} value={form.access_weeks} onChange={e => set('access_weeks', e.target.value)} />
               <button
                 type="button"
-                className="btn-secondary whitespace-nowrap text-sm py-2 px-3"
+                className="btn-secondary whitespace-nowrap text-sm py-2 px-3 flex-shrink-0"
                 onClick={() => set('access_weeks', String(parseInt(form.access_weeks || 0) + 12))}
               >
                 + 12 weeks
@@ -894,12 +893,12 @@ function OverviewTab({ client, onSaved }) {
       </div>
 
       <div className="card space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <h3 className="font-semibold text-gray-900 dark:text-white">Current Nutrition Targets</h3>
           <button
             type="button"
             onClick={resetToStandardSplit}
-            className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
+            className="text-xs text-brand-600 dark:text-brand-400 hover:underline text-left"
           >
             {form.goal_type
               ? `Use ${GOAL_LABELS[form.goal_type].toLowerCase()} default (${splitForGoal(form.goal_type, goalSplits).carbs}/${splitForGoal(form.goal_type, goalSplits).protein}/${splitForGoal(form.goal_type, goalSplits).fat})`
