@@ -1540,6 +1540,20 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
   const { qty: overrideQty, removed } = normalizeOverrides(overrides)
   const ingredients = applyIngredientOverrides(baseIngredients, overrides)
 
+  // The un-scaled recipe's own quantity for each ingredient, keyed by library ingredient (or by
+  // name for a freeform one with no ingredient_id) — only meaningful when looking at a calorie-tier
+  // version, since that's the only case where the amount shown can differ from the coach's original
+  // recipe. Shown as a quiet grey reference next to the box so a dramatic auto-scale (e.g. flour
+  // dropping while milk doubles for the same recipe) is visible at a glance instead of only showing
+  // up once the finished meal no longer works.
+  const baseRecipeQty = {}
+  if (tier) {
+    for (const bi of (meal.meal_ingredients || [])) {
+      const key = bi.ingredient_id || (bi.name || '').toLowerCase()
+      baseRecipeQty[key] = bi.quantity_g
+    }
+  }
+
   function handleBlur(ing) {
     const libIng = ing.ingredient_id ? libraryById[ing.ingredient_id] : null
     if (!libIng) return
@@ -1618,6 +1632,8 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
             const overridden = !ing._isAdded && overrideQty[ing.id] != null
             const isStatic = ing.is_static && !ing._isAdded
             const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libraryUnit(ing, libraryById) || 'g')
+            const recipeKey = ing.ingredient_id || (ing.name || '').toLowerCase()
+            const recipeQty = !ing._isAdded ? baseRecipeQty[recipeKey] : null
             return (
               <div key={ing.id || i} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
                 {onToggleStatic && !ing._isAdded && (
@@ -1646,34 +1662,41 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
                   </span>
                 )}
                 <span className={`basis-full sm:basis-0 sm:flex-1 min-w-0 break-words ${ing._isAdded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`}>{ing.name}</span>
-                <div className="flex items-center gap-1 w-24 flex-shrink-0 justify-end">
-                  <input
-                    type="number" onFocus={e => e.target.select()}
-                    min={libIng?.min_amount ?? 0}
-                    step={libIng?.serving_step ?? 1}
-                    className={`w-16 text-right text-xs py-0.5 px-1 rounded border tabular-nums focus:outline-none focus:ring-1 focus:ring-brand-400 ${
-                      isStatic
-                        ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400'
-                        : overridden
-                        ? 'border-orange-300 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/10'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400'
-                    }`}
-                    value={isStatic ? (staticDrafts[ing.id] ?? ing.quantity_g) : ing.quantity_g}
-                    onChange={e => {
-                      if (isStatic) setStaticDrafts(d => ({ ...d, [ing.id]: e.target.value }))
-                      else onQtyChange(ing.id, e.target.value)
-                    }}
-                    onBlur={() => {
-                      if (isStatic) {
-                        const draft = staticDrafts[ing.id]
-                        if (draft != null && draft !== String(ing.quantity_g)) onStaticQtyChange?.(ing, parseFloat(draft) || 0)
-                        setStaticDrafts(d => { const n = { ...d }; delete n[ing.id]; return n })
-                      } else {
-                        handleBlur(ing)
-                      }
-                    }}
-                  />
-                  <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">{unit}</span>
+                <div className="flex flex-col items-end w-24 flex-shrink-0">
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number" onFocus={e => e.target.select()}
+                      min={libIng?.min_amount ?? 0}
+                      step={libIng?.serving_step ?? 1}
+                      className={`w-16 text-right text-xs py-0.5 px-1 rounded border tabular-nums focus:outline-none focus:ring-1 focus:ring-brand-400 ${
+                        isStatic
+                          ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400'
+                          : overridden
+                          ? 'border-orange-300 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/10'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400'
+                      }`}
+                      value={isStatic ? (staticDrafts[ing.id] ?? ing.quantity_g) : ing.quantity_g}
+                      onChange={e => {
+                        if (isStatic) setStaticDrafts(d => ({ ...d, [ing.id]: e.target.value }))
+                        else onQtyChange(ing.id, e.target.value)
+                      }}
+                      onBlur={() => {
+                        if (isStatic) {
+                          const draft = staticDrafts[ing.id]
+                          if (draft != null && draft !== String(ing.quantity_g)) onStaticQtyChange?.(ing, parseFloat(draft) || 0)
+                          setStaticDrafts(d => { const n = { ...d }; delete n[ing.id]; return n })
+                        } else {
+                          handleBlur(ing)
+                        }
+                      }}
+                    />
+                    <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">{unit}</span>
+                  </div>
+                  {recipeQty != null && (
+                    <span className="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5" title="This meal's normal recipe amount, unscaled">
+                      recipe: {round1(recipeQty)}{unit}
+                    </span>
+                  )}
                 </div>
                 <span className="tabular-nums w-16 text-right text-gray-500 dark:text-gray-400">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
                 <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(parseFloat(ing.carbs_g) || 0)}g</span>

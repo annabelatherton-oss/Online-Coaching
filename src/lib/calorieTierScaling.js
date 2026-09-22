@@ -218,6 +218,39 @@ const MAX_OVER_KCAL = 4
 const FLEX_MIN_FACTOR = 0.5
 const FLEX_MAX_FACTOR = 2
 
+// FLEX_MIN/MAX_FACTOR each anchor a single ingredient's factor to ITS OWN original amount — they
+// don't stop two ingredients from moving in opposite directions at once. A pancake recipe's flour
+// (35g) and milk (50ml) can each individually land inside [0.5, 2] — flour at 0.57 (20g), milk at
+// 2.0 (100ml) — while still being 3.5x apart from each other and pointed opposite ways, which is
+// what actually breaks a batter's ratio even though no per-ingredient bound was technically
+// crossed. This caps how far apart any two flexible ingredients' factors are allowed to end up
+// (in log-space, so it's symmetric whether an ingredient is above or below the group's centre) —
+// keeping every ingredient's factor within a bounded ratio of the others', so the recipe still
+// reads as "the same recipe, scaled" rather than reshaped.
+const FACTOR_SPREAD_MAX = 1.8
+
+// Pulls every flexible ingredient's factor toward the group's calorie-weighted centre (in
+// log-space, so a 0.5 and a 2.0 are equally far from a centre of 1.0) whenever the spread between
+// the highest and lowest factor exceeds FACTOR_SPREAD_MAX — e.g. flour and milk moving opposite
+// ways stay much closer together instead of drifting to opposite ends of their individual bounds.
+// Calorie-weighted (not a plain average) so a recipe's biggest calorie contributor anchors the
+// centre — the centre shouldn't be dragged around by a low-calorie garnish that happens to need a
+// bigger relative move. Falls back to leaving factors alone when there's nothing to weight by.
+function clampFactorSpread(factors, flexRows) {
+  if (factors.length < 2) return factors
+  const weights = flexRows.map(r => Math.max(r.cal, 0.01))
+  const totalWeight = weights.reduce((s, w) => s + w, 0)
+  const logCentre = factors.reduce((s, f, i) => s + weights[i] * Math.log(f), 0) / totalWeight
+  const halfSpread = Math.log(FACTOR_SPREAD_MAX) / 2
+  return factors.map(f => {
+    const logF = Math.log(f)
+    const delta = logF - logCentre
+    if (Math.abs(delta) <= halfSpread) return f
+    const clampedDelta = Math.sign(delta) * halfSpread
+    return Math.exp(logCentre + clampedDelta)
+  })
+}
+
 // This row's allowed [lo, hi] range while scaling. An ingredient's own min_amount/max_amount —
 // set on it in the Ingredients Library — always win when present: the coach configured those
 // deliberately for that specific ingredient (e.g. "rice can go up to 250g"), so they override the
@@ -261,6 +294,11 @@ export function generateTierIngredients(baseIngredients, library, targets) {
     // triple in size on its own to chase a macro sub-target, which is what read as the recipe
     // changing rather than just scaling. Capping the per-ingredient swing to [FLEX_MIN_FACTOR,
     // FLEX_MAX_FACTOR] keeps every flexible ingredient recognisably close to its original amount.
+    factors = factors.map(f => Math.min(FLEX_MAX_FACTOR, Math.max(FLEX_MIN_FACTOR, f)))
+    // Individual bounds alone don't stop e.g. flour shrinking while milk doubles in the same
+    // recipe — pull outlying factors back toward the group's centre, then re-clamp to the
+    // per-ingredient bounds in case that pull pushed anything back past them.
+    factors = clampFactorSpread(factors, flexRows)
     factors = factors.map(f => Math.min(FLEX_MAX_FACTOR, Math.max(FLEX_MIN_FACTOR, f)))
     let flexIdx = 0
     // The factor clamp above only knows the generic default — re-clamp each row through
