@@ -72,6 +72,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   const [cardioSessions, setCardioSessions] = useState([])
   const [exerciseLibrary, setExerciseLibrary] = useState([])
   const [clientDob, setClientDob] = useState(null)
+  const [dayPreferences, setDayPreferences] = useState({})
   const [loading, setLoading] = useState(true)
   const [populating, setPopulating] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -136,7 +137,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       supabase.from('hiit_circuits').select('id, name, circuit_type').eq('coach_id', coachId).eq('is_archived', false).order('name'),
       supabase.from('cardio_sessions').select('id, name, cardio_type, duration_minutes').eq('coach_id', coachId).eq('is_archived', false).order('name'),
       supabase.from('exercises').select('id, name').eq('coach_id', coachId).eq('is_archived', false).order('name'),
-      supabase.from('clients').select('date_of_birth').eq('id', clientId).single(),
+      supabase.from('clients').select('date_of_birth, day_preferences').eq('id', clientId).single(),
     ])
     if (schedErr?.code === '42P01' || schedErr?.message?.includes('does not exist')) {
       setError('migration_needed')
@@ -152,6 +153,7 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     setCardioSessions(cardios || [])
     setExerciseLibrary(exLib || [])
     setClientDob(clientRow?.date_of_birth || null)
+    setDayPreferences(clientRow?.day_preferences || {})
 
     if (assignment?.program_id) {
       const { data: progSessions } = await supabase
@@ -601,6 +603,16 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                     <span className="text-sm font-bold w-24 text-gray-800 dark:text-gray-100">
                       {day}
                     </span>
+                    {dayPreferences[day] === 'unavailable' && (
+                      <span className="text-[10px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded-full uppercase tracking-wide flex-shrink-0" title="This client marked themselves unavailable to train this day">
+                        Can't train
+                      </span>
+                    )}
+                    {dayPreferences[day] && dayPreferences[day] !== 'unavailable' && (
+                      <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 px-1.5 py-0.5 rounded-full flex-shrink-0" title="This client noted this as taken by something else — plan around it">
+                        {dayPreferences[day]}
+                      </span>
+                    )}
                     {isEmpty && !isAdding && !isDragTarget && (
                       <span className="text-xs text-gray-300 dark:text-gray-700 italic">Rest day</span>
                     )}
