@@ -4412,6 +4412,11 @@ export default function CoachClientProfile() {
     const tab = searchParams.get('tab')
     return tab && TABS.includes(tab) ? tab : 'Overview'
   })
+  const [showPasswordReset, setShowPasswordReset] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSet, setPasswordSet] = useState('')
 
   async function loadClient() {
     const { data, error: err } = await supabase.from('clients').select(`
@@ -4432,6 +4437,39 @@ export default function CoachClientProfile() {
   async function toggleArchive() {
     await supabase.from('clients').update({ is_archived: !client.is_archived }).eq('id', client.id)
     loadClient()
+  }
+
+  function generatePassword() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
+    let out = ''
+    for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)]
+    return out
+  }
+
+  function openPasswordReset() {
+    setNewPassword(generatePassword())
+    setPasswordError('')
+    setPasswordSet('')
+    setShowPasswordReset(true)
+  }
+
+  // Sets the client's password directly instead of relying on Supabase's own signup/magic-link
+  // email — the default email sending Supabase provides with no custom SMTP configured is rate
+  // limited and can silently fail to arrive, which is what leaves a client with no way in at all.
+  // This bypasses that entirely: the coach shares the new password with the client themselves.
+  async function handleResetPassword() {
+    if (newPassword.length < 6) { setPasswordError('Password must be at least 6 characters.'); return }
+    setPasswordSaving(true)
+    setPasswordError('')
+    const { data, error } = await supabase.functions.invoke('set-client-password', {
+      body: { clientId: client.id, newPassword },
+    })
+    setPasswordSaving(false)
+    if (error || data?.error) {
+      setPasswordError(data?.error || error.message || 'Could not set password — try again.')
+      return
+    }
+    setPasswordSet(newPassword)
   }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
@@ -4463,6 +4501,13 @@ export default function CoachClientProfile() {
           </div>
         </div>
         <button
+          onClick={openPasswordReset}
+          className="btn-secondary py-1.5 px-3 text-xs flex-shrink-0"
+          title="Set this client's password directly — useful if they never received their login email"
+        >
+          Reset password
+        </button>
+        <button
           onClick={toggleArchive}
           className="btn-secondary py-1.5 px-3 text-xs flex-shrink-0"
           title={client.is_archived ? 'Bring this client back onto your dashboard' : "Hide this client from your dashboard — their data stays intact"}
@@ -4470,6 +4515,52 @@ export default function CoachClientProfile() {
           {client.is_archived ? 'Unarchive client' : 'Archive client'}
         </button>
       </div>
+
+      {showPasswordReset && (
+        <div className="card space-y-3 border-brand-200 dark:border-brand-800">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900 dark:text-white">Reset {client.profiles?.full_name || 'client'}'s password</h3>
+            <button onClick={() => setShowPasswordReset(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+          {passwordSet ? (
+            <div className="space-y-2">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Password set. Share it with {client.profiles?.full_name || 'your client'} directly (text, WhatsApp, in person) —
+                they can sign in with their email and this password right away, no email link needed.
+              </p>
+              <p className="font-mono text-lg font-semibold bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2 text-gray-900 dark:text-white select-all">{passwordSet}</p>
+              <button onClick={() => setShowPasswordReset(false)} className="btn-secondary py-1.5 px-3 text-xs">Done</button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Sets their password immediately — doesn't rely on the sign-up or login-link email arriving, which can be
+                unreliable. Their email address stays the same.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  className="input font-mono"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="New password"
+                />
+                <button type="button" onClick={() => setNewPassword(generatePassword())} className="btn-secondary py-2 px-3 text-xs whitespace-nowrap">
+                  Generate
+                </button>
+              </div>
+              {passwordError && <p className="text-sm text-red-600 dark:text-red-400">{passwordError}</p>}
+              <div className="flex items-center gap-3">
+                <button onClick={handleResetPassword} disabled={passwordSaving} className="btn-primary py-1.5 px-4 text-sm">
+                  {passwordSaving ? 'Setting…' : 'Set password'}
+                </button>
+                <button onClick={() => setShowPasswordReset(false)} className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-800 -mx-1 px-1">
         {TABS.map(tab => (
