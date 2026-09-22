@@ -93,8 +93,11 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   // Rest day sub-type
   const [addRestSubtype, setAddRestSubtype] = useState('rest')
 
-  // Workout exercise drill-down (editable)
+  // Workout exercise drill-down — expanding a day always shows a read-only view first;
+  // editingItemId tracks which one (if any) has been switched into the editable form by an
+  // explicit click, so opening a day to look at it never drops the coach straight into editing.
   const [expandedItemId, setExpandedItemId] = useState(null)
+  const [editingItemId, setEditingItemId] = useState(null)
   const [exerciseDrafts, setExerciseDrafts] = useState({})   // workoutId → Exercise[]
   const [exerciseSaving, setExerciseSaving] = useState({})
   const [exerciseSaveError, setExerciseSaveError] = useState({})
@@ -257,9 +260,11 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
   async function toggleExpand(item) {
     if (expandedItemId === item.id) {
       setExpandedItemId(null)
+      setEditingItemId(null)
       return
     }
     setExpandedItemId(item.id)
+    setEditingItemId(null)
     const progDay = programExercisesByDay[item.day_of_week]
     const fromProgram = progDay && progDay.workout_id === (item.workout_id || null)
     if (!fromProgram && item.workout_id && exerciseDrafts[item.workout_id] === undefined) {
@@ -338,6 +343,18 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       .order('order_index')
     setExerciseDrafts(prev => ({ ...prev, [workoutId]: data || [] }))
     setExerciseSaving(prev => ({ ...prev, [workoutId]: false }))
+  }
+
+  // Discards any unsaved edits by re-fetching the real, saved exercises — so backing out of
+  // editing never leaves the read-only view showing changes that were never actually saved.
+  async function cancelEditExercises(workoutId) {
+    setEditingItemId(null)
+    const { data } = await supabase
+      .from('workout_exercises')
+      .select('id, name, equipment, exercise_id, sets, reps, rpe, rest_seconds, notes, order_index')
+      .eq('workout_id', workoutId)
+      .order('order_index')
+    setExerciseDrafts(prev => ({ ...prev, [workoutId]: data || [] }))
   }
 
   async function populateFromProgram(prog) {
@@ -837,6 +854,33 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                 <p className="text-xs text-gray-400">
                                   This day comes from the assigned training block, not the Workout Library, so its exercises aren't editable here — use "Edit exercises" on the training block below, or view/log them on the client's Training page.
                                 </p>
+                              ) : editingItemId !== item.id ? (
+                                <div className="space-y-2">
+                                  {exercises.length === 0 ? (
+                                    <p className="text-xs text-gray-400">No exercises added for this day yet.</p>
+                                  ) : (
+                                    <div className="space-y-1">
+                                      {exercises.map(ex => (
+                                        <div key={ex.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                          <span className="flex-1 font-medium truncate">{ex.name}</span>
+                                          {ex.equipment && <span className="text-gray-400">{ex.equipment}</span>}
+                                          <span className="w-10 text-center text-gray-400">{ex.sets ?? '—'}</span>
+                                          <span className="w-14 text-center text-gray-400">{ex.reps || '—'}</span>
+                                          <span className="w-10 text-center text-gray-400">{ex.rpe || '—'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <button
+                                    onClick={() => setEditingItemId(item.id)}
+                                    className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium inline-flex items-center gap-1"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                    Edit exercises for this client
+                                  </button>
+                                </div>
                               ) : (
                                 <div className="space-y-2">
                                   {exercises.length > 0 && (
@@ -911,6 +955,12 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                                           {exerciseSaveError[item.workout_id]}
                                         </span>
                                       )}
+                                      <button
+                                        onClick={() => cancelEditExercises(item.workout_id)}
+                                        className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 font-medium"
+                                      >
+                                        Cancel
+                                      </button>
                                       <button
                                         onClick={() => saveExercises(item.workout_id)}
                                         disabled={exerciseSaving[item.workout_id]}
