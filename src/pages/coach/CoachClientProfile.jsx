@@ -2339,8 +2339,18 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         <div className="w-full flex items-center gap-2 px-3 py-2">
           <button
             type="button"
-            onClick={() => row?.meal_id && toggleExpandedEveryday(slotKey)}
-            className={`flex-1 min-w-0 text-left text-sm text-gray-800 dark:text-gray-200 truncate ${row?.meal_id ? 'hover:text-brand-600 dark:hover:text-brand-400 cursor-pointer' : 'cursor-default'}`}
+            onClick={async () => {
+              if (row?.meal_id) { toggleExpandedEveryday(slotKey); return }
+              // Nothing to edit yet if even the fallback is empty. Otherwise this is a
+              // pre-workout/evening-snack row only ever showing the main plan's meal (see
+              // effectiveEverydayMeal) — there's no everyday row to attach ingredient overrides
+              // to until one exists, so editing it here first turns it into a real everyday
+              // choice (same meal, no overrides yet), then opens the editor on that.
+              if (!effective.mealId) return
+              await changeEverydayMeal(slotKey, effective.mealId)
+              toggleExpandedEveryday(slotKey)
+            }}
+            className={`flex-1 min-w-0 text-left text-sm text-gray-800 dark:text-gray-200 truncate ${effective.mealId ? 'hover:text-brand-600 dark:hover:text-brand-400 cursor-pointer' : 'cursor-default'}`}
           >
             <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
             {effective.mealId ? (mealMap[effective.mealId]?.name || 'Unknown meal') : 'Not chosen yet'}
