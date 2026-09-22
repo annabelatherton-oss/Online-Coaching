@@ -104,10 +104,18 @@ export default function ClientModal({ onClose, onSaved, duplicateData }) {
     setError('')
     setSaving(true)
     try {
+      // Normalized once and used everywhere below — the intake form webhook
+      // (supabase/functions/intake-form-webhook/index.ts) always lowercases/trims the email it
+      // gets from the Google Form before checking whether a profile already exists for it. If a
+      // client created here ever ended up stored with different casing (e.g. the coach typed
+      // "Jane@gmail.com" but she later filled in the form as "jane@gmail.com"), that lookup
+      // wouldn't find this profile and would silently create a second, duplicate account for her.
+      const email = form.email.trim().toLowerCase()
+
       // Create auth user via secondary client (won't displace coach session)
       let newUserId = null
       const { data: signUpData, error: signUpErr } = await supabaseAdmin.auth.signUp({
-        email: form.email,
+        email,
         password: form.password,
         options: { data: { full_name: form.full_name } },
       })
@@ -118,8 +126,8 @@ export default function ClientModal({ onClose, onSaved, duplicateData }) {
       } else if (signUpErr) {
         // User likely already exists — look them up via RPC (bypasses RLS)
         const { data: existingId } = await supabase
-          .rpc('get_profile_id_by_email', { email_address: form.email })
-        if (!existingId) throw new Error(`Could not find account for ${form.email}. Error: ${signUpErr.message}`)
+          .rpc('get_profile_id_by_email', { email_address: email })
+        if (!existingId) throw new Error(`Could not find account for ${email}. Error: ${signUpErr.message}`)
         newUserId = existingId
       }
 
@@ -130,7 +138,7 @@ export default function ClientModal({ onClose, onSaved, duplicateData }) {
         id: newUserId,
         role: 'client',
         full_name: form.full_name,
-        email: form.email,
+        email,
       })
 
       // Create client row (delete any orphaned previous attempt first)

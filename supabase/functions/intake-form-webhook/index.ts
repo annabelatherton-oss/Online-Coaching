@@ -175,11 +175,15 @@ serve(async (req) => {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  // Check if a profile with this email already exists
+  // Check if a profile with this email already exists — case-insensitive, since a profile
+  // created elsewhere (e.g. the coach manually adding a client in ClientModal.jsx) isn't
+  // guaranteed to have been stored in exactly this same case. An exact eq() match here missing a
+  // profile that really does exist is what used to silently create a second, duplicate account
+  // for someone the coach had already set up, the moment they filled in this form.
   const { data: existingProfile } = await supabase
     .from('profiles')
     .select('id')
-    .eq('email', email.toLowerCase().trim())
+    .ilike('email', email.toLowerCase().trim())
     .maybeSingle()
 
   let userId: string
