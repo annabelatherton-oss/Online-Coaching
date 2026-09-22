@@ -106,13 +106,29 @@ client-side reminder has, since reviewing check-ins is always relevant once a co
 A "Notify client of changes" button on the client's Meal Plan tab and Everyday Meals card
 (`CoachClientProfile.jsx`) sends a one-off push straight to that client — e.g. after editing
 their plan — instead of waiting for Friday. Unlike every other push in this app, this one
-carries a real encrypted message (see `supabase/functions/_shared/webpush.ts`, RFC 8291
-aes128gcm) so the notification text actually differs ("meal plan updated" vs. "everyday meals
-updated") rather than relying on one fixed notification baked into the service worker.
+carries a real encrypted message (RFC 8291 aes128gcm) so the notification text actually differs
+("meal plan updated" vs. "everyday meals updated") rather than relying on one fixed notification
+baked into the service worker.
 
 Setup, on top of everything above (same VAPID secrets, same client `push_subscriptions` rows —
 no new migration needed):
 1. Deploy the new function: `npx supabase functions deploy send-client-notification`
+   **or**, if you're pasting the code straight into the Supabase Dashboard's function editor
+   instead of using the CLI (as with every function up to this point), paste the whole contents
+   of `supabase/functions/send-client-notification/index.ts` — it's fully self-contained (the
+   encryption code is written directly into the file, not imported from anywhere else), so a
+   single-file paste works correctly. The same applies to `send-meal-swap-notification` below.
 
 That's it — no cron job, it fires on click. If the client hasn't turned on push notifications
 yet, the button shows "Client hasn't turned on notifications" instead of silently doing nothing.
+If it shows "Could not send — try again", the function likely hasn't been deployed yet (or was
+deployed as a broken multi-file paste before this file became self-contained) — redeploy it with
+either method above.
+
+## Meal-swap notification (client-triggered)
+
+`send-meal-swap-notification` — pushes the coach when a client saves an actual meal swap (see
+CoachDashboard's "Needs Attention" list and the migration note in
+`supabase/meal-swap-review-migration.sql`). Same deployment options as above: `npx supabase
+functions deploy send-meal-swap-notification`, or paste its `index.ts` directly into the
+Dashboard — also fully self-contained.
