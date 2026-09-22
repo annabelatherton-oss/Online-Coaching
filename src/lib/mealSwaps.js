@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { hasValidServingSize, macrosForQty } from './ingredientMacros'
 
 /**
  * Allergen/dislike conflict detection and swap resolution — shared by the
@@ -95,7 +96,10 @@ export function findSafeMeal(category, excludeId, allergies, dislikes, mealMap, 
 export function findSafeAlternative(hit, allergies, dislikes, library) {
   for (const altId of (hit.alternativeIds || [])) {
     const libIng = library.find(l => l.id === altId)
-    if (!libIng) continue
+    // An alternative with no valid serving size can't be scaled to a gram amount at all — skip it
+    // rather than offer a swap that would read 0 kcal, and let a later alternative (or the manual
+    // ingredient picker) cover it once the Ingredients Library entry itself is fixed.
+    if (!libIng || !hasValidServingSize(libIng)) continue
     const clashes =
       (allergies || []).some(a => ingredientMatchesRestriction(libIng.name, a)) ||
       (dislikes  || []).some(d => d && libIng.name.toLowerCase().includes(d.toLowerCase()))
@@ -104,23 +108,17 @@ export function findSafeAlternative(hit, allergies, dislikes, library) {
   return null
 }
 
-function round1(n) { return Math.round(n * 10) / 10 }
-
 // Build a replacement ingredient row scaled to keep the same gram amount, using
 // the replacement's per-serving macros — same math as the coach's manual
 // "swap ingredient" action, so a saved rule behaves identically to a one-off fix.
 export function scaledSwapIngredient(originalQty, libIng) {
-  const f = libIng.serving_size > 0 ? originalQty / libIng.serving_size : 0
   return {
     id: `swap-${libIng.id}`,
     name: libIng.name,
     quantity_g: originalQty,
     unit: libIng.serving_unit || 'g',
-    calories:  round1(f * libIng.calories_per_serving),
-    protein_g: round1(f * libIng.protein_per_serving),
-    carbs_g:   round1(f * libIng.carbs_per_serving),
-    fat_g:     round1(f * libIng.fat_per_serving),
     ingredient_id: libIng.id,
+    ...macrosForQty(libIng, originalQty),
   }
 }
 

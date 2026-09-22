@@ -391,7 +391,14 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, instru
   }
 
   function calcMacros(libIng, amount) {
-    const factor = parseFloat(amount) / libIng.serving_size
+    const parsedAmount = parseFloat(amount)
+    // A serving_size of exactly 0 makes amount/serving_size compute to Infinity, not NaN — the
+    // isNaN check below alone doesn't catch it, so an ingredient with that specific bad value
+    // used to silently bake Infinity/NaN macros into a meal's base recipe (round-tripping through
+    // the database as 0). Guard the serving_size itself first so every invalid case — missing,
+    // zero, or negative — lands on the same safe "can't compute yet" blank state.
+    if (!(libIng.serving_size > 0)) return { calories: '', protein_g: '', carbs_g: '', fat_g: '' }
+    const factor = parsedAmount / libIng.serving_size
     if (isNaN(factor) || factor < 0) return { calories: '', protein_g: '', carbs_g: '', fat_g: '' }
     return {
       calories: round1(factor * libIng.calories_per_serving),

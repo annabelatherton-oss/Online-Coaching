@@ -16,6 +16,7 @@ import StrengthProgress from '../../components/StrengthProgress'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import { getMealConflicts, findSafeMeal, findSafeAlternative } from '../../lib/mealSwaps'
+import { macrosForQty } from '../../lib/ingredientMacros'
 import { ACTIVITY_LABELS, GOAL_LABELS, estimateMaintenanceCalories } from '../../lib/calorieSuggestion'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import DislikePicker from '../../components/DislikePicker'
@@ -1586,16 +1587,12 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
     if (!addSelected) return
     const qty = parseFloat(addQty)
     if (isNaN(qty) || qty <= 0) return
-    const f = addSelected.serving_size > 0 ? qty / addSelected.serving_size : 0
     onAdd({
       id: `added-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: addSelected.name,
       quantity_g: qty,
       unit: addSelected.serving_unit || 'g',
-      calories:  round1(f * addSelected.calories_per_serving),
-      protein_g: round1(f * addSelected.protein_per_serving),
-      carbs_g:   round1(f * addSelected.carbs_per_serving),
-      fat_g:     round1(f * addSelected.fat_per_serving),
+      ...macrosForQty(addSelected, qty),
       ingredient_id: addSelected.id,
     })
     resetAddForm()
@@ -2114,18 +2111,13 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   }
 
   function swapIngredient(slotKey, removeId, originalQty, libIng) {
-    const f = originalQty / libIng.serving_size
-    const round1 = n => Math.round(n * 10) / 10
     const newIng = {
       id: `added-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: libIng.name,
       quantity_g: originalQty,
       unit: libIng.serving_unit || 'g',
-      calories:   round1(f * libIng.calories_per_serving),
-      protein_g:  round1(f * libIng.protein_per_serving),
-      carbs_g:    round1(f * libIng.carbs_per_serving),
-      fat_g:      round1(f * libIng.fat_per_serving),
       ingredient_id: libIng.id,
+      ...macrosForQty(libIng, originalQty),
     }
     slotHandlers.remove(slotKey, removeId)
     slotHandlers.add(slotKey, newIng)

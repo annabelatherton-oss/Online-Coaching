@@ -634,7 +634,14 @@ export default function IngredientsLibrary() {
                       <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{ing.serving_size} {ing.serving_unit}</td>
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+                    {ing.serving_size} {ing.serving_unit}
+                    {!(parseFloat(ing.serving_size) > 0) && (
+                      <span className="ml-1.5 text-xs font-medium text-red-500" title="No valid serving size — any meal this is added to will show 0 kcal for it until this is fixed. Click Edit and re-enter the serving size.">
+                        ⚠ Fix serving size
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{ing.calories_per_serving}</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{ing.protein_per_serving}g</td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{ing.carbs_per_serving}g</td>

@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
+import { macrosForQty } from '../../lib/ingredientMacros'
 import {
   normalizeOverrides, hasAnyOverride, applyIngredientOverrides, sumIngredientMacros,
   MacroTargetInfo, MacroBadge, MACRO_META, libraryUnit,
@@ -40,8 +41,6 @@ const MEAL_CATEGORY_ORDER = ['breakfast', 'lunch', 'dinner', 'pre_workout', 'sna
 const EMPTY_SLOTS = Object.fromEntries(
   SLOT_TYPES.map(s => [s.value, { meal_id: '', scaled_version_id: '', ingredient_overrides: null }])
 )
-
-function round1(n) { return Math.round(n * 10) / 10 }
 
 export default function WeeklyTemplateEditor() {
   const { templateId } = useParams()
@@ -556,13 +555,11 @@ function TemplateIngredientEditor({ meal, overrides, library, libraryById, onCha
   function addIng(lib) {
     const cur = normalizeOverrides(overrides)
     const qty = lib.serving_size || 100
-    const f = lib.serving_size > 0 ? qty / lib.serving_size : 0
     patch({
       added: [...cur.added, {
         id: `added-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         name: lib.name, quantity_g: qty, unit: lib.serving_unit || 'g',
-        calories: round1(f * lib.calories_per_serving), protein_g: round1(f * lib.protein_per_serving),
-        carbs_g: round1(f * lib.carbs_per_serving), fat_g: round1(f * lib.fat_per_serving),
+        ...macrosForQty(lib, qty),
         ingredient_id: lib.id,
       }],
     })

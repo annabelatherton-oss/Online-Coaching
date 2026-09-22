@@ -13,6 +13,7 @@ import {
 import {
   generateTierIngredients, insertTierVersion, tierTargetsForCategory, allIngredientsFixed, balanceDayIngredients, calcTotals,
 } from '../../lib/calorieTierScaling'
+import { macrosForQty } from '../../lib/ingredientMacros'
 
 const MAIN_SLOTS = [
   { key: 'breakfast1', label: 'Breakfast A', cat: 'breakfast' },
@@ -813,15 +814,11 @@ export default function PlanGroupEditor() {
     if (!meal) return
 
     const qty = libIng.serving_size || 100
-    const f = libIng.serving_size > 0 ? qty / libIng.serving_size : 0
     const baseFields = {
       name: libIng.name,
       quantity_g: qty,
       unit: libIng.serving_unit || 'g',
-      calories:  round1(f * libIng.calories_per_serving),
-      protein_g: round1(f * libIng.protein_per_serving),
-      carbs_g:   round1(f * libIng.carbs_per_serving),
-      fat_g:     round1(f * libIng.fat_per_serving),
+      ...macrosForQty(libIng, qty),
       ingredient_id: libIng.id,
       scaling_type: 'flexible',
       is_static: false,

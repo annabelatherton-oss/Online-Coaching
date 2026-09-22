@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { CALORIE_TIERS } from './calorieTiers'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from './macros'
+import { macrosForQty } from './ingredientMacros'
 
 export { CALORIE_TIERS }
 
@@ -630,14 +631,7 @@ export async function propagateIngredientRuleChange(ingredientId, libIng) {
 
   function macrosAt(qty) {
     const snapped = snapToConstraints(qty, libIng) ?? qty
-    const f = libIng.serving_size > 0 ? snapped / libIng.serving_size : 0
-    return {
-      quantity_g: snapped,
-      calories:  round1(f * libIng.calories_per_serving),
-      protein_g: round1(f * libIng.protein_per_serving),
-      carbs_g:   round1(f * libIng.carbs_per_serving),
-      fat_g:     round1(f * libIng.fat_per_serving),
-    }
+    return { quantity_g: snapped, ...macrosForQty(libIng, snapped) }
   }
 
   await runInBatches(baseRows || [], 20, row =>
