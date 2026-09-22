@@ -442,6 +442,7 @@ export default function ClientMealPlan() {
           preworkout: { mealId: editedSlots.preworkout || null, overrides: ingredientOverrides.preworkout },
           evening_snack: { mealId: editedSlots.evening_snack || null, overrides: ingredientOverrides.evening_snack },
         }}
+        dietKeys={clientData?.dietary_requirements || []}
       />
 
       {/* Swap impact — shows exactly how today's totals have shifted from the original plan, so a
@@ -526,6 +527,7 @@ export default function ClientMealPlan() {
           mealMap={mealMap}
           mealsByCategory={mealsByCategory}
           tier={tier}
+          dietKeys={clientData?.dietary_requirements || []}
           onSelect={handleSwapSelect}
           onClose={() => setSwapModal(null)}
         />

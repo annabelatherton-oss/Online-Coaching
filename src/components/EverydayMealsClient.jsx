@@ -27,7 +27,7 @@ const unprefix = key => key.replace(/^everyday:/, '')
  * and evening snack can only be *requested* — the coach approves or declines before it takes
  * effect, since those are more tightly tied to training and the coach wants control over them.
  */
-export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory, ingredientLib, tier, dailyMacroTargets, mainPlanSlots }) {
+export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory, ingredientLib, tier, dailyMacroTargets, mainPlanSlots, dietKeys }) {
   const [rows, setRows] = useState({}) // slot_type -> row
   const [loading, setLoading] = useState(true)
   const [recipeModal, setRecipeModal] = useState(null) // prefixed slot key
@@ -332,6 +332,7 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
           mealMap={mealMap}
           mealsByCategory={mealsByCategory}
           tier={tier}
+          dietKeys={dietKeys}
           onSelect={(slotKey, mealId) => {
             const realKey = unprefix(slotKey)
             if (swapModal.mode === 'request') sendRequest(realKey, mealId)

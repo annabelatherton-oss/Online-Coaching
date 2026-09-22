@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { applyDislikeSwaps } from '../lib/mealSwaps'
 import { selectOnFocus } from '../lib/formUtils'
+import { mealQualifiesForDiets } from '../lib/diets'
 
 /**
  * Shared meal-plan display components and helpers.
@@ -776,7 +777,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
 
 // ─── Swap modal ───────────────────────────────────────────────────────────────
 
-export function SwapModal({ slotKey, label, category, currentMealId, mealMap, mealsByCategory, tier, onSelect, onClose }) {
+export function SwapModal({ slotKey, label, category, currentMealId, mealMap, mealsByCategory, tier, onSelect, onClose, dietKeys }) {
   const [search, setSearch] = useState('')
 
   const currentMacros = mealMacros(currentMealId, mealMap, tier, null) || { cal: 0, prot: 0, carb: 0, fat: 0 }
@@ -787,7 +788,15 @@ export function SwapModal({ slotKey, label, category, currentMealId, mealMap, me
   // ever opened without a category (shouldn't happen from any current call site).
   const pool = category ? (mealsByCategory?.[category] || []) : Object.values(mealMap)
 
-  const scored = pool
+  // dietKeys undefined (prop not passed by this caller) skips filtering entirely, preserving old
+  // behaviour for any call site that hasn't been updated yet. Passed as [] (a client with no
+  // dietary requirement) still filters down to Standard-eligible meals — a client isn't offered a
+  // meal built specifically for a diet they don't have, same "" = Standard convention used
+  // everywhere else diet filtering happens.
+  const dietsToCheck = dietKeys !== undefined ? (dietKeys.length > 0 ? dietKeys : ['']) : null
+  const dietFilteredPool = dietsToCheck ? pool.filter(m => mealQualifiesForDiets(m, dietsToCheck)) : pool
+
+  const scored = dietFilteredPool
     .filter(m => m.id !== currentMealId)
     .map(m => {
       const mac = mealMacros(m.id, mealMap, tier, null) || { cal: 0, prot: 0, carb: 0, fat: 0 }

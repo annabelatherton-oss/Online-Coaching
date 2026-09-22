@@ -1316,9 +1316,15 @@ const MEAL_SLOTS = [
 ]
 
 // The client's "everyday meals" section only ever uses the *1 slot keys (no A/B options —
-// it's one fixed choice per meal type), plus the two request-only slots.
+// it's one fixed choice per meal type). REQUEST_SLOTS are the two a client can only ever
+// suggest a change to (the coach approves/declines) — every slot, direct or request, otherwise
+// works identically: the coach can pick, edit ingredients for, or change any of them directly.
 const EVERYDAY_DIRECT_SLOTS = ['breakfast1', 'lunch1', 'dinner1']
 const EVERYDAY_REQUEST_SLOTS = ['preworkout', 'evening_snack']
+// Same order the main plan shows its 5 meal categories in (Breakfast, Lunch, Pre-workout,
+// Dinner, Evening Snack), so this section reads the same way instead of grouping direct-pick
+// slots before request-only ones.
+const EVERYDAY_SLOT_ORDER = ['breakfast1', 'lunch1', 'preworkout', 'dinner1', 'evening_snack']
 const EVERYDAY_LABELS = { breakfast1: 'Breakfast', lunch1: 'Lunch', dinner1: 'Dinner', preworkout: 'Pre-workout', evening_snack: 'Evening snack' }
 const EVERYDAY_CAT = { breakfast1: 'breakfast', lunch1: 'lunch', dinner1: 'dinner', preworkout: 'pre_workout', evening_snack: 'evening_snack' }
 
@@ -2297,7 +2303,18 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const isFallback = !row?.meal_id && !!effective.mealId
     const isExpanded = expandedEveryday.has(slotKey)
     const isChanging = changingEveryday.has(slotKey)
-    const slotOptions = mealsByCategory[EVERYDAY_CAT[slotKey]] || []
+    // Never offer a meal built for a diet this client doesn't have (e.g. a vegetarian-only dish
+    // to a client with no dietary requirement) — same rule the main plan's own picker already
+    // applies. The currently-assigned meal stays selectable even if it doesn't comply, so an
+    // existing pick never just disappears from the dropdown out from under the coach.
+    const clientDiets = client.dietary_requirements || []
+    const dietsToCheck = clientDiets.length > 0 ? clientDiets : ['']
+    const rawSlotOptions = mealsByCategory[EVERYDAY_CAT[slotKey]] || []
+    const dietFilteredOptions = rawSlotOptions.filter(m => mealQualifiesForDiets(m, dietsToCheck))
+    const currentEverydayMeal = row?.meal_id ? mealMap[row.meal_id] : null
+    const slotOptions = (currentEverydayMeal && !dietFilteredOptions.some(m => m.id === currentEverydayMeal.id))
+      ? [currentEverydayMeal, ...dietFilteredOptions]
+      : dietFilteredOptions
     const macros = effective.mealId ? mealMacros(effective.mealId, mealMap, effective.tier, effective.overrides) : null
     const remaining = everydayRemaining
     return (
@@ -3212,24 +3229,23 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           </div>
 
           <div className="space-y-2">
-            {EVERYDAY_DIRECT_SLOTS.map(renderEverydaySlot)}
-
-            {EVERYDAY_REQUEST_SLOTS.map(slotKey => {
+            {EVERYDAY_SLOT_ORDER.map(slotKey => {
               const row = everydayRows[slotKey]
+              if (!EVERYDAY_REQUEST_SLOTS.includes(slotKey) || !row?.requested_meal_id) {
+                return renderEverydaySlot(slotKey)
+              }
               return (
                 <div key={slotKey} className="space-y-2">
-                  {row?.requested_meal_id && (
-                    <div className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 dark:bg-amber-900/10 px-3 py-2">
-                      <p className="text-sm text-amber-800 dark:text-amber-300">
-                        <span className="text-xs text-amber-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
-                        wants to switch to <span className="font-medium">{mealMap[row.requested_meal_id]?.name || 'a different meal'}</span>
-                      </p>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <button onClick={() => approveEverydayRequest(row)} className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors">Approve</button>
-                        <button onClick={() => declineEverydayRequest(row)} className="text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Decline</button>
-                      </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 dark:bg-amber-900/10 px-3 py-2">
+                    <p className="text-sm text-amber-800 dark:text-amber-300">
+                      <span className="text-xs text-amber-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
+                      wants to switch to <span className="font-medium">{mealMap[row.requested_meal_id]?.name || 'a different meal'}</span>
+                    </p>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button onClick={() => approveEverydayRequest(row)} className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors">Approve</button>
+                      <button onClick={() => declineEverydayRequest(row)} className="text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Decline</button>
                     </div>
-                  )}
+                  </div>
                   {renderEverydaySlot(slotKey)}
                 </div>
               )
