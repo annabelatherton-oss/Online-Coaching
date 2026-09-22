@@ -2259,14 +2259,30 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     }
   }
 
+  // Pre-workout/evening-snack are request-only in Everyday Meals (see EVERYDAY_REQUEST_SLOTS) —
+  // client_everyday_meals only ever gets a row for them once a request is made AND approved, so
+  // most clients have nothing there even though they're still eating whatever the main plan (or a
+  // pinned static meal) currently has for that slot every day. Falling back to the main plan's
+  // current meal for those two slots is what makes "what's left for the day" actually reflect the
+  // client's full day instead of silently assuming pre-workout/snack are worth 0 kcal.
+  function effectiveEverydayMeal(slotKey) {
+    const row = everydayRows[slotKey]
+    if (row?.meal_id) return { mealId: row.meal_id, overrides: everydayOverrides[slotKey], tier: null }
+    if (EVERYDAY_REQUEST_SLOTS.includes(slotKey) && editedSlots[slotKey]) {
+      return { mealId: editedSlots[slotKey], overrides: ingredientOverrides[slotKey], tier }
+    }
+    return { mealId: null, overrides: null, tier: null }
+  }
+
   // Everyday meals' full day total (every one currently set, added together) and what's left
   // against the client's real target — the SAME two figures on every meal's card, since the point
   // is "how much room is there in the whole day" to freely allocate across meals, not a running
   // total that changes depending on which order the cards happen to be listed in.
   const everydayDailyTotal = [...EVERYDAY_DIRECT_SLOTS, ...EVERYDAY_REQUEST_SLOTS]
-    .filter(slotKey => everydayRows[slotKey]?.meal_id)
-    .reduce((acc, slotKey) => {
-      const m = mealMacros(everydayRows[slotKey].meal_id, mealMap, null, everydayOverrides[slotKey])
+    .map(effectiveEverydayMeal)
+    .filter(e => e.mealId)
+    .reduce((acc, e) => {
+      const m = mealMacros(e.mealId, mealMap, e.tier, e.overrides)
       return { cal: acc.cal + m.cal, prot: acc.prot + m.prot, carb: acc.carb + m.carb, fat: acc.fat + m.fat }
     }, { cal: 0, prot: 0, carb: 0, fat: 0 })
   const everydayRemaining = remainingFor(everydayDailyTotal)
@@ -2277,10 +2293,12 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   // pre-workout/evening-snack request, since both end up in the same "meal_id is set" shape.
   function renderEverydaySlot(slotKey) {
     const row = everydayRows[slotKey]
+    const effective = effectiveEverydayMeal(slotKey)
+    const isFallback = !row?.meal_id && !!effective.mealId
     const isExpanded = expandedEveryday.has(slotKey)
     const isChanging = changingEveryday.has(slotKey)
     const slotOptions = mealsByCategory[EVERYDAY_CAT[slotKey]] || []
-    const macros = row?.meal_id ? mealMacros(row.meal_id, mealMap, null, everydayOverrides[slotKey]) : null
+    const macros = effective.mealId ? mealMacros(effective.mealId, mealMap, effective.tier, effective.overrides) : null
     const remaining = everydayRemaining
     return (
       <div key={slotKey} className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -2291,7 +2309,8 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
             className={`flex-1 min-w-0 text-left text-sm text-gray-800 dark:text-gray-200 truncate ${row?.meal_id ? 'hover:text-brand-600 dark:hover:text-brand-400 cursor-pointer' : 'cursor-default'}`}
           >
             <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
-            {row?.meal_id ? (mealMap[row.meal_id]?.name || 'Unknown meal') : 'Not chosen yet'}
+            {effective.mealId ? (mealMap[effective.mealId]?.name || 'Unknown meal') : 'Not chosen yet'}
+            {isFallback && <span className="text-xs text-gray-400 dark:text-gray-500 italic ml-1">(from plan)</span>}
           </button>
           <button
             type="button"
@@ -2330,7 +2349,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           <div className="px-3 pb-2.5">
             <select
               className="input text-xs py-1"
-              value={row?.meal_id || ''}
+              value={row?.meal_id || (isFallback ? effective.mealId : '') || ''}
               onChange={e => { changeEverydayMeal(slotKey, e.target.value); toggleChangingEveryday(slotKey) }}
             >
               <option value="">Not chosen yet</option>

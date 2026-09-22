@@ -27,7 +27,7 @@ const unprefix = key => key.replace(/^everyday:/, '')
  * and evening snack can only be *requested* — the coach approves or declines before it takes
  * effect, since those are more tightly tied to training and the coach wants control over them.
  */
-export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory, ingredientLib, tier, dailyMacroTargets }) {
+export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory, ingredientLib, tier, dailyMacroTargets, mainPlanSlots }) {
   const [rows, setRows] = useState({}) // slot_type -> row
   const [loading, setLoading] = useState(true)
   const [recipeModal, setRecipeModal] = useState(null) // prefixed slot key
@@ -152,16 +152,29 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
   // choice, so no "Swapped"/"Revert" affordance ever shows for it.
   const editedSlots = {}, templateSlots = {}, ingredientOverrides = {}
   for (const slot of ALL_EVERYDAY_SLOTS) {
+    const e = effectiveEverydayMeal(slot)
+    editedSlots[prefix(slot.key)] = e.mealId
+    templateSlots[prefix(slot.key)] = e.mealId
+    ingredientOverrides[prefix(slot.key)] = e.overrides
+  }
+
+  // Pre-workout/evening snack are request-only here — nothing is saved to client_everyday_meals
+  // for them until a request is made AND approved, so most clients have nothing set even though
+  // they're still eating whatever their actual plan currently has for that slot every day. Falling
+  // back to the main plan's current meal for just these two is what makes "remaining" reflect the
+  // client's real full day instead of silently treating pre-workout/snack as 0 kcal.
+  function effectiveEverydayMeal(slot) {
     const row = rows[slot.key]
-    editedSlots[prefix(slot.key)] = row?.meal_id || null
-    templateSlots[prefix(slot.key)] = row?.meal_id || null
-    ingredientOverrides[prefix(slot.key)] = row?.ingredient_overrides || null
+    if (row?.meal_id) return { mealId: row.meal_id, overrides: row.ingredient_overrides, tier: null, isFallback: false }
+    const fallback = REQUEST_SLOTS.includes(slot) ? mainPlanSlots?.[slot.key] : null
+    if (fallback?.mealId) return { mealId: fallback.mealId, overrides: fallback.overrides, tier, isFallback: true }
+    return { mealId: null, overrides: null, tier: null, isFallback: false }
   }
 
   const dailyTotal = ALL_EVERYDAY_SLOTS.reduce((acc, slot) => {
-    const row = rows[slot.key]
-    if (!row?.meal_id) return acc
-    const m = mealMacros(row.meal_id, mealMap, tier, row.ingredient_overrides) || { cal: 0, prot: 0, carb: 0, fat: 0 }
+    const e = effectiveEverydayMeal(slot)
+    if (!e.mealId) return acc
+    const m = mealMacros(e.mealId, mealMap, e.tier, e.overrides) || { cal: 0, prot: 0, carb: 0, fat: 0 }
     return { cal: acc.cal + m.cal, prot: acc.prot + m.prot, carb: acc.carb + m.carb, fat: acc.fat + m.fat }
   }, { cal: 0, prot: 0, carb: 0, fat: 0 })
 
@@ -221,18 +234,20 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
       <div className="space-y-3">
         {REQUEST_SLOTS.map(slot => {
           const row = rows[slot.key]
-          const currentMealId = row?.meal_id || null
+          const effective = effectiveEverydayMeal(slot)
           const requestedMeal = row?.requested_meal_id ? mealMap[row.requested_meal_id] : null
           return (
             <div key={slot.key} className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{slot.label}</span>
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  {slot.label}{effective.isFallback && <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal normal-case italic">(from your plan)</span>}
+                </span>
                 {!requestedMeal && (
                   <button
                     onClick={() => openSwap(prefix(slot.key), slot.label, slot.cat, 'request')}
                     className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 flex-shrink-0 whitespace-nowrap"
                   >
-                    {currentMealId ? 'Request a different one' : 'Request a meal'}
+                    {effective.mealId ? 'Request a different one' : 'Request a meal'}
                   </button>
                 )}
               </div>
@@ -242,17 +257,17 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
                   <button onClick={() => cancelRequest(slot.key)} className="text-xs text-amber-600 dark:text-amber-400 hover:underline flex-shrink-0">Cancel</button>
                 </div>
               )}
-              {currentMealId ? (
+              {effective.mealId ? (
                 <MealCard
                   slotKey={prefix(slot.key)}
                   label={slot.label}
                   cat={slot.cat}
-                  mealId={currentMealId}
-                  templateMealId={currentMealId}
+                  mealId={effective.mealId}
+                  templateMealId={effective.mealId}
                   mealMap={mealMap}
                   mealsByCategory={mealsByCategory}
-                  tier={tier}
-                  overrides={row.ingredient_overrides}
+                  tier={effective.tier}
+                  overrides={effective.overrides}
                   onSwap={(slotKey, label, cat) => openSwap(slotKey, label, cat, 'request')}
                   onViewRecipe={setRecipeModal}
                   ingredientLib={ingredientLib}

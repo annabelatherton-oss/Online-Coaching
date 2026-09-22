@@ -438,6 +438,10 @@ export default function ClientMealPlan() {
         ingredientLib={ingredientLib}
         tier={tier}
         dailyMacroTargets={dailyMacroTargets}
+        mainPlanSlots={{
+          preworkout: { mealId: editedSlots.preworkout || null, overrides: ingredientOverrides.preworkout },
+          evening_snack: { mealId: editedSlots.evening_snack || null, overrides: ingredientOverrides.evening_snack },
+        }}
       />
 
       {/* Swap impact — shows exactly how today's totals have shifted from the original plan, so a
