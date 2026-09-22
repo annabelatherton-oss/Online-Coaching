@@ -17,6 +17,7 @@ import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import { getMealConflicts, findSafeMeal, findSafeAlternative } from '../../lib/mealSwaps'
 import { macrosForQty } from '../../lib/ingredientMacros'
+import { notifyClient } from '../../lib/pushNotifications'
 import { ACTIVITY_LABELS, GOAL_LABELS, estimateMaintenanceCalories } from '../../lib/calorieSuggestion'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import DislikePicker from '../../components/DislikePicker'
@@ -1852,6 +1853,8 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   const [savingSlots, setSavingSlots] = useState(false)
   const [slotsError, setSlotsError] = useState('')
   const [repeating, setRepeating] = useState(false)
+  const [notifying, setNotifying] = useState(null) // 'plan' | 'everyday' | null
+  const [notifyResult, setNotifyResult] = useState({})
   const [mealsByCategory, setMealsByCategory] = useState({})
   const [mealMap, setMealMap] = useState({})
   const [library, setLibrary] = useState([])
@@ -2525,6 +2528,25 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     setStaticDirty(true)
   }
 
+  const NOTIFY_MESSAGES = {
+    plan: { title: 'Meal plan updated', body: 'Your coach just updated your meal plan — tap to see what changed.' },
+    everyday: { title: 'Everyday meals updated', body: 'Your coach just updated your everyday meals — tap to check it out.' },
+  }
+
+  async function handleNotifyClient(kind) {
+    setNotifying(kind)
+    setNotifyResult(prev => ({ ...prev, [kind]: '' }))
+    const result = await notifyClient({ clientId: client.id, ...NOTIFY_MESSAGES[kind], url: '/client/meals' })
+    const message = result.sent
+      ? 'Notified ✓'
+      : result.reason === 'not_subscribed'
+      ? "Client hasn't turned on notifications"
+      : 'Could not send — try again'
+    setNotifyResult(prev => ({ ...prev, [kind]: message }))
+    setNotifying(null)
+    setTimeout(() => setNotifyResult(prev => ({ ...prev, [kind]: '' })), 4000)
+  }
+
   async function handleRepeatLastWeek() {
     if (!assignment || effectiveWeek == null) return
     setRepeating(true)
@@ -3116,9 +3138,15 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 </h3>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Follows the master plan — change any meal for this client only</p>
               </div>
-              <button onClick={handleRepeatLastWeek} disabled={repeating || effectiveWeek == null} className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap">
-                {repeating ? 'Loading…' : `← Repeat Week ${effectiveWeek != null && effectiveWeek > 1 ? effectiveWeek - 1 : 20}`}
-              </button>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {notifyResult.plan && <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">{notifyResult.plan}</span>}
+                <button onClick={() => handleNotifyClient('plan')} disabled={notifying === 'plan'} className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap">
+                  {notifying === 'plan' ? 'Notifying…' : 'Notify client of changes'}
+                </button>
+                <button onClick={handleRepeatLastWeek} disabled={repeating || effectiveWeek == null} className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap">
+                  {repeating ? 'Loading…' : `← Repeat Week ${effectiveWeek != null && effectiveWeek > 1 ? effectiveWeek - 1 : 20}`}
+                </button>
+              </div>
             </div>
 
             {swapRuleSaved && (
@@ -3243,16 +3271,24 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           used for breakfast/lunch/dinner), or a client can request a pre-workout/evening-snack swap
           themselves for the coach to approve/decline — either path lands in the same row below. */}
       <div className="card space-y-3">
-          <div>
-            <h3 className="font-semibold text-gray-900 dark:text-white">Everyday Meals</h3>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-              A fixed breakfast, lunch, dinner, pre-workout and evening snack this client eats every day instead of
-              following the plan above — set any of them yourself with the arrow next to each one, or a client can
-              request their own pre-workout/evening-snack change for you to approve below.
-            </p>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-              These replace that meal slot entirely while active — they're a separate fixed choice, not interchangeable with the Option A/B meals in the plan above.
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Everyday Meals</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                A fixed breakfast, lunch, dinner, pre-workout and evening snack this client eats every day instead of
+                following the plan above — set any of them yourself with the arrow next to each one, or a client can
+                request their own pre-workout/evening-snack change for you to approve below.
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                These replace that meal slot entirely while active — they're a separate fixed choice, not interchangeable with the Option A/B meals in the plan above.
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+              <button onClick={() => handleNotifyClient('everyday')} disabled={notifying === 'everyday'} className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap">
+                {notifying === 'everyday' ? 'Notifying…' : 'Notify client of changes'}
+              </button>
+              {notifyResult.everyday && <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">{notifyResult.everyday}</span>}
+            </div>
           </div>
 
           <div className="space-y-2">

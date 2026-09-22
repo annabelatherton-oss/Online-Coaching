@@ -98,3 +98,21 @@ Setup, on top of everything above:
 The coach gets one notification every Friday at 7am UK time regardless of how many clients
 they have or how recently they were onboarded — there's no "too new" exclusion like the
 client-side reminder has, since reviewing check-ins is always relevant once a coach has any.
+
+---
+
+## "Notify client" button (coach-triggered, not scheduled)
+
+A "Notify client of changes" button on the client's Meal Plan tab and Everyday Meals card
+(`CoachClientProfile.jsx`) sends a one-off push straight to that client — e.g. after editing
+their plan — instead of waiting for Friday. Unlike every other push in this app, this one
+carries a real encrypted message (see `supabase/functions/_shared/webpush.ts`, RFC 8291
+aes128gcm) so the notification text actually differs ("meal plan updated" vs. "everyday meals
+updated") rather than relying on one fixed notification baked into the service worker.
+
+Setup, on top of everything above (same VAPID secrets, same client `push_subscriptions` rows —
+no new migration needed):
+1. Deploy the new function: `npx supabase functions deploy send-client-notification`
+
+That's it — no cron job, it fires on click. If the client hasn't turned on push notifications
+yet, the button shows "Client hasn't turned on notifications" instead of silently doing nothing.

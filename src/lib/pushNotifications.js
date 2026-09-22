@@ -58,3 +58,18 @@ export async function unregisterPushNotifications({ clientId, coachId } = {}) {
     console.error('Push unsubscribe failed:', err)
   }
 }
+
+// One-off push straight from the coach to one client (e.g. "your meal plan changed"), unlike the
+// two scheduled Friday reminders — those send no payload at all and rely on a fixed notification
+// baked into the service worker, but a coach-authored message needs its own real text/link to
+// reach the device, so the send-client-notification Edge Function encrypts a proper Web Push
+// payload for this one (see supabase/functions/_shared/webpush.ts). Returns why nothing was sent
+// (e.g. the client has never turned push on) so the caller can show a clear message instead of a
+// silent no-op.
+export async function notifyClient({ clientId, title, body, url }) {
+  const { data, error } = await supabase.functions.invoke('send-client-notification', {
+    body: { clientId, title, body, url },
+  })
+  if (error) return { sent: false, reason: error.message }
+  return data
+}
