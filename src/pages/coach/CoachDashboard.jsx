@@ -138,7 +138,7 @@ export default function CoachDashboard() {
               .eq('acknowledged', false),
             supabase
               .from('client_everyday_meals')
-              .select('client_id, slot_type, requested_meal_id, meal:meal_id(name), requested_meal:requested_meal_id(name)')
+              .select('client_id, slot_type, meal:meal_id(name)')
               .in('client_id', clientIds)
               .eq('needs_coach_review', true),
             supabase
@@ -191,11 +191,7 @@ export default function CoachDashboard() {
           const EVERYDAY_SLOT_LABELS = { breakfast1: 'breakfast', lunch1: 'lunch', dinner1: 'dinner', preworkout: 'pre-workout', evening_snack: 'evening snack' }
           ;(everydayRows || []).forEach(r => {
             const slotLabel = EVERYDAY_SLOT_LABELS[r.slot_type] || 'meal'
-            if (r.requested_meal_id) {
-              flag(r.client_id, { text: `Wants to swap their everyday ${slotLabel} to "${r.requested_meal?.name || 'a different meal'}"`, tone: 'amber' })
-            } else {
-              flag(r.client_id, { text: `Everyday ${slotLabel} changed — check macros`, tone: 'amber' })
-            }
+            flag(r.client_id, { text: `Everyday ${slotLabel} changed — check macros`, tone: 'amber' })
           })
 
           ;(weekSwapRows || []).forEach(r => {

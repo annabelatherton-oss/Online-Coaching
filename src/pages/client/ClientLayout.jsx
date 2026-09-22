@@ -16,12 +16,16 @@ const HELP_TOPICS = [
     a: 'iPhone (Safari): tap the Share icon, then "Add to Home Screen".\n\nAndroid (Chrome): tap the ⋮ menu, then "Install app" or "Add to Home screen".\n\nDo this and open the app from that icon — it’s the only way to get reminders and updates from your coach as notifications.',
   },
   {
+    q: 'Turn on notifications',
+    a: 'You should be asked to enable notifications the first time you open the app (after adding it to your Home Screen). If you said "Not now" or dismissed it:\n\niPhone: Settings app → Notifications → find this app in the list → turn on "Allow Notifications".\n\nAndroid: Settings → Apps → find this app → Notifications → turn them on. Or, in Chrome, open the site, tap the padlock/info icon next to the address bar → Permissions → Notifications → Allow.\n\nIf you don’t see the app listed anywhere, make sure you’ve added it to your Home Screen and opened it from that icon at least once first.',
+  },
+  {
     q: 'Swap a meal',
     a: 'Open a meal in My Meal Plan and tap Swap to pick another option with similar calories and macros.',
   },
   {
     q: 'Eating the same meals every day',
-    a: 'If you’d rather have the same breakfast, lunch and dinner every day instead of the rotating plan, set that up in the Everyday Meals section on My Meal Plan. Pre-workout and evening snack can be requested there too — your coach approves those before they’re active.',
+    a: 'If you’d rather have the same meals every day instead of the rotating plan, set that up in the Everyday Meals section on My Meal Plan — breakfast, lunch, pre-workout, dinner and evening snack all apply as soon as you pick them.',
   },
   {
     q: 'Mark days you can’t train',

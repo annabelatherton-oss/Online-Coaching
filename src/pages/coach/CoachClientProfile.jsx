@@ -1342,15 +1342,11 @@ const MEAL_SLOTS = [
   { key: 'dinner2',    label: 'Dinner B',    cat: 'dinner' },
 ]
 
-// The client's "everyday meals" section only ever uses the *1 slot keys (no A/B options —
-// it's one fixed choice per meal type). REQUEST_SLOTS are the two a client can only ever
-// suggest a change to (the coach approves/declines) — every slot, direct or request, otherwise
-// works identically: the coach can pick, edit ingredients for, or change any of them directly.
-const EVERYDAY_DIRECT_SLOTS = ['breakfast1', 'lunch1', 'dinner1']
-const EVERYDAY_REQUEST_SLOTS = ['preworkout', 'evening_snack']
-// Same order the main plan shows its 5 meal categories in (Breakfast, Lunch, Pre-workout,
-// Dinner, Evening Snack), so this section reads the same way instead of grouping direct-pick
-// slots before request-only ones.
+// The client's "everyday meals" section only ever uses the *1 slot keys (no A/B options — it's
+// one fixed choice per meal type). All 5 slots behave identically — the client can pick any of
+// them directly (no coach approval needed), and the coach can pick, edit ingredients for, or
+// change any of them too. Same order the main plan shows its 5 meal categories in (Breakfast,
+// Lunch, Pre-workout, Dinner, Evening Snack).
 const EVERYDAY_SLOT_ORDER = ['breakfast1', 'lunch1', 'preworkout', 'dinner1', 'evening_snack']
 const EVERYDAY_LABELS = { breakfast1: 'Breakfast', lunch1: 'Lunch', dinner1: 'Dinner', preworkout: 'Pre-workout', evening_snack: 'Evening snack' }
 const EVERYDAY_CAT = { breakfast1: 'breakfast', lunch1: 'lunch', dinner1: 'dinner', preworkout: 'pre_workout', evening_snack: 'evening_snack' }
@@ -1948,18 +1944,6 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     await loadEverydayMeals()
   }
 
-  async function approveEverydayRequest(row) {
-    await supabase.from('client_everyday_meals').update({ meal_id: row.requested_meal_id, requested_meal_id: null, needs_coach_review: false }).eq('id', row.id)
-    await loadEverydayMeals()
-    await loadMealSwapAcks()
-  }
-
-  async function declineEverydayRequest(row) {
-    await supabase.from('client_everyday_meals').update({ requested_meal_id: null, needs_coach_review: false }).eq('id', row.id)
-    await loadEverydayMeals()
-    await loadMealSwapAcks()
-  }
-
   // Lets the coach set (or change) a client's everyday breakfast/lunch/dinner directly, regardless
   // of what the client themselves currently has picked — same table the client's own picker
   // writes to, so this simply overrides it. Ingredient overrides are cleared since they were keyed
@@ -1982,7 +1966,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         .order('created_at', { ascending: false }),
       supabase
         .from('client_everyday_meals')
-        .select('id, slot_type, requested_meal_id, meal:meal_id(name), requested_meal:requested_meal_id(name)')
+        .select('id, slot_type, meal:meal_id(name)')
         .eq('client_id', client.id)
         .eq('needs_coach_review', true),
     ])
@@ -2316,18 +2300,13 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     }
   }
 
-  // Pre-workout/evening-snack are request-only in Everyday Meals (see EVERYDAY_REQUEST_SLOTS) —
-  // client_everyday_meals only ever gets a row for them once a request is made AND approved, so
-  // most clients have nothing there even though they're still eating whatever the main plan (or a
-  // pinned static meal) currently has for that slot every day. Falling back to the main plan's
-  // current meal for those two slots is what makes "what's left for the day" actually reflect the
-  // client's full day instead of silently assuming pre-workout/snack are worth 0 kcal.
+  // All 5 everyday slots behave identically now — a slot has whatever meal the client (or coach)
+  // last set in client_everyday_meals, or nothing at all, same as breakfast/lunch/dinner. No more
+  // falling back to the main plan's current meal for pre-workout/evening-snack now that they're no
+  // longer request-only.
   function effectiveEverydayMeal(slotKey) {
     const row = everydayRows[slotKey]
     if (row?.meal_id) return { mealId: row.meal_id, overrides: everydayOverrides[slotKey], tier: null }
-    if (EVERYDAY_REQUEST_SLOTS.includes(slotKey) && editedSlots[slotKey]) {
-      return { mealId: editedSlots[slotKey], overrides: ingredientOverrides[slotKey], tier }
-    }
     return { mealId: null, overrides: null, tier: null }
   }
 
@@ -2335,7 +2314,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   // against the client's real target — the SAME two figures on every meal's card, since the point
   // is "how much room is there in the whole day" to freely allocate across meals, not a running
   // total that changes depending on which order the cards happen to be listed in.
-  const everydayDailyTotal = [...EVERYDAY_DIRECT_SLOTS, ...EVERYDAY_REQUEST_SLOTS]
+  const everydayDailyTotal = EVERYDAY_SLOT_ORDER
     .map(effectiveEverydayMeal)
     .filter(e => e.mealId)
     .reduce((acc, e) => {
@@ -2351,7 +2330,6 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   function renderEverydaySlot(slotKey) {
     const row = everydayRows[slotKey]
     const effective = effectiveEverydayMeal(slotKey)
-    const isFallback = !row?.meal_id && !!effective.mealId
     const isExpanded = expandedEveryday.has(slotKey)
     const isChanging = changingEveryday.has(slotKey)
     // Never offer a meal built for a diet this client doesn't have (e.g. a vegetarian-only dish
@@ -2373,22 +2351,11 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         <div className="w-full flex items-center gap-2 px-3 py-2">
           <button
             type="button"
-            onClick={async () => {
-              if (row?.meal_id) { toggleExpandedEveryday(slotKey); return }
-              // Nothing to edit yet if even the fallback is empty. Otherwise this is a
-              // pre-workout/evening-snack row only ever showing the main plan's meal (see
-              // effectiveEverydayMeal) — there's no everyday row to attach ingredient overrides
-              // to until one exists, so editing it here first turns it into a real everyday
-              // choice (same meal, no overrides yet), then opens the editor on that.
-              if (!effective.mealId) return
-              await changeEverydayMeal(slotKey, effective.mealId)
-              toggleExpandedEveryday(slotKey)
-            }}
+            onClick={() => { if (row?.meal_id) toggleExpandedEveryday(slotKey) }}
             className={`flex-1 min-w-0 text-left text-sm text-gray-800 dark:text-gray-200 truncate ${effective.mealId ? 'hover:text-brand-600 dark:hover:text-brand-400 cursor-pointer' : 'cursor-default'}`}
           >
             <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
             {effective.mealId ? (mealMap[effective.mealId]?.name || 'Unknown meal') : 'Not chosen yet'}
-            {isFallback && <span className="text-xs text-gray-400 dark:text-gray-500 italic ml-1">(from plan)</span>}
           </button>
           <button
             type="button"
@@ -2427,7 +2394,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           <div className="px-3 pb-2.5">
             <select
               className="input text-xs py-1"
-              value={row?.meal_id || (isFallback ? effective.mealId : '') || ''}
+              value={row?.meal_id || ''}
               onChange={e => { changeEverydayMeal(slotKey, e.target.value); toggleChangingEveryday(slotKey) }}
             >
               <option value="">Not chosen yet</option>
@@ -3029,9 +2996,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           {everydayReviews.map(row => (
             <div key={row.id} className="flex items-center justify-between gap-3">
               <p className="text-sm text-amber-800 dark:text-amber-300">
-                {row.requested_meal_id
-                  ? <>Client wants to switch their everyday {EVERYDAY_LABELS[row.slot_type] || 'meal'} to <span className="font-medium">{row.requested_meal?.name || 'a different meal'}</span> — see below to approve</>
-                  : <>Client changed their everyday <span className="font-medium">{row.meal?.name || 'meal'}</span> — check it still fits their daily macros</>}
+                Client changed their everyday <span className="font-medium">{EVERYDAY_LABELS[row.slot_type] || 'meal'}</span> to <span className="font-medium">{row.meal?.name || 'a meal'}</span> — check it still fits their daily macros
               </p>
               <button
                 onClick={() => acknowledgeEverydayReview(row.id)}
@@ -3322,9 +3287,9 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         </>
       )}
 
-      {/* Everyday meals — the coach can set any of the 5 slots directly (same "Change meal" picker
-          used for breakfast/lunch/dinner), or a client can request a pre-workout/evening-snack swap
-          themselves for the coach to approve/decline — either path lands in the same row below. */}
+      {/* Everyday meals — the coach can set any of the 5 slots directly at any time (same "Change
+          meal" picker used throughout), and the client can pick any of them directly too — nothing
+          here needs coach approval before it takes effect. */}
       <div className="card space-y-3">
           <div className="flex items-start justify-between gap-3">
             <h3 className="font-semibold text-gray-900 dark:text-white">Everyday Meals</h3>
@@ -3337,27 +3302,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           </div>
 
           <div className="space-y-2">
-            {EVERYDAY_SLOT_ORDER.map(slotKey => {
-              const row = everydayRows[slotKey]
-              if (!EVERYDAY_REQUEST_SLOTS.includes(slotKey) || !row?.requested_meal_id) {
-                return renderEverydaySlot(slotKey)
-              }
-              return (
-                <div key={slotKey} className="space-y-2">
-                  <div className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 dark:bg-amber-900/10 px-3 py-2">
-                    <p className="text-sm text-amber-800 dark:text-amber-300">
-                      <span className="text-xs text-amber-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
-                      wants to switch to <span className="font-medium">{mealMap[row.requested_meal_id]?.name || 'a different meal'}</span>
-                    </p>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button onClick={() => approveEverydayRequest(row)} className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors">Approve</button>
-                      <button onClick={() => declineEverydayRequest(row)} className="text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Decline</button>
-                    </div>
-                  </div>
-                  {renderEverydaySlot(slotKey)}
-                </div>
-              )
-            })}
+            {EVERYDAY_SLOT_ORDER.map(slotKey => renderEverydaySlot(slotKey))}
           </div>
 
           {everydayDailyTotal.cal > 0 && (
@@ -3488,6 +3433,10 @@ function TrainingTab({ client, coachId, onSaved }) {
     client.top_lifts?.[2]?.name || '',
   ])
   const [savingLifts, setSavingLifts] = useState(false)
+  // Bridges the "assigned training block" summary card below to ClientWeeklyPlan's own
+  // populate/re-populate logic, so there's one box for the assigned block instead of two.
+  const weeklyPlanRef = useRef(null)
+  const [populateInfo, setPopulateInfo] = useState(null)
 
   async function load() {
     const [{ data: progs }, { data: asgn }] = await Promise.all([
@@ -3687,6 +3636,15 @@ function TrainingTab({ client, coachId, onSaved }) {
               </div>
             </div>
             <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5 flex-shrink-0">
+              {populateInfo?.assignedProgram && (
+                <button
+                  onClick={() => weeklyPlanRef.current?.populate()}
+                  disabled={populateInfo.populating}
+                  className="text-xs text-brand-500 hover:text-brand-700 font-medium whitespace-nowrap disabled:opacity-50"
+                >
+                  {populateInfo.populating ? 'Populating…' : populateInfo.hasAnySchedule ? 'Re-populate schedule' : 'Populate schedule'}
+                </button>
+              )}
               <Link to={`/coach/training/${assignment.program_id}`} className="text-xs text-brand-500 hover:text-brand-700 font-medium whitespace-nowrap">Edit exercises</Link>
               <button onClick={() => { setForm({ block: getProgBlock(assignment.program_name) || '', days: getProgDays(assignment.program_name) || '' }); setShowForm(true) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium whitespace-nowrap">Change</button>
               <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium whitespace-nowrap">Remove</button>
@@ -3694,6 +3652,7 @@ function TrainingTab({ client, coachId, onSaved }) {
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
             If more than one block shares this name, use "Edit exercises" here rather than the Training list — it always opens the exact block assigned to this client.
+            {populateInfo?.assignedProgram && ` This block has ${(populateInfo.assignedProgram.training_sessions || []).length} sessions · ${populateInfo.matchedDays} days matched.`}
           </p>
 
           {(() => {
@@ -3711,7 +3670,7 @@ function TrainingTab({ client, coachId, onSaved }) {
         </div>
       )}
 
-      <ClientWeeklyPlan key={reloadKey} clientId={client.id} coachId={coachId} assignment={assignment} />
+      <ClientWeeklyPlan ref={weeklyPlanRef} key={reloadKey} clientId={client.id} coachId={coachId} assignment={assignment} onPopulateInfo={setPopulateInfo} />
 
       <div className="card space-y-4">
         <div>

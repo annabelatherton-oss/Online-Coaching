@@ -11,6 +11,10 @@ const HELP_TOPICS = [
     a: 'iPhone (Safari): tap the Share icon, then "Add to Home Screen".\n\nAndroid (Chrome): tap the ⋮ menu, then "Install app" or "Add to Home screen".\n\nOnce it’s added, open it from the Home Screen icon rather than the browser — that’s what lets it receive push notifications.',
   },
   {
+    q: 'Turn on notifications',
+    a: 'You should be asked to enable notifications the first time you open the app (after adding it to your Home Screen). If you said "Not now" or dismissed it:\n\niPhone: Settings app → Notifications → find this app in the list → turn on "Allow Notifications".\n\nAndroid: Settings → Apps → find this app → Notifications → turn them on. Or, in Chrome, open the site, tap the padlock/info icon next to the address bar → Permissions → Notifications → Allow.\n\nIf you don’t see the app listed anywhere, make sure you’ve added it to your Home Screen and opened it from that icon at least once first.',
+  },
+  {
     q: 'Notify a client their plan changed',
     a: 'On a client’s profile, open the Meal Plan or Everyday Meals tab and use the "Notify client of changes" button. It sends them a push notification — they need notifications turned on and the app installed to their Home Screen to receive it.',
   },
@@ -24,7 +28,7 @@ const HELP_TOPICS = [
   },
   {
     q: 'Everyday Meals',
-    a: 'Some clients prefer eating the same breakfast/lunch/dinner every day instead of a rotating plan. Set their fixed meals from the Everyday Meals tab on their profile — pre-workout and evening snack can be client-requested, but you approve those first.',
+    a: 'Some clients prefer eating the same meals every day instead of a rotating plan. Set their fixed meals from the Everyday Meals section on their profile — all 5 slots (breakfast, lunch, pre-workout, dinner, evening snack) apply immediately, whether you or the client picks them, no approval step.',
   },
   {
     q: '"Needs review" on the dashboard',

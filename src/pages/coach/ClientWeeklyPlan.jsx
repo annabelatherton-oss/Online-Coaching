@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useImperativeHandle, forwardRef } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -64,7 +64,11 @@ function sessionLabel(session, workouts) {
   return session.name
 }
 
-export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
+// forwardRef so the parent (CoachClientProfile's Training tab) can trigger a re-populate from its
+// own "assigned training block" summary card, instead of this component showing a second,
+// separate box about the same assigned block — see onPopulateInfo below for how the parent gets
+// the data it needs (programme name, session count, populating state) to render that button.
+const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachId, assignment, onPopulateInfo }, ref) {
   const [items, setItems] = useState([])
   const [programs, setPrograms] = useState([])
   const [workouts, setWorkouts] = useState([])
@@ -445,13 +449,24 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     await load()
   }
 
-  if (loading) return <LoadingSpinner size="md" className="py-8" />
-
   const hasAnySchedule = items.length > 0
 
   const assignedProgram = assignment
     ? programs.find(p => p.id === assignment.program_id)
     : null
+
+  useImperativeHandle(ref, () => ({
+    populate: () => { if (assignedProgram) populateFromProgram(assignedProgram) },
+  }), [assignedProgram])
+
+  // Reports what the parent's own "assigned training block" card needs to render its own
+  // populate/re-populate button, so that lives in one place instead of a second box here.
+  useEffect(() => {
+    const matchedDays = (assignedProgram?.training_sessions || []).filter(s => parseDaySession(s, workouts)).length
+    onPopulateInfo?.({ assignedProgram, hasAnySchedule, populating, matchedDays })
+  }, [assignedProgram, hasAnySchedule, populating, workouts])
+
+  if (loading) return <LoadingSpinner size="md" className="py-8" />
 
   // Populate banner — "use different block"
   const blockNums = [...new Set(programs.map(p => parseProgram(p.name)?.block).filter(Boolean))].sort()
@@ -524,41 +539,20 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">Weekly Schedule</h3>
         </div>
 
-        {/* Populate banner */}
-        {(assignedProgram || programs.length > 0) && (
-          <div className="mb-4 rounded-xl border border-brand-100 dark:border-brand-800/40 bg-brand-50/50 dark:bg-brand-900/10 px-4 py-3 space-y-2">
-            {assignedProgram ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-600 dark:text-gray-300">
-                    {hasAnySchedule ? 'Re-populate' : 'Populate schedule'} from assigned programme:
-                    <span className="font-semibold text-gray-800 dark:text-white"> {assignment.program_name}</span>
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                    {(assignedProgram.training_sessions || []).length} sessions · {(assignedProgram.training_sessions || []).filter(s => parseDaySession(s, workouts)).length} days matched
-                  </p>
-                </div>
-                <button
-                  onClick={() => populateFromProgram(assignedProgram)}
-                  disabled={populating}
-                  className="btn-primary py-1.5 px-3 text-sm whitespace-nowrap"
-                >
-                  {populating ? 'Populating…' : hasAnySchedule ? 'Re-populate' : 'Populate schedule'}
-                </button>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 dark:text-gray-400">Assign a training programme above to auto-fill the schedule, or add sessions manually below.</p>
-            )}
-
+        {/* Populate/re-populate from the assigned programme is a button on the parent's own
+            "assigned training block" card (see onPopulateInfo/ref above) rather than a second box
+            here — this is only the escape hatch for populating from a DIFFERENT block instead. */}
+        {programs.length > 0 && (
+          <div className="mb-4">
             <button
               onClick={() => { setShowAltPopulate(v => !v); setAltBlock(''); setAltDays('') }}
               className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 transition-colors"
             >
-              {showAltPopulate ? '▲ Hide' : '▾ Use a different block'}
+              {showAltPopulate ? '▲ Hide' : '▾ Populate from a different block'}
             </button>
 
             {showAltPopulate && (
-              <div className="flex flex-wrap gap-3 items-end pt-1">
+              <div className="flex flex-wrap gap-3 items-end pt-2">
                 <div>
                   <label className="label text-xs">Block</label>
                   <select className="input" value={altBlock} onChange={e => { setAltBlock(e.target.value); setAltDays('') }}>
@@ -1193,4 +1187,6 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
       </div>
     </div>
   )
-}
+})
+
+export default ClientWeeklyPlan
