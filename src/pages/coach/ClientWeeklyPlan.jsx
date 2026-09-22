@@ -222,6 +222,15 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
     await load()
   }
 
+  // Clears the client's own note for a day once it's been acted on (the real training/rest/
+  // cardio has been assigned) — leaves every other day's note untouched.
+  async function clearDayPreference(day) {
+    const next = { ...dayPreferences }
+    delete next[day]
+    setDayPreferences(next)
+    await supabase.from('clients').update({ day_preferences: next }).eq('id', clientId)
+  }
+
   async function addCardioItem(day, customLabel, cardioSessionId, durationMinutes, heartRateZone) {
     setSaving(true)
     const existing = items.filter(i => i.day_of_week === day && i.item_type === 'cardio')
@@ -621,13 +630,25 @@ export default function ClientWeeklyPlan({ clientId, coachId, assignment }) {
                       {day}
                     </span>
                     {dayPreferences[day] === 'unavailable' && (
-                      <span className="text-[10px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded-full uppercase tracking-wide flex-shrink-0" title="This client marked themselves unavailable to train this day">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 pl-1.5 pr-1 py-0.5 rounded-full uppercase tracking-wide flex-shrink-0" title="This client marked themselves unavailable to train this day">
                         Can't train
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); clearDayPreference(day) }}
+                          className="normal-case font-normal text-red-400 hover:text-red-700 dark:hover:text-red-200 leading-none px-0.5"
+                          title="Clear this note now that it's been actioned"
+                        >×</button>
                       </span>
                     )}
                     {dayPreferences[day] && dayPreferences[day] !== 'unavailable' && (
-                      <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 px-1.5 py-0.5 rounded-full flex-shrink-0" title="This client noted this as taken by something else — plan around it">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 pl-1.5 pr-1 py-0.5 rounded-full flex-shrink-0" title="This client noted this as taken by something else — plan around it">
                         {dayPreferences[day]}
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); clearDayPreference(day) }}
+                          className="font-normal text-purple-400 hover:text-purple-700 dark:hover:text-purple-200 leading-none px-0.5"
+                          title="Clear this note now that it's been actioned"
+                        >×</button>
                       </span>
                     )}
                     {isEmpty && !isAdding && !isDragTarget && (

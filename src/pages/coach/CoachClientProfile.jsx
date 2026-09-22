@@ -3426,17 +3426,6 @@ function getProgDays(name) {
 
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-function stripDayPrefix(name) {
-  if (!name) return ''
-  for (const d of WEEK_DAYS) {
-    if (name === d) return ''
-    if (name.startsWith(d + ' ') || name.startsWith(d + '—')) {
-      return name.slice(d.length).replace(/^[\s–—\-]+/, '').trim()
-    }
-  }
-  return name
-}
-
 // If a training block's day label is literally "Rest" or "Active Rest",
 // that day should land on the client's schedule as a rest day (not a
 // workout with zero exercises) — this tells the two apart and, for active
@@ -3451,7 +3440,6 @@ function restKind(label) {
 function TrainingTab({ client, coachId, onSaved }) {
   const [programs, setPrograms] = useState([])
   const [assignment, setAssignment] = useState(null)
-  const [assignedSessions, setAssignedSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   // The assign/change form lives at the top of the page, but "Change" is clicked from the
@@ -3487,22 +3475,14 @@ function TrainingTab({ client, coachId, onSaved }) {
     setAssignment(asgn || null)
 
     if (asgn?.program_id) {
-      const [{ data: sessions }, { data: exSessions }] = await Promise.all([
-        supabase
-          .from('training_sessions')
-          .select('id, name, workout_id, workouts(id, name)')
-          .eq('program_id', asgn.program_id),
-        supabase
-          .from('training_sessions')
-          .select('session_exercises(name)')
-          .eq('program_id', asgn.program_id),
-      ])
-      setAssignedSessions(sessions || [])
+      const { data: exSessions } = await supabase
+        .from('training_sessions')
+        .select('session_exercises(name)')
+        .eq('program_id', asgn.program_id)
       setLiftOptions([...new Set(
         (exSessions || []).flatMap(s => (s.session_exercises || []).map(e => e.name)).filter(Boolean)
       )].sort())
     } else {
-      setAssignedSessions([])
       setLiftOptions([])
     }
 
@@ -3775,82 +3755,6 @@ function TrainingTab({ client, coachId, onSaved }) {
         </div>
       </div>
 
-      {assignment && prog && (
-        <div className="card space-y-4">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">{assignment.program_name || prog.name}</h3>
-              <div className="flex items-center gap-2 mt-1">
-                <p className="text-sm text-gray-500 dark:text-gray-400">{prog.weeks_total ?? 12}-week block · Started</p>
-                <input
-                  type="date"
-                  defaultValue={assignment.start_date || assignment.created_at.split('T')[0]}
-                  className="text-sm text-gray-500 dark:text-gray-400 bg-transparent border-b border-gray-300 dark:border-gray-600 focus:outline-none focus:border-brand-500 cursor-pointer"
-                  onChange={async e => {
-                    const val = e.target.value
-                    if (!val) return
-                    await supabase.from('client_training_assignments').update({ start_date: val }).eq('id', assignment.id)
-                    setAssignment(prev => ({ ...prev, start_date: val }))
-                  }}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <Link to={`/coach/training/${assignment.program_id}`} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Edit exercises</Link>
-              <button onClick={() => { setForm({ block: getProgBlock(assignment.program_name) || '', days: getProgDays(assignment.program_name) || '' }); setShowForm(true) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Change</button>
-              <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
-            </div>
-          </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
-            If more than one block shares this name, use "Edit exercises" here rather than the Training list — it always opens the exact block assigned to this client.
-          </p>
-
-          {(() => {
-            const blockTotal = prog.weeks_total ?? 12
-            const blockStart = assignment.start_date || assignment.created_at.split('T')[0]
-            const weeksElapsed = Math.floor((Date.now() - new Date(blockStart).getTime()) / (7 * 24 * 60 * 60 * 1000))
-            if (weeksElapsed < blockTotal) return null
-            return (
-              <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3">
-                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Block complete — time to change</p>
-                <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">This client has completed the {blockTotal}-week block. Assign a new programme when ready.</p>
-              </div>
-            )
-          })()}
-
-          {/* Mon–Sun template from the assigned programme */}
-          {assignedSessions.length > 0 && (() => {
-            const byDay = {}
-            for (const s of assignedSessions) {
-              const day = WEEK_DAYS.find(d => s.name === d || s.name.startsWith(d + ' ') || s.name.startsWith(d + '—'))
-              if (day) byDay[day] = s
-            }
-            return (
-              <div className="space-y-1.5 pt-1">
-                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Programme template</p>
-                {WEEK_DAYS.map(day => {
-                  const s = byDay[day]
-                  const label = stripDayPrefix(s?.workouts?.name)
-                    || (s ? s.name.replace(new RegExp(`^${day}[\\s\\u2013\\u2014\\-]+`), '').trim() || s.name : null)
-                  return (
-                    <div key={day} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${
-                      s
-                        ? 'bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/30'
-                        : 'bg-gray-50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-800'
-                    }`}>
-                      <span className={`text-xs font-bold w-20 flex-shrink-0 ${s ? 'text-brand-600 dark:text-brand-400' : 'text-gray-400 dark:text-gray-600'}`}>{day}</span>
-                      {s
-                        ? <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{label}</span>
-                        : <span className="text-xs text-gray-300 dark:text-gray-700 italic">Rest</span>
-                      }
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })()}
-        </div>
-      )}
     </div>
   )
 }

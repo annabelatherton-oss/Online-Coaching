@@ -6,6 +6,9 @@ import HelpBox from '../../components/HelpBox'
 import { supabase } from '../../lib/supabase'
 import { registerPushNotifications } from '../../lib/pushNotifications'
 import ClientAppTour, { shouldAutoShowTour } from '../../components/ClientAppTour'
+import ClientDayAvailabilityPrompt, { shouldAutoShowDayAvailabilityPrompt } from '../../components/ClientDayAvailabilityPrompt'
+import ClientHomeScreenPrompt, { shouldAutoShowHomeScreenPrompt } from '../../components/ClientHomeScreenPrompt'
+import ClientNotificationsPrompt, { shouldAutoShowNotificationsPrompt } from '../../components/ClientNotificationsPrompt'
 
 const HELP_TOPICS = [
   {
@@ -179,23 +182,46 @@ export default function ClientLayout() {
   const mainRef = useRef(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showTour, setShowTour] = useState(false)
+  const [showDayPrompt, setShowDayPrompt] = useState(false)
+  const [showHomeScreenPrompt, setShowHomeScreenPrompt] = useState(false)
+  const [showNotificationsPrompt, setShowNotificationsPrompt] = useState(false)
+  const [clientRow, setClientRow] = useState(null)
 
-  // First-ever visit gets the app tour automatically; afterwards it's only shown again if the
-  // client taps the "Tour" button in the header.
+  // First-ever visit walks a client through a fixed chain, one popup at a time: app tour →
+  // training-availability → add to Home Screen → enable notifications. Each step's onClose calls
+  // this to show whichever comes next (or nothing, once every step has already been seen). Reads
+  // localStorage directly through each shouldAutoShow* check rather than component state, so it
+  // gives the right answer regardless of render timing.
+  function advanceOnboarding() {
+    if (shouldAutoShowTour()) return
+    if (shouldAutoShowDayAvailabilityPrompt()) { setShowDayPrompt(true); return }
+    if (shouldAutoShowHomeScreenPrompt()) { setShowHomeScreenPrompt(true); return }
+    if (shouldAutoShowNotificationsPrompt()) { setShowNotificationsPrompt(true); return }
+  }
+
   useEffect(() => {
     if (shouldAutoShowTour()) setShowTour(true)
   }, [])
 
-  // Register for push notifications once after login
+  // Fetches this client's own row (needed for the prompts above) and, for a returning client who
+  // already decided on notifications one way or the other, silently keeps their push subscription
+  // in sync — a brand-new client with notifications still undecided is deliberately left alone
+  // here so the browser's native permission dialog never appears before ClientNotificationsPrompt
+  // has had a chance to explain what it's for.
   useEffect(() => {
     if (!session?.user?.id) return
     supabase
       .from('clients')
-      .select('id')
+      .select('id, day_preferences')
       .eq('profile_id', session.user.id)
       .maybeSingle()
       .then(({ data }) => {
-        if (data?.id) registerPushNotifications({ clientId: data.id })
+        if (!data?.id) return
+        if (typeof Notification !== 'undefined' && Notification.permission !== 'default') {
+          registerPushNotifications({ clientId: data.id })
+        }
+        setClientRow(data)
+        advanceOnboarding()
       })
   }, [session?.user?.id])
 
@@ -366,7 +392,28 @@ export default function ClientLayout() {
         </main>
       </div>
 
-      {showTour && <ClientAppTour onClose={() => setShowTour(false)} setSidebarOpen={setSidebarOpen} />}
+      {showTour && (
+        <ClientAppTour
+          onClose={() => {
+            setShowTour(false)
+            if (clientRow) advanceOnboarding()
+          }}
+          setSidebarOpen={setSidebarOpen}
+        />
+      )}
+      {showDayPrompt && clientRow && (
+        <ClientDayAvailabilityPrompt
+          clientId={clientRow.id}
+          dayPreferences={clientRow.day_preferences}
+          onClose={() => { setShowDayPrompt(false); advanceOnboarding() }}
+        />
+      )}
+      {showHomeScreenPrompt && (
+        <ClientHomeScreenPrompt onClose={() => { setShowHomeScreenPrompt(false); advanceOnboarding() }} />
+      )}
+      {showNotificationsPrompt && clientRow && (
+        <ClientNotificationsPrompt clientId={clientRow.id} onClose={() => setShowNotificationsPrompt(false)} />
+      )}
     </div>
   )
 }
