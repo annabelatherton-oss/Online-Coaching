@@ -12,27 +12,42 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
+// Called directly from the coach's browser via supabase.functions.invoke — unlike every
+// cron-fired function in this project, a browser call sends a CORS preflight (OPTIONS) request
+// first, and the browser silently treats the whole call as failed if the response doesn't carry
+// these headers. Every response below (including the OPTIONS one) needs them.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+}
+
 serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 })
+    return json({ error: 'Method not allowed' }, 405)
   }
 
   const authHeader = req.headers.get('Authorization') ?? ''
   const authed = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } })
   const { data: { user }, error: authError } = await authed.auth.getUser()
   if (authError || !user) {
-    return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 })
+    return json({ error: 'Not authenticated' }, 401)
   }
 
   let body: { clientId?: string; newPassword?: string }
   try {
     body = await req.json()
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 })
+    return json({ error: 'Invalid JSON body' }, 400)
   }
   const { clientId, newPassword } = body
   if (!clientId || !newPassword || newPassword.length < 6) {
-    return new Response(JSON.stringify({ error: 'clientId and a newPassword of at least 6 characters are required' }), { status: 400 })
+    return json({ error: 'clientId and a newPassword of at least 6 characters are required' }, 400)
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -44,10 +59,10 @@ serve(async (req) => {
     .eq('id', clientId)
     .maybeSingle()
   if (clientError || !client || client.coach_id !== user.id) {
-    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 })
+    return json({ error: 'Not found' }, 404)
   }
   if (!client.profile_id) {
-    return new Response(JSON.stringify({ error: 'This client has no linked login yet' }), { status: 400 })
+    return json({ error: 'This client has no linked login yet' }, 400)
   }
 
   const { error: updateError } = await supabase.auth.admin.updateUserById(client.profile_id, {
@@ -55,8 +70,8 @@ serve(async (req) => {
     email_confirm: true, // this IS the account being verified — no confirmation email needed
   })
   if (updateError) {
-    return new Response(JSON.stringify({ error: updateError.message }), { status: 500 })
+    return json({ error: updateError.message }, 500)
   }
 
-  return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } })
+  return json({ ok: true })
 })

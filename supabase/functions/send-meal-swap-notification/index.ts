@@ -27,6 +27,18 @@ function vapidKeysConfigured(): boolean {
   return !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY && VAPID_PUBLIC_KEY_X && VAPID_PUBLIC_KEY_Y)
 }
 
+// Called directly from the client's browser via supabase.functions.invoke — unlike every
+// cron-fired function in this project, a browser call sends a CORS preflight (OPTIONS) request
+// first, and the browser silently treats the whole call as failed if the response doesn't carry
+// these headers. Every response below (including the OPTIONS one) needs them.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+}
+
 // ─── base64url <-> bytes ────────────────────────────────────────────────────────
 
 function b64urlToBytes(b64url: string): Uint8Array {
@@ -146,18 +158,21 @@ async function sendPush(sub: any, payloadObj: Record<string, unknown>): Promise<
 // ─── Main handler ──────────────────────────────────────────────────────────────
 
 serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 })
+    return json({ error: 'Method not allowed' }, 405)
   }
   if (!vapidKeysConfigured()) {
-    return new Response(JSON.stringify({ error: 'VAPID keys not configured' }), { status: 500 })
+    return json({ error: 'VAPID keys not configured' }, 500)
   }
 
   const authHeader = req.headers.get('Authorization') ?? ''
   const authed = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } })
   const { data: { user }, error: authError } = await authed.auth.getUser()
   if (authError || !user) {
-    return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 })
+    return json({ error: 'Not authenticated' }, 401)
   }
 
   let body: { weekNumber?: number }
@@ -174,7 +189,7 @@ serve(async (req) => {
     supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
   ])
   if (!client?.coach_id) {
-    return new Response(JSON.stringify({ error: 'No linked coach found for this account' }), { status: 404 })
+    return json({ error: 'No linked coach found for this account' }, 404)
   }
 
   const { data: subRow } = await supabase
@@ -184,9 +199,7 @@ serve(async (req) => {
     .maybeSingle()
 
   if (!subRow) {
-    return new Response(JSON.stringify({ sent: false, reason: 'not_subscribed' }), {
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return json({ sent: false, reason: 'not_subscribed' })
   }
 
   const clientName = callerProfile?.full_name || 'A client'
@@ -200,14 +213,10 @@ serve(async (req) => {
     })
     if (result.status === 410) {
       await supabase.from('push_subscriptions').delete().eq('coach_id', client.coach_id)
-      return new Response(JSON.stringify({ sent: false, reason: 'subscription_expired' }), {
-        headers: { 'Content-Type': 'application/json' },
-      })
+      return json({ sent: false, reason: 'subscription_expired' })
     }
-    return new Response(JSON.stringify({ sent: result.ok, status: result.status }), {
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return json({ sent: result.ok, status: result.status })
   } catch (err) {
-    return new Response(JSON.stringify({ sent: false, error: (err as Error).message }), { status: 500 })
+    return json({ sent: false, error: (err as Error).message }, 500)
   }
 })

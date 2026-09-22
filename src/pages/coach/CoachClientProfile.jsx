@@ -2542,11 +2542,14 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     setNotifying(kind)
     setNotifyResult(prev => ({ ...prev, [kind]: '' }))
     const result = await notifyClient({ clientId: client.id, ...NOTIFY_MESSAGES[kind], url: '/client/meals' })
+    // Surfaces the actual reason (e.g. "Not authenticated", a missing-VAPID-secret message)
+    // rather than a generic "try again" — that generic message is what made an earlier real
+    // bug here (a CORS misconfiguration) impossible to diagnose from the UI alone.
     const message = result.sent
       ? 'Notified ✓'
       : result.reason === 'not_subscribed'
       ? "Client hasn't turned on notifications"
-      : 'Could not send — try again'
+      : `Could not send${result.error || result.reason ? `: ${result.error || result.reason}` : ' — try again'}`
     setNotifyResult(prev => ({ ...prev, [kind]: message }))
     setNotifying(null)
     setTimeout(() => setNotifyResult(prev => ({ ...prev, [kind]: '' })), 4000)
