@@ -6,7 +6,7 @@ import WeightChart from '../../components/WeightChart'
 import DislikePicker from '../../components/DislikePicker'
 import { DayAvailabilityRows } from '../../components/DayAvailability'
 
-function DayAvailabilityCard({ clientId, dayPreferences }) {
+function DayAvailabilityCard({ clientId, coachId, dayPreferences }) {
   return (
     <div className="card space-y-3">
       <div>
@@ -16,7 +16,7 @@ function DayAvailabilityCard({ clientId, dayPreferences }) {
           something else (a sport, a club) — they'll plan your training around it.
         </p>
       </div>
-      <DayAvailabilityRows clientId={clientId} dayPreferences={dayPreferences} />
+      <DayAvailabilityRows clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} />
     </div>
   )
 }
@@ -197,7 +197,7 @@ export default function ClientProfile() {
         </div>
       </div>
 
-      {clientData && <DayAvailabilityCard clientId={clientData.id} dayPreferences={clientData.day_preferences} />}
+      {clientData && <DayAvailabilityCard clientId={clientData.id} coachId={clientData.coach_id} dayPreferences={clientData.day_preferences} />}
 
       {/* My Information — editable intake form */}
       <div className="card space-y-4">

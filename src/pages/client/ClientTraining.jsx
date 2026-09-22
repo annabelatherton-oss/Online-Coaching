@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import ExerciseThumb from '../../components/ExerciseThumb'
+import { DayAvailabilityRows, DAY_NAMES } from '../../components/DayAvailability'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
@@ -50,10 +51,41 @@ function serializeSets(sets) {
   return { weight_kg: weights.length ? Math.max(...weights) : null, reps_completed }
 }
 
+// Collapsed by default (this page opens to look at the week's sessions, not to edit
+// availability) — the summary line says at a glance whether anything's been noted so a client
+// doesn't have to open it just to check.
+function TrainingAvailabilitySection({ clientId, coachId, dayPreferences, onChange }) {
+  const [open, setOpen] = useState(false)
+  const notedCount = DAY_NAMES.filter(d => dayPreferences?.[d]).length
+
+  return (
+    <div className="card">
+      <button type="button" onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between gap-2 text-left">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Training Availability</h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+            {notedCount > 0 ? `${notedCount} day${notedCount > 1 ? 's' : ''} noted` : "Let your coach know about any days you can't train"}
+          </p>
+        </div>
+        <svg className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+          <DayAvailabilityRows clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} onChange={onChange} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ClientTraining() {
   const { session } = useAuth()
   const [loading, setLoading] = useState(true)
   const [clientId, setClientId] = useState(null)
+  const [coachId, setCoachId] = useState(null)
+  const [dayPreferences, setDayPreferences] = useState({})
   const [weekNumber, setWeekNumber] = useState(null)
   const [programName, setProgramName] = useState('')
   const [sessions, setSessions] = useState([])
@@ -147,9 +179,11 @@ export default function ClientTraining() {
   useEffect(() => {
     async function load() {
       const { data: client } = await supabase
-        .from('clients').select('id').eq('profile_id', session.user.id).single()
+        .from('clients').select('id, coach_id, day_preferences').eq('profile_id', session.user.id).single()
       if (!client) { setLoading(false); return }
       setClientId(client.id)
+      setCoachId(client.coach_id)
+      setDayPreferences(client.day_preferences || {})
 
       const { data: asgn } = await supabase
         .from('client_training_assignments')
@@ -272,6 +306,7 @@ export default function ClientTraining() {
     return (
       <div className="space-y-4">
         <h1 data-tour="training-heading" className="text-2xl font-bold text-gray-900 dark:text-white">This Week's Training</h1>
+        <TrainingAvailabilitySection clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} onChange={setDayPreferences} />
         <div className="card text-center py-16">
           <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mx-auto mb-4">
             <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -299,6 +334,8 @@ export default function ClientTraining() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{programName}</p>
         )}
       </div>
+
+      <TrainingAvailabilitySection clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} onChange={setDayPreferences} />
 
       {coachNotes && (
         <div className="card border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-900/10 p-3 space-y-1">

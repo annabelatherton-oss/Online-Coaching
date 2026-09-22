@@ -212,7 +212,7 @@ export default function ClientLayout() {
     if (!session?.user?.id) return
     supabase
       .from('clients')
-      .select('id, day_preferences')
+      .select('id, coach_id, day_preferences')
       .eq('profile_id', session.user.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -404,6 +404,7 @@ export default function ClientLayout() {
       {showDayPrompt && clientRow && (
         <ClientDayAvailabilityPrompt
           clientId={clientRow.id}
+          coachId={clientRow.coach_id}
           dayPreferences={clientRow.day_preferences}
           onClose={() => { setShowDayPrompt(false); advanceOnboarding() }}
         />

@@ -7,7 +7,12 @@ export const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'
 // literal string 'unavailable' (can't train that day at all), or any other non-empty string —
 // an activity note (e.g. "Netball Club") shown to the coach so they can plan training around
 // it without that necessarily meaning the client can't also train that day.
-export function DayAvailabilityRows({ clientId, dayPreferences, onChange }) {
+// coachId is optional — when given, an actual change to a day (not just re-saving the same
+// value) both logs to client_activity_log (so it shows on the client's next check-in — see
+// CheckinsTab in CoachClientProfile.jsx) and pushes the coach an immediate heads-up (see
+// supabase/functions/send-day-preference-notification), from whichever of the three places a
+// client can edit this (My Profile, the first-open prompt, or My Training) triggered it.
+export function DayAvailabilityRows({ clientId, coachId, dayPreferences, onChange }) {
   const [prefs, setPrefs] = useState(dayPreferences || {})
   const [activityDrafts, setActivityDrafts] = useState({})
   const [savingDay, setSavingDay] = useState(null)
@@ -16,6 +21,8 @@ export function DayAvailabilityRows({ clientId, dayPreferences, onChange }) {
   useEffect(() => { setPrefs(dayPreferences || {}) }, [dayPreferences])
 
   async function save(day, value) {
+    const prevValue = prefs[day] ?? null
+    const newValue = value ?? null
     const next = { ...prefs }
     if (!value) delete next[day]
     else next[day] = value
@@ -26,7 +33,16 @@ export function DayAvailabilityRows({ clientId, dayPreferences, onChange }) {
     setSaveError(null)
     const { error } = await supabase.from('clients').update({ day_preferences: next }).eq('id', clientId)
     setSavingDay(null)
-    if (error) setSaveError(error.message)
+    if (error) { setSaveError(error.message); return }
+    if (coachId && prevValue !== newValue) {
+      const message = newValue === null
+        ? `Marked ${day} as available again`
+        : newValue === 'unavailable'
+        ? `Marked ${day} as can't train`
+        : `Noted ${day}: ${newValue}`
+      supabase.from('client_activity_log').insert({ client_id: clientId, coach_id: coachId, message })
+      supabase.functions.invoke('send-day-preference-notification', { body: { message } }).catch(() => {})
+    }
   }
 
   return (

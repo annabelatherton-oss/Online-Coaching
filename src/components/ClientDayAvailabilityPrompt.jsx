@@ -18,7 +18,7 @@ function markSeen() {
 // train, or days already taken by something else (a sport, a club), so their coach can plan
 // training around it from the start instead of finding out after assigning a session. They can
 // always come back and change this later from My Profile.
-export default function ClientDayAvailabilityPrompt({ clientId, dayPreferences, onClose }) {
+export default function ClientDayAvailabilityPrompt({ clientId, coachId, dayPreferences, onClose }) {
   function done() {
     markSeen()
     onClose()
@@ -36,7 +36,7 @@ export default function ClientDayAvailabilityPrompt({ clientId, dayPreferences, 
           </p>
         </div>
         <div className="px-6">
-          <DayAvailabilityRows clientId={clientId} dayPreferences={dayPreferences} />
+          <DayAvailabilityRows clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} />
         </div>
         <div className="px-6 py-4 flex justify-end">
           <button onClick={done} className="btn-primary py-1.5 px-4 text-sm">Done</button>

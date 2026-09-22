@@ -3815,6 +3815,15 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
     return () => { cancelled = true }
   }, [clientId])
 
+  // Client-initiated changes (currently just training-availability edits — see
+  // DayAvailabilityRows) attach to whichever check-in comes next after they happened, so nothing
+  // gets missed even if the coach didn't act on the push notification right away.
+  const [activityLog, setActivityLog] = useState([])
+  useEffect(() => {
+    supabase.from('client_activity_log').select('*').eq('client_id', clientId).order('created_at', { ascending: true })
+      .then(({ data }) => setActivityLog(data || []))
+  }, [clientId])
+
   useEffect(() => {
     async function load() {
       const { data } = await supabase
@@ -3894,6 +3903,16 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
 
   // checkins[0] = most recent, checkins[last] = oldest
   function prevCheckin(i) { return checkins[i + 1] || null }
+
+  // Activity-log entries that happened after the previous check-in and up to (inclusive of) this
+  // one — i.e. "what the client changed since last time". p === null (the very first check-in)
+  // means everything logged before this check-in's date.
+  function logsForCheckin(c, p) {
+    const upper = c.updated_at || c.submitted_at
+    const lower = p ? (p.updated_at || p.submitted_at) : null
+    if (!upper) return []
+    return activityLog.filter(a => a.created_at <= upper && (!lower || a.created_at > lower))
+  }
 
   function weightDelta(c, p) {
     if (c.weight_kg == null || p?.weight_kg == null) return null
@@ -4201,6 +4220,7 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
       {checkins.map((c, i) => {
         const p = prevCheckin(i)
         const wDelta = weightDelta(c, p)
+        const changesSince = logsForCheckin(c, p)
         return (
           <div key={c.id} className="card space-y-4">
             {/* Header + weight delta */}
@@ -4219,6 +4239,15 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
                 </span>
               )}
             </div>
+
+            {changesSince.length > 0 && (
+              <div className="rounded-xl bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-800/40 px-3 py-2.5 space-y-1">
+                <p className="text-[10px] font-semibold text-purple-500 dark:text-purple-400 uppercase tracking-wider">Client updates since last check-in</p>
+                {changesSince.map(a => (
+                  <p key={a.id} className="text-xs text-purple-800 dark:text-purple-300">{a.message}</p>
+                ))}
+              </div>
+            )}
 
             {/* Metrics */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

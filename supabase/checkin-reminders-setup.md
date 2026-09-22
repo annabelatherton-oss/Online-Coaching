@@ -132,3 +132,17 @@ CoachDashboard's "Needs Attention" list and the migration note in
 `supabase/meal-swap-review-migration.sql`). Same deployment options as above: `npx supabase
 functions deploy send-meal-swap-notification`, or paste its `index.ts` directly into the
 Dashboard — also fully self-contained.
+
+## Day-preference notification (client-triggered)
+
+`send-day-preference-notification` — pushes the coach the moment a client changes their training
+availability (My Profile, the first-open prompt, or My Training — see `DayAvailabilityRows` in
+`src/components/DayAvailability.jsx`, which is what every one of those three places actually
+renders). The change is also logged to `client_activity_log` at the same time and shows up
+attached to whichever check-in the client submits next (`CheckinsTab` in
+`CoachClientProfile.jsx`), so nothing gets missed even if the push is dismissed.
+
+Setup, on top of everything above:
+1. Run `supabase/client-activity-log-migration.sql` in the SQL Editor.
+2. Deploy the new function: `npx supabase functions deploy send-day-preference-notification`,
+   or paste its `index.ts` directly into the Dashboard — also fully self-contained.
