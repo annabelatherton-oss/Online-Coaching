@@ -5,12 +5,13 @@ export const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'
 
 // A day's value in clients.day_preferences is either absent (available, the default), the
 // literal string 'unavailable' (can't train that day at all), or any other non-empty string —
-// an activity note (e.g. "Football club") shown to the coach so they can plan training around
+// an activity note (e.g. "Netball Club") shown to the coach so they can plan training around
 // it without that necessarily meaning the client can't also train that day.
 export function DayAvailabilityRows({ clientId, dayPreferences, onChange }) {
   const [prefs, setPrefs] = useState(dayPreferences || {})
   const [activityDrafts, setActivityDrafts] = useState({})
   const [savingDay, setSavingDay] = useState(null)
+  const [saveError, setSaveError] = useState(null)
 
   useEffect(() => { setPrefs(dayPreferences || {}) }, [dayPreferences])
 
@@ -22,8 +23,10 @@ export function DayAvailabilityRows({ clientId, dayPreferences, onChange }) {
     onChange?.(next)
     setActivityDrafts(d => { const n = { ...d }; delete n[day]; return n })
     setSavingDay(day)
-    await supabase.from('clients').update({ day_preferences: next }).eq('id', clientId)
+    setSaveError(null)
+    const { error } = await supabase.from('clients').update({ day_preferences: next }).eq('id', clientId)
     setSavingDay(null)
+    if (error) setSaveError(error.message)
   }
 
   return (
@@ -71,13 +74,14 @@ export function DayAvailabilityRows({ clientId, dayPreferences, onChange }) {
                 else setActivityDrafts(d => { const n = { ...d }; delete n[day]; return n })
               }}
               onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
-              placeholder="Activity (e.g. Football club)"
+              placeholder="Activity (e.g. Gym Class, Netball Club, Swimming, etc)"
               className="input text-xs py-1 flex-1 min-w-[9rem]"
             />
             {savingDay === day && <span className="text-xs text-gray-400 flex-shrink-0">Saving…</span>}
           </div>
         )
       })}
+      {saveError && <p className="text-xs text-red-500">Couldn't save: {saveError}</p>}
     </div>
   )
 }

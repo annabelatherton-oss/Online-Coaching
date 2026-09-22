@@ -133,6 +133,67 @@ function _checkinStreak(checkins) {
   return streak
 }
 
+// Earliest and latest weight for a client, merging manual weight_entries with any weight logged
+// on a check-in — the same "manual entry, else most recent/earliest check-in" sourcing the Weight
+// tab itself uses, so the numbers never disagree between tabs.
+async function fetchWeightSummary(clientId) {
+  const [{ data: weightRows }, { data: checkinRows }] = await Promise.all([
+    supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', clientId).order('recorded_at', { ascending: true }),
+    supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', clientId).not('weight_kg', 'is', null).order('updated_at', { ascending: true }),
+  ])
+  const fromEntries = (weightRows || []).map(r => ({ weight_kg: r.weight_kg, recorded_at: r.recorded_at }))
+  const fromCheckins = (checkinRows || []).map(c => ({ weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0] }))
+  const all = [...fromEntries, ...fromCheckins].filter(w => w.recorded_at).sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))
+  return { startWeight: all[0] || null, latestWeight: all[all.length - 1] || null }
+}
+
+// Start/current/change weight card — shared by the Overview tab and the Check-ins tab so both
+// always show the same numbers.
+function WeightSummaryCard({ startWeight, latestWeight }) {
+  if (!latestWeight) return null
+  const hasChange = startWeight && startWeight.recorded_at !== latestWeight.recorded_at
+  const change = hasChange ? Math.round((parseFloat(latestWeight.weight_kg) - parseFloat(startWeight.weight_kg)) * 10) / 10 : null
+  return (
+    <div className="card grid grid-cols-3 gap-3 text-center">
+      <div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Start</p>
+        <p className="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{startWeight?.weight_kg ?? '—'} <span className="text-xs font-normal text-gray-400">kg</span></p>
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{startWeight ? new Date(startWeight.recorded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}</p>
+      </div>
+      <div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Current</p>
+        <p className="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{latestWeight.weight_kg} <span className="text-xs font-normal text-gray-400">kg</span></p>
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{new Date(latestWeight.recorded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
+      </div>
+      <div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Change</p>
+        {hasChange ? (
+          <p className={`text-xl font-bold tabular-nums ${change < 0 ? 'text-green-500' : change > 0 ? 'text-red-400' : 'text-gray-900 dark:text-white'}`}>
+            {change > 0 ? '+' : ''}{change} <span className="text-xs font-normal text-gray-400">kg</span>
+          </p>
+        ) : (
+          <p className="text-xl font-bold text-gray-300 dark:text-gray-600">—</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// This client's configured top lifts — the training block's own top_lifts, else the client-level
+// override — same fallback the check-in form and Weight tab use, so "no lifts configured" reads
+// the same everywhere rather than just looking like an empty section.
+async function fetchConfiguredLiftNames(clientId, client) {
+  const { data: trainingAsgn } = await supabase.from('client_training_assignments').select('program_id').eq('client_id', clientId).eq('active', true)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  let trainingLifts = []
+  if (trainingAsgn?.program_id) {
+    const { data: prog } = await supabase.from('training_programs').select('top_lifts').eq('id', trainingAsgn.program_id).maybeSingle()
+    trainingLifts = (prog?.top_lifts || []).filter(l => l?.name)
+  }
+  const clientLifts = (client?.top_lifts || []).filter(l => l?.name)
+  return (trainingLifts.length > 0 ? trainingLifts : clientLifts).map(l => l.name)
+}
+
 // ── DailyPlanTab ─────────────────────────────────────────────────────────────
 function DailyPlanTab({ client }) {
   const todayD = new Date(); todayD.setHours(0,0,0,0)
@@ -561,25 +622,16 @@ function OverviewTab({ client, onSaved }) {
 
   // The Weight tab is where a coach logs/reviews the full history — this just surfaces the
   // latest and earliest figures here too, since they're useful context while looking at
-  // everything else on Overview without having to switch tabs. Same "manual entry, else most
-  // recent/earliest check-in" sourcing as the Weight tab itself, so none of these ever disagree.
+  // everything else on Overview without having to switch tabs.
   const [latestWeight, setLatestWeight] = useState(null)
   const [startWeight, setStartWeight] = useState(null)
   useEffect(() => {
     let cancelled = false
-    async function loadWeights() {
-      const [{ data: weightRows }, { data: checkinRows }] = await Promise.all([
-        supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', client.id).order('recorded_at', { ascending: true }),
-        supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', client.id).not('weight_kg', 'is', null).order('updated_at', { ascending: true }),
-      ])
+    fetchWeightSummary(client.id).then(({ startWeight, latestWeight }) => {
       if (cancelled) return
-      const fromEntries = (weightRows || []).map(r => ({ weight_kg: r.weight_kg, recorded_at: r.recorded_at }))
-      const fromCheckins = (checkinRows || []).map(c => ({ weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0] }))
-      const all = [...fromEntries, ...fromCheckins].filter(w => w.recorded_at).sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))
-      setStartWeight(all[0] || null)
-      setLatestWeight(all[all.length - 1] || null)
-    }
-    loadWeights()
+      setStartWeight(startWeight)
+      setLatestWeight(latestWeight)
+    })
     return () => { cancelled = true }
   }, [client.id])
 
@@ -745,34 +797,7 @@ function OverviewTab({ client, onSaved }) {
       {saved && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
     </div>
     {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"><p className="text-sm text-red-700 dark:text-red-400">{error}</p></div>}
-    {latestWeight && (() => {
-      const hasChange = startWeight && startWeight.recorded_at !== latestWeight.recorded_at
-      const change = hasChange ? Math.round((parseFloat(latestWeight.weight_kg) - parseFloat(startWeight.weight_kg)) * 10) / 10 : null
-      return (
-        <div className="card grid grid-cols-3 gap-3 text-center">
-          <div>
-            <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Start</p>
-            <p className="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{startWeight?.weight_kg ?? '—'} <span className="text-xs font-normal text-gray-400">kg</span></p>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{startWeight ? new Date(startWeight.recorded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Current</p>
-            <p className="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{latestWeight.weight_kg} <span className="text-xs font-normal text-gray-400">kg</span></p>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{new Date(latestWeight.recorded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Change</p>
-            {hasChange ? (
-              <p className={`text-xl font-bold tabular-nums ${change < 0 ? 'text-green-500' : change > 0 ? 'text-red-400' : 'text-gray-900 dark:text-white'}`}>
-                {change > 0 ? '+' : ''}{change} <span className="text-xs font-normal text-gray-400">kg</span>
-              </p>
-            ) : (
-              <p className="text-xl font-bold text-gray-300 dark:text-gray-600">—</p>
-            )}
-          </div>
-        </div>
-      )
-    })()}
+    <WeightSummaryCard startWeight={startWeight} latestWeight={latestWeight} />
     <div className="space-y-6">
 
       {/* Personal Info — from intake form */}
@@ -3639,11 +3664,11 @@ function TrainingTab({ client, coachId, onSaved }) {
 
       {assignment && prog && (
         <div className="card space-y-4">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">{assignment.program_name || prog.name}</h3>
-              <div className="flex items-center gap-2 mt-1">
-                <p className="text-sm text-gray-500 dark:text-gray-400">{prog.weeks_total ?? 12}-week block · Started</p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="font-semibold text-gray-900 dark:text-white truncate">{assignment.program_name || prog.name}</h3>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                <p className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{prog.weeks_total ?? 12}-week block · Started</p>
                 <input
                   type="date"
                   defaultValue={assignment.start_date || assignment.created_at.split('T')[0]}
@@ -3657,10 +3682,10 @@ function TrainingTab({ client, coachId, onSaved }) {
                 />
               </div>
             </div>
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <Link to={`/coach/training/${assignment.program_id}`} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Edit exercises</Link>
-              <button onClick={() => { setForm({ block: getProgBlock(assignment.program_name) || '', days: getProgDays(assignment.program_name) || '' }); setShowForm(true) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Change</button>
-              <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
+            <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5 flex-shrink-0">
+              <Link to={`/coach/training/${assignment.program_id}`} className="text-xs text-brand-500 hover:text-brand-700 font-medium whitespace-nowrap">Edit exercises</Link>
+              <button onClick={() => { setForm({ block: getProgBlock(assignment.program_name) || '', days: getProgDays(assignment.program_name) || '' }); setShowForm(true) }} className="text-xs text-brand-500 hover:text-brand-700 font-medium whitespace-nowrap">Change</button>
+              <button onClick={handleRemove} className="text-xs text-red-400 hover:text-red-600 font-medium whitespace-nowrap">Remove</button>
             </div>
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
@@ -3766,13 +3791,29 @@ const CHECKIN_PHOTO_ANGLES = [
   { key: 'right', label: 'Right side' },
 ]
 
-function CheckinsTab({ clientId, collectMeasurements }) {
+function CheckinsTab({ clientId, collectMeasurements, client }) {
   const [checkins, setCheckins] = useState([])
   const [loading, setLoading] = useState(true)
   const [lightbox, setLightbox] = useState(null)
   // Map of weekStartISO → { ticked, total, tasksWithNotes }
   const [weekSummaries, setWeekSummaries] = useState({})
   const photoUrlsByCheckin = useSignedProgressPhotosForCheckins(checkins)
+
+  // Same start/current weight numbers shown on Overview, plus which lifts are actually
+  // configured for this client — both used by the summary card and the history table below.
+  const [startWeight, setStartWeight] = useState(null)
+  const [latestWeight, setLatestWeight] = useState(null)
+  const [configuredLiftNames, setConfiguredLiftNames] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    fetchWeightSummary(clientId).then(({ startWeight, latestWeight }) => {
+      if (cancelled) return
+      setStartWeight(startWeight)
+      setLatestWeight(latestWeight)
+    })
+    fetchConfiguredLiftNames(clientId, client).then(names => { if (!cancelled) setConfiguredLiftNames(names) })
+    return () => { cancelled = true }
+  }, [clientId])
 
   useEffect(() => {
     async function load() {
@@ -3943,6 +3984,8 @@ function CheckinsTab({ clientId, collectMeasurements }) {
         </div>
       )}
 
+      <WeightSummaryCard startWeight={startWeight} latestWeight={latestWeight} />
+
       {lightbox && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightbox(null)}>
           <div className="relative max-w-lg w-full" onClick={e => e.stopPropagation()}>
@@ -4026,7 +4069,7 @@ function CheckinsTab({ clientId, collectMeasurements }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">
-                {['Week', 'Date', 'Weight', ...(collectMeasurements ? ['Waist', 'Hips'] : []), 'Energy', 'Sleep', 'Food', 'Gym'].map(h => (
+                {['Week', 'Date', 'Weight', ...(collectMeasurements ? ['Waist', 'Hips'] : []), 'Energy', 'Sleep', 'Food', 'Gym', ...configuredLiftNames].map(h => (
                   <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -4079,12 +4122,29 @@ function CheckinsTab({ clientId, collectMeasurements }) {
                         : <span className="text-gray-300 dark:text-gray-700">—</span>}
                       {foodD !== null && <DeltaTag delta={foodD} higherIsBetter className="block" />}
                     </td>
-                    <td className="py-2.5 whitespace-nowrap">
+                    <td className={`py-2.5 whitespace-nowrap ${configuredLiftNames.length > 0 ? 'pr-4' : ''}`}>
                       {c.gym_adherence != null
                         ? <span className={`font-semibold text-xs ${checkinRatingColor(c.gym_adherence)}`}>{c.gym_adherence}/5</span>
                         : <span className="text-gray-300 dark:text-gray-700">—</span>}
                       {gymD !== null && <DeltaTag delta={gymD} higherIsBetter className="block" />}
                     </td>
+                    {configuredLiftNames.map((liftName, li) => {
+                      const lift = c.lift_results?.find(l => l?.name === liftName)
+                      const prevLift = p?.lift_results?.find(l => l?.name === liftName)
+                      const liftD = lift?.weight_kg != null && prevLift?.weight_kg != null
+                        ? Math.round((parseFloat(lift.weight_kg) - parseFloat(prevLift.weight_kg)) * 10) / 10
+                        : null
+                      return (
+                        <td key={liftName} className={`py-2.5 whitespace-nowrap ${li < configuredLiftNames.length - 1 ? 'pr-4' : ''}`}>
+                          {lift?.weight_kg != null ? (
+                            <span className="font-semibold text-gray-900 dark:text-white tabular-nums">
+                              {lift.weight_kg} kg{lift.reps ? <span className="text-xs font-normal text-gray-500 dark:text-gray-400 ml-1">×{lift.reps}</span> : null}
+                            </span>
+                          ) : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                          {liftD !== null && <DeltaTag delta={liftD} unit=" kg" className="block" />}
+                        </td>
+                      )
+                    })}
                   </tr>
                 )
               })}
@@ -4540,7 +4600,7 @@ export default function CoachClientProfile() {
         {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} mealSplit={normalizeMealSplit(profile.meal_split)} goalMacroSplits={normalizeGoalMacroSplits(profile.goal_macro_splits)} proteinPerKg={normalizeProteinPerKg(profile.protein_g_per_kg)} onCalorieTargetChanged={loadClient} />}
         {activeTab === 'Training'   && <TrainingTab client={client} coachId={profile.id} onSaved={loadClient} />}
         {activeTab === 'Daily Plan' && <DailyPlanTab client={client} />}
-        {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} />}
+        {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} client={client} />}
         {activeTab === 'Progress'   && <ProgressTab clientId={client.id} client={client} />}
       </div>
     </div>

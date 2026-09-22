@@ -30,9 +30,9 @@ export default function ClientDayAvailabilityPrompt({ clientId, dayPreferences, 
         <div className="px-6 pt-6 pb-2">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Before we start — your training availability</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Mark any days you can't train, or days already taken by something else (a sport, a
-            club) — your coach will plan your training around it. Leave a day as "Available" if
-            nothing gets in the way of training that day.
+            Mark a day as "Can't train" if you're unable to do any training that day due to other
+            commitments, or note what you're doing instead (a sport, a class) — your coach will
+            plan your training around it.
           </p>
         </div>
         <div className="px-6">
