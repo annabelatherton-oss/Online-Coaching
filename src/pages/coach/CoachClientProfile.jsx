@@ -1635,7 +1635,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
             const recipeKey = ing.ingredient_id || (ing.name || '').toLowerCase()
             const recipeQty = !ing._isAdded ? baseRecipeQty[recipeKey] : null
             return (
-              <div key={ing.id || i} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
+              <div key={ing.id || i} className="flex flex-wrap items-center gap-x-1.5 sm:gap-x-2 gap-y-1.5 text-xs">
                 {onToggleStatic && !ing._isAdded && (
                   <button
                     type="button"
@@ -1662,13 +1662,13 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
                   </span>
                 )}
                 <span className={`basis-full sm:basis-0 sm:flex-1 min-w-0 break-words ${ing._isAdded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`}>{ing.name}</span>
-                <div className="flex flex-col items-end w-24 flex-shrink-0">
+                <div className="flex flex-col items-end w-20 sm:w-24 flex-shrink-0">
                   <div className="flex items-center gap-1">
                     <input
                       type="number" onFocus={e => e.target.select()}
                       min={libIng?.min_amount ?? 0}
                       step={libIng?.serving_step ?? 1}
-                      className={`w-16 text-right text-xs py-0.5 px-1 rounded border tabular-nums focus:outline-none focus:ring-1 focus:ring-brand-400 ${
+                      className={`w-12 sm:w-16 text-right text-xs py-0.5 px-1 rounded border tabular-nums focus:outline-none focus:ring-1 focus:ring-brand-400 ${
                         isStatic
                           ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400'
                           : overridden
@@ -1698,10 +1698,10 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
                     </span>
                   )}
                 </div>
-                <span className="tabular-nums w-16 text-right text-gray-500 dark:text-gray-400">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(parseFloat(ing.carbs_g) || 0)}g</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(parseFloat(ing.protein_g) || 0)}g</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(parseFloat(ing.fat_g) || 0)}g</span>
+                <span className="tabular-nums w-12 sm:w-16 text-right text-gray-500 dark:text-gray-400">{Math.round(parseFloat(ing.calories) || 0)}<span className="hidden sm:inline"> kcal</span></span>
+                <span className={`tabular-nums w-8 sm:w-10 text-right ${MACRO_META.carb.text}`}>{Math.round(parseFloat(ing.carbs_g) || 0)}g</span>
+                <span className={`tabular-nums w-8 sm:w-10 text-right ${MACRO_META.prot.text}`}>{Math.round(parseFloat(ing.protein_g) || 0)}g</span>
+                <span className={`tabular-nums w-8 sm:w-10 text-right ${MACRO_META.fat.text}`}>{Math.round(parseFloat(ing.fat_g) || 0)}g</span>
                 {isStatic ? (
                   <span className="w-4 flex-shrink-0" />
                 ) : (
