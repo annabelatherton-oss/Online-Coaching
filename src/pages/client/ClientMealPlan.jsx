@@ -9,7 +9,7 @@ import {
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
 import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../lib/mealSwaps'
-import { normalizeMealSplit } from '../../lib/calorieSplit'
+import { normalizeMealSplit, redistributeMealSplit } from '../../lib/calorieSplit'
 import { normalizeGoalMacroSplits, calcBodyweightMacros } from '../../lib/macros'
 import EverydayMealsClient from '../../components/EverydayMealsClient'
 
@@ -27,6 +27,7 @@ export default function ClientMealPlan() {
   const [editedSlots, setEditedSlots] = useState({})
   const [templateSlots, setTemplateSlots] = useState({})
   const [ingredientOverrides, setIngredientOverrides] = useState({})
+  const [removedCategories, setRemovedCategories] = useState([])
   const [slotsDirty, setSlotsDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -97,7 +98,7 @@ export default function ClientMealPlan() {
           ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).eq('calorie_tier', tier).maybeSingle()
           : Promise.resolve({ data: null }),
         supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).is('calorie_tier', null).maybeSingle(),
-        supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
+        supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
       ])
 
       const tmpl = tierTmpl || stdTmpl
@@ -110,6 +111,7 @@ export default function ClientMealPlan() {
       setTemplateSlots(tSlots)
       setEditedSlots(finalSlots)
       setIngredientOverrides(cwm?.ingredient_overrides || {})
+      setRemovedCategories(cwm?.removed_categories || [])
       setSlotsDirty(false)
 
       // Dislikes: resolve any saved swap rule automatically so the client never sees something
@@ -144,15 +146,22 @@ export default function ClientMealPlan() {
 
   const tier = assignment && CALORIE_TIERS.includes(assignment.calorie_target) ? assignment.calorie_target : null
 
+  // A category the coach has removed for this week (see the coach's Meal Plan tab) isn't eaten,
+  // so it's dropped from every total below the same way an empty slot would be — its calories were
+  // already folded into the remaining meals, which is why they show up bigger here.
   function sumSlotKeys(keys) {
-    return keys.reduce((acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, tier, ingredientOverrides[key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
+    return keys
+      .filter(key => !removedCategories.includes(ALL_SLOT_DEFS.find(s => s.key === key)?.cat))
+      .reduce((acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, tier, ingredientOverrides[key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
   }
+
+  const activeSlotDefs = ALL_SLOT_DEFS.filter(s => !removedCategories.includes(s.cat))
 
   // Swapping a meal only ever changes that one slot — no other slot is rebalanced to compensate,
   // that's left entirely up to the client — so the current-vs-original comparison below is a
   // plain, honest total of whatever's actually in each slot right now.
-  const originalDailyTotal = ALL_SLOT_DEFS.reduce((acc, s) => addMacros(acc, mealMacros(templateSlots[s.key], mealMap, tier, null, swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
-  const currentDailyTotal  = ALL_SLOT_DEFS.reduce((acc, s) => addMacros(acc, mealMacros(editedSlots[s.key], mealMap, tier, ingredientOverrides[s.key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
+  const originalDailyTotal = activeSlotDefs.reduce((acc, s) => addMacros(acc, mealMacros(templateSlots[s.key], mealMap, tier, null, swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
+  const currentDailyTotal  = activeSlotDefs.reduce((acc, s) => addMacros(acc, mealMacros(editedSlots[s.key], mealMap, tier, ingredientOverrides[s.key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
   const dailyDelta = {
     cal:  Math.round(currentDailyTotal.cal  - originalDailyTotal.cal),
     prot: Math.round(currentDailyTotal.prot - originalDailyTotal.prot),
@@ -160,8 +169,8 @@ export default function ClientMealPlan() {
     fat:  Math.round(currentDailyTotal.fat  - originalDailyTotal.fat),
   }
 
-  const preworkoutM = mealMacros(editedSlots.preworkout, mealMap, tier, ingredientOverrides.preworkout, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 }
-  const snackM      = mealMacros(editedSlots.evening_snack, mealMap, tier, ingredientOverrides.evening_snack, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 }
+  const preworkoutM = removedCategories.includes('pre_workout') ? { cal: 0, prot: 0, carb: 0, fat: 0 } : (mealMacros(editedSlots.preworkout, mealMap, tier, ingredientOverrides.preworkout, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 })
+  const snackM      = removedCategories.includes('evening_snack') ? { cal: 0, prot: 0, carb: 0, fat: 0 } : (mealMacros(editedSlots.evening_snack, mealMap, tier, ingredientOverrides.evening_snack, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 })
   const opt1Sub     = sumSlotKeys(OPTION_1_KEYS)
   const opt2Sub     = sumSlotKeys(OPTION_2_KEYS)
   const opt1Total   = addMacros(addMacros(opt1Sub, preworkoutM), snackM)
@@ -267,7 +276,7 @@ export default function ClientMealPlan() {
     : null
   function slotTarget(cat) {
     if (!dailyMacroTargets || !mealSplit) return null
-    const pct = (mealSplit[cat] || 0) / 100
+    const pct = (redistributeMealSplit(mealSplit, removedCategories)[cat] || 0) / 100
     return {
       cal:  dailyMacroTargets.cal * pct,
       prot: dailyMacroTargets.protein_g * pct,
@@ -346,6 +355,7 @@ export default function ClientMealPlan() {
 
       {/* Meal groups */}
       {MEAL_GROUPS.map(group => {
+        if (removedCategories.includes(group.slots[0]?.cat)) return null
         const visibleSlots = group.slots.filter(s => editedSlots[s.key])
         if (visibleSlots.length === 0) return null
 

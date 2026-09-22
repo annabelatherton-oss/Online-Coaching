@@ -5,7 +5,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
 import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams, splitForGoal, normalizeGoalMacroSplits, calcBodyweightMacros, normalizeProteinPerKg } from '../../lib/macros'
-import { normalizeMealSplit } from '../../lib/calorieSplit'
+import { normalizeMealSplit, redistributeMealSplit, MEAL_SPLIT_CATEGORIES } from '../../lib/calorieSplit'
+import { generateTierIngredients, tierTargetsForCategory, calcTotals } from '../../lib/calorieTierScaling'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 import { DIETS, DIET_LABELS, mealQualifiesForDiets, ingredientQualifiesForDiets } from '../../lib/diets'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
@@ -1330,7 +1331,17 @@ const EVERYDAY_CAT = { breakfast1: 'breakfast', lunch1: 'lunch', dinner1: 'dinne
 // interchangeable combinations the daily totals are built from.
 const OPTION_1_KEYS = ['breakfast1', 'lunch1', 'dinner1']
 const OPTION_2_KEYS = ['breakfast2', 'lunch2', 'dinner2']
-const SLOT_CATEGORY = Object.fromEntries(MEAL_SLOTS.map(s => [s.key, s.cat]))
+const SLOT_CATEGORY = { ...Object.fromEntries(MEAL_SLOTS.map(s => [s.key, s.cat])), preworkout: 'pre_workout', evening_snack: 'evening_snack' }
+// Every slot key that belongs to a given category — breakfast/lunch/dinner each have an A/B pair,
+// pre-workout/evening-snack are single slots. Used to remove/restore a whole category at once and
+// to know which currently-assigned meals need auto-resizing when another category is removed.
+const CATEGORY_SLOT_KEYS = {
+  breakfast: ['breakfast1', 'breakfast2'],
+  lunch: ['lunch1', 'lunch2'],
+  dinner: ['dinner1', 'dinner2'],
+  pre_workout: ['preworkout'],
+  evening_snack: ['evening_snack'],
+}
 // Which option (1 or 2) each rotating slot belongs to — lets Auto mode size each option's
 // breakfast/lunch/dinner independently, since the two options can be entirely different meals.
 const SLOT_OPTION = { breakfast1: 1, breakfast2: 2, lunch1: 1, lunch2: 2, dinner1: 1, dinner2: 2 }
@@ -1817,6 +1828,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   const [mealMap, setMealMap] = useState({})
   const [library, setLibrary] = useState([])
   const [ingredientOverrides, setIngredientOverrides] = useState({})
+  const [removedCategories, setRemovedCategories] = useState([])
   const [expandedSlots, setExpandedSlots] = useState(new Set())
   const [comparingSlots, setComparingSlots] = useState(new Set())
   const [openSwapRule, setOpenSwapRule] = useState(null) // { slotKey, dislike, removeId, quantity_g }
@@ -1940,7 +1952,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).eq('calorie_tier', tier).maybeSingle()
         : Promise.resolve({ data: null }),
       supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
-      supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', asgn.id).eq('week_number', weekNum).maybeSingle(),
+      supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories').eq('assignment_id', asgn.id).eq('week_number', weekNum).maybeSingle(),
     ])
     const tmpl = tierTmpl || stdTmpl
     const tSlots = {}
@@ -1951,6 +1963,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     setTemplateSlots(tSlots)
     setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
     setIngredientOverrides(cwm?.ingredient_overrides || {})
+    setRemovedCategories(cwm?.removed_categories || [])
     setSlotsDirty(false)
   }
 
@@ -2054,6 +2067,46 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     slotHandlers.remove(slotKey, removeId)
   }
 
+  // Re-sizes one slot's currently-assigned meal to a brand new calorie/macro sub-target — used
+  // when a category is removed or restored so every OTHER meal automatically grows or shrinks to
+  // cover the change, landing the coach on a sensible starting point before they go in and make
+  // their own edits (which this doesn't disturb: any ingredient this client already had removed or
+  // added for this slot stays removed/added, only quantities are recomputed).
+  function autoAdjustSlotForNewTarget(slotKey, cat, newMealSplit) {
+    const mealId = editedSlots[slotKey]
+    if (!mealId || !mealMap[mealId] || !assignment?.calorie_target) return
+    const meal = mealMap[mealId]
+    const tierVersion = tier ? (meal.meal_tier_versions || []).find(v => v.calorie_tier === tier) : null
+    const rawBase = tierVersion ? (tierVersion.meal_tier_ingredients || []) : (meal.meal_ingredients || [])
+    const existingOverride = ingredientOverrides[slotKey]
+    const resolved = applyIngredientOverrides(rawBase, existingOverride)
+    const scalable = resolved.filter(ing => !ing._isAdded)
+    if (scalable.length === 0) return
+    const target = tierTargetsForCategory(assignment.calorie_target, cat, newMealSplit, calcTotals(scalable))
+    const generated = generateTierIngredients(scalable, library, target)
+    const { qty: prevQty, removed, added } = normalizeOverrides(existingOverride)
+    const newQty = { ...prevQty }
+    scalable.forEach((ing, i) => { newQty[ing.id] = generated[i].quantity_g })
+    setIngredientOverrides(prev => ({ ...prev, [slotKey]: { qty: newQty, removed, added } }))
+  }
+
+  // Removing a meal category doesn't just hide it — the calories/macros it would have carried get
+  // folded into whatever's left (see redistributeMealSplit), and every remaining category's
+  // currently-assigned meal(s) are immediately resized to their new, bigger share so the day still
+  // adds up to the same total — the coach can then go in and hand-edit any of them from there.
+  // Restoring a category runs the same resize back down to the normal split.
+  function toggleCategoryRemoved(cat) {
+    const isRemoving = !removedCategories.includes(cat)
+    const nextRemoved = isRemoving ? [...removedCategories, cat] : removedCategories.filter(c => c !== cat)
+    const newMealSplit = redistributeMealSplit(mealSplit, nextRemoved)
+    for (const otherCat of MEAL_SPLIT_CATEGORIES) {
+      if (otherCat === cat || nextRemoved.includes(otherCat)) continue
+      for (const slotKey of CATEGORY_SLOT_KEYS[otherCat]) autoAdjustSlotForNewTarget(slotKey, otherCat, newMealSplit)
+    }
+    setRemovedCategories(nextRemoved)
+    setSlotsDirty(true)
+  }
+
   function swapIngredient(slotKey, removeId, originalQty, libIng) {
     const f = originalQty / libIng.serving_size
     const round1 = n => Math.round(n * 10) / 10
@@ -2153,17 +2206,27 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   // Pre-workout/evening-snack default to whatever the plan template has set for this tier — a
   // coach only needs staticEdits/staticFlags when a specific client needs something different
   // (e.g. an allergy or dislike), via the "Make static" button below.
-  const effectivePreworkoutId = editedSlots.preworkout || null
-  const effectiveSnackId = editedSlots.evening_snack || null
+  // A category the coach has removed for this client (see toggleCategoryRemoved) is dropped from
+  // every day total below — it's not eaten, so it shouldn't count toward "what's already covered".
+  const effectivePreworkoutId = removedCategories.includes('pre_workout') ? null : (editedSlots.preworkout || null)
+  const effectiveSnackId = removedCategories.includes('evening_snack') ? null : (editedSlots.evening_snack || null)
   const preworkoutTotal = mealMacros(effectivePreworkoutId, mealMap, tier, ingredientOverrides.preworkout)
   const snackTotal = mealMacros(effectiveSnackId, mealMap, tier, ingredientOverrides.evening_snack)
 
   // Daily macro totals — one of each option (not both) plus the static meals. Each option is
   // compared against the calorie target independently, since the two can be different meals.
-  const option1Subtotal = sumMealSlots(OPTION_1_KEYS, editedSlots, mealMap, tier, ingredientOverrides)
-  const option2Subtotal = sumMealSlots(OPTION_2_KEYS, editedSlots, mealMap, tier, ingredientOverrides)
+  const activeOption1Keys = OPTION_1_KEYS.filter(k => !removedCategories.includes(SLOT_CATEGORY[k]))
+  const activeOption2Keys = OPTION_2_KEYS.filter(k => !removedCategories.includes(SLOT_CATEGORY[k]))
+  const option1Subtotal = sumMealSlots(activeOption1Keys, editedSlots, mealMap, tier, ingredientOverrides)
+  const option2Subtotal = sumMealSlots(activeOption2Keys, editedSlots, mealMap, tier, ingredientOverrides)
   const option1Total = addMacros(addMacros(option1Subtotal, preworkoutTotal), snackTotal)
   const option2Total = addMacros(addMacros(option2Subtotal, preworkoutTotal), snackTotal)
+
+  // This client's own version of the coach's standard meal split — a removed category's % share
+  // is folded into whatever's left (see redistributeMealSplit) so every remaining meal's own
+  // target (slotTarget below) grows to cover it, and the auto-resize on removal/restore targets
+  // the exact same numbers this shows.
+  const effectiveMealSplit = redistributeMealSplit(mealSplit, removedCategories)
 
   // Full day's macro targets (not just calories) — protein from this client's own logged
   // bodyweight, carbs/fat from the same goal-phase split used everywhere else (Overview tab,
@@ -2187,7 +2250,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   // see at a glance whether what's actually in that slot roughly matches what it's meant to carry.
   function slotTarget(cat) {
     if (!dailyMacroTargets) return null
-    const pct = (mealSplit?.[cat] || 0) / 100
+    const pct = (effectiveMealSplit?.[cat] || 0) / 100
     return {
       cal:  dailyMacroTargets.cal * pct,
       prot: dailyMacroTargets.protein_g * pct,
@@ -2364,7 +2427,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     setSlotsError('')
     setSavingSlots(true)
     await supabase.from('client_week_meals').upsert(
-      { client_id: client.id, coach_id: coachId, assignment_id: assignment.id, week_number: effectiveWeek, slots: editedSlots, ingredient_overrides: ingredientOverrides },
+      { client_id: client.id, coach_id: coachId, assignment_id: assignment.id, week_number: effectiveWeek, slots: editedSlots, ingredient_overrides: ingredientOverrides, removed_categories: removedCategories },
       { onConflict: 'assignment_id,week_number' }
     )
     setSavingSlots(false); setSlotsDirty(false)
@@ -2484,6 +2547,32 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   // only set for preworkout/evening_snack — that's what turns on the "Make static" button and
   // (matching prior behaviour) skips allergen/dislike conflict checking, which never covered
   // those two slots.
+  // Wraps a category's meal card(s) with a header offering to remove/restore the whole category —
+  // when removed, the cards are hidden entirely (there's nothing to pick since the client isn't
+  // eating this meal) and a short note explains where its share went.
+  function renderCategoryGroup(cat, label, cardsJSX) {
+    const isRemoved = removedCategories.includes(cat)
+    return (
+      <div className="space-y-3 pt-4 first:pt-0 border-t-2 border-gray-100 dark:border-gray-800 first:border-t-0">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{label}</h4>
+          <button
+            type="button"
+            onClick={() => toggleCategoryRemoved(cat)}
+            className={`text-xs font-medium ${isRemoved ? 'text-brand-500 hover:text-brand-700 dark:hover:text-brand-400' : 'text-gray-400 hover:text-red-500'}`}
+          >
+            {isRemoved ? 'Add back' : 'Remove this meal'}
+          </button>
+        </div>
+        {isRemoved ? (
+          <p className="text-xs text-gray-400 dark:text-gray-500 italic px-1">
+            Removed from this client's day — the other meals were automatically sized up to cover it.
+          </p>
+        ) : cardsJSX}
+      </div>
+    )
+  }
+
   function renderSlotCard(slotKey, label, cat, staticFlagKey = null, staticEditKey = null) {
     const currentId = editedSlots[slotKey] || ''
     const meal = currentId ? mealMap[currentId] : null
@@ -2976,26 +3065,11 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
             )}
 
             <div className="space-y-5">
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Breakfast</h4>
-                {MEAL_SLOTS.slice(0, 2).map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
-              </div>
-              <div className="space-y-3 pt-4 border-t-2 border-gray-100 dark:border-gray-800">
-                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Lunch</h4>
-                {MEAL_SLOTS.slice(2, 4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
-              </div>
-              <div className="space-y-3 pt-4 border-t-2 border-gray-100 dark:border-gray-800">
-                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Pre-workout</h4>
-                {renderSlotCard('preworkout', 'Pre-workout', 'pre_workout', 'preworkout_static', 'preworkout_meal_id')}
-              </div>
-              <div className="space-y-3 pt-4 border-t-2 border-gray-100 dark:border-gray-800">
-                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Dinner</h4>
-                {MEAL_SLOTS.slice(4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat))}
-              </div>
-              <div className="space-y-3 pt-4 border-t-2 border-gray-100 dark:border-gray-800">
-                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Evening Snack</h4>
-                {renderSlotCard('evening_snack', 'Evening snack', 'evening_snack', 'evening_snack_static', 'evening_snack_meal_id')}
-              </div>
+              {renderCategoryGroup('breakfast', 'Breakfast', MEAL_SLOTS.slice(0, 2).map(slot => renderSlotCard(slot.key, slot.label, slot.cat)))}
+              {renderCategoryGroup('lunch', 'Lunch', MEAL_SLOTS.slice(2, 4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat)))}
+              {renderCategoryGroup('pre_workout', 'Pre-workout', renderSlotCard('preworkout', 'Pre-workout', 'pre_workout', 'preworkout_static', 'preworkout_meal_id'))}
+              {renderCategoryGroup('dinner', 'Dinner', MEAL_SLOTS.slice(4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat)))}
+              {renderCategoryGroup('evening_snack', 'Evening Snack', renderSlotCard('evening_snack', 'Evening snack', 'evening_snack', 'evening_snack_static', 'evening_snack_meal_id'))}
             </div>
 
             {(option1Subtotal.cal > 0 || option2Subtotal.cal > 0) && (
@@ -3024,7 +3098,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 )}
                 <div className="flex items-center gap-3">
                   <button onClick={handleSaveSlots} disabled={savingSlots} className="btn-primary py-1.5 px-4 text-sm">{savingSlots ? 'Saving…' : 'Save meal changes'}</button>
-                  <button onClick={() => { setEditedSlots({ ...templateSlots }); setIngredientOverrides({}); setSlotsDirty(false); setSlotsError('') }} className="text-sm text-gray-400 hover:text-gray-700">Reset to template</button>
+                  <button onClick={() => { setEditedSlots({ ...templateSlots }); setIngredientOverrides({}); setRemovedCategories([]); setSlotsDirty(false); setSlotsError('') }} className="text-sm text-gray-400 hover:text-gray-700">Reset to template</button>
                 </div>
               </div>
             )}

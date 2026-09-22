@@ -51,6 +51,7 @@ export default function ClientShoppingList() {
   const [mealMap, setMealMap] = useState({})
   const [editedSlots, setEditedSlots] = useState({})
   const [ingredientOverrides, setIngredientOverrides] = useState({})
+  const [removedCategories, setRemovedCategories] = useState([])
   const [ingredientLib, setIngredientLib] = useState({})
   const [tier, setTier] = useState(null)
   const [swapCtx, setSwapCtx] = useState(null)
@@ -98,7 +99,7 @@ export default function ClientShoppingList() {
           ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).eq('calorie_tier', calorieTier).maybeSingle()
           : Promise.resolve({ data: null }),
         supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).is('calorie_tier', null).maybeSingle(),
-        supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
+        supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
       ])
       const tmpl = tierTmpl || stdTmpl
       const tSlots = {}
@@ -108,6 +109,8 @@ export default function ClientShoppingList() {
       const finalSlots = { ...tSlots, ...(cwm?.slots || {}) }
       setEditedSlots(finalSlots)
       setIngredientOverrides(cwm?.ingredient_overrides || {})
+      const removedCats = cwm?.removed_categories || []
+      setRemovedCategories(removedCats)
 
       const dislikes = (clientRow.dislikes || []).filter(Boolean)
       if (dislikes.length) {
@@ -123,7 +126,7 @@ export default function ClientShoppingList() {
         // Sensible starting point: every slot that has a meal assigned, every day — she adjusts
         // the counts from there (e.g. down to 3x Breakfast A + 4x Breakfast B).
         const defaults = {}
-        for (const slot of ALL_SLOT_DEFS) if (finalSlots[slot.key]) defaults[slot.key] = 7
+        for (const slot of ALL_SLOT_DEFS) if (finalSlots[slot.key] && !removedCats.includes(slot.cat)) defaults[slot.key] = 7
         setSelections(defaults)
       }
 
@@ -172,7 +175,7 @@ export default function ClientShoppingList() {
     )
   }
 
-  const availableSlots = ALL_SLOT_DEFS.filter(s => editedSlots[s.key])
+  const availableSlots = ALL_SLOT_DEFS.filter(s => editedSlots[s.key] && !removedCategories.includes(s.cat))
 
   // Aggregate ingredients across every selected slot × its day-count for the week.
   const itemsByKey = {}
@@ -215,6 +218,7 @@ export default function ClientShoppingList() {
       {/* Day-count selection */}
       <div data-tour="shopping-day-count" className="card space-y-4">
         {MEAL_GROUPS.map(group => {
+          if (removedCategories.includes(group.slots[0]?.cat)) return null
           const slots = group.slots.filter(s => editedSlots[s.key])
           if (slots.length === 0) return null
           const total = slots.reduce((sum, s) => sum + (Number(selections[s.key]) || 0), 0)
