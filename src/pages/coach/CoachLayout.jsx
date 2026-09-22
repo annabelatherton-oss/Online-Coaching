@@ -2,7 +2,39 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation, useNavigationType } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import DarkModeToggle from '../../components/DarkModeToggle'
+import HelpBox from '../../components/HelpBox'
 import { registerPushNotifications } from '../../lib/pushNotifications'
+
+const HELP_TOPICS = [
+  {
+    q: 'Add this app to your phone’s Home Screen',
+    a: 'iPhone (Safari): tap the Share icon, then "Add to Home Screen".\n\nAndroid (Chrome): tap the ⋮ menu, then "Install app" or "Add to Home screen".\n\nOnce it’s added, open it from the Home Screen icon rather than the browser — that’s what lets it receive push notifications.',
+  },
+  {
+    q: 'Notify a client their plan changed',
+    a: 'On a client’s profile, open the Meal Plan or Everyday Meals tab and use the "Notify client of changes" button. It sends them a push notification — they need notifications turned on and the app installed to their Home Screen to receive it.',
+  },
+  {
+    q: 'A client didn’t get their login email',
+    a: 'Supabase’s account emails aren’t always reliable. On the client’s profile, use "Reset password" to set one directly — no email needed. Give them the password to log in with.',
+  },
+  {
+    q: 'See which days a client can’t train',
+    a: 'Clients can mark each day as unavailable or note an activity (e.g. a sports club) from their own profile. You’ll see a badge on those days in their Weekly Plan.',
+  },
+  {
+    q: 'Everyday Meals',
+    a: 'Some clients prefer eating the same breakfast/lunch/dinner every day instead of a rotating plan. Set their fixed meals from the Everyday Meals tab on their profile — pre-workout and evening snack can be client-requested, but you approve those first.',
+  },
+  {
+    q: '"Needs review" on the dashboard',
+    a: 'When a client swaps a meal themselves, it flags on your dashboard so you can check the quantities/macros still make sense. Dismiss it with "Got it" once you’ve reviewed the swap on their Meal Plan tab.',
+  },
+  {
+    q: '"Standard eligible" vs diet tags',
+    a: 'Standard eligible (checkbox on a meal) controls whether a meal shows up for clients with no dietary requirement — tick it for anything a general client could eat.\n\nDiet tags (vegetarian/vegan/etc.) are auto-guessed from a meal’s ingredients and control what shows up for clients who DO have that requirement. They’re informational, not exclusive — a tagged meal can still appear for Standard clients too, based on its own Standard eligible checkbox.',
+  },
+]
 
 const navItems = [
   {
@@ -313,6 +345,7 @@ export default function CoachLayout() {
           </button>
           <div className="hidden lg:block" />
           <div className="flex items-center gap-2">
+            <HelpBox topics={HELP_TOPICS} />
             <DarkModeToggle />
             <div className="text-sm text-gray-600 dark:text-gray-400 pl-2 border-l border-gray-200 dark:border-gray-700 ml-1">
               {profile?.full_name || 'Coach'}

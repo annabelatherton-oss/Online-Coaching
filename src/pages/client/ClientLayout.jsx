@@ -2,9 +2,37 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation, useNavigationType } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import DarkModeToggle from '../../components/DarkModeToggle'
+import HelpBox from '../../components/HelpBox'
 import { supabase } from '../../lib/supabase'
 import { registerPushNotifications } from '../../lib/pushNotifications'
 import ClientAppTour, { shouldAutoShowTour } from '../../components/ClientAppTour'
+
+const HELP_TOPICS = [
+  {
+    q: 'Add this app to your Home Screen',
+    a: 'iPhone (Safari): tap the Share icon, then "Add to Home Screen".\n\nAndroid (Chrome): tap the ⋮ menu, then "Install app" or "Add to Home screen".\n\nDo this and open the app from that icon — it’s the only way to get reminders and updates from your coach as notifications.',
+  },
+  {
+    q: 'Swap a meal',
+    a: 'Open a meal in My Meal Plan and tap Swap to pick another option with similar calories and macros.',
+  },
+  {
+    q: 'Eating the same meals every day',
+    a: 'If you’d rather have the same breakfast, lunch and dinner every day instead of the rotating plan, set that up in the Everyday Meals section on My Meal Plan. Pre-workout and evening snack can be requested there too — your coach approves those before they’re active.',
+  },
+  {
+    q: 'Mark days you can’t train',
+    a: 'On My Profile, mark each day as unavailable, or note what you’re doing instead (e.g. a sports club) — your coach uses this to plan your training around it.',
+  },
+  {
+    q: 'Weekly check-in',
+    a: 'Log your weight, photos and how the week went from Check-in — do this every Friday so your coach can review your progress.',
+  },
+  {
+    q: 'Message your coach',
+    a: 'Head to Messages any time — questions, swaps, or just letting them know life got in the way.',
+  },
+]
 
 const navItems = [
   {
@@ -320,9 +348,10 @@ export default function ClientLayout() {
               className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
             </button>
+            <HelpBox topics={HELP_TOPICS} />
             <DarkModeToggle />
             <div className="text-sm text-gray-600 dark:text-gray-400 pl-2 border-l border-gray-200 dark:border-gray-700 ml-1">
               {profile?.full_name?.split(' ')[0] || 'Client'}
