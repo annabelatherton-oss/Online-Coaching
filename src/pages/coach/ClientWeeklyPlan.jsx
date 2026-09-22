@@ -370,6 +370,41 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
     setExerciseDrafts(prev => ({ ...prev, [workoutId]: data || [] }))
   }
 
+  // A day linked to the assigned training block shows its exercises read-only, since they live in
+  // that block's own session_exercises — shared by every client on the block, so editing them here
+  // would change training for everyone on it, not just this client. This breaks that link for one
+  // day only: it copies today's exercises into a brand-new workout (owned by the coach but never
+  // referenced anywhere else) and points this one client's schedule item at it, which is exactly
+  // the same "workout_id-linked, independently editable" shape the non-block days already use —
+  // so it opens straight into the same editable form afterwards.
+  async function customizeForClient(item, progDay) {
+    const { data: newWorkout, error } = await supabase
+      .from('workouts')
+      .insert({ coach_id: coachId, name: `${item.day_of_week} (custom for this client)` })
+      .select('id')
+      .single()
+    if (error || !newWorkout) return
+    const rows = (progDay.exercises || []).map((ex, i) => {
+      const match = exerciseLibrary.find(l => l.name.toLowerCase() === (ex.name || '').toLowerCase())
+      return {
+        workout_id: newWorkout.id,
+        order_index: i,
+        name: ex.name || 'Exercise',
+        equipment: ex.equipment || null,
+        exercise_id: match?.id || null,
+        sets: ex.sets || null,
+        reps: ex.reps || null,
+        rpe: ex.rpe || null,
+        notes: ex.notes || null,
+      }
+    })
+    if (rows.length > 0) await supabase.from('workout_exercises').insert(rows)
+    await supabase.from('client_schedule_items').update({ workout_id: newWorkout.id }).eq('id', item.id)
+    await load()
+    setExpandedItemId(item.id)
+    setEditingItemId(item.id)
+  }
+
   async function populateFromProgram(prog) {
     if (!prog) return
     setPopulating(true)
@@ -845,7 +880,7 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
                               {fromProgram ? (
                                 <div className="space-y-2">
                                   <p className="text-xs text-gray-400">
-                                    From the assigned training block — <Link to={`/coach/training/${assignment.program_id}`} className="text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 underline">edit exercises there</Link>.
+                                    From the assigned training block — <Link to={`/coach/training/${assignment.program_id}`} className="text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 underline">edit exercises there</Link> to change it for everyone on this block.
                                   </p>
                                   {exercises.length === 0 ? (
                                     <p className="text-xs text-gray-400">No exercises added on the block for this day yet.</p>
@@ -862,6 +897,15 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
                                       ))}
                                     </div>
                                   )}
+                                  <button
+                                    onClick={() => customizeForClient(item, progDay)}
+                                    className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium inline-flex items-center gap-1"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                    Customize just for this client
+                                  </button>
                                 </div>
                               ) : exercises === undefined ? (
                                 <p className="text-xs text-gray-400">Loading…</p>

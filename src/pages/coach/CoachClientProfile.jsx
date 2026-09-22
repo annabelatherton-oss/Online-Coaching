@@ -3701,7 +3701,14 @@ function TrainingTab({ client, coachId, onSaved }) {
             </Link>
           </div>
         )}
-        {[0, 1, 2].map(i => (
+        {[0, 1, 2].map(i => {
+          // The currently-set lift stays selectable even if it's not among this block's exercise
+          // names (e.g. it was set before the exercise was renamed/removed, or came from a
+          // free-typed override) — otherwise the <select> just shows blank, since a value with no
+          // matching <option> silently deselects rather than falling back to the saved name.
+          const current = topLiftOverride[i]
+          const liftSelectOptions = current && !liftOptions.includes(current) ? [current, ...liftOptions] : liftOptions
+          return (
           <div key={i}>
             <label className="label">Lift {i + 1} {blockTopLifts.length > 0 && <span className="text-gray-400 font-normal">(override)</span>}</label>
             {liftOptions.length > 0 ? (
@@ -3711,7 +3718,7 @@ function TrainingTab({ client, coachId, onSaved }) {
                 onChange={e => setTopLiftOverride(prev => prev.map((v, j) => j === i ? e.target.value : v))}
               >
                 <option value="">— Select exercise —</option>
-                {liftOptions.map(name => (
+                {liftSelectOptions.map(name => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
@@ -3725,7 +3732,8 @@ function TrainingTab({ client, coachId, onSaved }) {
               />
             )}
           </div>
-        ))}
+          )
+        })}
         <div className="flex items-center gap-3">
           <button type="button" onClick={saveTopLifts} disabled={savingLifts} className="btn-primary py-1.5 px-4 text-sm">
             {savingLifts ? 'Saving…' : 'Save'}
