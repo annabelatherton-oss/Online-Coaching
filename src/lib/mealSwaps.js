@@ -84,10 +84,17 @@ export function getMealConflicts(meal, tier, allergies, dislikes) {
   return { allergens: allergenHits, dislikes: dislikeHits }
 }
 
-export function findSafeMeal(category, excludeId, allergies, dislikes, mealMap, mealsByCategory, tier) {
+// dietFilter is an optional (meal) => boolean predicate — pass mealQualifiesForDiets bound to the
+// client's own diets so an auto-suggested "safe" replacement for an allergy/dislike conflict never
+// substitutes in a meal that isn't eligible for this client's diet (e.g. a Standard client getting
+// a meal that's had "Standard eligible" unchecked, purely because it happens to avoid the
+// allergen). Not imported directly from src/lib/diets.js here since diets.js itself imports
+// ALLERGEN_KEYWORDS from this file — passing it in avoids a circular import.
+export function findSafeMeal(category, excludeId, allergies, dislikes, mealMap, mealsByCategory, tier, dietFilter) {
   const options = mealsByCategory[category] || []
   return options.find(m => {
     if (m.id === excludeId) return false
+    if (dietFilter && !dietFilter(m)) return false
     const { allergens, dislikes: dl } = getMealConflicts(m, tier, allergies, dislikes)
     return allergens.length === 0 && dl.length === 0
   }) || null

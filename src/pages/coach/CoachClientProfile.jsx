@@ -2111,10 +2111,14 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
 
   const clientAllergies = client.allergies || []
   const clientDislikes  = (client.dislikes || []).filter(Boolean)
+  // Same "no dietary requirement means the Standard-eligible checkbox governs" fallback used by
+  // every other meal picker in this file — an auto-suggested "safe" swap for an allergy/dislike
+  // conflict should never bypass it.
+  const dietsForAutoSwap = (client.dietary_requirements || []).length > 0 ? client.dietary_requirements : ['']
 
   function autoSwapMeal(slotKey, category) {
     const currentId = editedSlots[slotKey] || null
-    const safe = findSafeMeal(category, currentId, clientAllergies, clientDislikes, mealMap, mealsByCategory, tier)
+    const safe = findSafeMeal(category, currentId, clientAllergies, clientDislikes, mealMap, mealsByCategory, tier, m => mealQualifiesForDiets(m, dietsForAutoSwap))
     if (!safe) return
     setEditedSlots(prev => ({ ...prev, [slotKey]: safe.id }))
     setIngredientOverrides(prev => { const n = { ...prev }; delete n[slotKey]; return n })
@@ -2714,7 +2718,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const isStatic = isStaticSlot && staticFlags[staticFlagKey]
     const conflicts = isStaticSlot ? null : getMealConflicts(mealMap[currentId], tier, clientAllergies, clientDislikes)
     const hasConflicts = !!conflicts && (conflicts.allergens.length > 0 || conflicts.dislikes.length > 0)
-    const canSwap = hasConflicts && !!findSafeMeal(cat, currentId, clientAllergies, clientDislikes, mealMap, mealsByCategory, tier)
+    const canSwap = hasConflicts && !!findSafeMeal(cat, currentId, clientAllergies, clientDislikes, mealMap, mealsByCategory, tier, m => mealQualifiesForDiets(m, dietsForAutoSwap))
 
     // Meals this client can't be given, based on their dietary requirements — never offered in
     // the picker, since a diet requirement (unlike an allergy/dislike) isn't optional. A client
