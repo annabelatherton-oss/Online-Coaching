@@ -1860,6 +1860,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   const [library, setLibrary] = useState([])
   const [ingredientOverrides, setIngredientOverrides] = useState({})
   const [removedCategories, setRemovedCategories] = useState([])
+  const [weekNeedsReview, setWeekNeedsReview] = useState(false)
   const [expandedSlots, setExpandedSlots] = useState(new Set())
   const [comparingSlots, setComparingSlots] = useState(new Set())
   const [openSwapRule, setOpenSwapRule] = useState(null) // { slotKey, dislike, removeId, quantity_g }
@@ -1983,7 +1984,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).eq('calorie_tier', tier).maybeSingle()
         : Promise.resolve({ data: null }),
       supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
-      supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories').eq('assignment_id', asgn.id).eq('week_number', weekNum).maybeSingle(),
+      supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories, needs_coach_review').eq('assignment_id', asgn.id).eq('week_number', weekNum).maybeSingle(),
     ])
     const tmpl = tierTmpl || stdTmpl
     const tSlots = {}
@@ -1995,6 +1996,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
     setIngredientOverrides(cwm?.ingredient_overrides || {})
     setRemovedCategories(cwm?.removed_categories || [])
+    setWeekNeedsReview(!!cwm?.needs_coach_review)
     setSlotsDirty(false)
   }
 
@@ -2493,10 +2495,13 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     setSlotsError('')
     setSavingSlots(true)
     await supabase.from('client_week_meals').upsert(
-      { client_id: client.id, coach_id: coachId, assignment_id: assignment.id, week_number: effectiveWeek, slots: editedSlots, ingredient_overrides: ingredientOverrides, removed_categories: removedCategories },
+      // The coach saving IS the review — whatever they end up changing, this clears the "client
+      // swapped a meal, go check it" flag their own save set (see ClientMealPlan.jsx handleSave).
+      { client_id: client.id, coach_id: coachId, assignment_id: assignment.id, week_number: effectiveWeek, slots: editedSlots, ingredient_overrides: ingredientOverrides, removed_categories: removedCategories, needs_coach_review: false },
       { onConflict: 'assignment_id,week_number' }
     )
     setSavingSlots(false); setSlotsDirty(false)
+    setWeekNeedsReview(false)
   }
 
   async function handleSaveStaticMeals() {
@@ -2954,8 +2959,26 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   return (
     <div className="space-y-5 max-w-4xl">
 
-      {(mealSwapAcks.length > 0 || everydayReviews.length > 0) && (
+      {(mealSwapAcks.length > 0 || everydayReviews.length > 0 || weekNeedsReview) && (
         <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 space-y-2">
+          {weekNeedsReview && (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                Client swapped a meal for week {effectiveWeek} — check the quantities below still fit their targets.
+              </p>
+              <button
+                onClick={async () => {
+                  setWeekNeedsReview(false)
+                  if (assignment && effectiveWeek != null) {
+                    await supabase.from('client_week_meals').update({ needs_coach_review: false }).eq('assignment_id', assignment.id).eq('week_number', effectiveWeek)
+                  }
+                }}
+                className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200 whitespace-nowrap flex-shrink-0"
+              >
+                Got it
+              </button>
+            </div>
+          )}
           {mealSwapAcks.map(row => (
             <div key={row.id} className="flex items-center justify-between gap-3">
               <p className="text-sm text-amber-800 dark:text-amber-300">

@@ -26,6 +26,7 @@ export default function ClientMealPlan() {
   const [mealsByCategory, setMealsByCategory] = useState({})
   const [editedSlots, setEditedSlots] = useState({})
   const [templateSlots, setTemplateSlots] = useState({})
+  const [lastSavedSlots, setLastSavedSlots] = useState({})
   const [ingredientOverrides, setIngredientOverrides] = useState({})
   const [removedCategories, setRemovedCategories] = useState([])
   const [slotsDirty, setSlotsDirty] = useState(false)
@@ -110,6 +111,12 @@ export default function ClientMealPlan() {
       const finalSlots = { ...tSlots, ...(cwm?.slots || {}) }
       setTemplateSlots(tSlots)
       setEditedSlots(finalSlots)
+      // Separate from templateSlots — the "needs coach review" flag should only fire on an
+      // actual NEW swap this save, not stay true forever just because an old, already-reviewed
+      // swap is still in place (e.g. the client only tweaked an ingredient quantity within that
+      // same swapped meal). Comparing against the slots as last saved, not the master template,
+      // is what tells "swapped again" apart from "still the swap the coach already saw".
+      setLastSavedSlots(finalSlots)
       setIngredientOverrides(cwm?.ingredient_overrides || {})
       setRemovedCategories(cwm?.removed_categories || [])
       setSlotsDirty(false)
@@ -175,6 +182,14 @@ export default function ClientMealPlan() {
   const opt2Sub     = sumSlotKeys(OPTION_2_KEYS)
   const opt1Total   = addMacros(addMacros(opt1Sub, preworkoutM), snackM)
   const opt2Total   = addMacros(addMacros(opt2Sub, preworkoutM), snackM)
+
+  // Fire-and-forget — a failed/slow push notification should never block the client's own save
+  // from completing. Looks up the coach itself server-side from the caller's own client row
+  // (see supabase/functions/send-meal-swap-notification), so there's nothing here a client could
+  // spoof to notify a coach that isn't actually theirs.
+  function notifyCoachOfSwap(weekNumber) {
+    supabase.functions.invoke('send-meal-swap-notification', { body: { weekNumber } }).catch(() => {})
+  }
 
   function handleSwapOpen(slotKey, label, cat) { setSwapModal({ slotKey, label, cat }) }
 
@@ -288,12 +303,24 @@ export default function ClientMealPlan() {
   async function handleSave() {
     if (!assignment || weekNumber == null) return
     setSaving(true); setSaveError(''); setSaved(false)
+    // A genuinely NEW meal choice since the last save is what needs the coach's attention — not
+    // re-saving ingredient-quantity tweaks on a meal that was already swapped (and already
+    // reviewed) with no new swap on top. Comparing against lastSavedSlots rather than
+    // templateSlots means an already-acknowledged swap doesn't keep re-flagging itself just for
+    // still being in place.
+    const hasNewSwap = ALL_SLOT_DEFS.some(s => (editedSlots[s.key] || null) !== (lastSavedSlots[s.key] || null))
+    // Still away from the template at all — used for the stored flag itself, so it stays true
+    // (and visible to the coach) until they've actually reviewed it, not just until the client's
+    // next unrelated save.
+    const hasSlotOverride = ALL_SLOT_DEFS.some(s => (editedSlots[s.key] || null) !== (templateSlots[s.key] || null))
     const { error } = await supabase.from('client_week_meals').upsert(
-      { client_id: clientData.id, coach_id: clientData.coach_id, assignment_id: assignment.id, week_number: weekNumber, slots: editedSlots, ingredient_overrides: ingredientOverrides },
+      { client_id: clientData.id, coach_id: clientData.coach_id, assignment_id: assignment.id, week_number: weekNumber, slots: editedSlots, ingredient_overrides: ingredientOverrides, needs_coach_review: hasSlotOverride },
       { onConflict: 'assignment_id,week_number' }
     )
     setSaving(false)
     if (error) { setSaveError('Could not save. Please try again.'); return }
+    setLastSavedSlots(editedSlots)
+    if (hasNewSwap) notifyCoachOfSwap(weekNumber)
     setSlotsDirty(false); setSaved(true); setTimeout(() => setSaved(false), 2500)
   }
 

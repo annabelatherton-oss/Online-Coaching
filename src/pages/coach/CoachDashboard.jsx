@@ -119,7 +119,7 @@ export default function CoachDashboard() {
         }
 
         if (clientIds.length > 0) {
-          const [{ data: checkinRows }, { data: resolvedRows }, { data: mealFlagRows }, { data: everydayRows }] = await Promise.all([
+          const [{ data: checkinRows }, { data: resolvedRows }, { data: mealFlagRows }, { data: everydayRows }, { data: weekSwapRows }] = await Promise.all([
             supabase
               .from('client_checkins')
               .select('client_id, week_number, energy_level, sleep_quality, food_adherence, gym_adherence, submitted_at, updated_at')
@@ -139,6 +139,11 @@ export default function CoachDashboard() {
             supabase
               .from('client_everyday_meals')
               .select('client_id, slot_type, requested_meal_id, meal:meal_id(name), requested_meal:requested_meal_id(name)')
+              .in('client_id', clientIds)
+              .eq('needs_coach_review', true),
+            supabase
+              .from('client_week_meals')
+              .select('client_id, week_number')
               .in('client_id', clientIds)
               .eq('needs_coach_review', true),
           ])
@@ -191,6 +196,10 @@ export default function CoachDashboard() {
             } else {
               flag(r.client_id, { text: `Everyday ${slotLabel} changed — check macros`, tone: 'amber' })
             }
+          })
+
+          ;(weekSwapRows || []).forEach(r => {
+            flag(r.client_id, { text: `Swapped a meal for week ${r.week_number} — check quantities`, tone: 'amber' })
           })
         }
 
