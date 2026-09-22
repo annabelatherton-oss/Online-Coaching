@@ -3195,15 +3195,16 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         </>
       )}
 
-      {/* Everyday meals — the client's own fixed breakfast/lunch/dinner, plus any pending
-          pre-workout/evening-snack swap requests waiting on the coach's approval. */}
-      {Object.keys(everydayRows).length > 0 && (
-        <div className="card space-y-3">
+      {/* Everyday meals — the coach can set any of the 5 slots directly (same "Change meal" picker
+          used for breakfast/lunch/dinner), or a client can request a pre-workout/evening-snack swap
+          themselves for the coach to approve/decline — either path lands in the same row below. */}
+      <div className="card space-y-3">
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Everyday Meals</h3>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-              The client picks their own breakfast, lunch and dinner to repeat daily — adjust portions here if needed.
-              Pre-workout and evening snack changes need your approval first.
+              A fixed breakfast, lunch, dinner, pre-workout and evening snack this client eats every day instead of
+              following the plan above — set any of them yourself with the arrow next to each one, or a client can
+              request their own pre-workout/evening-snack change for you to approve below.
             </p>
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
               These replace that meal slot entirely while active — they're a separate fixed choice, not interchangeable with the Option A/B meals in the plan above.
@@ -3215,23 +3216,23 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
 
             {EVERYDAY_REQUEST_SLOTS.map(slotKey => {
               const row = everydayRows[slotKey]
-              if (!row) return null
-              if (row.requested_meal_id) {
-                return (
-                  <div key={slotKey} className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 dark:bg-amber-900/10 px-3 py-2">
-                    <p className="text-sm text-amber-800 dark:text-amber-300">
-                      <span className="text-xs text-amber-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
-                      wants to switch to <span className="font-medium">{mealMap[row.requested_meal_id]?.name || 'a different meal'}</span>
-                    </p>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button onClick={() => approveEverydayRequest(row)} className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors">Approve</button>
-                      <button onClick={() => declineEverydayRequest(row)} className="text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Decline</button>
+              return (
+                <div key={slotKey} className="space-y-2">
+                  {row?.requested_meal_id && (
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 dark:bg-amber-900/10 px-3 py-2">
+                      <p className="text-sm text-amber-800 dark:text-amber-300">
+                        <span className="text-xs text-amber-500 uppercase tracking-wide mr-2">{EVERYDAY_LABELS[slotKey]}</span>
+                        wants to switch to <span className="font-medium">{mealMap[row.requested_meal_id]?.name || 'a different meal'}</span>
+                      </p>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button onClick={() => approveEverydayRequest(row)} className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors">Approve</button>
+                        <button onClick={() => declineEverydayRequest(row)} className="text-xs border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Decline</button>
+                      </div>
                     </div>
-                  </div>
-                )
-              }
-              if (!row.meal_id) return null
-              return renderEverydaySlot(slotKey)
+                  )}
+                  {renderEverydaySlot(slotKey)}
+                </div>
+              )
             })}
           </div>
 
@@ -3275,8 +3276,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
               </button>
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {/* Plan history */}
       {pastAssignments.length > 0 && (
