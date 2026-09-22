@@ -1467,6 +1467,31 @@ function makeOverrideHandlers(setOverrides, setDirty) {
     changeQty(key, ingredientId, value) {
       setOverrides(prev => {
         const current = normalizeOverrides(prev[key])
+        // A manually-added ingredient isn't in the qty override map at all — applyIngredientOverrides
+        // always shows an added row's OWN stored quantity_g/macros, never consulting qty[] for it, so
+        // writing a change there silently did nothing: the ingredient would visibly stay at whatever
+        // amount it was first added at no matter what got typed afterwards. Update the added row
+        // itself instead, rescaling its macros the same way the client's own everyday-meals editor
+        // already does.
+        const addedIdx = current.added.findIndex(a => a.id === ingredientId)
+        if (addedIdx !== -1) {
+          if (value === null || value === '') return prev
+          const num = parseFloat(value)
+          if (isNaN(num)) return prev
+          const a = current.added[addedIdx]
+          const origQty = parseFloat(a.quantity_g) || 0
+          const ratio = origQty > 0 ? num / origQty : 1
+          const added = [...current.added]
+          added[addedIdx] = {
+            ...a,
+            quantity_g: num,
+            calories:  round1((parseFloat(a.calories)  || 0) * ratio),
+            protein_g: round1((parseFloat(a.protein_g) || 0) * ratio),
+            carbs_g:   round1((parseFloat(a.carbs_g)   || 0) * ratio),
+            fat_g:     round1((parseFloat(a.fat_g)     || 0) * ratio),
+          }
+          return { ...prev, [key]: { ...current, added } }
+        }
         const qty = { ...current.qty }
         if (value === null || value === '') delete qty[ingredientId]
         else {
