@@ -189,9 +189,7 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
     <div data-tour="everyday-meals" className="card space-y-4">
       <div>
         <h2 className="text-base font-bold text-gray-900 dark:text-white">Meals I eat every day</h2>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-          Pick a breakfast, lunch and dinner you're happy to have every day instead of following the plan above — your coach can fine-tune the portions once you've chosen. Pre-workout and evening snack can be requested, but your coach needs to approve the change first.
-        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Fixed meals instead of the plan above.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

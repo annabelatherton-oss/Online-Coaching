@@ -84,16 +84,17 @@ export function dietViolations(meal, dietKey) {
   return hits
 }
 
-// Whether a meal belongs in a given diet's plan. dietKey === '' means "Standard": a meal only
-// fails Standard if it's marked standard_eligible = false (built around a meat/dairy substitute
-// like Quorn/tofu/tempeh that a general client wouldn't expect — see the Meal Editor's "Standard
-// eligible" checkbox). For an actual diet, a tag means "this meal is safe for it" — tags are
-// informational, not exclusive, so a tagged meal still shows up in Standard and every other diet
-// it also qualifies for. An untagged meal (diet_tags empty — e.g. a brand-new meal not yet
-// recomputed) falls back to a live check of its ingredients' names.
+// Whether a meal belongs in a given diet's plan. dietKey === '' means "Standard": a meal tagged
+// for a specific diet (vegetarian/vegan/etc) is built FOR clients with that requirement, not a
+// bonus option offered to every Standard client too — so any diet_tags at all excludes it from
+// Standard, on top of the existing standard_eligible opt-out (still there for an untagged meal
+// built around a substitute like Quorn/tofu/tempeh a general client wouldn't expect — see the
+// Meal Editor's "Standard eligible" checkbox). For an actual diet, a tag means "this meal is safe
+// for it". An untagged meal (diet_tags empty — e.g. a brand-new meal not yet recomputed) falls
+// back to a live check of its ingredients' names.
 export function mealQualifiesForDiet(meal, dietKey) {
-  if (!dietKey) return meal.standard_eligible !== false
   const tags = meal.diet_tags || []
+  if (!dietKey) return meal.standard_eligible !== false && tags.length === 0
   if (tags.length > 0) return tags.includes(dietKey)
   const ingredientNames = (meal.meal_ingredients || []).map(i => i.name)
   return !ingredientsViolateDiet(ingredientNames, dietKey)

@@ -3295,17 +3295,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           themselves for the coach to approve/decline — either path lands in the same row below. */}
       <div className="card space-y-3">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">Everyday Meals</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                A fixed breakfast, lunch, dinner, pre-workout and evening snack this client eats every day instead of
-                following the plan above — set any of them yourself with the arrow next to each one, or a client can
-                request their own pre-workout/evening-snack change for you to approve below.
-              </p>
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                These replace that meal slot entirely while active — they're a separate fixed choice, not interchangeable with the Option A/B meals in the plan above.
-              </p>
-            </div>
+            <h3 className="font-semibold text-gray-900 dark:text-white">Everyday Meals</h3>
             <div className="flex flex-col items-end gap-1 flex-shrink-0">
               <button onClick={() => handleNotifyClient('everyday')} disabled={notifying === 'everyday'} className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap">
                 {notifying === 'everyday' ? 'Notifying…' : 'Notify client of changes'}
