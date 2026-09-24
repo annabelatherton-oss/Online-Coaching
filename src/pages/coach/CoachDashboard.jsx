@@ -128,7 +128,7 @@ export default function CoachDashboard() {
         }
 
         if (clientIds.length > 0) {
-          const [{ data: checkinRows }, { data: resolvedRows }, { data: mealFlagRows }, { data: everydayRows }, { data: weekSwapRows }] = await Promise.all([
+          const [{ data: checkinRows }, { data: resolvedRows }, { data: mealFlagRows }, { data: everydayRows }, { data: weekSwapRows }, { data: trainingRows }] = await Promise.all([
             supabase
               .from('client_checkins')
               .select('client_id, week_number, energy_level, sleep_quality, food_adherence, gym_adherence, submitted_at, updated_at')
@@ -155,6 +155,11 @@ export default function CoachDashboard() {
               .select('client_id, week_number')
               .in('client_id', clientIds)
               .eq('needs_coach_review', true),
+            supabase
+              .from('client_training_assignments')
+              .select('client_id, start_date, created_at, training_programs(weeks_total)')
+              .in('client_id', clientIds)
+              .eq('active', true),
           ])
 
           const checkinsByClient = {}
@@ -205,6 +210,21 @@ export default function CoachDashboard() {
 
           ;(weekSwapRows || []).forEach(r => {
             flag(r.client_id, { text: `Swapped a meal for week ${r.week_number} — check quantities`, tone: 'amber' })
+          })
+
+          // Training block ending soon (or already over) — same weeksElapsed >= blockTotal math
+          // as the "Block complete" banner on that client's own Training tab, just surfaced here
+          // ahead of time (within 14 days of the end) instead of only once it's already happened.
+          ;(trainingRows || []).forEach(r => {
+            const blockTotal = r.training_programs?.weeks_total ?? 12
+            const blockStart = r.start_date || r.created_at?.split('T')[0]
+            if (!blockStart) return
+            const daysElapsed = Math.floor((now.getTime() - new Date(blockStart).getTime()) / (24 * 60 * 60 * 1000))
+            const daysRemaining = blockTotal * 7 - daysElapsed
+            if (daysRemaining > 14) return
+            flag(r.client_id, daysRemaining <= 0
+              ? { text: 'Training block has ended', tone: 'amber' }
+              : { text: `Training block ends in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}`, tone: 'amber' })
           })
         }
 
