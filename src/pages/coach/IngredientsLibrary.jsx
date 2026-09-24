@@ -495,6 +495,8 @@ export default function IngredientsLibrary() {
   const [activeCategory, setActiveCategory] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [deleteError, setDeleteError] = useState('')
 
   async function load() {
     const [{ data }, { data: swapRows }] = await Promise.all([
@@ -517,7 +519,11 @@ export default function IngredientsLibrary() {
 
   async function handleDelete(id) {
     if (!confirm('Delete this ingredient? Meals that already use it will keep their saved values.')) return
-    await supabase.from('ingredients').delete().eq('id', id)
+    setDeleteError('')
+    setDeletingId(id)
+    const { error: delErr } = await supabase.from('ingredients').delete().eq('id', id)
+    setDeletingId(null)
+    if (delErr) { setDeleteError(delErr.message); return }
     load()
   }
 
@@ -555,6 +561,12 @@ export default function IngredientsLibrary() {
           Add Ingredient
         </button>
       </div>
+
+      {deleteError && (
+        <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+          <p className="text-sm text-red-700 dark:text-red-400">Couldn't delete: {deleteError}</p>
+        </div>
+      )}
 
       {/* Search + category filters — sticky so it's always reachable while scrolling a long library */}
       <div className="sticky top-0 z-20 -mx-4 -mt-4 lg:-mx-6 lg:-mt-6 px-4 lg:px-6 pt-4 lg:pt-6 pb-3 bg-white dark:bg-gray-900 border-b border-pink-100 dark:border-gray-800 space-y-3">
@@ -699,7 +711,13 @@ export default function IngredientsLibrary() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-3">
                       <button onClick={() => openEdit(ing)} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">Edit</button>
-                      <button onClick={() => handleDelete(ing.id)} className="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-400 font-medium">Delete</button>
+                      <button
+                        onClick={() => handleDelete(ing.id)}
+                        disabled={deletingId === ing.id}
+                        className="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-400 font-medium disabled:opacity-50"
+                      >
+                        {deletingId === ing.id ? 'Deleting…' : 'Delete'}
+                      </button>
                     </div>
                   </td>
                 </tr>
