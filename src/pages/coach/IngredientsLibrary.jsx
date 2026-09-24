@@ -5,7 +5,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import { propagateIngredientRuleChange } from '../../lib/calorieTierScaling'
 import { predictIngredientDietFlags } from '../../lib/diets'
 
-const UNIT_OPTIONS = ['g', 'ml', 'tbsp', 'tsp', 'cup', 'piece', 'square', 'scoop', 'slice', 'handful']
+const UNIT_OPTIONS = ['g', 'ml', 'unit', 'tbsp', 'tsp', 'cup', 'piece', 'square', 'scoop', 'slice', 'handful']
 
 const CATEGORIES = [
   { value: 'all', label: 'All' },
