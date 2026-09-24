@@ -143,6 +143,8 @@ export default function ClientsList() {
   const [showModal, setShowModal] = useState(false)
   const [duplicateData, setDuplicateData] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [alsoDeleteLogin, setAlsoDeleteLogin] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const [actionLoading, setActionLoading] = useState(null)
   const [pauseClientIds, setPauseClientIds] = useState(new Set())
   const [extendClient, setExtendClient] = useState(null)
@@ -231,11 +233,28 @@ export default function ClientsList() {
     setExtendClient(null)
   }
 
+  // The plain delete only removes the `clients` row (and everything that cascades from it —
+  // meal plans, check-ins, weight history, etc), leaving the client's login intact so they could
+  // theoretically be re-added later without a fresh signup. "Also delete their login" goes further
+  // via delete-client-account (needs the service-role auth admin API, so it can't run from the
+  // browser directly): deleting auth.users cascades all the way down (auth.users -> profiles ->
+  // clients -> everything else), so there is no way back for this client afterwards.
   async function deleteClient(client) {
     setActionLoading(client.id)
-    await supabase.from('clients').delete().eq('id', client.id)
+    setDeleteError('')
+    if (alsoDeleteLogin) {
+      const { data, error } = await supabase.functions.invoke('delete-client-account', { body: { clientId: client.id } })
+      if (error || !data?.ok) {
+        setDeleteError(data?.error || error?.message || 'Could not delete — try again.')
+        setActionLoading(null)
+        return
+      }
+    } else {
+      await supabase.from('clients').delete().eq('id', client.id)
+    }
     await loadClients()
     setConfirmDelete(null)
+    setAlsoDeleteLogin(false)
     setActionLoading(null)
   }
 
@@ -359,7 +378,11 @@ export default function ClientsList() {
         <>
           {/* Desktop table */}
           <div className="hidden md:block card p-0 overflow-hidden">
-            <table className="w-full text-sm">
+            {/* The Actions column has 5 buttons that don't all fit on a narrower desktop window —
+                this lets the table scroll horizontally to reach them instead of clipping them off
+                with no way to get to the ones further right. */}
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[52rem]">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-800">
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Client</th>
@@ -454,6 +477,7 @@ export default function ClientsList() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Mobile cards */}
@@ -528,11 +552,24 @@ export default function ClientsList() {
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-sm p-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Delete client?</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-              This will remove <strong>{confirmDelete.profiles?.full_name}</strong>'s client record.
-              Their login account will remain but they will no longer appear in your dashboard.
+              This will remove <strong>{confirmDelete.profiles?.full_name}</strong>'s client record
+              — their meal plans, check-ins, weight history and everything else tied to it goes too.
+              {!alsoDeleteLogin && ' Their login account will remain, but they will no longer appear in your dashboard.'}
             </p>
+            <label className="flex items-start gap-2 mt-4 text-sm text-gray-600 dark:text-gray-300">
+              <input
+                type="checkbox"
+                checked={alsoDeleteLogin}
+                onChange={e => setAlsoDeleteLogin(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded text-red-500 focus:ring-red-500"
+              />
+              <span>
+                Also permanently delete their login — they'll never be able to sign back in, and this can't be undone.
+              </span>
+            </label>
+            {deleteError && <p className="text-sm text-red-600 dark:text-red-400 mt-2">{deleteError}</p>}
             <div className="flex gap-3 mt-5">
-              <button onClick={() => setConfirmDelete(null)} className="btn-secondary flex-1">
+              <button onClick={() => { setConfirmDelete(null); setAlsoDeleteLogin(false); setDeleteError('') }} className="btn-secondary flex-1">
                 Cancel
               </button>
               <button
@@ -540,7 +577,7 @@ export default function ClientsList() {
                 disabled={actionLoading === confirmDelete.id}
                 className="btn-danger flex-1"
               >
-                {actionLoading === confirmDelete.id ? 'Deleting…' : 'Delete'}
+                {actionLoading === confirmDelete.id ? 'Deleting…' : alsoDeleteLogin ? 'Delete permanently' : 'Delete'}
               </button>
             </div>
           </div>
