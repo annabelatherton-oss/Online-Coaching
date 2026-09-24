@@ -42,6 +42,23 @@ function StatusBadge({ client, onClick }) {
   return <span className={`badge ${classes}`}>{label}</span>
 }
 
+// Smaller version of the dashboard's StatCard — a clickable filter, not a link, since it sets
+// the status filter on this same page rather than navigating elsewhere.
+function FilterBlock({ label, value, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`card !p-3 text-left transition-shadow hover:shadow-md ${
+        active ? 'ring-2 ring-brand-400 dark:ring-brand-600' : ''
+      }`}
+    >
+      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="text-lg font-bold text-gray-900 dark:text-white mt-0.5">{value}</p>
+    </button>
+  )
+}
+
 function TagChip({ tag }) {
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400">
@@ -279,6 +296,16 @@ export default function ClientsList() {
   // Collect all unique tags across clients
   const allTags = [...new Set(clients.flatMap(c => c.tags || []))].sort()
 
+  // Counts for the filter blocks below — clientStatus() returns exactly one status per client, so
+  // these are mutually exclusive and sum to clients.length (matching the dropdown's own logic:
+  // "All" means every non-archived client, archived only shows up when picked explicitly).
+  const statusCounts = clients.reduce((acc, c) => {
+    const s = clientStatus(c)
+    acc[s] = (acc[s] || 0) + 1
+    return acc
+  }, {})
+  const allCount = clients.length - (statusCounts.archived || 0)
+
   const filtered = clients.filter(c => {
     const name = c.profiles?.full_name?.toLowerCase() || ''
     const email = c.profiles?.email?.toLowerCase() || ''
@@ -317,7 +344,18 @@ export default function ClientsList() {
         </button>
       </div>
 
-      {/* Search + status/tag filter */}
+      {/* Status filter blocks — smaller versions of the dashboard's stat cards, clicking one
+          filters this list the same way the old status dropdown did. */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        <FilterBlock label="All" value={allCount} active={statusFilter === 'All'} onClick={() => setStatus('All')} />
+        <FilterBlock label="Active" value={statusCounts.active || 0} active={statusFilter === 'Active'} onClick={() => setStatus('Active')} />
+        <FilterBlock label="Paused" value={statusCounts.paused || 0} active={statusFilter === 'Paused'} onClick={() => setStatus('Paused')} />
+        <FilterBlock label="Expiring soon" value={statusCounts.expiring || 0} active={statusFilter === 'Expiring'} onClick={() => setStatus('Expiring')} />
+        <FilterBlock label="Expired" value={statusCounts.expired || 0} active={statusFilter === 'Expired'} onClick={() => setStatus('Expired')} />
+        <FilterBlock label="Archived" value={statusCounts.archived || 0} active={statusFilter === 'Archived'} onClick={() => setStatus('Archived')} />
+      </div>
+
+      {/* Search + tag filter */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,18 +368,6 @@ export default function ClientsList() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <select
-          className="input sm:w-48"
-          value={statusFilter}
-          onChange={e => setStatus(e.target.value)}
-        >
-          <option value="All">All statuses</option>
-          <option value="Active">Active</option>
-          <option value="Paused">Paused</option>
-          <option value="Expiring">Expiring soon</option>
-          <option value="Expired">Expired</option>
-          <option value="Archived">Archived</option>
-        </select>
         {allTags.length > 0 && (
           <select
             className="input sm:w-48"
