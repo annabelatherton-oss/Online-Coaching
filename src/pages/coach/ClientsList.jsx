@@ -80,15 +80,38 @@ function TagChip({ tag }) {
   )
 }
 
-// Two ways to add access time: a number of weeks on top of whatever's there (the common case —
-// mirrors the old "+4w" button but lets the coach pick how many), or an exact new expiry date
-// for when a specific date matters more than a round number of weeks.
+// The next 12 Mondays (including today if it is one), as yyyy-mm-dd strings for a <select>.
+function upcomingMondays(count = 12) {
+  const out = []
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  const day = d.getDay() // 0 = Sun, 1 = Mon, ...
+  const daysUntilMonday = day === 1 ? 0 : (8 - day) % 7
+  d.setDate(d.getDate() + daysUntilMonday)
+  for (let i = 0; i < count; i++) {
+    out.push(new Date(d.getTime() + i * 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+  }
+  return out
+}
+
+// Three ways to add access time: a number of weeks on top of whatever's there (the common case —
+// mirrors the old "+4w" button but lets the coach pick how many), an exact new expiry date for
+// when a specific date matters more than a round number of weeks, or picking a Monday to start
+// counting X weeks from (for lining access up with when a new block/plan actually starts).
 function ExtendAccessModal({ client, onClose, onAddWeeks, onSetExactDate, busy }) {
   const [mode, setMode] = useState('weeks')
   const [weeks, setWeeks] = useState(4)
   const [exactDate, setExactDate] = useState(
     client.access_expires_at ? new Date(client.access_expires_at).toISOString().split('T')[0] : ''
   )
+  const mondays = upcomingMondays()
+  const [mondayStart, setMondayStart] = useState(mondays[0])
+  const [mondayWeeks, setMondayWeeks] = useState(4)
+  const mondayExpiry = (() => {
+    const d = new Date(mondayStart)
+    d.setDate(d.getDate() + parseInt(mondayWeeks || 0) * 7)
+    return d.toISOString().split('T')[0]
+  })()
   const currentExpiry = client.access_expires_at
     ? new Date(client.access_expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
     : '—'
@@ -118,9 +141,16 @@ function ExtendAccessModal({ client, onClose, onAddWeeks, onSetExactDate, busy }
           >
             Set exact date
           </button>
+          <button
+            type="button"
+            onClick={() => setMode('monday')}
+            className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'monday' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
+          >
+            Start on a Monday
+          </button>
         </div>
 
-        {mode === 'weeks' ? (
+        {mode === 'weeks' && (
           <div>
             <label className="label">Additional weeks</label>
             <input
@@ -132,7 +162,9 @@ function ExtendAccessModal({ client, onClose, onAddWeeks, onSetExactDate, busy }
               onChange={e => setWeeks(e.target.value)}
             />
           </div>
-        ) : (
+        )}
+
+        {mode === 'date' && (
           <div>
             <label className="label">New expiry date</label>
             <input
@@ -144,12 +176,45 @@ function ExtendAccessModal({ client, onClose, onAddWeeks, onSetExactDate, busy }
           </div>
         )}
 
+        {mode === 'monday' && (
+          <div className="space-y-3">
+            <div>
+              <label className="label">Start Monday</label>
+              <select className="input" value={mondayStart} onChange={e => setMondayStart(e.target.value)}>
+                {mondays.map(m => (
+                  <option key={m} value={m}>
+                    {new Date(m).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Weeks from that Monday</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                onFocus={e => e.target.select()}
+                value={mondayWeeks}
+                onChange={e => setMondayWeeks(e.target.value)}
+              />
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              New expiry: {new Date(mondayExpiry).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
+          </div>
+        )}
+
         <div className="flex gap-3">
           <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
           <button
             type="button"
-            disabled={busy || (mode === 'weeks' ? !weeks || parseInt(weeks) < 1 : !exactDate)}
-            onClick={() => mode === 'weeks' ? onAddWeeks(parseInt(weeks)) : onSetExactDate(exactDate)}
+            disabled={busy || (mode === 'weeks' ? !weeks || parseInt(weeks) < 1 : mode === 'date' ? !exactDate : !mondayStart || !mondayWeeks || parseInt(mondayWeeks) < 1)}
+            onClick={() => {
+              if (mode === 'weeks') onAddWeeks(parseInt(weeks))
+              else if (mode === 'date') onSetExactDate(exactDate)
+              else onSetExactDate(mondayExpiry)
+            }}
             className="btn-primary flex-1"
           >
             {busy ? 'Saving…' : 'Save'}
