@@ -75,6 +75,18 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
   const [savedMsg, setSavedMsg] = useState(false)
   const fileRef = useRef()
   const dragStartRef = useRef(null)
+  const didMountRef = useRef(false)
+  const debounceRef = useRef(null)
+  const savingRef = useRef(false)
+  const pendingRef = useRef(false)
+  // doSave can end up re-invoked later than the render that scheduled it (retried after an
+  // overlapping save finishes) — reading everything through this ref instead of closing over
+  // render-local values/props means that retry always sees the latest state (e.g. isNew having
+  // flipped false after this meal's first insert), never a stale snapshot from when the timer was
+  // first set — which is what would otherwise risk a second insert (duplicate meal row) if an edit
+  // landed while the very first save was still in flight.
+  const latestRef = useRef()
+  latestRef.current = { form, photoFile, photoRemoved, photoPosition, meal, mealId, isNew, coachId, onSaved }
 
   const currentPhotoUrl = meal?.photo_url
     ? supabase.storage.from('meal-photos').getPublicUrl(meal.photo_url).data.publicUrl
@@ -148,9 +160,18 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
     processPhotoFile(e.dataTransfer.files?.[0])
   }
 
-  async function handleSave(e) {
-    e.preventDefault()
+  // Autosaves the whole Details tab — no Save button, no explicit submit. Debounced so a burst of
+  // edits (typing, dragging the photo position) becomes one write ~700ms after things settle, and
+  // guarded against overlapping calls (savingRef/pendingRef) so a slow photo upload can't race a
+  // second save triggered by an edit made while it was still in flight — that edit's save just
+  // re-runs immediately once the first one finishes, rather than being dropped or run concurrently.
+  async function doSave() {
+    // Always read the latest snapshot, not whatever this particular call's own render closed
+    // over — see the latestRef comment above for why that matters on a retried call.
+    const { form, photoFile, photoRemoved, photoPosition, meal, mealId, isNew, coachId, onSaved } = latestRef.current
     if (!form.name.trim()) { setError('Name is required.'); return }
+    if (savingRef.current) { pendingRef.current = true; return }
+    savingRef.current = true
     setSaving(true)
     setError('')
 
@@ -158,7 +179,7 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
     if (photoFile) {
       const path = `${coachId}/${Date.now()}-${photoFile.name}`
       const { error: uploadErr } = await supabase.storage.from('meal-photos').upload(path, photoFile)
-      if (uploadErr) { setError('Photo upload failed: ' + uploadErr.message); setSaving(false); return }
+      if (uploadErr) { setError('Photo upload failed: ' + uploadErr.message); savingRef.current = false; setSaving(false); return }
       photoPath = path
     } else if (photoRemoved) {
       if (meal?.photo_url) await supabase.storage.from('meal-photos').remove([meal.photo_url])
@@ -181,21 +202,32 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
     let savedId = mealId
     if (isNew) {
       const { data, error: insertErr } = await supabase.from('meals').insert({ ...payload, coach_id: coachId }).select('id').single()
-      if (insertErr) { setError(insertErr.message); setSaving(false); return }
+      if (insertErr) { setError(insertErr.message); savingRef.current = false; setSaving(false); return }
       savedId = data.id
     } else {
       const { error: updateErr } = await supabase.from('meals').update(payload).eq('id', mealId)
-      if (updateErr) { setError(updateErr.message); setSaving(false); return }
+      if (updateErr) { setError(updateErr.message); savingRef.current = false; setSaving(false); return }
     }
 
+    savingRef.current = false
     setSaving(false)
     setSavedMsg(true)
-    setTimeout(() => setSavedMsg(false), 2500)
+    setTimeout(() => setSavedMsg(false), 2000)
     onSaved(savedId)
+
+    if (pendingRef.current) { pendingRef.current = false; doSave() }
   }
 
+  // Skips the mount-time run (nothing's actually changed yet) — only real edits schedule a save.
+  useEffect(() => {
+    if (!didMountRef.current) { didMountRef.current = true; return }
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(doSave, 700)
+    return () => clearTimeout(debounceRef.current)
+  }, [form, photoFile, photoRemoved, photoPosition])
+
   return (
-    <form onSubmit={handleSave} className="space-y-6 max-w-2xl">
+    <form onSubmit={e => e.preventDefault()} className="space-y-6 max-w-2xl">
       <div className="card space-y-4">
         <h3 className="font-semibold text-gray-900 dark:text-white">Meal Details</h3>
         <div>
@@ -326,11 +358,9 @@ function DetailsTab({ meal, mealId, isNew, onSaved, coachId }) {
         </div>
       )}
 
-      <div className="flex items-center gap-3">
-        <button type="submit" disabled={saving} className="btn-primary">
-          {saving ? 'Saving…' : isNew ? 'Create Meal' : 'Save Changes'}
-        </button>
-        {savedMsg && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
+      <div className="flex items-center gap-3 h-5">
+        {saving && <span className="text-sm text-gray-400 dark:text-gray-500">Saving…</span>}
+        {!saving && savedMsg && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
       </div>
     </form>
   )
