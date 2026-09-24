@@ -20,6 +20,19 @@ function clientStatus(client) {
   return 'inactive'
 }
 
+// Flags the Extend button itself when this client's overall access is expiring soon or
+// already expired, so the coach sees it right where they'd act on it without a separate list.
+function extendUrgency(client) {
+  const status = clientStatus(client)
+  if (status !== 'expiring' && status !== 'expired') return null
+  if (status === 'expired') {
+    return { label: 'Extend · expired', className: 'bg-red-500 hover:bg-red-600 text-white' }
+  }
+  const exp = new Date(client.access_expires_at)
+  const days = Math.max(0, Math.ceil((exp.getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+  return { label: `Extend · ${days}d left`, className: 'bg-orange-500 hover:bg-orange-600 text-white' }
+}
+
 function StatusBadge({ client, onClick }) {
   const status = clientStatus(client)
   const clickable = (status === 'expiring' || status === 'expired') && onClick
@@ -478,10 +491,10 @@ export default function ClientsList() {
                         <button
                           onClick={() => setExtendClient(client)}
                           disabled={actionLoading === client.id}
-                          className="btn-secondary py-1.5 px-3 text-xs"
+                          className={`btn-secondary py-1.5 px-3 text-xs ${extendUrgency(client)?.className || ''}`}
                           title="Add access time"
                         >
-                          Extend…
+                          {extendUrgency(client)?.label || 'Extend…'}
                         </button>
                         <button
                           onClick={() => toggleArchive(client)}
@@ -542,7 +555,7 @@ export default function ClientsList() {
                 <div className="mt-3 flex flex-wrap gap-2" onClick={e => e.stopPropagation()}>
                   <button onClick={() => openDuplicate(client)} className="btn-secondary py-1.5 px-3 text-xs">Dupe</button>
                   <button onClick={() => togglePause(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">{client.is_paused ? 'Resume' : 'Pause'}</button>
-                  <button onClick={() => setExtendClient(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">Extend…</button>
+                  <button onClick={() => setExtendClient(client)} disabled={actionLoading === client.id} className={`btn-secondary py-1.5 px-3 text-xs ${extendUrgency(client)?.className || ''}`}>{extendUrgency(client)?.label || 'Extend…'}</button>
                   <button onClick={() => toggleArchive(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">{client.is_archived ? 'Unarchive' : 'Archive'}</button>
                   <button onClick={() => setConfirmDelete(client)} className="py-1.5 px-3 text-xs rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800 transition-colors">Delete</button>
                 </div>
