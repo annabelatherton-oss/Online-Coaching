@@ -18,7 +18,6 @@ import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from
 import { getMealConflicts, findSafeMeal, findSafeAlternative } from '../../lib/mealSwaps'
 import { macrosForQty } from '../../lib/ingredientMacros'
 import { notifyClient } from '../../lib/pushNotifications'
-import { upcomingMondays } from '../../lib/scheduling'
 import { ACTIVITY_LABELS, GOAL_LABELS, estimateMaintenanceCalories } from '../../lib/calorieSuggestion'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import DislikePicker from '../../components/DislikePicker'
@@ -463,10 +462,6 @@ function checkinRatingColor(v) {
 
 function _fmtDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-}
-
-function _fmtShortDate(iso) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function ClientPauseCard({ clientId }) {
@@ -1898,17 +1893,12 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   const [staticError, setStaticError] = useState('')
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ plan_group_id: '', calorie_target: CALORIE_TIERS.includes(client.current_calories) ? client.current_calories : '', starting_week: '', startMode: 'now', startDate: upcomingMondays(1)[0] })
+  const [form, setForm] = useState({ plan_group_id: '', calorie_target: CALORIE_TIERS.includes(client.current_calories) ? client.current_calories : '', starting_week: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showOverride, setShowOverride] = useState(false)
   const [overrideWeek, setOverrideWeek] = useState('')
   const [pastAssignments, setPastAssignments] = useState([])
-  // A plan the coach has prepared in advance to start on a future Monday — active=false,
-  // scheduled_start=true, not yet flipped live by activate-scheduled-assignments (see that
-  // function's own comment for how "scheduled" is told apart from "already replaced").
-  const [scheduledPlan, setScheduledPlan] = useState(null)
-  const [cancelingSchedule, setCancelingSchedule] = useState(false)
   const [mealSwapAcks, setMealSwapAcks] = useState([])
   const [everydayReviews, setEverydayReviews] = useState([])
   const [editingCalorie, setEditingCalorie] = useState(false)
@@ -2053,7 +2043,6 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const allGroups = groups || []
     setPlanGroups(allGroups)
     setPastAssignments(past || [])
-    setScheduledPlan((past || []).find(a => a.scheduled_start) || null)
     setLibrary(libData || [])
     setClientWeightKg(weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null)
 
@@ -2578,33 +2567,19 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
 
   async function handleAssign(e) {
     e.preventDefault(); setSaving(true); setError('')
-    const isFuture = form.startMode === 'future'
+    await supabase.from('client_plan_assignments').update({ active: false, ended_at: new Date().toISOString() }).eq('client_id', client.id).eq('active', true)
     const group = planGroups.find(g => g.id === form.plan_group_id)
-
-    if (isFuture) {
-      // Only one prepared-in-advance plan at a time — a new schedule replaces whatever was
-      // queued before, same as picking a different plan today replaces what's currently active.
-      await supabase.from('client_plan_assignments').delete().eq('client_id', client.id).eq('scheduled_start', true)
-    } else {
-      await supabase.from('client_plan_assignments').update({ active: false, ended_at: new Date().toISOString() }).eq('client_id', client.id).eq('active', true)
-    }
-
     const { data: newAssignment, error: err } = await supabase.from('client_plan_assignments').insert({
       client_id: client.id, coach_id: coachId,
       plan_group_id: form.plan_group_id,
       plan_group_name: group?.name || '20 Week Plan',
       calorie_target: form.calorie_target ? parseInt(form.calorie_target) : null,
-      start_date: isFuture ? form.startDate : new Date().toISOString().split('T')[0],
+      start_date: new Date().toISOString().split('T')[0],
       week_override: form.starting_week ? parseInt(form.starting_week) : null,
-      active: !isFuture,
-      scheduled_start: isFuture,
     }).select('id').single()
     if (err) { setSaving(false); setError(err.message); return }
 
-    // Only touch the client's live calorie target (and every other bit of "what's happening
-    // right now") when this plan actually takes effect immediately — a future-dated one shouldn't
-    // change anything about today until activate-scheduled-assignments flips it live.
-    if (!isFuture && form.calorie_target) {
+    if (form.calorie_target) {
       await supabase.from('clients').update({ current_calories: parseInt(form.calorie_target) }).eq('id', client.id)
     }
 
@@ -2622,18 +2597,8 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
       await supabase.from('client_plan_assignments').update(defaults).eq('id', newAssignment.id)
     }
 
-    setSaving(false); setShowForm(false)
-    setForm(f => ({ ...f, startMode: 'now', startDate: upcomingMondays(1)[0] }))
-    load()
-    if (!isFuture && form.calorie_target) onCalorieTargetChanged?.()
-  }
-
-  async function cancelScheduledPlan() {
-    if (!scheduledPlan) return
-    setCancelingSchedule(true)
-    await supabase.from('client_plan_assignments').delete().eq('id', scheduledPlan.id)
-    setCancelingSchedule(false)
-    load()
+    setSaving(false); setShowForm(false); load()
+    if (form.calorie_target) onCalorieTargetChanged?.()
   }
 
   async function handleSaveOverride(e) {
@@ -3096,50 +3061,12 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
               </select>
             </div>
           </div>
-          {assignment && (
-            <div>
-              <label className="label">When should this take effect?</label>
-              <div className="flex gap-2 p-1 rounded-lg bg-gray-100 dark:bg-gray-800 w-fit">
-                <button type="button" onClick={() => setForm(f => ({ ...f, startMode: 'now' }))}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${form.startMode === 'now' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
-                  Start now
-                </button>
-                <button type="button" onClick={() => setForm(f => ({ ...f, startMode: 'future' }))}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${form.startMode === 'future' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
-                  Schedule a future Monday
-                </button>
-              </div>
-              {form.startMode === 'future' && (
-                <div className="mt-2">
-                  <select className="input sm:w-56" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}>
-                    {upcomingMondays(16).map(d => <option key={d} value={d}>{_fmtShortDate(d)}</option>)}
-                  </select>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Their current plan stays active and visible to them until then — build this one now, it'll switch over automatically that morning.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <div className="flex items-center gap-3">
-            <button type="submit" disabled={saving || !form.plan_group_id} className="btn-primary">
-              {saving ? 'Saving…' : form.startMode === 'future' ? 'Schedule Plan' : assignment ? 'Update' : 'Assign Plan'}
-            </button>
-            <button type="button" onClick={() => { setShowForm(false); setForm(f => ({ ...f, startMode: 'now' })) }} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving || !form.plan_group_id} className="btn-primary">{saving ? 'Saving…' : assignment ? 'Update' : 'Assign Plan'}</button>
+            <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
           </div>
         </form>
-      )}
-
-      {scheduledPlan && !showForm && (
-        <div className="rounded-xl border border-blue-200 dark:border-blue-800/40 bg-blue-50/50 dark:bg-blue-900/10 px-4 py-3 flex items-center justify-between gap-3">
-          <p className="text-sm text-blue-800 dark:text-blue-300">
-            <span className="font-semibold">{scheduledPlan.plan_group_name}</span> is scheduled to start <span className="font-semibold">{_fmtShortDate(scheduledPlan.start_date)}</span>.
-          </p>
-          <button onClick={cancelScheduledPlan} disabled={cancelingSchedule} className="text-xs text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap flex-shrink-0">
-            {cancelingSchedule ? 'Canceling…' : 'Cancel'}
-          </button>
-        </div>
       )}
 
       {assignment && planGroup && (
@@ -3496,14 +3423,9 @@ function TrainingTab({ client, coachId, onSaved }) {
   useEffect(() => {
     if (showForm) assignFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [showForm])
-  const [form, setForm] = useState({ block: '', days: '', startMode: 'now', startDate: upcomingMondays(1)[0] })
+  const [form, setForm] = useState({ block: '', days: '' })
   const [saving, setSaving] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
-  // A programme the coach has prepared in advance to start on a future Monday — see the
-  // matching scheduledPlan state/comment in MealPlanTab above for how "scheduled" is told apart
-  // from "already replaced".
-  const [scheduledTraining, setScheduledTraining] = useState(null)
-  const [cancelingSchedule, setCancelingSchedule] = useState(false)
   const [liftOptions, setLiftOptions] = useState([])
   const [topLiftOverride, setTopLiftOverride] = useState([
     client.top_lifts?.[0]?.name || '',
@@ -3517,7 +3439,7 @@ function TrainingTab({ client, coachId, onSaved }) {
   const [populateInfo, setPopulateInfo] = useState(null)
 
   async function load() {
-    const [{ data: progs }, { data: asgn }, { data: scheduled }] = await Promise.all([
+    const [{ data: progs }, { data: asgn }] = await Promise.all([
       supabase.from('training_programs').select('*').eq('coach_id', coachId).order('name'),
       supabase.from('client_training_assignments')
         .select('*, training_programs(name, weeks_total, top_lifts)')
@@ -3526,17 +3448,9 @@ function TrainingTab({ client, coachId, onSaved }) {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase.from('client_training_assignments')
-        .select('*')
-        .eq('client_id', client.id)
-        .eq('scheduled_start', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
     ])
     setPrograms(progs || [])
     setAssignment(asgn || null)
-    setScheduledTraining(scheduled || null)
 
     if (asgn?.program_id) {
       const { data: exSessions } = await supabase
@@ -3599,16 +3513,28 @@ function TrainingTab({ client, coachId, onSaved }) {
     programs.some(p => p.name?.startsWith(d) && p.name?.includes(form.block))
   )
 
-  // Only replaces 'workout' type items — cardio, HIIT, and rest entries are preserved. Only ever
-  // called for a block taking effect immediately — a future-scheduled one leaves the client's
-  // current live schedule untouched until activate-scheduled-assignments applies this same logic
-  // on the morning it actually starts.
-  async function populateWeeklySchedule(program) {
+  async function handleAssign(e) {
+    e.preventDefault()
+    if (!selectedProgram) return
+    setSaving(true)
+    await supabase.from('client_training_assignments').update({ active: false }).eq('client_id', client.id)
+    const today = new Date().toISOString().split('T')[0]
+    await supabase.from('client_training_assignments').insert({
+      client_id: client.id,
+      coach_id: coachId,
+      program_id: selectedProgram.id,
+      program_name: selectedProgram.name,
+      active: true,
+      start_date: today,
+    })
+
+    // Auto-populate client's weekly schedule from the assigned program.
+    // Only replaces 'workout' type items — cardio, HIIT, and rest entries are preserved.
     await supabase.from('client_schedule_items')
       .delete().eq('client_id', client.id).eq('item_type', 'workout')
     const { data: sessions } = await supabase
       .from('training_sessions').select('id, name, workout_id')
-      .eq('program_id', program.id).eq('week_number', 1)
+      .eq('program_id', selectedProgram.id).eq('week_number', 1)
     const seenDays = new Set()
     const toInsert = []
     const restDays = []
@@ -3630,45 +3556,10 @@ function TrainingTab({ client, coachId, onSaved }) {
         .delete().eq('client_id', client.id).eq('item_type', 'rest').in('day_of_week', restDays)
     }
     if (toInsert.length > 0) await supabase.from('client_schedule_items').insert(toInsert)
-  }
-
-  async function handleAssign(e) {
-    e.preventDefault()
-    if (!selectedProgram) return
-    setSaving(true)
-    const isFuture = form.startMode === 'future'
-
-    if (isFuture) {
-      // Only one prepared-in-advance programme at a time.
-      await supabase.from('client_training_assignments').delete().eq('client_id', client.id).eq('scheduled_start', true)
-    } else {
-      await supabase.from('client_training_assignments').update({ active: false }).eq('client_id', client.id).eq('active', true)
-    }
-
-    await supabase.from('client_training_assignments').insert({
-      client_id: client.id,
-      coach_id: coachId,
-      program_id: selectedProgram.id,
-      program_name: selectedProgram.name,
-      active: !isFuture,
-      scheduled_start: isFuture,
-      start_date: isFuture ? form.startDate : new Date().toISOString().split('T')[0],
-    })
-
-    if (!isFuture) await populateWeeklySchedule(selectedProgram)
 
     setSaving(false)
     setShowForm(false)
-    setForm(f => ({ ...f, startMode: 'now', startDate: upcomingMondays(1)[0] }))
     setReloadKey(k => k + 1)
-    load()
-  }
-
-  async function cancelScheduledTraining() {
-    if (!scheduledTraining) return
-    setCancelingSchedule(true)
-    await supabase.from('client_training_assignments').delete().eq('id', scheduledTraining.id)
-    setCancelingSchedule(false)
     load()
   }
 
@@ -3717,49 +3608,11 @@ function TrainingTab({ client, coachId, onSaved }) {
               </select>
             </div>
           )}
-          {assignment && (
-            <div>
-              <label className="label">When should this take effect?</label>
-              <div className="flex gap-2 p-1 rounded-lg bg-gray-100 dark:bg-gray-800 w-fit">
-                <button type="button" onClick={() => setForm(f => ({ ...f, startMode: 'now' }))}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${form.startMode === 'now' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
-                  Start now
-                </button>
-                <button type="button" onClick={() => setForm(f => ({ ...f, startMode: 'future' }))}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${form.startMode === 'future' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
-                  Schedule a future Monday
-                </button>
-              </div>
-              {form.startMode === 'future' && (
-                <div className="mt-2">
-                  <select className="input sm:w-56" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}>
-                    {upcomingMondays(16).map(d => <option key={d} value={d}>{_fmtShortDate(d)}</option>)}
-                  </select>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Their current block stays active and visible to them until then — build this one now, it'll switch over automatically that morning.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
           <div className="flex gap-3">
-            <button type="submit" disabled={saving || !selectedProgram} className="btn-primary">
-              {saving ? 'Saving…' : form.startMode === 'future' ? 'Schedule Programme' : 'Assign'}
-            </button>
-            <button type="button" onClick={() => { setShowForm(false); setForm(f => ({ ...f, startMode: 'now' })) }} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving || !selectedProgram} className="btn-primary">{saving ? 'Saving…' : 'Assign'}</button>
+            <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
           </div>
         </form>
-      )}
-
-      {scheduledTraining && !showForm && (
-        <div className="rounded-xl border border-blue-200 dark:border-blue-800/40 bg-blue-50/50 dark:bg-blue-900/10 px-4 py-3 flex items-center justify-between gap-3">
-          <p className="text-sm text-blue-800 dark:text-blue-300">
-            <span className="font-semibold">{scheduledTraining.program_name}</span> is scheduled to start <span className="font-semibold">{_fmtShortDate(scheduledTraining.start_date)}</span>.
-          </p>
-          <button onClick={cancelScheduledTraining} disabled={cancelingSchedule} className="text-xs text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap flex-shrink-0">
-            {cancelingSchedule ? 'Canceling…' : 'Cancel'}
-          </button>
-        </div>
       )}
 
       {assignment && prog && (

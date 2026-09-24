@@ -146,22 +146,3 @@ Setup, on top of everything above:
 1. Run `supabase/client-activity-log-migration.sql` in the SQL Editor.
 2. Deploy the new function: `npx supabase functions deploy send-day-preference-notification`,
    or paste its `index.ts` directly into the Dashboard — also fully self-contained.
-
-## Scheduled meal plan / training block activation (daily cron, no push involved)
-
-Lets a coach prepare a client's NEXT meal plan or training block in advance, to start
-automatically on a chosen future Monday, instead of it taking effect the moment it's assigned —
-see "Schedule a future Monday" on the Meal Plan and Training tabs' assign forms in
-`CoachClientProfile.jsx`. The client's current block stays active and visible to them right up
-until that date; `activate-scheduled-assignments` is what actually flips the scheduled one live
-each morning (and, for a training block, re-populates the client's weekly schedule from it — the
-same thing assigning a block immediately already does).
-
-No VAPID/push involved here at all — it's a plain daily database maintenance job.
-
-Setup:
-1. Run `supabase/scheduled-assignment-start-migration.sql` in the SQL Editor.
-2. Deploy the new function: `npx supabase functions deploy activate-scheduled-assignments`, or
-   paste its `index.ts` directly into the Dashboard — also fully self-contained.
-3. Run `supabase/setup-scheduled-assignment-cron.sql` in the SQL Editor (requires pg_cron and
-   pg_net, same as the other cron jobs above).
