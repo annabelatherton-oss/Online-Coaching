@@ -495,7 +495,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx, target, siblingMacros, siblingLabel }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx, target, siblingMacros, siblingLabel, onApplyToSchedule, canApplyToSchedule, applyingToSchedule }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
   const [prepDays, setPrepDays] = useState(null)
@@ -581,6 +581,18 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                 <div className="flex items-center justify-between mb-3 pt-1">
                   <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Ingredients</h3>
                   <div className="flex items-center gap-3">
+                    {onApplyToSchedule && hasAnyOverride(overrides) && (
+                      <button
+                        onClick={() => onApplyToSchedule(slotKey)}
+                        disabled={!canApplyToSchedule || applyingToSchedule}
+                        className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300 underline disabled:opacity-50 disabled:no-underline"
+                        title={canApplyToSchedule
+                          ? "Make these ingredients this week's standard for this meal, at this calorie tier — every other client on it this week picks it up too"
+                          : "This calorie tier hasn't been set up yet in the 50-week schedule editor — open it and select this tier first"}
+                      >
+                        {applyingToSchedule ? 'Applying…' : 'Apply to weekly schedule…'}
+                      </button>
+                    )}
                     {onRevertIngredients && hasAnyOverride(overrides) && (
                       <button
                         onClick={() => onRevertIngredients(slotKey)}

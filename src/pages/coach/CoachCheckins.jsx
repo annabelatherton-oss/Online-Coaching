@@ -163,6 +163,11 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   // The plan group's own per-week/tier override (set from the 50-week schedule editor) for the
   // week currently loaded here — read-only in check-ins, applied underneath ingredientOverrides.
   const [templateOverrides, setTemplateOverrides] = useState({})
+  // id of the weekly_templates row backing the currently-loaded week+tier — "Apply to weekly
+  // schedule" writes its result to this row's template_meal_slots. Never falls back cross-scope
+  // (a tier's own row only) — see buildTemplateOverrides vs this for why.
+  const [activeTemplateId, setActiveTemplateId] = useState(null)
+  const [applyingToSchedule, setApplyingToSchedule] = useState(null) // slotKey currently being applied, or null
   const [mealMap, setMealMap] = useState({})
   const [mealsByCategory, setMealsByCategory] = useState({})
   const [ingredientLib, setIngredientLib] = useState({})
@@ -222,9 +227,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         `).eq('coach_id', coachId).order('name'),
         supabase.from('ingredients').select('id, name, serving_size, serving_unit, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', coachId),
         currentTier
-          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).eq('calorie_tier', currentTier).maybeSingle()
+          ? supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).eq('calorie_tier', currentTier).maybeSingle()
           : Promise.resolve({ data: null }),
-        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
+        supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', weekNum).maybeSingle(),
         supabase.from('client_training_assignments').select('*, training_programs(name, weeks_total)').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('training_programs').select('id, name').eq('coach_id', coachId).order('name'),
@@ -250,6 +255,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${weekNum}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
+      setActiveTemplateId((currentTier ? tierTmplData : stdTmplData)?.id ?? null)
       setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
       if (cwm?.ingredient_overrides) setIngredientOverrides(cwm.ingredient_overrides)
       setTraining(trainingAsgn)
@@ -286,9 +292,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       const newTier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
       const [{ data: tierTmplData }, { data: stdTmplData }, { data: cwm }] = await Promise.all([
         newTier
-          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', newTier).maybeSingle()
+          ? supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', newTier).maybeSingle()
           : Promise.resolve({ data: null }),
-        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
+        supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
       ])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
@@ -296,6 +302,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${nextTemplateWeek}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
+      setActiveTemplateId((newTier ? tierTmplData : stdTmplData)?.id ?? null)
       setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
     }
     reloadTemplate()
@@ -308,9 +315,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       const currentTier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
       const [{ data: tierTmplData }, { data: stdTmplData }, { data: cwm }] = await Promise.all([
         currentTier
-          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', currentTier).maybeSingle()
+          ? supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', currentTier).maybeSingle()
           : Promise.resolve({ data: null }),
-        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
+        supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
       ])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
@@ -318,6 +325,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${nextTemplateWeek}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
+      setActiveTemplateId((currentTier ? tierTmplData : stdTmplData)?.id ?? null)
       setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
       setIngredientOverrides(cwm?.ingredient_overrides || {})
     }
@@ -639,6 +647,54 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     setAddedExercises({})
     setAddedSessions([])
     setNewSessionForm(null)
+  }
+
+  // Promotes this ONE client's current ingredient edits for one slot into the shared 50-week
+  // schedule, for this exact week + calorie tier only (never the meal's global recipe) — so every
+  // other client on that same tier this week picks it up too. Only available when this client's
+  // slot is showing the SAME meal the template has (a swapped-in meal has nothing to promote back
+  // to) and this tier already has its own forked template row in the schedule editor. Purely local
+  // to the schedule — doesn't touch this check-in's own draft/submit flow at all.
+  async function applyEditToSchedule(slotKey) {
+    if (!activeTemplateId) return
+    const mealId = editedSlots[slotKey]
+    const meal = mealId ? mealMap[mealId] : null
+    if (!meal) return
+    const tierLabel = tier != null ? `${tier} kcal` : 'Standard'
+    if (!window.confirm(`Make these ingredients the ${tierLabel} standard for this meal, for week ${nextTemplateWeek}? Every other client on this tier this week will pick it up too.`)) return
+
+    setApplyingToSchedule(slotKey)
+    try {
+      const effective = getIngredientsLayered(meal, tier, templateOverrides[slotKey], ingredientOverrides[slotKey])
+      const nextOverride = { qty: {}, removed: [], added: [] }
+      for (const ing of effective) {
+        if (ing._isAdded) nextOverride.added.push({ ...ing })
+        else nextOverride.qty[ing.id] = ing.quantity_g
+      }
+      const cleaned = hasAnyOverride(nextOverride) ? nextOverride : null
+      const { error } = await supabase.from('template_meal_slots')
+        .update({ ingredient_overrides: cleaned })
+        .eq('template_id', activeTemplateId).eq('slot_type', slotKey)
+      if (error) throw error
+
+      setTemplateOverrides(prev => {
+        const next = { ...prev }
+        if (cleaned) next[slotKey] = cleaned
+        else delete next[slotKey]
+        return next
+      })
+      // This client's own override is now redundant — it matches what was just pushed to the
+      // schedule — so clear it rather than leaving a stale layer sitting on top.
+      setIngredientOverrides(prev => {
+        const next = { ...prev }
+        delete next[slotKey]
+        return next
+      })
+    } catch (err) {
+      window.alert(err.message || 'Failed to apply to the weekly schedule')
+    } finally {
+      setApplyingToSchedule(null)
+    }
   }
 
   async function handleSubmit() {
@@ -1338,6 +1394,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
           onRemove={handleRemoveMeal}
+          onApplyToSchedule={applyEditToSchedule}
+          canApplyToSchedule={!!activeTemplateId && (editedSlots[recipeModal] || null) === (templateSlots[recipeModal] || null)}
+          applyingToSchedule={applyingToSchedule === recipeModal}
           target={slotTarget(ALL_SLOT_DEFS.find(s => s.key === recipeModal)?.cat)}
           siblingMacros={(() => {
             const sibKey = siblingSlotKey(recipeModal)
