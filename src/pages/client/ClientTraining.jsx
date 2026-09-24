@@ -54,7 +54,7 @@ function serializeSets(sets) {
 // Collapsed by default (this page opens to look at the week's sessions, not to edit
 // availability) — the summary line says at a glance whether anything's been noted so a client
 // doesn't have to open it just to check.
-function TrainingAvailabilitySection({ clientId, coachId, dayPreferences, onChange }) {
+function TrainingAvailabilitySection({ clientId, coachId, dayPreferences, onSaved }) {
   const [open, setOpen] = useState(false)
   const notedCount = DAY_NAMES.filter(d => dayPreferences?.[d]).length
 
@@ -73,7 +73,7 @@ function TrainingAvailabilitySection({ clientId, coachId, dayPreferences, onChan
       </button>
       {open && (
         <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
-          <DayAvailabilityRows clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} onChange={onChange} />
+          <DayAvailabilityRows clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} onSaved={onSaved} />
         </div>
       )}
     </div>
@@ -306,7 +306,7 @@ export default function ClientTraining() {
     return (
       <div className="space-y-4">
         <h1 data-tour="training-heading" className="text-2xl font-bold text-gray-900 dark:text-white">This Week's Training</h1>
-        <TrainingAvailabilitySection clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} onChange={setDayPreferences} />
+        <TrainingAvailabilitySection clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} onSaved={setDayPreferences} />
         <div className="card text-center py-16">
           <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mx-auto mb-4">
             <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -335,7 +335,7 @@ export default function ClientTraining() {
         )}
       </div>
 
-      <TrainingAvailabilitySection clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} onChange={setDayPreferences} />
+      <TrainingAvailabilitySection clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} onSaved={setDayPreferences} />
 
       {coachNotes && (
         <div className="card border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-900/10 p-3 space-y-1">
