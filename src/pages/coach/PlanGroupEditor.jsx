@@ -7,7 +7,7 @@ import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { calcStandardMacros } from '../../lib/macros'
 import {
-  getIngredients, formatAmount, mealMacros as sharedMealMacros, hasAnyOverride,
+  getIngredients, formatAmount, mealMacros as sharedMealMacros, hasAnyOverride, normalizeOverrides,
   sumIngredientMacros, MacroTargetInfo, MacroBadge, MACRO_META, deviationColor, suggestAutoFit,
 } from '../../components/MealPlanView'
 import {
@@ -193,11 +193,12 @@ function DayAutoFitSuggestion({ week, slotKeys, tier, target, mealsById, ingredi
   )
 }
 
-// Inline editor for a meal's ingredients at ONE calorie tier. Quantities are written straight into
-// the meal's shared meal_tier_versions/meal_tier_ingredients rows (the same rows the Meal Library
-// edits) — so every week showing this meal at this tier picks up the change immediately, rather
-// than only this one week.
-function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onAdd, onSetScalingType, onClearOverride, onGenerated, overrideTarget }) {
+// Inline editor for a meal's ingredients at ONE calorie tier, for ONE week. Quantity/remove/add
+// edits are stored as a per-week override (template_meal_slots.ingredient_overrides) — they never
+// touch the meal's shared recipe, so a tweak here can't ripple into any other week or client using
+// the same meal. "Set as new default" is the deliberate, separate action for when a coach actually
+// wants a week's edit to become every week's standard going forward.
+function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onAdd, onSetScalingType, onClearOverride, onSetAsDefault, onGenerated, overrideTarget }) {
   const [library, setLibrary] = useState([])
   const [baseIngredients, setBaseIngredients] = useState([])
   const [loadingBase, setLoadingBase] = useState(true)
@@ -267,20 +268,23 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
   if (tier == null && loadingBase) return <p className="text-xs text-gray-400 py-2 px-2">Loading ingredients…</p>
 
   const ingredients = getIngredients(meal, tier, overridesForSlot)
-  // An old per-week tweak (from before edits here became the shared standard) can still have every
-  // ingredient marked removed for just this one week, which would otherwise look identical to the
-  // meal genuinely having no ingredients — offer to clear it so the shared default shows again.
-  const emptiedByLegacyOverride = ingredients.length === 0 && hasAnyOverride(overridesForSlot) &&
+  const isAdjusted = hasAnyOverride(overridesForSlot)
+  // Every ingredient can be removed for just this one week, which would otherwise look identical
+  // to the meal genuinely having no ingredients — offer to clear the override so the shared
+  // default shows again.
+  const emptiedByOverride = ingredients.length === 0 && isAdjusted &&
     (tier != null ? (version?.meal_tier_ingredients || []).length > 0 : baseIngredients.length > 0)
 
   return (
     <div className="space-y-1 py-2 px-2">
       {fixedWarning}
       {error && <p className="text-xs text-red-500">{error}</p>}
-      {emptiedByLegacyOverride && onClearOverride && (
+      {isAdjusted && onClearOverride && (
         <div className="flex items-center justify-between gap-3 py-2 px-2 bg-amber-50 dark:bg-amber-900/10 rounded-lg">
           <p className="text-xs text-amber-600 dark:text-amber-400">
-            An old per-week tweak removed every ingredient for just this week, hiding this meal's real default.
+            {emptiedByOverride
+              ? "Every ingredient has been removed for just this week, hiding this meal's real default."
+              : 'Adjusted for this week only — other weeks using this meal are unaffected.'}
           </p>
           <button type="button" onClick={onClearOverride} className="text-xs btn-secondary py-1 px-2.5 whitespace-nowrap flex-shrink-0">
             Restore default
@@ -413,10 +417,20 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
           </div>
         )
       })()}
-      <div className="pt-1.5 border-t border-gray-100 dark:border-gray-800">
+      <div className="pt-1.5 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3 flex-wrap">
         <span className="text-[11px] text-gray-400 dark:text-gray-500">
-          Editing here updates this meal's {tier} kcal default everywhere it's used — every week showing it will pick up the change.
+          Changes here apply to this week only — other weeks using this meal aren't touched.
         </span>
+        {onSetAsDefault && (ingredients.length > 0 || isAdjusted) && (
+          <button
+            type="button"
+            onClick={onSetAsDefault}
+            className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300 underline whitespace-nowrap"
+            title={tier != null ? `Make this week's ingredients the new ${tier} kcal default for this meal, everywhere it's used` : "Make this week's ingredients the new default recipe for this meal"}
+          >
+            Set as new default…
+          </button>
+        )}
       </div>
     </div>
   )
@@ -694,127 +708,107 @@ export default function PlanGroupEditor() {
     })
   }
 
-  // Old versions of this screen stored ingredient edits as a per-week override on top of the
-  // meal's shared recipe, so a tweak only ever applied to that one week (hence the "Adjusted"
-  // badge and "Revert to default" button). The coach wants edits here to become the new standard
-  // for that calorie tier instead, so changeIngredientOverride/removeIngredientOverride/
-  // balanceWeekDay below now write straight into the meal's shared meal_tier_ingredients /
-  // meal_tier_versions rows — every week showing that meal at this tier picks it up immediately.
-  // If an older per-week override still exists on a slot we touch, it would otherwise keep
-  // masking the freshly-written standard, so it's cleared here too.
-  async function clearLegacySlotOverride(week, slotKey) {
-    if (!week.overrides?.[slotKey]) return
-    await supabase.from('template_meal_slots').update({ ingredient_overrides: null })
+  // Finds the underlying shared row a given ingredient id came from (base meal_ingredients on
+  // Standard, or this tier's meal_tier_ingredients otherwise) — used only to check is_static, since
+  // a static ingredient can never be edited here, per-week or otherwise.
+  function findSharedRow(meal, ingId) {
+    if (!meal) return null
+    if (activeTier == null) return (meal.meal_ingredients || []).find(r => r.id === ingId) || null
+    const version = meal.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
+    return (version?.meal_tier_ingredients || []).find(r => r.id === ingId) || null
+  }
+
+  // Writes a slot's ingredient override (persisted as template_meal_slots.ingredient_overrides)
+  // and mirrors it into local state. Passing an empty/no-op override clears the column entirely.
+  async function patchSlotOverrides(week, slotKey, nextOverrides) {
+    const cleaned = hasAnyOverride(nextOverrides) ? nextOverrides : null
+    await supabase.from('template_meal_slots').update({ ingredient_overrides: cleaned })
       .eq('template_id', week.templateId).eq('slot_type', slotKey)
-    const stripOverride = w => {
+    const apply = w => {
       if (w.templateId !== week.templateId) return w
-      const nextOverrides = { ...w.overrides }
-      delete nextOverrides[slotKey]
-      return { ...w, overrides: nextOverrides }
+      const nextOv = { ...w.overrides }
+      if (cleaned) nextOv[slotKey] = cleaned
+      else delete nextOv[slotKey]
+      return { ...w, overrides: nextOv }
     }
     if (activeTier == null) {
-      setWeeks(prev => prev.map(stripOverride))
+      setWeeks(prev => prev.map(apply))
     } else {
-      setTierWeeks(prev => ({ ...prev, [activeTier]: (prev[activeTier] || []).map(stripOverride) }))
+      setTierWeeks(prev => ({ ...prev, [activeTier]: (prev[activeTier] || []).map(apply) }))
     }
   }
 
-  // Adjusts a single ingredient's quantity by writing it straight into this meal's shared tier
-  // default (see the note above) rather than a one-week-only override. On the tier-agnostic
-  // Standard template (activeTier null) there's no tier version to write to, so it edits the base
-  // meal_ingredients row instead — the same row every tier's own version is originally generated
-  // from — without touching any already-generated tier version's independently-scaled quantity.
+  // Reverts this one week's slot back to the meal's shared default by clearing its override.
+  async function clearSlotOverride(weekIdx, slotKey) {
+    await patchSlotOverrides(currentWeeks[weekIdx], slotKey, null)
+  }
+
+  // Adjusts a single ingredient's quantity for THIS WEEK ONLY, stored as a per-week override —
+  // the meal's shared recipe (and every other week showing it) is never touched. A manually-added
+  // ingredient isn't in the qty override map at all (applyIngredientOverrides always shows an
+  // added row's own stored quantity_g/macros), so its own entry in `added` is rescaled instead —
+  // same approach already used for per-client overrides elsewhere in the app.
   async function changeIngredientOverride(weekIdx, slotKey, ingId, newQtyStr) {
+    if (newQtyStr === '' || newQtyStr == null) return
     const newQty = parseFloat(newQtyStr)
     if (isNaN(newQty) || newQty < 0) return
     const week = currentWeeks[weekIdx]
-    const mealId = week.slots[slotKey]
-    const meal = mealId ? mealsById[mealId] : null
-    if (!meal) return
+    const current = normalizeOverrides(week.overrides?.[slotKey])
 
-    if (activeTier == null) {
-      const row = (meal.meal_ingredients || []).find(r => r.id === ingId)
-      if (!row || row.is_static) return
-      const origQty = parseFloat(row.quantity_g) || 0
+    const addedIdx = current.added.findIndex(a => a.id === ingId)
+    if (addedIdx !== -1) {
+      const a = current.added[addedIdx]
+      const origQty = parseFloat(a.quantity_g) || 0
       const ratio = origQty > 0 ? newQty / origQty : 1
-      const updated = {
-        quantity_g: newQty,
-        calories:  round1((parseFloat(row.calories)  || 0) * ratio),
-        protein_g: round1((parseFloat(row.protein_g) || 0) * ratio),
-        carbs_g:   round1((parseFloat(row.carbs_g)   || 0) * ratio),
-        fat_g:     round1((parseFloat(row.fat_g)     || 0) * ratio),
+      const added = [...current.added]
+      added[addedIdx] = {
+        ...a, quantity_g: newQty,
+        calories:  round1((parseFloat(a.calories)  || 0) * ratio),
+        protein_g: round1((parseFloat(a.protein_g) || 0) * ratio),
+        carbs_g:   round1((parseFloat(a.carbs_g)   || 0) * ratio),
+        fat_g:     round1((parseFloat(a.fat_g)     || 0) * ratio),
       }
-      await supabase.from('meal_ingredients').update(updated).eq('id', ingId)
-      await clearLegacySlotOverride(week, slotKey)
-      await refreshMeal(mealId)
+      await patchSlotOverrides(week, slotKey, { ...current, added })
       return
     }
 
-    const version = meal.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
-    if (!version) return
-    const rows = version.meal_tier_ingredients || []
-    const row = rows.find(r => r.id === ingId)
+    const mealId = week.slots[slotKey]
+    const meal = mealId ? mealsById[mealId] : null
+    const row = findSharedRow(meal, ingId)
     if (!row || row.is_static) return
 
-    const origQty = parseFloat(row.quantity_g) || 0
-    const ratio = origQty > 0 ? newQty / origQty : 1
-    const updated = {
-      quantity_g: newQty,
-      calories:  round1((parseFloat(row.calories)  || 0) * ratio),
-      protein_g: round1((parseFloat(row.protein_g) || 0) * ratio),
-      carbs_g:   round1((parseFloat(row.carbs_g)   || 0) * ratio),
-      fat_g:     round1((parseFloat(row.fat_g)     || 0) * ratio),
-    }
-    await supabase.from('meal_tier_ingredients').update(updated).eq('id', ingId)
-    const totals = calcTotals(rows.map(r => r.id === ingId ? { ...r, ...updated } : r))
-    await supabase.from('meal_tier_versions').update(totals).eq('id', version.id)
-    await clearLegacySlotOverride(week, slotKey)
-    await refreshMeal(mealId)
+    await patchSlotOverrides(week, slotKey, { ...current, qty: { ...current.qty, [ingId]: newQty } })
   }
 
-  // Removes an ingredient by deleting it straight out of this meal's shared tier default — same
-  // "becomes the standard" behaviour as changeIngredientOverride above. On Standard, deletes from
-  // the base meal_ingredients row instead (see changeIngredientOverride's note).
+  // Removes an ingredient for THIS WEEK ONLY — added to the slot's `removed` override list (or, for
+  // a manually-added ingredient, simply dropped from `added`). The meal's shared recipe is untouched.
   async function removeIngredientOverride(weekIdx, slotKey, ingId) {
     const week = currentWeeks[weekIdx]
-    const mealId = week.slots[slotKey]
-    const meal = mealId ? mealsById[mealId] : null
-    if (!meal) return
+    const current = normalizeOverrides(week.overrides?.[slotKey])
 
-    if (activeTier == null) {
-      const row = (meal.meal_ingredients || []).find(r => r.id === ingId)
-      if (!row || row.is_static) return
-      await supabase.from('meal_ingredients').delete().eq('id', ingId)
-      await clearLegacySlotOverride(week, slotKey)
-      await refreshMeal(mealId)
+    if (current.added.some(a => a.id === ingId)) {
+      await patchSlotOverrides(week, slotKey, { ...current, added: current.added.filter(a => a.id !== ingId) })
       return
     }
 
-    const version = meal.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
-    if (!version) return
-    const rows = version.meal_tier_ingredients || []
-    const row = rows.find(r => r.id === ingId)
-    if (!row || row.is_static) return
-
-    await supabase.from('meal_tier_ingredients').delete().eq('id', ingId)
-    const totals = calcTotals(rows.filter(r => r.id !== ingId))
-    await supabase.from('meal_tier_versions').update(totals).eq('id', version.id)
-    await clearLegacySlotOverride(week, slotKey)
-    await refreshMeal(mealId)
-  }
-
-  // Adds a brand-new ingredient straight into this meal's shared tier default — same
-  // "becomes the standard" behaviour as changeIngredientOverride/removeIngredientOverride above.
-  // On Standard, inserts into the base meal_ingredients row instead (see changeIngredientOverride's
-  // note) so it becomes part of the recipe every future tier is generated from.
-  async function addTierIngredient(weekIdx, slotKey, libIng) {
-    const week = currentWeeks[weekIdx]
     const mealId = week.slots[slotKey]
     const meal = mealId ? mealsById[mealId] : null
-    if (!meal) return
+    const row = findSharedRow(meal, ingId)
+    if (!row || row.is_static) return
 
+    const qty = { ...current.qty }
+    delete qty[ingId]
+    await patchSlotOverrides(week, slotKey, { ...current, qty, removed: [...new Set([...current.removed, ingId])] })
+  }
+
+  // Adds a brand-new ingredient for THIS WEEK ONLY — appended to the slot's `added` override list.
+  // The meal's shared recipe is untouched, so no other week picks this up.
+  async function addTierIngredient(weekIdx, slotKey, libIng) {
+    const week = currentWeeks[weekIdx]
+    const current = normalizeOverrides(week.overrides?.[slotKey])
     const qty = libIng.serving_size || 100
-    const baseFields = {
+    const newIng = {
+      id: `added-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: libIng.name,
       quantity_g: qty,
       unit: libIng.serving_unit || 'g',
@@ -823,24 +817,42 @@ export default function PlanGroupEditor() {
       scaling_type: 'flexible',
       is_static: false,
     }
+    await patchSlotOverrides(week, slotKey, { ...current, added: [...current.added, newIng] })
+  }
+
+  // The deliberate, explicit opt-in for when a coach DOES want a week's edits to become every
+  // week's standard: takes this slot's current effective ingredients (base recipe + this week's
+  // override applied) and writes them straight into the meal's shared recipe — meal_ingredients on
+  // Standard, or this tier's meal_tier_ingredients/meal_tier_versions otherwise — then clears the
+  // now-redundant per-week override, since it already matches the new default.
+  async function setAsNewDefault(weekIdx, slotKey) {
+    const week = currentWeeks[weekIdx]
+    const mealId = week.slots[slotKey]
+    const meal = mealId ? mealsById[mealId] : null
+    if (!meal) return
+    const tierLabel = activeTier != null ? `${activeTier} kcal` : 'Standard'
+    if (!window.confirm(`Make this week's ingredients the new ${tierLabel} default for this meal? Every week using it will pick up this change immediately.`)) return
+
+    const effective = getIngredients(meal, activeTier, week.overrides?.[slotKey])
+    const rowFields = ing => ({
+      name: ing.name, quantity_g: ing.quantity_g, unit: ing.unit,
+      calories: ing.calories, protein_g: ing.protein_g, carbs_g: ing.carbs_g, fat_g: ing.fat_g,
+      ingredient_id: ing.ingredient_id || null, is_static: ing.is_static || false, scaling_type: ing.scaling_type || 'flexible',
+    })
 
     if (activeTier == null) {
-      const { error } = await supabase.from('meal_ingredients').insert({ meal_id: mealId, ...baseFields })
-      if (error) return
-      await clearLegacySlotOverride(week, slotKey)
-      await refreshMeal(mealId)
-      return
+      await supabase.from('meal_ingredients').delete().eq('meal_id', mealId)
+      if (effective.length) await supabase.from('meal_ingredients').insert(effective.map(ing => ({ meal_id: mealId, ...rowFields(ing) })))
+    } else {
+      const version = meal.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
+      if (!version) return
+      await supabase.from('meal_tier_ingredients').delete().eq('tier_version_id', version.id)
+      const rows = effective.map(ing => ({ tier_version_id: version.id, ...rowFields(ing) }))
+      if (rows.length) await supabase.from('meal_tier_ingredients').insert(rows)
+      await supabase.from('meal_tier_versions').update(calcTotals(effective)).eq('id', version.id)
     }
 
-    const version = meal.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
-    if (!version) return
-
-    const { data: inserted, error } = await supabase.from('meal_tier_ingredients').insert({ tier_version_id: version.id, ...baseFields }).select().single()
-    if (error || !inserted) return
-
-    const totals = calcTotals([...(version.meal_tier_ingredients || []), inserted])
-    await supabase.from('meal_tier_versions').update(totals).eq('id', version.id)
-    await clearLegacySlotOverride(week, slotKey)
+    await patchSlotOverrides(week, slotKey, null)
     await refreshMeal(mealId)
   }
 
@@ -890,9 +902,9 @@ export default function PlanGroupEditor() {
   // Balances every Option A meal in this week's day against the day's real macro target in one
   // shot — each meal's CALORIE share stays exactly at its assigned category %, only the
   // protein/carb/fat mix within that calorie envelope shifts (weighted by how much
-  // flexible-ingredient room each meal has) — and writes the result straight into each meal's
-  // shared tier default, same as the single-ingredient edits above, so it becomes every week's
-  // standard rather than just this one week's.
+  // flexible-ingredient room each meal has). Solves against each meal's CURRENT effective
+  // ingredients (base recipe + this week's own override already applied) and writes the result
+  // back as a per-week override — this week only, same as every other edit action in this editor.
   async function balanceWeekDay(weekIdx) {
     if (activeTier == null) return
     setDayBalance({ weekIdx, status: 'working', text: 'Balancing…' })
@@ -905,10 +917,10 @@ export default function PlanGroupEditor() {
         if (!mealId) continue
         const meal = mealsById[mealId]
         const version = meal?.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
-        const rows = version?.meal_tier_ingredients || []
+        const rows = version ? getIngredients(meal, activeTier, week.overrides?.[key]) : []
         if (!version || rows.length === 0) { skipped.push(SLOT_LABELS[key] || key); continue }
         const slotDef = SLOTS.find(s => s.key === key)
-        mealsInDay.push({ key, mealId, versionId: version.id, category: slotDef.cat, baseIngredients: rows })
+        mealsInDay.push({ key, mealId, category: slotDef.cat, baseIngredients: rows })
       }
       if (mealsInDay.length === 0) {
         setDayBalance({ weekIdx, status: 'empty', text: `No Option A meal here has a generated ${activeTier} kcal version yet — use "Generate now" in each meal's ingredient editor first.` })
@@ -922,30 +934,31 @@ export default function PlanGroupEditor() {
       let changedMeals = 0
       await Promise.all(results.map(async r => {
         const input = mealsInDay.find(m => m.key === r.key)
-        const nextRows = input.baseIngredients.map((row, idx) => {
+        const current = normalizeOverrides(week.overrides?.[r.key])
+        const qty = { ...current.qty }
+        const added = [...current.added]
+        let anyChange = false
+        input.baseIngredients.forEach((row, idx) => {
           const changed = r.ingredients[idx]
-          return changed ? { ...row, ...changed } : row
+          if (!changed) return
+          if (Math.abs((parseFloat(changed.quantity_g) || 0) - (parseFloat(row.quantity_g) || 0)) <= 0.05) return
+          anyChange = true
+          const addedIdx = added.findIndex(a => a.id === row.id)
+          if (addedIdx !== -1) {
+            added[addedIdx] = { ...added[addedIdx], quantity_g: changed.quantity_g, calories: changed.calories, protein_g: changed.protein_g, carbs_g: changed.carbs_g, fat_g: changed.fat_g }
+          } else {
+            qty[row.id] = changed.quantity_g
+          }
         })
-        const toUpdate = nextRows.filter((row, idx) =>
-          Math.abs((parseFloat(row.quantity_g) || 0) - (parseFloat(input.baseIngredients[idx].quantity_g) || 0)) > 0.05
-        )
-        if (toUpdate.length === 0) return
+        if (!anyChange) return
         changedMeals++
-        await Promise.all(toUpdate.map(row =>
-          supabase.from('meal_tier_ingredients').update({
-            quantity_g: row.quantity_g, calories: row.calories, protein_g: row.protein_g, carbs_g: row.carbs_g, fat_g: row.fat_g,
-          }).eq('id', row.id)
-        ))
-        const totals = calcTotals(nextRows)
-        await supabase.from('meal_tier_versions').update(totals).eq('id', input.versionId)
-        await clearLegacySlotOverride(week, input.key)
+        await patchSlotOverrides(week, r.key, { ...current, qty, added })
       }))
-      await Promise.all(mealsInDay.map(m => refreshMeal(m.mealId)))
 
       if (changedMeals === 0) {
         setDayBalance({ weekIdx, status: 'empty', text: `Already close to target — no changes needed${skipped.length ? ` (skipped: ${skipped.join(', ')}, no tier version yet)` : ''}.` })
       } else {
-        setDayBalance({ weekIdx, status: 'done', text: `Updated ${changedMeals} meal${changedMeals === 1 ? '' : 's'}.` })
+        setDayBalance({ weekIdx, status: 'done', text: `Updated ${changedMeals} meal${changedMeals === 1 ? '' : 's'} for this week only.` })
       }
     } catch (err) {
       setDayBalance({ weekIdx, status: 'error', text: `Couldn't balance this day: ${err.message || err}` })
@@ -1838,7 +1851,8 @@ export default function PlanGroupEditor() {
                             onRemove={ingId => removeIngredientOverride(weekIdx, slot.key, ingId)}
                             onAdd={libIng => addTierIngredient(weekIdx, slot.key, libIng)}
                             onSetScalingType={(ingId, newType) => setIngredientScalingType(weekIdx, slot.key, ingId, newType)}
-                            onClearOverride={() => clearLegacySlotOverride(week, slot.key)}
+                            onClearOverride={() => clearSlotOverride(weekIdx, slot.key)}
+                            onSetAsDefault={() => setAsNewDefault(weekIdx, slot.key)}
                             onGenerated={() => refreshMeal(mealId)}
                             overrideTarget={slotTarget}
                           />
