@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
-import { MEAL_GROUPS, ALL_SLOT_DEFS, getIngredients, formatAmount } from '../../components/MealPlanView'
+import { MEAL_GROUPS, ALL_SLOT_DEFS, getIngredientsLayered, formatAmount } from '../../components/MealPlanView'
 import { loadSwapContext } from '../../lib/mealSwaps'
 
 const CATEGORY_LABELS = {
@@ -51,6 +51,7 @@ export default function ClientShoppingList() {
   const [mealMap, setMealMap] = useState({})
   const [editedSlots, setEditedSlots] = useState({})
   const [ingredientOverrides, setIngredientOverrides] = useState({})
+  const [templateOverrides, setTemplateOverrides] = useState({})
   const [removedCategories, setRemovedCategories] = useState([])
   const [ingredientLib, setIngredientLib] = useState({})
   const [tier, setTier] = useState(null)
@@ -96,18 +97,23 @@ export default function ClientShoppingList() {
 
       const [{ data: tierTmpl }, { data: stdTmpl }, { data: cwm }] = await Promise.all([
         calorieTier
-          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).eq('calorie_tier', calorieTier).maybeSingle()
+          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).eq('calorie_tier', calorieTier).maybeSingle()
           : Promise.resolve({ data: null }),
-        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).is('calorie_tier', null).maybeSingle(),
+        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).is('calorie_tier', null).maybeSingle(),
         supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
       ])
       const tmpl = tierTmpl || stdTmpl
       const tSlots = {}
-      for (const s of (tmpl?.template_meal_slots || [])) tSlots[s.slot_type] = s.meal_id
+      const tOverrides = {}
+      for (const s of (tmpl?.template_meal_slots || [])) {
+        tSlots[s.slot_type] = s.meal_id
+        if (s.ingredient_overrides) tOverrides[s.slot_type] = s.ingredient_overrides
+      }
       if (asgn.preworkout_static && asgn.preworkout_meal_id) tSlots.preworkout = asgn.preworkout_meal_id
       if (asgn.evening_snack_static && asgn.evening_snack_meal_id) tSlots.evening_snack = asgn.evening_snack_meal_id
       const finalSlots = { ...tSlots, ...(cwm?.slots || {}) }
       setEditedSlots(finalSlots)
+      setTemplateOverrides(tOverrides)
       setIngredientOverrides(cwm?.ingredient_overrides || {})
       const removedCats = cwm?.removed_categories || []
       setRemovedCategories(removedCats)
@@ -184,7 +190,7 @@ export default function ClientShoppingList() {
     if (count <= 0) continue
     const meal = mealMap[editedSlots[slot.key]]
     if (!meal) continue
-    const ingredients = getIngredients(meal, tier, ingredientOverrides[slot.key], swapCtx)
+    const ingredients = getIngredientsLayered(meal, tier, templateOverrides[slot.key], ingredientOverrides[slot.key], swapCtx)
     for (const ing of ingredients) {
       const key = ing.ingredient_id || `name:${(ing.name || '').toLowerCase().trim()}`
       const libIng = ing.ingredient_id ? ingredientLib[ing.ingredient_id] : null

@@ -329,6 +329,23 @@ export function getIngredients(meal, tier, overrides, swapCtx) {
   return ingredients
 }
 
+// Resolves a slot's ingredients through TWO override layers, stacked in order: the shared plan
+// group's per-week/tier template override (template_meal_slots.ingredient_overrides — set from the
+// 50-week schedule editor, applies to every client on that week+tier), then this specific client's
+// own per-week override on top (client_week_meals.ingredient_overrides — set via check-ins or the
+// client's own edits). A client-week tweak always wins over the template; both sit on top of the
+// meal's shared recipe underneath. Any dislike-swap context is applied once, after both layers.
+export function getIngredientsLayered(meal, tier, templateOverrides, clientOverrides, swapCtx) {
+  if (!meal) return []
+  const templated = getIngredients(meal, tier, templateOverrides)
+  return getIngredients({ id: meal.id, meal_ingredients: templated }, null, clientOverrides, swapCtx)
+}
+
+export function mealMacrosLayered(mealId, mealMap, tier, templateOverrides, clientOverrides, swapCtx) {
+  if (!mealId || !mealMap[mealId]) return null
+  return sumIngredientMacros(getIngredientsLayered(mealMap[mealId], tier, templateOverrides, clientOverrides, swapCtx))
+}
+
 export function addMacros(a, b) {
   const az = a || { cal: 0, prot: 0, carb: 0, fat: 0 }
   const bz = b || { cal: 0, prot: 0, carb: 0, fat: 0 }
@@ -362,10 +379,12 @@ export function formatAmount(ing, ingredientLib) {
 
 // ─── Meal card ────────────────────────────────────────────────────────────────
 
-export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, mealMap, mealsByCategory, tier, overrides, onSwap, onViewRecipe, ingredientLib, onRevert, onRemove, swapCtx }) {
+export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMealId, mealMap, mealsByCategory, tier, overrides, templateOverrides, onSwap, onViewRecipe, ingredientLib, onRevert, onRemove, swapCtx }) {
   const meal = mealId ? mealMap[mealId] : null
-  const ingredients = meal ? getIngredients(meal, tier, overrides, swapCtx) : []
-  const macros = mealMacros(mealId, mealMap, tier, overrides, swapCtx)
+  // templateOverrides (optional): the plan group's own per-week/tier override from the 50-week
+  // schedule editor, applied underneath this client's own `overrides` — see getIngredientsLayered.
+  const ingredients = meal ? getIngredientsLayered(meal, tier, templateOverrides, overrides, swapCtx) : []
+  const macros = mealMacrosLayered(mealId, mealMap, tier, templateOverrides, overrides, swapCtx)
   const isCustom = (mealId || null) !== (templateMealId || null)
 
   return (
@@ -476,7 +495,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx, target, siblingMacros, siblingLabel }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx, target, siblingMacros, siblingLabel }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
   const [prepDays, setPrepDays] = useState(null)
@@ -484,8 +503,12 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
   const mealId = editedSlots[slotKey]
   const meal = mealId ? mealMap[mealId] : null
   const overrides = ingredientOverrides[slotKey]
-  const ingredients = meal ? getIngredients(meal, tier, overrides, swapCtx) : []
-  const macros = mealMacros(mealId, mealMap, tier, overrides, swapCtx)
+  // templateOverrides (optional, keyed by slot): the plan group's own per-week/tier override from
+  // the 50-week schedule editor, applied underneath this client's own override — see
+  // getIngredientsLayered.
+  const templateOverridesForSlot = templateOverrides?.[slotKey]
+  const ingredients = meal ? getIngredientsLayered(meal, tier, templateOverridesForSlot, overrides, swapCtx) : []
+  const macros = mealMacrosLayered(mealId, mealMap, tier, templateOverridesForSlot, overrides, swapCtx)
   const isCustom = (mealId || null) !== ((templateSlots[slotKey]) || null)
   const slotDef = ALL_SLOT_DEFS.find(s => s.key === slotKey)
 

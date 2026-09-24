@@ -1460,26 +1460,33 @@ function tierVersionExists(mealId, mealMap, tier) {
 
 // Get macros for a meal at a given calorie tier, falling back to base ingredients.
 // overridesForSlot holds this client's gram tweaks / removed / added ingredients for the slot.
+// templateOverridesForSlot (optional) is the plan group's own per-week/tier override, set from the
+// 50-week schedule editor — applied FIRST, underneath this client's own override, so a client-week
+// tweak always wins but still starts from whatever the schedule looks like for everyone this week.
 // Always sums the actual ingredient rows rather than trusting a meal_tier_versions row's own
 // cached calories/protein_g/carbs_g/fat_g columns — those can drift out of sync with its
 // meal_tier_ingredients, which silently showed a meal as 0 kcal despite real ingredients underneath.
-function mealMacros(mealId, mealMap, tier, overridesForSlot) {
+function mealMacros(mealId, mealMap, tier, overridesForSlot, templateOverridesForSlot) {
   if (!mealId || !mealMap[mealId]) return { cal: 0, prot: 0, carb: 0, fat: 0 }
+  let base = mealMap[mealId].meal_ingredients || []
   if (tier) {
     const v = (mealMap[mealId].meal_tier_versions || []).find(v => v.calorie_tier === tier)
-    if (v) return sumIngredientMacros(applyIngredientOverrides(v.meal_tier_ingredients || [], overridesForSlot))
+    if (v) base = v.meal_tier_ingredients || []
   }
-  return sumIngredientMacros(applyIngredientOverrides(mealMap[mealId].meal_ingredients || [], overridesForSlot))
+  const templated = applyIngredientOverrides(base, templateOverridesForSlot)
+  return sumIngredientMacros(applyIngredientOverrides(templated, overridesForSlot))
 }
 
-// The actual ingredient list currently shown for this slot (tier version if one exists, with this
-// client's overrides applied) — used as the base when saving a per-meal standard swap.
-function getResolvedIngredients(mealId, mealMap, tier, overridesForSlot) {
+// The actual ingredient list currently shown for this slot (tier version if one exists, with the
+// schedule's own per-week template override applied, then this client's overrides on top) — used
+// as the base when saving a per-meal standard swap, and as the source for "Apply to weekly schedule".
+function getResolvedIngredients(mealId, mealMap, tier, overridesForSlot, templateOverridesForSlot) {
   if (!mealId || !mealMap[mealId]) return []
   const meal = mealMap[mealId]
   const tierVersion = tier ? (meal.meal_tier_versions || []).find(v => v.calorie_tier === tier) : null
   const base = tierVersion ? (tierVersion.meal_tier_ingredients || []) : (meal.meal_ingredients || [])
-  return applyIngredientOverrides(base, overridesForSlot)
+  const templated = applyIngredientOverrides(base, templateOverridesForSlot)
+  return applyIngredientOverrides(templated, overridesForSlot)
 }
 
 // Factory for the add/remove/quantity-change handlers shared by rotating slots and static meals —
@@ -1571,9 +1578,9 @@ function addMacros(a, b) {
   return { cal: a.cal + b.cal, prot: a.prot + b.prot, carb: a.carb + b.carb, fat: a.fat + b.fat }
 }
 
-function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides) {
+function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides, templateOverrides = {}) {
   return keys.reduce(
-    (acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, tier, ingredientOverrides[key])),
+    (acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, tier, ingredientOverrides[key], templateOverrides[key])),
     { cal: 0, prot: 0, carb: 0, fat: 0 }
   )
 }
@@ -1582,7 +1589,7 @@ function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides) {
 // and ingredients can be removed or added just for this client — none of it touches the shared
 // master meal/tier-version data. Quantity overrides rescale that ingredient's macros proportionally;
 // added ingredients are pulled from the coach's ingredient library so their macros are accurate.
-function TierIngredientList({ mealId, mealMap, tier, overrides, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange }) {
+function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverridesForSlot, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange, onApplyToSchedule, canApplyToSchedule, applyingToSchedule }) {
   const [addingOpen, setAddingOpen] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addSelected, setAddSelected] = useState(null)
@@ -1602,8 +1609,12 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
     baseIngredients = meal.meal_ingredients || []
   }
 
-  const { qty: overrideQty, removed } = normalizeOverrides(overrides)
-  const ingredients = applyIngredientOverrides(baseIngredients, overrides)
+  const { qty: overrideQty, removed, added: clientAdded } = normalizeOverrides(overrides)
+  // The schedule's own per-week/tier override applies first (whatever every other client on this
+  // tier this week already sees), then this client's own edits on top — same layering as the
+  // macros shown on the card above.
+  const templated = applyIngredientOverrides(baseIngredients, templateOverridesForSlot)
+  const ingredients = applyIngredientOverrides(templated, overrides)
 
   // The un-scaled recipe's own quantity for each ingredient, keyed by library ingredient (or by
   // name for a freeform one with no ingredient_id) — only meaningful when looking at a calorie-tier
@@ -1659,7 +1670,20 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
   return (
     <div className="space-y-1 pt-1">
       {overridden && (
-        <div className="flex items-center justify-end gap-2 mb-1.5">
+        <div className="flex items-center justify-end gap-3 mb-1.5">
+          {onApplyToSchedule && (
+            <button
+              type="button"
+              onClick={onApplyToSchedule}
+              disabled={!canApplyToSchedule || applyingToSchedule}
+              className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-800 dark:hover:text-brand-300 underline disabled:opacity-50 disabled:no-underline flex-shrink-0"
+              title={canApplyToSchedule
+                ? "Make these ingredients this week's standard for this meal, at this calorie tier — every other client on it this week picks it up too"
+                : "This calorie tier hasn't been set up yet in the 50-week schedule editor — open it and select this tier first"}
+            >
+              {applyingToSchedule ? 'Applying…' : 'Apply to weekly schedule…'}
+            </button>
+          )}
           <button
             type="button"
             onClick={onRevertAll}
@@ -1768,7 +1792,15 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, library, library
                 ) : (
                   <button
                     type="button"
-                    onClick={() => ing._isAdded ? onRemoveAdded(ing.id) : onRemove(ing.id)}
+                    onClick={() => {
+                      // ing._isAdded also covers an ingredient the SCHEDULE (template layer) added,
+                      // not just one this client's own override added — those look identical once
+                      // resolved. Only treat it as "my own added row" when it's actually in this
+                      // client's own added list; anything else removes the normal way, which
+                      // correctly drops it by id regardless of which layer it came from.
+                      const isOwnAdded = ing._isAdded && clientAdded.some(a => a.id === ing.id)
+                      isOwnAdded ? onRemoveAdded(ing.id) : onRemove(ing.id)
+                    }}
                     className="w-4 text-center text-gray-300 hover:text-red-400 flex-shrink-0"
                     title={ing._isAdded ? 'Remove this ingredient' : 'Remove for this client'}
                   >
@@ -1880,6 +1912,13 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   const [mealMap, setMealMap] = useState({})
   const [library, setLibrary] = useState([])
   const [ingredientOverrides, setIngredientOverrides] = useState({})
+  // The plan group's own per-week/tier override for the currently-loaded week (set from the
+  // 50-week schedule editor) — read-only here, applied underneath ingredientOverrides above.
+  const [templateOverrides, setTemplateOverrides] = useState({})
+  // id of the weekly_templates row backing the currently-loaded week+tier — "Apply to weekly
+  // schedule" writes its result to this row's template_meal_slots.
+  const [activeTemplateId, setActiveTemplateId] = useState(null)
+  const [applyingToSchedule, setApplyingToSchedule] = useState(null) // slotKey currently being applied, or null
   const [removedCategories, setRemovedCategories] = useState([])
   const [weekNeedsReview, setWeekNeedsReview] = useState(false)
   const [expandedSlots, setExpandedSlots] = useState(new Set())
@@ -1990,14 +2029,25 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const tier = CALORIE_TIERS.includes(asgn.calorie_target) ? asgn.calorie_target : null
     const [{ data: tierTmpl }, { data: stdTmpl }, { data: cwm }] = await Promise.all([
       tier
-        ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).eq('calorie_tier', tier).maybeSingle()
+        ? supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).eq('calorie_tier', tier).maybeSingle()
         : Promise.resolve({ data: null }),
-      supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
+      supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
       supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories, needs_coach_review').eq('assignment_id', asgn.id).eq('week_number', weekNum).maybeSingle(),
     ])
     const tmpl = tierTmpl || stdTmpl
     const tSlots = {}
-    for (const s of (tmpl?.template_meal_slots || [])) tSlots[s.slot_type] = s.meal_id
+    const tOverrides = {}
+    for (const s of (tmpl?.template_meal_slots || [])) {
+      tSlots[s.slot_type] = s.meal_id
+      if (s.ingredient_overrides) tOverrides[s.slot_type] = s.ingredient_overrides
+    }
+    setTemplateOverrides(tOverrides)
+    // "Apply to weekly schedule" must never write into a scope broader than the client's own tier
+    // (or the Standard template, for a no-tier client) — so unlike tSlots/tOverrides above, this
+    // does NOT fall back to the Standard template when this tier hasn't been forked yet in
+    // PlanGroupEditor. If that tier has no template row of its own, the action is simply
+    // unavailable until a coach opens that tier's tab there at least once.
+    setActiveTemplateId((tier ? tierTmpl : stdTmpl)?.id ?? null)
     // Static meals override the template default so the pinned meal auto-fills each week
     if (asgn.preworkout_static && asgn.preworkout_meal_id) tSlots.preworkout = asgn.preworkout_meal_id
     if (asgn.evening_snack_static && asgn.evening_snack_meal_id) tSlots.evening_snack = asgn.evening_snack_meal_id
@@ -2251,15 +2301,15 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   // every day total below — it's not eaten, so it shouldn't count toward "what's already covered".
   const effectivePreworkoutId = removedCategories.includes('pre_workout') ? null : (editedSlots.preworkout || null)
   const effectiveSnackId = removedCategories.includes('evening_snack') ? null : (editedSlots.evening_snack || null)
-  const preworkoutTotal = mealMacros(effectivePreworkoutId, mealMap, tier, ingredientOverrides.preworkout)
-  const snackTotal = mealMacros(effectiveSnackId, mealMap, tier, ingredientOverrides.evening_snack)
+  const preworkoutTotal = mealMacros(effectivePreworkoutId, mealMap, tier, ingredientOverrides.preworkout, templateOverrides.preworkout)
+  const snackTotal = mealMacros(effectiveSnackId, mealMap, tier, ingredientOverrides.evening_snack, templateOverrides.evening_snack)
 
   // Daily macro totals — one of each option (not both) plus the static meals. Each option is
   // compared against the calorie target independently, since the two can be different meals.
   const activeOption1Keys = OPTION_1_KEYS.filter(k => !removedCategories.includes(SLOT_CATEGORY[k]))
   const activeOption2Keys = OPTION_2_KEYS.filter(k => !removedCategories.includes(SLOT_CATEGORY[k]))
-  const option1Subtotal = sumMealSlots(activeOption1Keys, editedSlots, mealMap, tier, ingredientOverrides)
-  const option2Subtotal = sumMealSlots(activeOption2Keys, editedSlots, mealMap, tier, ingredientOverrides)
+  const option1Subtotal = sumMealSlots(activeOption1Keys, editedSlots, mealMap, tier, ingredientOverrides, templateOverrides)
+  const option2Subtotal = sumMealSlots(activeOption2Keys, editedSlots, mealMap, tier, ingredientOverrides, templateOverrides)
   const option1Total = addMacros(addMacros(option1Subtotal, preworkoutTotal), snackTotal)
   const option2Total = addMacros(addMacros(option2Subtotal, preworkoutTotal), snackTotal)
 
@@ -2481,6 +2531,49 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     ].filter(Boolean)
   }
 
+  // Promotes this ONE client's current ingredient edits for one slot into the shared 50-week
+  // schedule, for this exact week + calorie tier only (never the meal's global recipe) — so every
+  // other client on that same tier this week picks it up too. Only available when this client's
+  // slot is showing the SAME meal the template has (a swapped-in meal has nothing to promote back
+  // to) and this tier already has its own forked template row in the schedule editor.
+  async function applyEditToSchedule(slotKey) {
+    if (!activeTemplateId) return
+    const mealId = editedSlots[slotKey]
+    if (!mealId) return
+    const tierLabel = tier != null ? `${tier} kcal` : 'Standard'
+    if (!window.confirm(`Make these ingredients the ${tierLabel} standard for this meal, for week ${effectiveWeek}? Every other client on this tier this week will pick it up too.`)) return
+
+    setApplyingToSchedule(slotKey)
+    try {
+      const effective = getResolvedIngredients(mealId, mealMap, tier, ingredientOverrides[slotKey], templateOverrides[slotKey])
+      const nextOverride = { qty: {}, removed: [], added: [] }
+      for (const ing of effective) {
+        if (ing._isAdded) nextOverride.added.push({ ...ing })
+        else nextOverride.qty[ing.id] = ing.quantity_g
+      }
+      const cleaned = hasAnyOverride(nextOverride) ? nextOverride : null
+      const { error } = await supabase.from('template_meal_slots')
+        .update({ ingredient_overrides: cleaned })
+        .eq('template_id', activeTemplateId).eq('slot_type', slotKey)
+      if (error) throw error
+
+      setTemplateOverrides(prev => {
+        const next = { ...prev }
+        if (cleaned) next[slotKey] = cleaned
+        else delete next[slotKey]
+        return next
+      })
+      // This client's own override is now redundant — it matches what was just pushed to the
+      // schedule — so clear it rather than leaving a stale layer sitting on top. Local only, same
+      // as any other edit here; the coach still hits Save to persist it to client_week_meals.
+      slotHandlers.revertAll(slotKey)
+    } catch (err) {
+      setSlotsError(err.message || 'Failed to apply to the weekly schedule')
+    } finally {
+      setApplyingToSchedule(null)
+    }
+  }
+
   async function handleSaveSlots() {
     if (!assignment || effectiveWeek == null) return
     const violations = dayTotalViolations()
@@ -2667,14 +2760,15 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     const meal = currentId ? mealMap[currentId] : null
     const isExpanded = expandedSlots.has(slotKey)
     const overridesForSlot = ingredientOverrides[slotKey]
-    const macros = mealMacros(currentId, mealMap, tier, overridesForSlot)
+    const templateOverridesForSlot = templateOverrides[slotKey]
+    const macros = mealMacros(currentId, mealMap, tier, overridesForSlot, templateOverridesForSlot)
     // Option A only ever needs to hit the day's category target; Option B only ever needs to
     // match Option A — never the other way round, and never both at once.
     const isOptionB = OPTION_2_KEYS.includes(slotKey)
     const slotTgt = isOptionB ? null : slotTarget(cat)
     const siblingKey = isOptionB ? OPTION_1_KEYS[OPTION_2_KEYS.indexOf(slotKey)] : null
     const siblingId = siblingKey ? (editedSlots[siblingKey] || '') : ''
-    const siblingSlotMacros = siblingKey ? mealMacros(siblingId, mealMap, tier, ingredientOverrides[siblingKey]) : null
+    const siblingSlotMacros = siblingKey ? mealMacros(siblingId, mealMap, tier, ingredientOverrides[siblingKey], templateOverrides[siblingKey]) : null
     const siblingSlotLabel = siblingKey ? (MEAL_SLOTS.find(s => s.key === siblingKey)?.label || 'other option') : 'other option'
     const isComparing = comparingSlots.has(slotKey)
     const options = mealsByCategory[cat] || []
@@ -2853,7 +2947,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                         mealName={mealMap[currentId]?.name || 'this meal'}
                         removeId={d.removeId}
                         originalQty={d.quantity_g}
-                        ingredients={getResolvedIngredients(currentId, mealMap, tier, overridesForSlot)}
+                        ingredients={getResolvedIngredients(currentId, mealMap, tier, overridesForSlot, templateOverridesForSlot)}
                         library={library}
                         onClose={() => setOpenSwapRule(null)}
                         onSaved={() => {
@@ -2900,7 +2994,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
               onClick={e => e.stopPropagation()}
             >
               {compareOptions.map(m => {
-                const m_macros = mealMacros(m.id, mealMap, tier, m.id === currentId ? overridesForSlot : null)
+                const m_macros = mealMacros(m.id, mealMap, tier, m.id === currentId ? overridesForSlot : null, m.id === currentId ? templateOverridesForSlot : null)
                 const isCurrent = m.id === currentId
                 return (
                   <button
@@ -2934,6 +3028,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 mealMap={mealMap}
                 tier={tier}
                 overrides={overridesForSlot}
+                templateOverridesForSlot={templateOverridesForSlot}
                 library={library}
                 libraryById={libraryById}
                 dietaryRequirements={client.dietary_requirements}
@@ -2945,6 +3040,9 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 onRevertAll={() => slotHandlers.revertAll(slotKey)}
                 onToggleStatic={ing => toggleIngredientStatic(currentId, ing)}
                 onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(currentId, ing, qty)}
+                onApplyToSchedule={() => applyEditToSchedule(slotKey)}
+                canApplyToSchedule={!!activeTemplateId && !isOverridden}
+                applyingToSchedule={applyingToSchedule === slotKey}
               />
             </div>
           )}

@@ -5,7 +5,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import {
   MEAL_GROUPS, ALL_SLOT_DEFS, OPTION_1_KEYS, OPTION_2_KEYS,
-  mealMacros, addMacros, getIngredients, normalizeOverrides,
+  mealMacros, mealMacrosLayered, addMacros, getIngredients, getIngredientsLayered, normalizeOverrides,
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
 import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../lib/mealSwaps'
@@ -28,6 +28,9 @@ export default function ClientMealPlan() {
   const [templateSlots, setTemplateSlots] = useState({})
   const [lastSavedSlots, setLastSavedSlots] = useState({})
   const [ingredientOverrides, setIngredientOverrides] = useState({})
+  // The plan group's own per-week/tier override (set by the coach from the 50-week schedule
+  // editor) — read-only here, applied underneath this client's own ingredientOverrides.
+  const [templateOverrides, setTemplateOverrides] = useState({})
   const [removedCategories, setRemovedCategories] = useState([])
   const [slotsDirty, setSlotsDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -96,20 +99,25 @@ export default function ClientMealPlan() {
       const tier = CALORIE_TIERS.includes(asgn.calorie_target) ? asgn.calorie_target : null
       const [{ data: tierTmpl }, { data: stdTmpl }, { data: cwm }] = await Promise.all([
         tier
-          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).eq('calorie_tier', tier).maybeSingle()
+          ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).eq('calorie_tier', tier).maybeSingle()
           : Promise.resolve({ data: null }),
-        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).is('calorie_tier', null).maybeSingle(),
+        supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).is('calorie_tier', null).maybeSingle(),
         supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
       ])
 
       const tmpl = tierTmpl || stdTmpl
       const tSlots = {}
-      for (const s of (tmpl?.template_meal_slots || [])) tSlots[s.slot_type] = s.meal_id
+      const tOverrides = {}
+      for (const s of (tmpl?.template_meal_slots || [])) {
+        tSlots[s.slot_type] = s.meal_id
+        if (s.ingredient_overrides) tOverrides[s.slot_type] = s.ingredient_overrides
+      }
       if (asgn.preworkout_static && asgn.preworkout_meal_id) tSlots.preworkout = asgn.preworkout_meal_id
       if (asgn.evening_snack_static && asgn.evening_snack_meal_id) tSlots.evening_snack = asgn.evening_snack_meal_id
 
       const finalSlots = { ...tSlots, ...(cwm?.slots || {}) }
       setTemplateSlots(tSlots)
+      setTemplateOverrides(tOverrides)
       setEditedSlots(finalSlots)
       // Separate from templateSlots — the "needs coach review" flag should only fire on an
       // actual NEW swap this save, not stay true forever just because an old, already-reviewed
@@ -131,7 +139,7 @@ export default function ClientMealPlan() {
           const mId = finalSlots[slotKey]
           const meal = mId ? map[mId] : null
           if (!meal) continue
-          const baseIngredients = getIngredients(meal, tier, cwm?.ingredient_overrides?.[slotKey])
+          const baseIngredients = getIngredientsLayered(meal, tier, tOverrides[slotKey], cwm?.ingredient_overrides?.[slotKey])
           const { applied, unresolved } = applyDislikeSwaps(baseIngredients, dislikes, mId, ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike)
           if (applied.length || unresolved.length) syncMealSwapStatus(clientRow.id, mId, applied, unresolved)
         }
@@ -159,16 +167,18 @@ export default function ClientMealPlan() {
   function sumSlotKeys(keys) {
     return keys
       .filter(key => !removedCategories.includes(ALL_SLOT_DEFS.find(s => s.key === key)?.cat))
-      .reduce((acc, key) => addMacros(acc, mealMacros(editedSlots[key], mealMap, tier, ingredientOverrides[key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
+      .reduce((acc, key) => addMacros(acc, mealMacrosLayered(editedSlots[key], mealMap, tier, templateOverrides[key], ingredientOverrides[key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
   }
 
   const activeSlotDefs = ALL_SLOT_DEFS.filter(s => !removedCategories.includes(s.cat))
 
   // Swapping a meal only ever changes that one slot — no other slot is rebalanced to compensate,
   // that's left entirely up to the client — so the current-vs-original comparison below is a
-  // plain, honest total of whatever's actually in each slot right now.
-  const originalDailyTotal = activeSlotDefs.reduce((acc, s) => addMacros(acc, mealMacros(templateSlots[s.key], mealMap, tier, null, swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
-  const currentDailyTotal  = activeSlotDefs.reduce((acc, s) => addMacros(acc, mealMacros(editedSlots[s.key], mealMap, tier, ingredientOverrides[s.key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
+  // plain, honest total of whatever's actually in each slot right now. "Original" means the
+  // schedule's own standing content for this week/tier (including any schedule-editor override),
+  // not this client's own edits.
+  const originalDailyTotal = activeSlotDefs.reduce((acc, s) => addMacros(acc, mealMacrosLayered(templateSlots[s.key], mealMap, tier, templateOverrides[s.key], null, swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
+  const currentDailyTotal  = activeSlotDefs.reduce((acc, s) => addMacros(acc, mealMacrosLayered(editedSlots[s.key], mealMap, tier, templateOverrides[s.key], ingredientOverrides[s.key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
   const dailyDelta = {
     cal:  Math.round(currentDailyTotal.cal  - originalDailyTotal.cal),
     prot: Math.round(currentDailyTotal.prot - originalDailyTotal.prot),
@@ -176,8 +186,8 @@ export default function ClientMealPlan() {
     fat:  Math.round(currentDailyTotal.fat  - originalDailyTotal.fat),
   }
 
-  const preworkoutM = removedCategories.includes('pre_workout') ? { cal: 0, prot: 0, carb: 0, fat: 0 } : (mealMacros(editedSlots.preworkout, mealMap, tier, ingredientOverrides.preworkout, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 })
-  const snackM      = removedCategories.includes('evening_snack') ? { cal: 0, prot: 0, carb: 0, fat: 0 } : (mealMacros(editedSlots.evening_snack, mealMap, tier, ingredientOverrides.evening_snack, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 })
+  const preworkoutM = removedCategories.includes('pre_workout') ? { cal: 0, prot: 0, carb: 0, fat: 0 } : (mealMacrosLayered(editedSlots.preworkout, mealMap, tier, templateOverrides.preworkout, ingredientOverrides.preworkout, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 })
+  const snackM      = removedCategories.includes('evening_snack') ? { cal: 0, prot: 0, carb: 0, fat: 0 } : (mealMacrosLayered(editedSlots.evening_snack, mealMap, tier, templateOverrides.evening_snack, ingredientOverrides.evening_snack, swapCtx) || { cal: 0, prot: 0, carb: 0, fat: 0 })
   const opt1Sub     = sumSlotKeys(OPTION_1_KEYS)
   const opt2Sub     = sumSlotKeys(OPTION_2_KEYS)
   const opt1Total   = addMacros(addMacros(opt1Sub, preworkoutM), snackM)
@@ -236,8 +246,14 @@ export default function ClientMealPlan() {
   function handleRemoveIngredient(slotKey, ing) {
     setIngredientOverrides(prev => {
       const existing = normalizeOverrides(prev[slotKey])
-      if (ing._isAdded) {
-        return { ...prev, [slotKey]: { ...existing, added: existing.added.filter(a => a._tempId !== ing._tempId) } }
+      // ing._isAdded also covers an ingredient the coach's SCHEDULE added (from the 50-week
+      // schedule editor), not just one this client's own edits added — those look identical once
+      // resolved. Only take the "drop from my own added list" path when it's actually there;
+      // anything else removes the normal way, which correctly filters it out by id regardless of
+      // which layer it came from.
+      const key = ing._tempId || ing.id
+      if (ing._isAdded && existing.added.some(a => (a._tempId || a.id) === key)) {
+        return { ...prev, [slotKey]: { ...existing, added: existing.added.filter(a => (a._tempId || a.id) !== key) } }
       }
       return { ...prev, [slotKey]: { ...existing, removed: [...existing.removed, ing.id] } }
     })
@@ -403,6 +419,7 @@ export default function ClientMealPlan() {
                   mealsByCategory={mealsByCategory}
                   tier={tier}
                   overrides={ingredientOverrides[slot.key]}
+                  templateOverrides={templateOverrides[slot.key]}
                   onSwap={handleSwapOpen}
                   onViewRecipe={setRecipeModal}
                   ingredientLib={ingredientLib}
@@ -521,6 +538,7 @@ export default function ClientMealPlan() {
           editedSlots={editedSlots}
           tier={tier}
           ingredientOverrides={ingredientOverrides}
+          templateOverrides={templateOverrides}
           templateSlots={templateSlots}
           mealsByCategory={mealsByCategory}
           ingredientLib={ingredientLib}
@@ -534,7 +552,7 @@ export default function ClientMealPlan() {
           target={OPTION_2_KEYS.includes(recipeModal) ? null : slotTarget(ALL_SLOT_DEFS.find(s => s.key === recipeModal)?.cat)}
           siblingMacros={OPTION_2_KEYS.includes(recipeModal) ? (() => {
             const sibKey = siblingSlotKey(recipeModal)
-            return sibKey ? mealMacros(editedSlots[sibKey], mealMap, tier, ingredientOverrides[sibKey], swapCtx) : null
+            return sibKey ? mealMacrosLayered(editedSlots[sibKey], mealMap, tier, templateOverrides[sibKey], ingredientOverrides[sibKey], swapCtx) : null
           })() : null}
           siblingLabel={ALL_SLOT_DEFS.find(s => s.key === siblingSlotKey(recipeModal))?.optionLabel || 'other option'}
           swapCtx={swapCtx}
