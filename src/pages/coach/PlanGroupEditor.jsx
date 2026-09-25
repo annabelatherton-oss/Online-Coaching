@@ -1441,11 +1441,10 @@ export default function PlanGroupEditor() {
       {fillBlankResult && (
         <div className={`p-3 rounded-lg border ${fillBlankResult.stillBlank.length > 0 ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' : 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800'}`}>
           <p className={`text-sm ${fillBlankResult.stillBlank.length > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}`}>
-            {fillBlankResult.filled > 0
-              ? `Filled ${fillBlankResult.filled} slot${fillBlankResult.filled === 1 ? '' : 's'} — review below, then Save.`
-              : 'No blank slots found to fill.'}
+            {fillBlankResult.filled === 0 && fillBlankResult.stillBlank.length === 0 && 'No blank slots found — every slot already has a meal.'}
+            {fillBlankResult.filled > 0 && `Filled ${fillBlankResult.filled} slot${fillBlankResult.filled === 1 ? '' : 's'} — review below, then Save.`}
             {fillBlankResult.stillBlank.length > 0 && (
-              <> Still no qualifying meal for: {fillBlankResult.stillBlank.join(', ')} — add one in the Meal Library for this diet, or assign one manually below.</>
+              <> {fillBlankResult.filled > 0 ? 'But s' : 'S'}till no qualifying meal for: {fillBlankResult.stillBlank.join(', ')} — this diet doesn't have a second meal in that category yet that isn't already used that day. Add one in the Meal Library, or assign one manually below.</>
             )}
           </p>
         </div>
