@@ -14,6 +14,7 @@ import {
   generateTierIngredients, insertTierVersion, tierTargetsForCategory, allIngredientsFixed, balanceDayIngredients, calcTotals,
 } from '../../lib/calorieTierScaling'
 import { macrosForQty } from '../../lib/ingredientMacros'
+import { DIETS, DIET_LABELS, mealQualifiesForDiet } from '../../lib/diets'
 
 const MAIN_SLOTS = [
   { key: 'breakfast1', label: 'Breakfast A', cat: 'breakfast' },
@@ -485,6 +486,13 @@ export default function PlanGroupEditor() {
   // since it was last sent" (safe to reuse once the rotation cycles back to it) vs "edited since"
   // (worth a check) — see weekSendStatus below.
   const [sentSnapshots, setSentSnapshots] = useState({})
+  // "Fill blank slots" picker + last result — this plan group doesn't itself record which diet
+  // it's for (that's only chosen once, transiently, when a diet variant is first cloned in
+  // Generate Templates), so filling a gap here asks which diet's meals are safe to pick from.
+  const [fillBlankOpen, setFillBlankOpen] = useState(false)
+  const [fillBlankDiet, setFillBlankDiet] = useState('')
+  const [fillingBlanks, setFillingBlanks] = useState(false)
+  const [fillBlankResult, setFillBlankResult] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -498,7 +506,7 @@ export default function PlanGroupEditor() {
         supabase
           .from('meals')
           .select(`
-            id, name, category, photo_url, photo_position,
+            id, name, category, photo_url, photo_position, diet_tags, standard_eligible, excluded_from_templates,
             meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, scaling_type),
             meal_tier_versions(calorie_tier, calories, protein_g, carbs_g, fat_g,
               meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
@@ -1310,6 +1318,47 @@ export default function PlanGroupEditor() {
     setOptimizing(false)
   }
 
+  // Fills only the empty breakfast/lunch/dinner slots — e.g. left blank because "Create Diet
+  // Variant" in Generate Templates ran out of qualifying meals for a day — without touching
+  // anything already assigned. Unlike "Optimise combinations" above, this never moves or replaces
+  // an existing pick. dietKey (''  = Standard) filters candidates the same way Generate Templates
+  // does, since a plan group itself doesn't record which diet it's for. Picks whichever qualifying,
+  // not-already-used-that-day meal has appeared least often across the current rotation so far, for
+  // variety — same principle as pickSubstitute in Generate Templates, just without an original
+  // meal's subtype to match against since these slots never had one.
+  function fillBlankSlots(dietKey) {
+    setFillingBlanks(true)
+    const qualifies = m => !m.excluded_from_templates && mealQualifiesForDiet(m, dietKey)
+    const usageCounts = new Map()
+    for (const w of currentWeeks) {
+      for (const s of MAIN_SLOTS) {
+        const id = w.slots[s.key]
+        if (id) usageCounts.set(id, (usageCounts.get(id) || 0) + 1)
+      }
+    }
+
+    let filled = 0
+    const stillBlank = []
+    currentWeeks.forEach((week, weekIdx) => {
+      const usedTodayIds = new Set(MAIN_SLOTS.map(s => week.slots[s.key]).filter(Boolean))
+      for (const s of MAIN_SLOTS) {
+        if (week.slots[s.key]) continue
+        const pool = (mealsByCategory[s.cat] || []).filter(m => qualifies(m) && !usedTodayIds.has(m.id))
+        if (pool.length === 0) { stillBlank.push(`Week ${week.weekNum} ${s.label}`); continue }
+        pool.sort((a, b) => (usageCounts.get(a.id) || 0) - (usageCounts.get(b.id) || 0))
+        const chosen = pool[0]
+        changeSlot(weekIdx, s.key, chosen.id)
+        usedTodayIds.add(chosen.id)
+        usageCounts.set(chosen.id, (usageCounts.get(chosen.id) || 0) + 1)
+        filled++
+      }
+    })
+
+    setFillBlankResult({ filled, stillBlank })
+    setFillingBlanks(false)
+    if (filled > 0) setFillBlankOpen(false)
+  }
+
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
   return (
@@ -1333,6 +1382,14 @@ export default function PlanGroupEditor() {
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+          <button
+            onClick={() => { setFillBlankOpen(o => !o); setFillBlankResult(null) }}
+            disabled={fillingBlanks}
+            className="btn-secondary"
+            title="Fills only the empty breakfast/lunch/dinner slots — e.g. left blank when a diet variant ran out of qualifying meals for a day — without touching any slot that's already assigned."
+          >
+            Fill blank slots…
+          </button>
           {activeTier != null && (
             <button
               onClick={handleOptimize}
@@ -1352,6 +1409,47 @@ export default function PlanGroupEditor() {
           </button>
         </div>
       </div>
+
+      {fillBlankOpen && (
+        <div className="card space-y-3">
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-white">Fill blank slots</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Only fills slots with no meal assigned — anything already picked is left exactly as is.
+              This plan doesn't record which diet it's for, so pick it here to keep the fills safe.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <select className="input max-w-xs" value={fillBlankDiet} onChange={e => setFillBlankDiet(e.target.value)}>
+              <option value="">Standard (no diet restriction)</option>
+              {DIETS.map(d => <option key={d} value={d}>{DIET_LABELS[d]}</option>)}
+            </select>
+            <button
+              onClick={() => fillBlankSlots(fillBlankDiet)}
+              disabled={fillingBlanks}
+              className="btn-primary"
+            >
+              {fillingBlanks ? 'Filling…' : 'Fill blank slots'}
+            </button>
+            <button onClick={() => setFillBlankOpen(false)} className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {fillBlankResult && (
+        <div className={`p-3 rounded-lg border ${fillBlankResult.stillBlank.length > 0 ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' : 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800'}`}>
+          <p className={`text-sm ${fillBlankResult.stillBlank.length > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}`}>
+            {fillBlankResult.filled > 0
+              ? `Filled ${fillBlankResult.filled} slot${fillBlankResult.filled === 1 ? '' : 's'} — review below, then Save.`
+              : 'No blank slots found to fill.'}
+            {fillBlankResult.stillBlank.length > 0 && (
+              <> Still no qualifying meal for: {fillBlankResult.stillBlank.join(', ')} — add one in the Meal Library for this diet, or assign one manually below.</>
+            )}
+          </p>
+        </div>
+      )}
 
       {saveError && (
         <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
