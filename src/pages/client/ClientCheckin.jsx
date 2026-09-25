@@ -486,7 +486,11 @@ export default function ClientCheckin() {
         .filter(c => (c.updated_at || c.submitted_at || '') >= windowStart)
         .sort((a, b) => (b.updated_at || b.submitted_at || '').localeCompare(a.updated_at || a.submitted_at || ''))[0] || null
 
-      const nextWeekNumber = histWithWeeks.length + 1
+      // MAX(week_number)+1, not just a count of rows — a plain count silently assumes no gaps or
+      // gone-missing rows, and picking a number that turns out to already be in use elsewhere in
+      // this client's history is exactly what upsert-by-(client_id, week_number) below would then
+      // merge into, rather than creating a genuinely new week's check-in.
+      const nextWeekNumber = histWithWeeks.reduce((max, c) => Math.max(max, c.week_number || 0), 0) + 1
       const dow = new Date().getDay()
       const isLate = !checkin && (dow === 1 || dow === 2)
 
@@ -600,8 +604,10 @@ export default function ClientCheckin() {
     const payload = {
       client_id:        clientData.id,
       coach_id:         clientData.coach_id,
-      // Don't change week_number when updating — keep the week it was first submitted for
-      ...(existing ? {} : { week_number: weekNumber }),
+      // Always included, even when updating — weekNumber already holds the existing row's own
+      // week_number in that case (set from it at load), so this is a no-op there. Needed on every
+      // write now that this upserts on (client_id, week_number) rather than branching on `existing`.
+      week_number:      weekNumber,
       updated_at:       new Date().toISOString(),
       weight_kg:        form.weight_kg !== '' ? parseFloat(form.weight_kg) : null,
       waist_cm:         collectMeasurements && form.waist_cm !== '' ? parseFloat(form.waist_cm) : null,
@@ -618,9 +624,15 @@ export default function ClientCheckin() {
       progress_photos:  hasPhotos ? photos : null,
     }
 
-    const { error: err } = existing
-      ? await supabase.from('client_checkins').update(payload).eq('id', existing.id)
-      : await supabase.from('client_checkins').insert(payload)
+    // Upsert on (client_id, week_number) instead of branching on the client-side `existing` flag —
+    // that flag is only as good as the "does a check-in fall in this week's window" lookup above,
+    // which can miss a row that's actually already there (e.g. a boundary case around the
+    // Wednesday-midnight window cutoff), and a plain insert() in that case hits the same unique
+    // constraint this client just tripped: "duplicate key value violates unique constraint
+    // client_checkins_client_id_week_number_key". Upserting makes it Postgres's call, atomically,
+    // rather than a guess made from possibly-stale client state.
+    const { error: err } = await supabase.from('client_checkins')
+      .upsert(payload, { onConflict: 'client_id,week_number' })
 
     setSaving(false)
     if (err) { setError(err.message || 'Could not save. Please try again.'); return }
