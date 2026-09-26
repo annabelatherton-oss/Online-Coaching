@@ -1493,9 +1493,14 @@ function getResolvedIngredients(mealId, mealMap, tier, overridesForSlot, templat
 // `key` is the slot key (rotating) or static field name, scoped within whichever overrides state is passed in.
 function makeOverrideHandlers(setOverrides, setDirty) {
   return {
+    // Dragging/typing an ingredient's quantity down to 0 removes it outright instead of leaving a
+    // "0g / 0 kcal" row sitting in the list — a zeroed ingredient isn't part of the meal any more.
     changeQty(key, ingredientId, value) {
       setOverrides(prev => {
         const current = normalizeOverrides(prev[key])
+        const num = value === null || value === '' ? null : parseFloat(value)
+        if (value !== null && value !== '' && isNaN(num)) return prev
+
         // A manually-added ingredient isn't in the qty override map at all — applyIngredientOverrides
         // always shows an added row's OWN stored quantity_g/macros, never consulting qty[] for it, so
         // writing a change there silently did nothing: the ingredient would visibly stay at whatever
@@ -1504,9 +1509,8 @@ function makeOverrideHandlers(setOverrides, setDirty) {
         // already does.
         const addedIdx = current.added.findIndex(a => a.id === ingredientId)
         if (addedIdx !== -1) {
-          if (value === null || value === '') return prev
-          const num = parseFloat(value)
-          if (isNaN(num)) return prev
+          if (num == null) return prev
+          if (num <= 0) return { ...prev, [key]: { ...current, added: current.added.filter((_, i) => i !== addedIdx) } }
           const a = current.added[addedIdx]
           const origQty = parseFloat(a.quantity_g) || 0
           const ratio = origQty > 0 ? num / origQty : 1
@@ -1521,13 +1525,17 @@ function makeOverrideHandlers(setOverrides, setDirty) {
           }
           return { ...prev, [key]: { ...current, added } }
         }
-        const qty = { ...current.qty }
-        if (value === null || value === '') delete qty[ingredientId]
-        else {
-          const num = parseFloat(value)
-          if (isNaN(num)) return prev
-          qty[ingredientId] = num
+
+        if (num != null && num <= 0) {
+          const qty = { ...current.qty }
+          delete qty[ingredientId]
+          if (current.removed.includes(ingredientId)) return { ...prev, [key]: { ...current, qty } }
+          return { ...prev, [key]: { ...current, qty, removed: [...current.removed, ingredientId] } }
         }
+
+        const qty = { ...current.qty }
+        if (num == null) delete qty[ingredientId]
+        else qty[ingredientId] = num
         return { ...prev, [key]: { ...current, qty } }
       })
       setDirty(true)

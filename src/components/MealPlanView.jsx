@@ -495,7 +495,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx, target, siblingMacros, siblingLabel, onApplyToSchedule, canApplyToSchedule, applyingToSchedule }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx, target, siblingMacros, siblingLabel, onApplyToSchedule, canApplyToSchedule, applyingToSchedule, dayOptionTotals, dayTargetCal }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
   const [prepDays, setPrepDays] = useState(null)
@@ -666,7 +666,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                     const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libUnit && libUnit !== 'g') ? libUnit : 'g'
                     const isStatic = ing.is_static && !ing._isAdded
                     return (
-                      <div key={ing._tempId || ing.id || i} className="flex items-center gap-2">
+                      <div key={ing._tempId || ing.id || i} className="flex items-center gap-2 flex-wrap">
                         {onRemoveIngredient && !isStatic && (
                           <button
                             onClick={e => { e.stopPropagation(); onRemoveIngredient(slotKey, ing) }}
@@ -697,7 +697,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                                 onChange={e => !isStatic && onUpdateIngredient(slotKey, ing._tempId || ing.id, parseFloat(e.target.value) || 0)}
                                 onClick={e => e.stopPropagation()}
                                 {...selectOnFocus}
-                                className={`w-16 text-sm text-right border rounded-lg px-2 py-0.5 focus:outline-none tabular-nums ${
+                                className={`w-20 text-sm text-right border rounded-lg px-2 py-1 focus:outline-none tabular-nums ${
                                   isStatic
                                     ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 cursor-not-allowed'
                                     : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-brand-400'
@@ -805,6 +805,35 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
             </div>
           </div>
         </div>
+
+        {dayOptionTotals && (
+          <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 px-5 py-3">
+            <div className="grid grid-cols-2 gap-4">
+              {dayOptionTotals.map(({ label, macros: dm }) => {
+                if (!dm) return null
+                const remCal = dayTargetCal != null ? Math.round(dayTargetCal - dm.cal) : null
+                return (
+                  <div key={label}>
+                    <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label} today</p>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white tabular-nums">
+                      {Math.round(dm.cal)} kcal
+                      {remCal != null && (
+                        <span className={`ml-1.5 text-xs font-semibold ${remCal < 0 ? 'text-orange-500' : 'text-gray-400 dark:text-gray-500'}`}>
+                          ({remCal >= 0 ? `${remCal} left` : `${Math.abs(remCal)} over`})
+                        </span>
+                      )}
+                    </p>
+                    <p className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 tabular-nums">
+                      <span className={`flex items-center gap-0.5 ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{Math.round(dm.carb)}g</span>
+                      <span className={`flex items-center gap-0.5 ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{Math.round(dm.prot)}g</span>
+                      <span className={`flex items-center gap-0.5 ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{Math.round(dm.fat)}g</span>
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -221,7 +221,23 @@ export default function ClientMealPlan() {
   // target and how far the edit has taken it from the sibling option (see target/siblingMacros
   // passed into RecipeModal below), but nothing here blocks the edit itself - it's a nudge, not a
   // hard limit.
+  // Dragging/typing an ingredient's quantity down to 0 removes it outright instead of leaving a
+  // "0g / 0 kcal" row sitting in the list — a zeroed ingredient isn't part of the meal any more,
+  // so it shouldn't still look like it is.
   function handleUpdateIngredient(slotKey, ingKey, newQty) {
+    if (newQty <= 0) {
+      setIngredientOverrides(prev => {
+        const existing = normalizeOverrides(prev[slotKey])
+        if (existing.added.some(a => a._tempId === ingKey)) {
+          return { ...prev, [slotKey]: { ...existing, added: existing.added.filter(a => a._tempId !== ingKey) } }
+        }
+        const qty = { ...existing.qty }
+        delete qty[ingKey]
+        return { ...prev, [slotKey]: { ...existing, qty, removed: [...new Set([...existing.removed, ingKey])] } }
+      })
+      setSlotsDirty(true)
+      return
+    }
     setIngredientOverrides(prev => {
       const existing = normalizeOverrides(prev[slotKey])
       const matchAdded = existing.added.find(a => a._tempId === ingKey)

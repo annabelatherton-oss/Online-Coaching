@@ -388,7 +388,22 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     setEditedSlots(prev => ({ ...prev, [slotKey]: templateSlots[slotKey] || null }))
   }
 
+  // Dragging/typing an ingredient's quantity down to 0 removes it outright instead of leaving a
+  // "0g / 0 kcal" row sitting in the list — a zeroed ingredient isn't part of the meal any more,
+  // so it shouldn't still look like it is.
   function handleUpdateIngredient(slotKey, ingKey, newQty) {
+    if (newQty <= 0) {
+      setIngredientOverrides(prev => {
+        const existing = normalizeOverrides(prev[slotKey])
+        if (existing.added.some(a => a._tempId === ingKey)) {
+          return { ...prev, [slotKey]: { ...existing, added: existing.added.filter(a => a._tempId !== ingKey) } }
+        }
+        const qty = { ...existing.qty }
+        delete qty[ingKey]
+        return { ...prev, [slotKey]: { ...existing, qty, removed: [...new Set([...existing.removed, ingKey])] } }
+      })
+      return
+    }
     setIngredientOverrides(prev => {
       const existing = normalizeOverrides(prev[slotKey])
       const matchAdded = existing.added.find(a => a._tempId === ingKey)
@@ -1397,6 +1412,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           onApplyToSchedule={applyEditToSchedule}
           canApplyToSchedule={!!activeTemplateId && (editedSlots[recipeModal] || null) === (templateSlots[recipeModal] || null)}
           applyingToSchedule={applyingToSchedule === recipeModal}
+          dayOptionTotals={[{ label: 'Option A', macros: opt1Total }, { label: 'Option B', macros: opt2Total }]}
+          dayTargetCal={targetCal > 0 ? targetCal : null}
           target={slotTarget(ALL_SLOT_DEFS.find(s => s.key === recipeModal)?.cat)}
           siblingMacros={(() => {
             const sibKey = siblingSlotKey(recipeModal)
