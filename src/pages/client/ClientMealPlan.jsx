@@ -12,6 +12,7 @@ import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../li
 import { normalizeMealSplit, redistributeMealSplit } from '../../lib/calorieSplit'
 import { normalizeGoalMacroSplits, calcBodyweightMacros } from '../../lib/macros'
 import EverydayMealsClient from '../../components/EverydayMealsClient'
+import ClientTreatLog from '../../components/ClientTreatLog'
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ export default function ClientMealPlan() {
           meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
             meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
         `).eq('coach_id', clientRow.coach_id).order('name'),
-        supabase.from('ingredients').select('id, name, serving_size, serving_unit, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', clientRow.coach_id),
+        supabase.from('ingredients').select('id, name, category, serving_size, serving_unit, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', clientRow.coach_id),
         supabase.from('profiles').select('meal_split, goal_macro_splits, protein_g_per_kg').eq('id', clientRow.coach_id).single(),
         supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', clientRow.id).order('recorded_at', { ascending: false }).limit(1),
         supabase.from('client_checkins').select('weight_kg').eq('client_id', clientRow.id).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
@@ -489,6 +490,16 @@ export default function ClientMealPlan() {
           )}
         </div>
       )}
+
+      {/* Treats & extras — off-plan snacks the client logs themselves, weighed against what's
+          already in today's plan so they can see whether it still fits. */}
+      <ClientTreatLog
+        clientId={clientData.id}
+        coachId={clientData.coach_id}
+        ingredientLib={ingredientLib}
+        dailyMacroTargets={dailyMacroTargets}
+        planDailyTotal={currentDailyTotal}
+      />
 
       {/* Everyday meals */}
       <EverydayMealsClient
