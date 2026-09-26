@@ -96,6 +96,30 @@ function appendQuickReply(current, text) {
   return current?.trim() ? `${current.trim()}\n\n${text}` : text
 }
 
+// A fixed-height, resize-none textarea clips anything past its rows the moment content grows past
+// them — most visibly right after picking a Quick Reply, which can add several lines in one go
+// and land mostly hidden below the fold with no visual hint there's more to scroll to. Grows to
+// fit its own content instead (up to minRows as a floor), on every value change regardless of
+// whether that change came from typing or a programmatic update like a Quick Reply.
+function AutoGrowTextarea({ value, minRows = 3, className = '', ...props }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      rows={minRows}
+      className={`${className} resize-none overflow-hidden`}
+      {...props}
+    />
+  )
+}
+
 // Check-in submitted Mon or Tue = late re-submit for the previous week
 function isLateSubmission(checkin) {
   const iso = checkin?.updated_at || checkin?.submitted_at
@@ -887,10 +911,10 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           <div className="card space-y-3">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Message to client</h2>
             <QuickReplies onPick={text => setCoachNotes(v => appendQuickReply(v, text))} />
-            <textarea
+            <AutoGrowTextarea
               autoFocus
-              className="input w-full text-sm resize-none"
-              rows={5}
+              className="input w-full text-sm"
+              minRows={5}
               placeholder="Weekly feedback, notes and encouragement…"
               value={coachNotes}
               onChange={e => setCoachNotes(e.target.value)}
@@ -1862,8 +1886,8 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                   {current.struggles.map(s => (
                     <div key={s}>
                       <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-white dark:bg-gray-900 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 mb-1.5">{s}</span>
-                      <input
-                        type="text"
+                      <AutoGrowTextarea
+                        minRows={1}
                         value={struggleComments[s] || ''}
                         onChange={e => setStruggleComments(prev => ({ ...prev, [s]: e.target.value }))}
                         placeholder={`Your advice for "${s}"…`}
@@ -2141,7 +2165,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             {responding === c.id ? (
               <div className="space-y-2">
                 <QuickReplies onPick={text => setResponseText(v => appendQuickReply(v, text))} />
-                <textarea autoFocus className="input w-full text-sm resize-none" rows={3} value={responseText} onChange={e => setResponseText(e.target.value)} placeholder="Write your response…" />
+                <AutoGrowTextarea autoFocus className="input w-full text-sm" minRows={3} value={responseText} onChange={e => setResponseText(e.target.value)} placeholder="Write your response…" />
                 <div className="flex gap-2">
                   <button onClick={() => sendResponse(c.id)} disabled={saving || !responseText.trim()} className="btn-primary py-1.5 px-4 text-sm">{saving ? 'Sending…' : 'Send'}</button>
                   <button onClick={() => setResponding(null)} className="btn-secondary py-1.5 px-3 text-sm">Cancel</button>
