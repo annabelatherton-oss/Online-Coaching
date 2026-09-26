@@ -1435,6 +1435,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
 // ── Client detail view ────────────────────────────────────────────────────────
 function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const { profile } = useAuth()
+  // Seeded from the parent list's own snapshot so there's no blank flash on open, but that
+  // snapshot is only as fresh as whenever the coach's check-ins list last loaded — if this client
+  // has submitted since then, it's missing here entirely. Refetched fresh below.
   const [checkins, setCheckins] = useState(rawCheckins)
   const [lightbox, setLightbox] = useState(null)
   const [responding, setResponding] = useState(null) // checkin id (past check-ins only)
@@ -1463,6 +1466,16 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     supabase.from('weight_entries').select('weight_kg, recorded_at')
       .eq('client_id', client.id).order('recorded_at', { ascending: false })
       .then(({ data }) => setWeightEntries(data || []))
+  }, [client?.id])
+
+  // Refetch this client's own check-ins fresh on open, rather than trusting the parent list's
+  // snapshot — a client who submitted after that snapshot was taken would otherwise be invisible
+  // here (their weight, energy/sleep/food/gym ratings, struggles — all of it) until the coach
+  // backed out to the list and re-opened it, or reloaded the page.
+  useEffect(() => {
+    if (!client?.id) return
+    supabase.from('client_checkins').select('*').eq('client_id', client.id).order('week_number', { ascending: false })
+      .then(({ data }) => { if (data) setCheckins(data) })
   }, [client?.id])
 
   // Struggle tracking — open issues carried across check-ins, plus any the
