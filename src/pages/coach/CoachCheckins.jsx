@@ -151,6 +151,10 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const mealSplit = normalizeMealSplit(profile?.meal_split)
   const [loading, setLoading] = useState(true)
   const [coachNotes, setCoachNotes] = useState(current?.coach_response || '')
+  // Coach's own per-struggle advice for THIS week's check-in, keyed by struggle label — e.g. a
+  // comment specifically against "Struggling to find time for the gym" rather than one big
+  // response covering everything. Saved together with the rest of the response.
+  const [struggleComments, setStruggleComments] = useState(current?.coach_struggle_comments || {})
   const [calorieTarget, setCalorieTarget] = useState(String(activeAssignment?.calorie_target ?? ''))
   const [trainingNotes, setTrainingNotes] = useState('')
   const [editedSlots, setEditedSlots] = useState({})
@@ -718,7 +722,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     const newCalTarget = calorieTarget ? parseInt(calorieTarget) : activeAssignment.calorie_target
 
     await supabase.from('client_checkins')
-      .update({ coach_response: coachNotes.trim() || null, coach_responded_at: new Date().toISOString() })
+      .update({ coach_response: coachNotes.trim() || null, coach_responded_at: new Date().toISOString(), coach_struggle_comments: struggleComments })
       .eq('id', current.id)
 
     await supabase.from('client_week_meals').upsert({
@@ -1063,24 +1067,26 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
               const isComplete = weeksElapsed >= blockTotal
               return (
                 <div className="space-y-2">
-                  <div className={`flex items-center gap-3 p-3 rounded-xl ${isComplete ? 'bg-brand-50 dark:bg-brand-900/10 border border-brand-200 dark:border-brand-800' : 'bg-blue-50 dark:bg-blue-900/10'}`}>
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isComplete ? 'bg-brand-100 dark:bg-brand-900/30' : 'bg-blue-500/10 dark:bg-blue-500/20'}`}>
-                      <svg className={`w-5 h-5 ${isComplete ? 'text-brand-600 dark:text-brand-400' : 'text-blue-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className={`flex items-center gap-3 p-3 rounded-xl ${isComplete ? 'bg-amber-50 dark:bg-amber-900/10 border border-amber-300 dark:border-amber-700' : 'bg-blue-50 dark:bg-blue-900/10'}`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isComplete ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-blue-500/10 dark:bg-blue-500/20'}`}>
+                      <svg className={`w-5 h-5 ${isComplete ? 'text-amber-600 dark:text-amber-400' : 'text-blue-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{training.program_name || training.training_programs?.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {isComplete ? (
-                          <>
-                            {blockTotal}-week block
-                            <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-semibold">· Ready for new block</span>
-                          </>
-                        ) : (
-                          <>Week {currentWeek} of {blockTotal} · {weeksLeft} week{weeksLeft !== 1 ? 's' : ''} left</>
-                        )}
-                      </p>
+                    {/* Which programme this is takes a back seat here — what actually needs a
+                        glance during a check-in is just "is this block done yet", not its name. */}
+                    <div className="flex-1 min-w-0" title={training.program_name || training.training_programs?.name}>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Training block</p>
+                      {isComplete ? (
+                        <p className="text-sm font-bold text-amber-700 dark:text-amber-400">
+                          Block complete — time to move them into their next one
+                        </p>
+                      ) : (
+                        <p className="text-base font-bold text-gray-900 dark:text-white">
+                          {weeksLeft} week{weeksLeft !== 1 ? 's' : ''} left
+                          <span className="ml-1.5 text-xs font-normal text-gray-400 dark:text-gray-500">(week {currentWeek} of {blockTotal})</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                   {isComplete && (
@@ -1836,12 +1842,21 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           )}
 
           {((current.struggles || []).length > 0 || current.struggles_other) && (
-            <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-3 space-y-2">
+            <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-3 space-y-3">
               <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Struggling with (this week)</p>
               {(current.struggles || []).length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="space-y-2.5">
                   {current.struggles.map(s => (
-                    <span key={s} className="px-2.5 py-1 rounded-full text-xs font-medium bg-white dark:bg-gray-900 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">{s}</span>
+                    <div key={s}>
+                      <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-white dark:bg-gray-900 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 mb-1.5">{s}</span>
+                      <input
+                        type="text"
+                        value={struggleComments[s] || ''}
+                        onChange={e => setStruggleComments(prev => ({ ...prev, [s]: e.target.value }))}
+                        placeholder={`Your advice for "${s}"…`}
+                        className="input w-full text-sm py-1.5"
+                      />
+                    </div>
                   ))}
                 </div>
               )}
@@ -2095,6 +2110,9 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                 {c.struggles_other && <p className="text-sm text-gray-600 dark:text-gray-300 italic">"{c.struggles_other}"</p>}
                 {c.struggle_comments && Object.entries(c.struggle_comments).filter(([, v]) => v).map(([label, comment]) => (
                   <p key={label} className="text-xs text-gray-500 dark:text-gray-400"><span className="font-medium">{label}:</span> {comment}</p>
+                ))}
+                {c.coach_struggle_comments && Object.entries(c.coach_struggle_comments).filter(([, v]) => v).map(([label, comment]) => (
+                  <p key={`coach-${label}`} className="text-xs text-brand-600 dark:text-brand-400"><span className="font-medium">You, on {label}:</span> {comment}</p>
                 ))}
               </div>
             )}
