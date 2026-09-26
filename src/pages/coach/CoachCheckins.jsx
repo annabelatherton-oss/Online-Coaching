@@ -709,7 +709,20 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     setApplyingToSchedule(slotKey)
     try {
       const effective = getIngredientsLayered(meal, tier, templateOverrides[slotKey], ingredientOverrides[slotKey])
-      const nextOverride = { qty: {}, removed: [], added: [] }
+      // An ingredient removed via either override layer just doesn't appear in `effective` at
+      // all — there's nothing there to loop over and notice it's gone. Comparing against the
+      // meal's own base/tier rows is the only way to know which ones were dropped, so that the
+      // written override's `removed` list actually carries that forward instead of defaulting to
+      // empty and silently letting every removed ingredient reappear once this becomes the standard.
+      const baseRows = tier != null
+        ? (meal.meal_tier_versions?.find(v => v.calorie_tier === tier)?.meal_tier_ingredients || [])
+        : (meal.meal_ingredients || [])
+      const effectiveIds = new Set(effective.filter(ing => !ing._isAdded).map(ing => ing.id))
+      const nextOverride = {
+        qty: {},
+        removed: baseRows.filter(row => !row.is_static && !effectiveIds.has(row.id)).map(row => row.id),
+        added: [],
+      }
       for (const ing of effective) {
         if (ing._isAdded) nextOverride.added.push({ ...ing })
         else nextOverride.qty[ing.id] = ing.quantity_g
