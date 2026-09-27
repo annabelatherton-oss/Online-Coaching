@@ -342,9 +342,14 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const skipTierReload = useRef(true)
   const skipWeekReload = useRef(true)
 
-  const [nextTemplateWeek, setNextTemplateWeek] = useState(
-    activeAssignment?.week_override != null ? activeAssignment.week_override + 1 : 1
-  )
+  // A brand-new check-in should open on the week AFTER whatever was last delivered (moving the
+  // plan forward). Re-opening one that's already been responded to (Edit check-in) should instead
+  // reopen on the exact week that was actually delivered last time — otherwise every edit silently
+  // bumps the meal plan forward a week again, even when nothing about the week itself changed.
+  const [nextTemplateWeek, setNextTemplateWeek] = useState(() => {
+    if (activeAssignment?.week_override == null) return 1
+    return current?.coach_responded_at ? activeAssignment.week_override : activeAssignment.week_override + 1
+  })
   const tier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
 
   // Initial data load
