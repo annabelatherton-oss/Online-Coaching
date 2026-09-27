@@ -1,12 +1,65 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { applyDislikeSwaps } from '../lib/mealSwaps'
-import { selectOnFocus } from '../lib/formUtils'
 import { mealQualifiesForDiets } from '../lib/diets'
 
 /**
  * Shared meal-plan display components and helpers.
  * Used by ClientMealPlan.jsx (client view) and the coach DeliveryPanel.
  */
+
+// An ingredient quantity input whose value is committed to the parent (and can trigger the
+// ingredient's removal once it reaches 0) — but "", "0" and "0." are all still-ambiguous prefixes
+// of a positive decimal that's mid-typing (e.g. "0.5"). Committing those the instant they appear
+// used to delete the ingredient before the rest of the number could be typed, and losing the row
+// also loses focus, so there was no way to finish. Only commits immediately once the value is
+// unambiguously positive (so totals still update live as you type); 0/empty only commits on blur,
+// which is also the only point a genuine "type 0 to remove this" is honoured.
+function QtyInput({ value, onCommit, className, disabled, min, step }) {
+  const format = v => String(Math.round((parseFloat(v) || 0) * 10) / 10)
+  const [text, setText] = useState(() => format(value))
+  const lastCommitted = useRef(parseFloat(value) || 0)
+
+  useEffect(() => {
+    const numeric = parseFloat(value) || 0
+    if (numeric !== lastCommitted.current) {
+      lastCommitted.current = numeric
+      setText(format(value))
+    }
+  }, [value])
+
+  function handleChange(e) {
+    const raw = e.target.value
+    setText(raw)
+    const parsed = parseFloat(raw)
+    if (!isNaN(parsed) && parsed > 0) {
+      lastCommitted.current = parsed
+      onCommit(parsed)
+    }
+  }
+
+  function handleBlur() {
+    const parsed = parseFloat(text)
+    const final = isNaN(parsed) ? 0 : parsed
+    if (final !== lastCommitted.current) {
+      lastCommitted.current = final
+      onCommit(final)
+    }
+    setText(format(final))
+  }
+
+  return (
+    <input
+      type="number" onFocus={e => e.target.select()}
+      min={min} step={step}
+      disabled={disabled}
+      value={text}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onClick={e => e.stopPropagation()}
+      className={className}
+    />
+  )
+}
 
 // ─── Layout groups ────────────────────────────────────────────────────────────
 
@@ -688,15 +741,12 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                         <div className="flex items-center gap-2 flex-shrink-0 tabular-nums">
                           {onUpdateIngredient ? (
                             <div className="flex items-center gap-1">
-                              <input
-                                type="number" onFocus={e => e.target.select()}
+                              <QtyInput
                                 min="0"
                                 step="1"
                                 disabled={isStatic}
-                                value={Math.round((parseFloat(ing.quantity_g) || 0) * 10) / 10}
-                                onChange={e => !isStatic && onUpdateIngredient(slotKey, ing._tempId || ing.id, parseFloat(e.target.value) || 0)}
-                                onClick={e => e.stopPropagation()}
-                                {...selectOnFocus}
+                                value={ing.quantity_g}
+                                onCommit={qty => onUpdateIngredient(slotKey, ing._tempId || ing.id, qty)}
                                 className={`w-20 text-sm text-right border rounded-lg px-2 py-1 focus:outline-none tabular-nums ${
                                   isStatic
                                     ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 cursor-not-allowed'

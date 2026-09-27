@@ -1603,6 +1603,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverride
   const [addSelected, setAddSelected] = useState(null)
   const [addQty, setAddQty] = useState('')
   const [staticDrafts, setStaticDrafts] = useState({})
+  const [qtyDrafts, setQtyDrafts] = useState({})
   const [showAllIngredients, setShowAllIngredients] = useState(false)
 
   const meal = mealMap[mealId]
@@ -1768,10 +1769,17 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverride
                           ? 'border-orange-300 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/10'
                           : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400'
                       }`}
-                      value={isStatic ? (staticDrafts[ing.id] ?? ing.quantity_g) : ing.quantity_g}
+                      value={isStatic ? (staticDrafts[ing.id] ?? ing.quantity_g) : (qtyDrafts[ing.id] ?? ing.quantity_g)}
                       onChange={e => {
-                        if (isStatic) setStaticDrafts(d => ({ ...d, [ing.id]: e.target.value }))
-                        else onQtyChange(ing.id, e.target.value)
+                        if (isStatic) { setStaticDrafts(d => ({ ...d, [ing.id]: e.target.value })); return }
+                        const raw = e.target.value
+                        setQtyDrafts(d => ({ ...d, [ing.id]: raw }))
+                        // "", "0" and "0." are all still-ambiguous prefixes of a positive decimal being
+                        // typed (e.g. "0.5") — committing those immediately would delete the ingredient
+                        // (qty <= 0 removes it) before the rest of the number can be typed. Only commit
+                        // while typing once it's unambiguously positive; 0/empty only commits on blur.
+                        const parsed = parseFloat(raw)
+                        if (!isNaN(parsed) && parsed > 0) onQtyChange(ing.id, parsed)
                       }}
                       onBlur={() => {
                         if (isStatic) {
@@ -1779,6 +1787,12 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverride
                           if (draft != null && draft !== String(ing.quantity_g)) onStaticQtyChange?.(ing, parseFloat(draft) || 0)
                           setStaticDrafts(d => { const n = { ...d }; delete n[ing.id]; return n })
                         } else {
+                          const draft = qtyDrafts[ing.id]
+                          if (draft != null) {
+                            const parsed = parseFloat(draft)
+                            onQtyChange(ing.id, isNaN(parsed) ? 0 : parsed)
+                            setQtyDrafts(d => { const n = { ...d }; delete n[ing.id]; return n })
+                          }
                           handleBlur(ing)
                         }
                       }}
