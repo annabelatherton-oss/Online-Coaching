@@ -7,6 +7,7 @@ import { useSignedProgressPhotos, useSignedProgressPhotosForCheckins } from '../
 import TargetDateBanner from '../../components/TargetDateBanner'
 import StrengthProgress from '../../components/StrengthProgress'
 import { computeLiftProgress } from '../../lib/liftProgress'
+import { buildWeekTimeline, weekForDate } from '../../lib/planWeek'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
@@ -31,11 +32,6 @@ function RatingDot({ value }) {
   )
 }
 
-function fmtDate(d) {
-  if (!d) return ''
-  return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
 function CheckinCard({ ci, weekNum, onLightbox }) {
   const [open, setOpen] = useState(false)
   const photoUrls = useSignedProgressPhotos(ci.progress_photos)
@@ -52,9 +48,6 @@ function CheckinCard({ ci, weekNum, onLightbox }) {
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex-shrink-0">
             <span className="text-sm font-bold text-gray-900 dark:text-white">Week {weekNum}</span>
-            {ci.updated_at || ci.submitted_at
-              ? <p className="text-xs text-gray-400 mt-0.5">{fmtDate(ci.updated_at || ci.submitted_at)}</p>
-              : null}
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             {ci.weight_kg != null && (
@@ -224,6 +217,9 @@ export default function ClientProgress() {
   sorted.forEach((ci, i) => { weekToPersonal[ci.week_number] = i + 1 })
   const liftProgress = computeLiftProgress(checkins)
 
+  const weightWeekTimeline = buildWeekTimeline(checkins)
+  const weightChartEntries = weightEntries.map(e => ({ ...e, week: weekForDate(e.recorded_at, weightWeekTimeline) }))
+
   return (
     <div className="space-y-6">
       <div>
@@ -261,7 +257,7 @@ export default function ClientProgress() {
       {/* Weight chart */}
       <div className="card">
         <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Weight Trend</h2>
-        <WeightChart data={weightEntries} />
+        <WeightChart data={weightChartEntries} />
       </div>
 
       {/* Strength progress */}

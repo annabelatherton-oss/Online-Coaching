@@ -13,6 +13,13 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
+// Callers can attach a `week` (plan week number) to each entry so the axis reads "Wk N" instead
+// of a date — falls back to the date for anything from before the client's first check-in, where
+// there's no plan week to show.
+function xLabel(entry) {
+  return entry.week != null ? `Wk ${entry.week}` : formatDate(entry.recorded_at)
+}
+
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload || !payload.length) return null
   return (
@@ -37,7 +44,7 @@ export default function WeightChart({ data }) {
   const chartData = [...data]
     .sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at))
     .map(entry => ({
-      date: formatDate(entry.recorded_at),
+      date: xLabel(entry),
       weight: parseFloat(entry.weight_kg),
     }))
 

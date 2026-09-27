@@ -12,6 +12,7 @@ import { DIETS, DIET_LABELS, mealQualifiesForDiets, ingredientQualifiesForDiets 
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { writeCalorieTarget } from '../../lib/calorieTarget'
 import { computeLiftProgress } from '../../lib/liftProgress'
+import { buildWeekTimeline, weekForDate } from '../../lib/planWeek'
 import StrengthProgress from '../../components/StrengthProgress'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
@@ -141,9 +142,11 @@ async function fetchWeightSummary(clientId) {
     supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', clientId).order('recorded_at', { ascending: true }),
     supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', clientId).not('weight_kg', 'is', null).order('updated_at', { ascending: true }),
   ])
+  const timeline = buildWeekTimeline(checkinRows)
   const fromEntries = (weightRows || []).map(r => ({ weight_kg: r.weight_kg, recorded_at: r.recorded_at }))
   const fromCheckins = (checkinRows || []).map(c => ({ weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0] }))
   const all = [...fromEntries, ...fromCheckins].filter(w => w.recorded_at).sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))
+    .map(w => ({ ...w, week: weekForDate(w.recorded_at, timeline) }))
   return { startWeight: all[0] || null, latestWeight: all[all.length - 1] || null }
 }
 
@@ -158,12 +161,12 @@ function WeightSummaryCard({ startWeight, latestWeight }) {
       <div>
         <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Start</p>
         <p className="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{startWeight?.weight_kg ?? '—'} <span className="text-xs font-normal text-gray-400">kg</span></p>
-        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{startWeight ? new Date(startWeight.recorded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}</p>
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{startWeight?.week != null ? `Wk ${startWeight.week}` : ''}</p>
       </div>
       <div>
         <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Current</p>
         <p className="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{latestWeight.weight_kg} <span className="text-xs font-normal text-gray-400">kg</span></p>
-        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{new Date(latestWeight.recorded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{latestWeight.week != null ? `Wk ${latestWeight.week}` : ''}</p>
       </div>
       <div>
         <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider">Change</p>
@@ -1091,7 +1094,10 @@ function WeightTab({ clientId, client }) {
     const fromCheckins = withWeight
       .map(c => ({ id: null, weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0], source: 'checkin' }))
       .filter(c => c.recorded_at && !manualDates.has(c.recorded_at))
-    const combined = [...manual, ...fromCheckins].sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
+    const timeline = buildWeekTimeline(checkinData)
+    const combined = [...manual, ...fromCheckins]
+      .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
+      .map(e => ({ ...e, week: weekForDate(e.recorded_at, timeline) }))
     setEntries(combined)
     setLiftProgress(computeLiftProgress(checkinData || []))
 
@@ -1112,7 +1118,6 @@ function WeightTab({ clientId, client }) {
     setSaving(false); setShowForm(false); setForm({ date: new Date().toISOString().split('T')[0], weight_kg: '' }); load()
   }
   async function deleteEntry(id) { await supabase.from('weight_entries').delete().eq('id', id); load() }
-  function formatDate(d) { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) }
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
   return (
@@ -1135,11 +1140,11 @@ function WeightTab({ clientId, client }) {
       ) : (
         <div className="card p-0 overflow-hidden">
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-gray-200 dark:border-gray-800">{['Date','Weight',''].map(h => <th key={h} className={`${h === '' ? 'text-right' : 'text-left'} px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>{h}</th>)}</tr></thead>
+            <thead><tr className="border-b border-gray-200 dark:border-gray-800">{['Week','Weight',''].map(h => <th key={h} className={`${h === '' ? 'text-right' : 'text-left'} px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>{h}</th>)}</tr></thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {entries.map((e, i) => (
                 <tr key={e.id ?? `ci-${i}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDate(e.recorded_at)}</td>
+                  <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{e.week != null ? `Week ${e.week}` : 'Pre-plan'}</td>
                   <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{e.weight_kg} kg</td>
                   <td className="px-4 py-3 text-right">
                     {e.source === 'checkin'
@@ -1165,8 +1170,13 @@ function MeasurementsTab({ clientId }) {
   const [saving, setSaving] = useState(false)
 
   async function load() {
-    const { data } = await supabase.from('measurements').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false })
-    setEntries(data || []); setLoading(false)
+    const [{ data }, { data: checkinData }] = await Promise.all([
+      supabase.from('measurements').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false }),
+      supabase.from('client_checkins').select('submitted_at, updated_at').eq('client_id', clientId),
+    ])
+    const timeline = buildWeekTimeline(checkinData)
+    setEntries((data || []).map(e => ({ ...e, week: weekForDate(e.recorded_at, timeline) })))
+    setLoading(false)
   }
   useEffect(() => { load() }, [clientId])
 
@@ -1176,7 +1186,7 @@ function MeasurementsTab({ clientId }) {
     setSaving(false); setShowForm(false); setForm({ date: new Date().toISOString().split('T')[0], chest_cm: '', waist_cm: '', hips_cm: '', thighs_cm: '', arms_cm: '' }); load()
   }
   async function deleteEntry(id) { await supabase.from('measurements').delete().eq('id', id); load() }
-  function fmtDate(d) { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) }
+  function weekLabel(e) { return e.week != null ? `Week ${e.week}` : 'Pre-plan' }
   function fmtVal(v) { return v != null ? `${v} cm` : '—' }
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
   const latest = entries[0]
@@ -1185,7 +1195,7 @@ function MeasurementsTab({ clientId }) {
     <div className="space-y-6">
       {latest && (
         <div className="card">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Latest — {fmtDate(latest.recorded_at)}</h3>
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Latest — {weekLabel(latest)}</h3>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             {[['Chest', latest.chest_cm],['Waist', latest.waist_cm],['Hips', latest.hips_cm],['Thighs', latest.thighs_cm],['Arms', latest.arms_cm]].map(([label, value]) => (
               <div key={label} className="text-center">
@@ -1219,11 +1229,11 @@ function MeasurementsTab({ clientId }) {
       ) : (
         <div className="card p-0 overflow-x-auto">
           <table className="w-full text-sm whitespace-nowrap">
-            <thead><tr className="border-b border-gray-200 dark:border-gray-800">{['Date','Chest','Waist','Hips','Thighs','Arms',''].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>)}</tr></thead>
+            <thead><tr className="border-b border-gray-200 dark:border-gray-800">{['Week','Chest','Waist','Hips','Thighs','Arms',''].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>)}</tr></thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {entries.map(e => (
                 <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{fmtDate(e.recorded_at)}</td>
+                  <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{weekLabel(e)}</td>
                   {['chest_cm','waist_cm','hips_cm','thighs_cm','arms_cm'].map(k => <td key={k} className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmtVal(e[k])}</td>)}
                   <td className="px-4 py-3 text-right"><button onClick={() => deleteEntry(e.id)} className="text-xs text-red-500 hover:text-red-700">Delete</button></td>
                 </tr>
@@ -1237,17 +1247,45 @@ function MeasurementsTab({ clientId }) {
 }
 
 function PhotosTab({ clientId }) {
-  const [photos, setPhotos] = useState([])
+  const [uploaded, setUploaded] = useState([])
+  const [checkinPhotos, setCheckinPhotos] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [storageError, setStorageError] = useState(false)
   const [lightbox, setLightbox] = useState(null)
   const fileRef = useRef()
+
+  // Photos come from two places: ones the coach uploads manually here (the
+  // `progress_photos` table), and the front/back/left/right shots a client
+  // attaches to their own check-ins (`client_checkins.progress_photos`).
+  // Both live in the same storage bucket, so they're merged into one gallery
+  // rather than leaving check-in photos invisible on this tab.
+  const photos = [...uploaded, ...checkinPhotos].sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at))
   const urlMap = useSignedUrls(photos.map(p => p.photo_url))
 
   async function load() {
-    const { data } = await supabase.from('progress_photos').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false })
-    setPhotos(data || []); setLoading(false)
+    const [{ data: uploads }, { data: checkins }] = await Promise.all([
+      supabase.from('progress_photos').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false }),
+      supabase.from('client_checkins').select('id, week_number, submitted_at, updated_at, progress_photos').eq('client_id', clientId),
+    ])
+    setUploaded((uploads || []).map(p => ({ ...p, source: 'upload' })))
+    const flattened = []
+    ;(checkins || []).forEach(ci => {
+      CHECKIN_PHOTO_ANGLES.forEach(({ key, label }) => {
+        const path = ci.progress_photos?.[key]
+        if (path) {
+          flattened.push({
+            id: `checkin-${ci.id}-${key}`,
+            photo_url: path,
+            recorded_at: ci.updated_at || ci.submitted_at,
+            caption: `Week ${ci.week_number} · ${label}`,
+            source: 'checkin',
+          })
+        }
+      })
+    })
+    setCheckinPhotos(flattened)
+    setLoading(false)
   }
   useEffect(() => { load() }, [clientId])
 
@@ -1290,10 +1328,15 @@ function PhotosTab({ clientId }) {
           {photos.map(photo => (
             <div key={photo.id} className="group relative rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
               <img src={urlMap[photo.photo_url]} alt="" className="w-full aspect-square object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightbox(photo)} />
-              <div className="p-2"><p className="text-xs text-gray-500 dark:text-gray-400">{fmtDate(photo.recorded_at)}</p></div>
-              <button onClick={() => deletePhoto(photo)} className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
+              <div className="p-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">{fmtDate(photo.recorded_at)}</p>
+                {photo.caption && <p className="text-xs text-gray-400 truncate">{photo.caption}</p>}
+              </div>
+              {photo.source === 'upload' && (
+                <button onClick={() => deletePhoto(photo)} className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -3978,11 +4021,6 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
       .map(c => ({ week: checkinPersonalWeekMap[c.id], comment: c.struggle_comments[label] }))
   }
 
-  function fmtDate(d) {
-    if (!d) return '—'
-    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-  }
-
   // checkins[0] = most recent, checkins[last] = oldest
   function prevCheckin(i) { return checkins[i + 1] || null }
 
@@ -4170,7 +4208,7 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">
-                {['Week', 'Date', 'Weight', ...(collectMeasurements ? ['Waist', 'Hips'] : []), 'Energy', 'Sleep', 'Food', 'Gym', ...configuredLiftNames].map(h => (
+                {['Week', 'Weight', ...(collectMeasurements ? ['Waist', 'Hips'] : []), 'Energy', 'Sleep', 'Food', 'Gym', ...configuredLiftNames].map(h => (
                   <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -4188,7 +4226,6 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
                 return (
                   <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                     <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">Wk {c.week_number}</td>
-                    <td className="py-2.5 pr-4 text-xs text-gray-400 whitespace-nowrap">{fmtDate(c.updated_at || c.submitted_at)}</td>
                     <td className="py-2.5 pr-4 whitespace-nowrap">
                       <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{c.weight_kg != null ? `${c.weight_kg} kg` : '—'}</span>
                       {delta !== null && <DeltaTag delta={delta} unit=" kg" className="block" />}
@@ -4309,7 +4346,6 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <h3 className="font-semibold text-gray-900 dark:text-white">Week {c.week_number}</h3>
-                <p className="text-xs text-gray-400 dark:text-gray-500">{fmtDate(c.updated_at || c.submitted_at)}</p>
               </div>
               {wDelta !== null && (
                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
