@@ -140,9 +140,12 @@ function _checkinStreak(checkins) {
 async function fetchWeightSummary(clientId) {
   const [{ data: weightRows }, { data: checkinRows }] = await Promise.all([
     supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', clientId).order('recorded_at', { ascending: true }),
-    supabase.from('client_checkins').select('weight_kg, submitted_at, updated_at').eq('client_id', clientId).not('weight_kg', 'is', null).order('updated_at', { ascending: true }),
+    supabase.from('client_checkins').select('weight_kg, week_number, submitted_at, updated_at').eq('client_id', clientId).not('weight_kg', 'is', null).order('updated_at', { ascending: true }),
   ])
-  const timeline = buildWeekTimeline(checkinRows)
+  // Excludes the one-off starting check-in (week_number 0) from the timeline used to label
+  // entries by week — its own weight still counts as the earliest entry below (so "Start" can
+  // correctly be it), it just shouldn't shift every real week's label up by one.
+  const timeline = buildWeekTimeline((checkinRows || []).filter(c => c.week_number > 0))
   const fromEntries = (weightRows || []).map(r => ({ weight_kg: r.weight_kg, recorded_at: r.recorded_at }))
   const fromCheckins = (checkinRows || []).map(c => ({ weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0] }))
   const all = [...fromEntries, ...fromCheckins].filter(w => w.recorded_at).sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))
@@ -1171,7 +1174,10 @@ function WeightTab({ clientId, client }) {
     const fromCheckins = withWeight
       .map(c => ({ id: null, weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0], source: 'checkin' }))
       .filter(c => c.recorded_at && !manualDates.has(c.recorded_at))
-    const timeline = buildWeekTimeline(checkinData)
+    // Excludes the starting check-in (week_number 0) from the timeline used to label entries by
+    // week — its own weight still appears in fromCheckins above, it just shouldn't shift every
+    // real week's label up by one.
+    const timeline = buildWeekTimeline((checkinData || []).filter(c => c.week_number > 0))
     const combined = [...manual, ...fromCheckins]
       .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
       .map(e => ({ ...e, week: weekForDate(e.recorded_at, timeline) }))
@@ -1250,10 +1256,13 @@ function MeasurementsTab({ clientId, collectMeasurements }) {
     const [{ data }, { data: checkinData }] = await Promise.all([
       supabase.from('measurements').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false }),
       collectMeasurements
-        ? supabase.from('client_checkins').select('waist_cm, hips_cm, submitted_at, updated_at').eq('client_id', clientId)
+        ? supabase.from('client_checkins').select('waist_cm, hips_cm, week_number, submitted_at, updated_at').eq('client_id', clientId)
         : Promise.resolve({ data: [] }),
     ])
-    const timeline = buildWeekTimeline(checkinData)
+    // Excludes the starting check-in (week_number 0) from the timeline used to label entries by
+    // week — its own measurements still appear in fromCheckins below, it just shouldn't shift
+    // every real week's label up by one.
+    const timeline = buildWeekTimeline((checkinData || []).filter(c => c.week_number > 0))
     const manual = data || []
     // Same "manual entry, else the check-in's own logged measurement" merge as the Weight tab —
     // a check-in only ever logs waist/hips (not chest/thighs/arms), so this only ever fills in
@@ -4169,10 +4178,17 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
   const openStruggleRows = struggleTracking.filter(s => s.status === 'open')
   const unseenResolvedStruggles = struggleTracking.filter(s => s.status === 'resolved' && !s.coach_seen_resolved)
 
-  // checkins is newest-first; ascending order for a chronological comment trail
+  // checkins is newest-first; ascending order for a chronological comment trail. A week_number=0
+  // row (the one-off starting check-in some clients submit before their real Week 1) maps to 0
+  // itself rather than joining the 1-based sequence, so it doesn't push every real week's own
+  // number up by one.
   const ascCheckins = [...checkins].reverse()
   const checkinPersonalWeekMap = {}
-  ascCheckins.forEach((c, i) => { checkinPersonalWeekMap[c.id] = i + 1 })
+  let checkinPersonalCounter = 0
+  ascCheckins.forEach(c => {
+    if (c.week_number > 0) { checkinPersonalCounter++; checkinPersonalWeekMap[c.id] = checkinPersonalCounter }
+    else checkinPersonalWeekMap[c.id] = 0
+  })
 
   function struggleHistory(label) {
     return ascCheckins

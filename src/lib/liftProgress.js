@@ -8,7 +8,11 @@
 // different lifts — that data doesn't disappear, it just stops growing.
 export function computeLiftProgress(checkins) {
   const liftMap = {} // name -> { history: [{ personalWeek, weight_kg, reps }] }
-  const sorted = [...checkins].sort((a, b) => a.week_number - b.week_number)
+  // Excludes a week_number=0 row (the one-off starting check-in some clients submit before their
+  // real Week 1) from the personalWeek numbering — it never carries lift_results anyway (that
+  // section is hidden on that particular check-in), but this keeps every real week's own
+  // personalWeek label correct even if that ever changes.
+  const sorted = [...checkins].filter(c => c.week_number > 0).sort((a, b) => a.week_number - b.week_number)
   sorted.forEach((ci, i) => {
     const pw = i + 1
     ;(ci.lift_results || []).filter(l => l?.name && l.weight_kg != null && l.reps != null).forEach(l => {

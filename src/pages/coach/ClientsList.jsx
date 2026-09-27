@@ -265,7 +265,9 @@ export default function ClientsList() {
         const clientIds = data.map(c => c.id)
         const [{ data: pauses }, { data: checkinRows }] = await Promise.all([
           supabase.from('plan_pauses').select('client_id').in('client_id', clientIds).eq('status', 'pending'),
-          supabase.from('client_checkins').select('client_id').in('client_id', clientIds),
+          // week_number > 0 excludes each client's one-off starting check-in (a baseline
+          // submitted right after signup, not a real week) from this count.
+          supabase.from('client_checkins').select('client_id').in('client_id', clientIds).gt('week_number', 0),
         ])
         setPauseClientIds(new Set((pauses || []).map(p => p.client_id)))
         const counts = {}

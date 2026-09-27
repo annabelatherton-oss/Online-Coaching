@@ -57,7 +57,10 @@ export default function ClientMealPlan() {
 
       const [{ data: pg }, { count: checkinCount }] = await Promise.all([
         supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single(),
-        supabase.from('client_checkins').select('id', { count: 'exact', head: true }).eq('client_id', clientRow.id),
+        // week_number > 0 excludes the one-off starting check-in some clients submit right after
+        // signup (a baseline, not a real week) — otherwise every real week's own "Week N" label
+        // here would be one higher than it should be.
+        supabase.from('client_checkins').select('id', { count: 'exact', head: true }).eq('client_id', clientRow.id).gt('week_number', 0),
       ])
       const effectiveWeek = asgn.week_override ?? pg?.current_week ?? 1
       setWeekNumber(effectiveWeek)

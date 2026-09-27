@@ -1408,11 +1408,18 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const first = sorted[sorted.length - 1]
   const prev = sorted[1] || null
 
-  // ascending for history table + personal week mapping
+  // ascending for history table + personal week mapping. A week_number=0 row (the one-off
+  // "starting check-in" some clients submit right after signup, for a baseline weight/photos
+  // before their real Week 1 begins) is never numbered as part of the sequence — otherwise every
+  // real week after it would be off by one, same as everywhere else in the app that counts a
+  // client's weeks. If it's the one currently being viewed, currentPersonalWeek is 0, which
+  // correctly makes deliveryPersonalWeek (used for "Submit Week N Plan") land on 1 — responding
+  // to a starting check-in means delivering their first real week's plan, not a "week 0" plan.
   const asc = [...sorted].reverse()
   const personalWeekMap = {}
-  asc.forEach((c, i) => { personalWeekMap[c.id] = i + 1 })
-  const currentPersonalWeek = current ? personalWeekMap[current.id] : 0
+  let personalCounter = 0
+  asc.forEach(c => { if (c.week_number > 0) { personalCounter++; personalWeekMap[c.id] = personalCounter } })
+  const currentPersonalWeek = current ? (current.week_number === 0 ? 0 : personalWeekMap[current.id]) : 0
   const deliveryPersonalWeek = currentPersonalWeek + 1
 
   // When there's no previous check-in, fall back to the last weight_entries row recorded before

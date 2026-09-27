@@ -47,7 +47,7 @@ function CheckinCard({ ci, weekNum, onLightbox }) {
       >
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex-shrink-0">
-            <span className="text-sm font-bold text-gray-900 dark:text-white">Week {weekNum}</span>
+            <span className="text-sm font-bold text-gray-900 dark:text-white">{ci.week_number === 0 ? 'Starting check-in' : `Week ${weekNum}`}</span>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             {ci.weight_kg != null && (
@@ -211,13 +211,22 @@ export default function ClientProgress() {
     : null
 
   // Personal week = 1-based position in ascending week_number order — used by the photo
-  // comparison section below.
+  // comparison section below and the check-in history list. A week_number=0 row (the one-off
+  // starting check-in some clients submit before their real Week 1) maps to 0 itself rather than
+  // joining the 1-based sequence, so it doesn't push every real week's own number up by one.
   const sorted = [...checkins].sort((a, b) => a.week_number - b.week_number)
   const weekToPersonal = {}
-  sorted.forEach((ci, i) => { weekToPersonal[ci.week_number] = i + 1 })
+  let personalCounter = 0
+  sorted.forEach(ci => {
+    if (ci.week_number > 0) { personalCounter++; weekToPersonal[ci.week_number] = personalCounter }
+    else weekToPersonal[ci.week_number] = 0
+  })
   const liftProgress = computeLiftProgress(checkins)
 
-  const weightWeekTimeline = buildWeekTimeline(checkins)
+  // Excludes that same starting check-in from the timeline used to label manually-logged weight
+  // entries by week — it isn't a real week, so nothing should ever be labelled "Week 1" just for
+  // landing on or after its date but before the real Week 1 check-in.
+  const weightWeekTimeline = buildWeekTimeline(checkins.filter(c => c.week_number > 0))
   const weightChartEntries = weightEntries.map(e => ({ ...e, week: weekForDate(e.recorded_at, weightWeekTimeline) }))
 
   return (
@@ -249,7 +258,7 @@ export default function ClientProgress() {
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Total change</p>
         </div>
         <div className="card text-center py-4">
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{checkins.length}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{personalCounter}</p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Check-ins done</p>
         </div>
       </div>
@@ -270,7 +279,7 @@ export default function ClientProgress() {
         const isComparison = first.id !== latest.id
 
         const firstPersonalWeek = weekToPersonal[first.week_number] ?? 1
-        const latestPersonalWeek = weekToPersonal[latest.week_number] ?? checkins.length
+        const latestPersonalWeek = weekToPersonal[latest.week_number] ?? personalCounter
 
         function PhotoSlot({ photos, pw }) {
           return angle => {
@@ -326,8 +335,8 @@ export default function ClientProgress() {
       {checkins.length > 0 && (
         <div className="space-y-3">
           <h2 className="font-semibold text-gray-900 dark:text-white">Check-in History</h2>
-          {checkins.map((ci, i) => (
-            <CheckinCard key={ci.id} ci={ci} weekNum={checkins.length - i} onLightbox={setLightbox} />
+          {checkins.map(ci => (
+            <CheckinCard key={ci.id} ci={ci} weekNum={weekToPersonal[ci.week_number]} onLightbox={setLightbox} />
           ))}
         </div>
       )}

@@ -272,6 +272,7 @@ function CheckinReadView({ checkin, collectMeasurements }) {
         </div>
       )}
 
+      {checkin.week_number !== 0 && (
       <div className="card space-y-4">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">How was this week?</h2>
         {['energy_level', 'sleep_quality', 'food_adherence', 'gym_adherence'].map(field => (
@@ -282,6 +283,7 @@ function CheckinReadView({ checkin, collectMeasurements }) {
           </div>
         ))}
       </div>
+      )}
 
       {((checkin.struggles || []).length > 0 || checkin.struggles_other) && (
         <div className="card space-y-3">
@@ -473,11 +475,19 @@ export default function ClientCheckin() {
         .limit(1).maybeSingle()
       setUpcomingPause(pauseRow)
 
-      // Load full check-in history (oldest first) for week numbering + sidebar
+      // Load full check-in history (oldest first) for week numbering + sidebar. A week_number=0
+      // row (the one-off "starting check-in" — see below) never gets a personal_week of its own:
+      // it isn't part of the numbered weekly sequence, so it's left out of the running count that
+      // numbers every real week — otherwise every real week's own "Week N" label would be off by
+      // one for a client who has one.
       const { data: allHistory } = await supabase.from('client_checkins')
         .select('*').eq('client_id', clientRow.id).order('updated_at', { ascending: true })
 
-      const histWithWeeks = (allHistory || []).map((c, i) => ({ ...c, personal_week: i + 1 }))
+      let personalCounter = 0
+      const histWithWeeks = (allHistory || []).map(c => {
+        if (c.week_number > 0) personalCounter++
+        return { ...c, personal_week: c.week_number > 0 ? personalCounter : null }
+      })
       setAllCheckins(histWithWeeks)
 
       // Find the check-in for this week's window (since last Wednesday midnight).
@@ -491,13 +501,20 @@ export default function ClientCheckin() {
       // this client's history is exactly what upsert-by-(client_id, week_number) below would then
       // merge into, rather than creating a genuinely new week's check-in.
       const nextWeekNumber = histWithWeeks.reduce((max, c) => Math.max(max, c.week_number || 0), 0) + 1
+      // A client with no check-in history at all yet gets offered a one-off "starting check-in"
+      // (week 0) first, for their actual starting weight/photos — useful since the intake form may
+      // have been filled in well before the plan's actual start date. It's available any day (see
+      // the window gate below) and doesn't count as Week 1: once it exists, MAX(week_number)+1
+      // above still lands on 1 for their first real weekly check-in, since MAX(0, ...) is unaffected.
+      const isFirstEver = histWithWeeks.length === 0
+      const targetWeek = isFirstEver ? 0 : nextWeekNumber
       const dow = new Date().getDay()
-      const isLate = !checkin && (dow === 1 || dow === 2)
+      const isLate = !checkin && targetWeek !== 0 && (dow === 1 || dow === 2)
 
-      setWeekNumber(checkin ? checkin.week_number : nextWeekNumber)
+      setWeekNumber(checkin ? checkin.week_number : targetWeek)
       setIsLateResubmit(isLate)
       setHistoryList([...histWithWeeks].reverse())
-      setPersonalWeek(checkin ? checkin.personal_week : nextWeekNumber)
+      setPersonalWeek(checkin ? checkin.personal_week : (targetWeek === 0 ? null : personalCounter + 1))
 
       if (checkin) {
         setExisting(checkin)
@@ -692,7 +709,9 @@ export default function ClientCheckin() {
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
 
   const viewingCheckin = viewingId ? historyList.find(c => c.id === viewingId) : null
-  const streak = checkinStreak(allCheckins)
+  // The one-off starting check-in (week 0) isn't a real weekly check-in, so it shouldn't count
+  // toward — or be able to kick off — a streak of consecutive weekly ones.
+  const streak = checkinStreak(allCheckins.filter(c => c.week_number !== 0))
 
   // Show holiday note if approved pause starts next Monday
   const nextMondayISO = (() => {
@@ -721,7 +740,7 @@ export default function ClientCheckin() {
               : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
           }`}
         >
-          <p className="text-sm font-semibold">Week {personalWeek}</p>
+          <p className="text-sm font-semibold">{weekNumber === 0 ? 'Starting check-in' : `Week ${personalWeek}`}</p>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">This week</p>
         </button>
         {historyList.filter(c => c.week_number !== weekNumber).map(c => (
@@ -734,7 +753,7 @@ export default function ClientCheckin() {
                 : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
             }`}
           >
-            <p className="text-sm font-semibold">Week {c.personal_week}</p>
+            <p className="text-sm font-semibold">{c.week_number === 0 ? 'Starting check-in' : `Week ${c.personal_week}`}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{fmtCheckinDate(c.submitted_at || c.updated_at)}</p>
           </button>
         ))}
@@ -743,7 +762,8 @@ export default function ClientCheckin() {
   }
 
   // Gate: no check-in submitted yet AND window is closed (Wednesday) AND coach hasn't opened early
-  if (!isCheckinWindowOpen() && !existing && !earlyAccess) {
+  const isStartingCheckin = weekNumber === 0
+  if (!isCheckinWindowOpen() && !existing && !earlyAccess && !isStartingCheckin) {
     return (
       <div className="flex gap-6">
         <Sidebar />
@@ -799,9 +819,13 @@ export default function ClientCheckin() {
       <>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 data-tour="checkin-heading" className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
+          <h1 data-tour="checkin-heading" className="text-2xl font-bold text-gray-900 dark:text-white">
+            {isStartingCheckin ? 'Starting Check-in' : 'Weekly Check-in'}
+          </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {personalWeek != null ? `Week ${personalWeek}` : 'Your weekly progress update.'}
+            {isStartingCheckin
+              ? "Your starting point, before Week 1 begins — useful if it's been a while since you filled in your intake form."
+              : personalWeek != null ? `Week ${personalWeek}` : 'Your weekly progress update.'}
             {existing && <span className="ml-1 text-brand-500">Already submitted — you can update it below.</span>}
           </p>
         </div>
@@ -880,7 +904,8 @@ export default function ClientCheckin() {
           </div>
         </div>
 
-        {/* Ratings */}
+        {/* Ratings — don't make sense before any week has actually happened yet */}
+        {!isStartingCheckin && (
         <div className="card space-y-5">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">How was this week?</h2>
           <div>
@@ -904,9 +929,10 @@ export default function ClientCheckin() {
             {form.gym_adherence && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 text-center">{RATING_LABELS.gym_adherence[form.gym_adherence]}</p>}
           </div>
         </div>
+        )}
 
         {/* Ongoing struggles — carried over from a previous check-in */}
-        {ongoingStruggles.length > 0 && (
+        {!isStartingCheckin && ongoingStruggles.length > 0 && (
           <div className="card space-y-4">
             <div>
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white">How's it going with these?</h2>
@@ -939,6 +965,7 @@ export default function ClientCheckin() {
         )}
 
         {/* Struggles */}
+        {!isStartingCheckin && (
         <div className="card space-y-4">
           <div>
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Select any that you're struggling with</h2>
@@ -987,9 +1014,10 @@ export default function ClientCheckin() {
             />
           </div>
         </div>
+        )}
 
         {/* Top lifts */}
-        {topLifts.length > 0 && (
+        {!isStartingCheckin && topLifts.length > 0 && (
           <div className="card space-y-4">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">This week's lifts</h2>
             {topLifts.map((lift, i) => {
@@ -1042,7 +1070,7 @@ export default function ClientCheckin() {
 
         <div className="flex items-center gap-3">
           <button type="submit" disabled={saving || Object.values(uploading).some(Boolean)} className="btn-primary">
-            {saving ? 'Saving…' : existing ? 'Update check-in' : isLateResubmit ? `Submit Week ${weekNumber} check-in` : 'Submit check-in'}
+            {saving ? 'Saving…' : existing ? 'Update check-in' : isLateResubmit ? `Submit Week ${weekNumber} check-in` : isStartingCheckin ? 'Submit starting check-in' : 'Submit check-in'}
           </button>
           {saved && <span className="text-sm text-green-600 dark:text-green-400 font-medium">Saved</span>}
         </div>
