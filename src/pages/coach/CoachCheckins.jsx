@@ -2212,7 +2212,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             onClick={() => setShowDeliveryPanel(true)}
             className="btn-primary py-2 px-4 text-sm"
           >
-            {current.coach_response
+            {current.coach_responded_at
               ? 'Edit check-in →'
               : `Submit Week ${deliveryPersonalWeek} Plan →`}
           </button>
@@ -2422,7 +2422,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               </div>
             ) : (
               <button onClick={() => openRespond(c)} className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">
-                {c.coach_response ? 'Edit response' : 'Respond →'}
+                {c.coach_responded_at ? 'Edit response' : 'Respond →'}
               </button>
             )}
           </div>
@@ -2506,7 +2506,10 @@ export default function CoachCheckins() {
     const latest = latestByClient[client.id]
     if (!latest) return 'missing'
     if (new Date(latest.updated_at || latest.submitted_at || 0) < eightDaysAgo) return 'missing'
-    if (!latest.coach_response) return 'needs-response'
+    // coach_responded_at is set on every submit, even if the coach left the message box empty
+    // (e.g. they only adjusted the meal plan/calories) — coach_response itself being blank isn't
+    // the same as "hasn't been dealt with yet", so status tracks the former, not the latter.
+    if (!latest.coach_responded_at) return 'needs-response'
     return 'ok'
   }
 
