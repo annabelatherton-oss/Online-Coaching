@@ -546,6 +546,44 @@ export default function IngredientsLibrary() {
 
   return (
     <div className="space-y-6">
+      {/* Search — sticky, and first in the page so it's flush against the top of the screen even
+          before any scrolling (the header used to sit above it, which is what left a gap above
+          the bar on first load — it now sits below instead). Only the search box is sticky here:
+          the category filter chips sit outside it (below) and scroll away with the rest of the
+          page, rather than staying pinned under the search box the whole time. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 lg:-mx-6 lg:-mt-6 px-4 lg:px-6 pt-4 lg:pt-6 pb-3 bg-white dark:bg-gray-900 border-b border-pink-100 dark:border-gray-800">
+        <div className="relative max-w-sm">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            className="input pl-9"
+            placeholder="Search ingredients…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {CATEGORIES.map(cat => (
+          <button
+            key={cat.value}
+            onClick={() => setActiveCategory(cat.value)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              activeCategory === cat.value
+                ? 'bg-brand-500 text-white'
+                : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-brand-300 hover:text-brand-600'
+            }`}
+          >
+            {cat.label}
+            <span className={`ml-1.5 text-xs ${activeCategory === cat.value ? 'opacity-80' : 'text-gray-400'}`}>
+              {categoryCounts[cat.value]}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -567,40 +605,6 @@ export default function IngredientsLibrary() {
           <p className="text-sm text-red-700 dark:text-red-400">Couldn't delete: {deleteError}</p>
         </div>
       )}
-
-      {/* Search + category filters — sticky so it's always reachable while scrolling a long library */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 lg:-mx-6 lg:-mt-6 px-4 lg:px-6 pt-4 lg:pt-6 pb-3 bg-white dark:bg-gray-900 border-b border-pink-100 dark:border-gray-800 space-y-3">
-        <div className="relative max-w-sm">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            className="input pl-9"
-            placeholder="Search ingredients…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat.value}
-              onClick={() => setActiveCategory(cat.value)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                activeCategory === cat.value
-                  ? 'bg-brand-500 text-white'
-                  : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-brand-300 hover:text-brand-600'
-              }`}
-            >
-              {cat.label}
-              <span className={`ml-1.5 text-xs ${activeCategory === cat.value ? 'opacity-80' : 'text-gray-400'}`}>
-                {categoryCounts[cat.value]}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
 
       {loading ? (
         <LoadingSpinner size="lg" className="py-20" />
