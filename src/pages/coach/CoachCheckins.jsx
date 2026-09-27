@@ -982,7 +982,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
 
     clearDraftSlots(nextTemplateWeek)
     setSaving(false)
-    onDelivered(coachNotes.trim(), newCalTarget)
+    onDelivered(coachNotes.trim(), newCalTarget, nextTemplateWeek)
   }
 
   // Daily macro totals
@@ -1889,14 +1889,17 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           deliveryPersonalWeek={deliveryPersonalWeek}
           coachId={profile.id}
           onCancel={() => setShowDeliveryPanel(false)}
-          onDelivered={(notes, calTarget) => {
+          onDelivered={(notes, calTarget, deliveredWeek) => {
             setShowDeliveryPanel(false)
             setDelivered(true)
             setCheckins(prev => prev.map(c => c.id === current.id
               ? { ...c, coach_response: notes, coach_responded_at: new Date().toISOString() }
               : c))
             onResponded(current.id, notes, client.id)
-            setActiveAssignment(prev => prev ? { ...prev, calorie_target: calTarget } : prev)
+            // Keep week_override in sync locally too — otherwise reopening Edit check-in right
+            // after submitting reads the assignment's stale in-memory week and reintroduces the
+            // "silently bumps forward a week" bug even though the DB itself is correct.
+            setActiveAssignment(prev => prev ? { ...prev, calorie_target: calTarget, week_override: deliveredWeek } : prev)
           }}
         />
       </div>
