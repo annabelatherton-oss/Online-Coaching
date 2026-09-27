@@ -3313,25 +3313,6 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
               {renderCategoryGroup('evening_snack', 'Evening Snack', renderSlotCard('evening_snack', 'Evening snack', 'evening_snack', 'evening_snack_static', 'evening_snack_meal_id'))}
             </div>
 
-            {(option1Subtotal.cal > 0 || option2Subtotal.cal > 0) && (
-              <div className="px-3 py-2.5 rounded-lg bg-gray-50/60 dark:bg-gray-800/30 space-y-1">
-                {option1Subtotal.cal > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="flex-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Option 1 subtotal (A meals)</span>
-                    <span className="tabular-nums text-sm font-semibold text-gray-700 dark:text-gray-200">{Math.round(option1Subtotal.cal)} kcal</span>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(option1Subtotal.carb)}g C &middot; {Math.round(option1Subtotal.prot)}g P &middot; {Math.round(option1Subtotal.fat)}g F</span>
-                  </div>
-                )}
-                {option2Subtotal.cal > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="flex-1 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">Option 2 subtotal (B meals)</span>
-                    <span className="tabular-nums text-sm font-medium text-gray-500 dark:text-gray-400">{Math.round(option2Subtotal.cal)} kcal</span>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(option2Subtotal.carb)}g C &middot; {Math.round(option2Subtotal.prot)}g P &middot; {Math.round(option2Subtotal.fat)}g F</span>
-                  </div>
-                )}
-              </div>
-            )}
-
             {slotsDirty && (
               <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
                 {slotsError && (
