@@ -9,7 +9,6 @@ import {
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
 import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../lib/mealSwaps'
-import { normalizeMealSplit, redistributeMealSplit } from '../../lib/calorieSplit'
 import { normalizeGoalMacroSplits, calcBodyweightMacros } from '../../lib/macros'
 import EverydayMealsClient from '../../components/EverydayMealsClient'
 import ClientTreatLog from '../../components/ClientTreatLog'
@@ -42,7 +41,6 @@ export default function ClientMealPlan() {
   const [swapModal, setSwapModal] = useState(null)   // { slotKey, label, cat }
   const [recipeModal, setRecipeModal] = useState(null) // slotKey
   const [swapCtx, setSwapCtx] = useState(null)
-  const [mealSplit, setMealSplit] = useState(null)
   const [goalMacroSplits, setGoalMacroSplits] = useState(null)
   const [proteinPerKg, setProteinPerKg] = useState(null)
   const [weightKg, setWeightKg] = useState(null)
@@ -73,11 +71,10 @@ export default function ClientMealPlan() {
             meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
         `).eq('coach_id', clientRow.coach_id).order('name'),
         supabase.from('ingredients').select('id, name, category, serving_size, serving_unit, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', clientRow.coach_id),
-        supabase.from('profiles').select('meal_split, goal_macro_splits, protein_g_per_kg').eq('id', clientRow.coach_id).single(),
+        supabase.from('profiles').select('goal_macro_splits, protein_g_per_kg').eq('id', clientRow.coach_id).single(),
         supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', clientRow.id).order('recorded_at', { ascending: false }).limit(1),
         supabase.from('client_checkins').select('weight_kg').eq('client_id', clientRow.id).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
       ])
-      setMealSplit(normalizeMealSplit(coachProfile?.meal_split))
       setGoalMacroSplits(normalizeGoalMacroSplits(coachProfile?.goal_macro_splits))
       setProteinPerKg(coachProfile?.protein_g_per_kg)
       setWeightKg(weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null)
@@ -322,32 +319,19 @@ export default function ClientMealPlan() {
   const dailyMacroTargets = assignment?.calorie_target && goalMacroSplits
     ? { cal: assignment.calorie_target, ...calcBodyweightMacros(assignment.calorie_target, weightKg, proteinPerKg, clientData?.goal_type, goalMacroSplits) }
     : null
-  // Capped at whatever room Option A's day actually has left — a meal can be under its OWN
-  // nominal split while the day overall is already over target, because other meals overshot
-  // theirs by more; suggesting "Add" to this meal in that case is bad advice regardless of its
-  // own split.
-  function slotTarget(cat, mealActual) {
-    if (!dailyMacroTargets || !mealSplit) return null
-    const pct = (redistributeMealSplit(mealSplit, removedCategories)[cat] || 0) / 100
-    const nominal = {
-      cal:  dailyMacroTargets.cal * pct,
-      prot: dailyMacroTargets.protein_g * pct,
-      carb: dailyMacroTargets.carbs_g * pct,
-      fat:  dailyMacroTargets.fat_g * pct,
-    }
-    if (!mealActual) return nominal
-
-    const achievable = {
+  // What this meal's own macros would need to be for the WHOLE DAY to land exactly on target,
+  // holding every other meal in Option A as it actually is right now — not a fixed % of the day
+  // handed to this meal's category regardless of what's happening elsewhere. A meal-split % is an
+  // even-handed guess with no visibility into the rest of the day; this is the actual number that
+  // closes the gap, whether that's because other meals left extra room or already used more than
+  // their share.
+  function slotTarget(mealActual) {
+    if (!dailyMacroTargets || !mealActual) return null
+    return {
       cal:  dailyMacroTargets.cal       - (opt1Total.cal  - mealActual.cal),
       prot: dailyMacroTargets.protein_g - (opt1Total.prot - mealActual.prot),
       carb: dailyMacroTargets.carbs_g   - (opt1Total.carb - mealActual.carb),
       fat:  dailyMacroTargets.fat_g     - (opt1Total.fat  - mealActual.fat),
-    }
-    return {
-      cal:  Math.min(nominal.cal,  achievable.cal),
-      prot: Math.min(nominal.prot, achievable.prot),
-      carb: Math.min(nominal.carb, achievable.carb),
-      fat:  Math.min(nominal.fat,  achievable.fat),
     }
   }
 
@@ -594,7 +578,7 @@ export default function ClientMealPlan() {
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
           onRevertIngredients={handleRevertIngredients}
-          target={OPTION_2_KEYS.includes(recipeModal) ? null : slotTarget(ALL_SLOT_DEFS.find(s => s.key === recipeModal)?.cat, mealMacrosLayered(editedSlots[recipeModal], mealMap, tier, templateOverrides[recipeModal], ingredientOverrides[recipeModal], swapCtx))}
+          target={OPTION_2_KEYS.includes(recipeModal) ? null : slotTarget(mealMacrosLayered(editedSlots[recipeModal], mealMap, tier, templateOverrides[recipeModal], ingredientOverrides[recipeModal], swapCtx))}
           siblingMacros={OPTION_2_KEYS.includes(recipeModal) ? (() => {
             const sibKey = siblingSlotKey(recipeModal)
             return sibKey ? mealMacrosLayered(editedSlots[sibKey], mealMap, tier, templateOverrides[sibKey], ingredientOverrides[sibKey], swapCtx) : null

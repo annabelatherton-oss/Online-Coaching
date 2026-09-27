@@ -13,7 +13,6 @@ import {
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
-import { normalizeMealSplit } from '../../lib/calorieSplit'
 import ExerciseThumb from '../../components/ExerciseThumb'
 import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
@@ -220,7 +219,6 @@ function PhotoSwiper({ photos, label, onOpenLightbox }) {
 function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
   const { profile } = useAuth()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
-  const mealSplit = normalizeMealSplit(profile?.meal_split)
   const [loading, setLoading] = useState(true)
   const [coachNotes, setCoachNotes] = useState(current?.coach_response || '')
   // Coach's own per-struggle advice for THIS week's check-in, keyed by struggle label — e.g. a
@@ -925,30 +923,21 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const targetCal = parseInt(calorieTarget) || 0
   const targetMacros = targetCal > 0 ? calcBodyweightMacros(targetCal, current?.weight_kg, profile?.protein_g_per_kg, client?.goal_type, goalSplits) : null
 
-  // A single slot's share of the daily target, for the ingredient-editing modal. Capped at
-  // whatever room is actually left in that option's day — a meal can be under its OWN nominal
-  // split while the day overall is already over target, because other meals overshot theirs by
-  // more; suggesting "Add" to this meal in that case is bad advice regardless of its own split,
-  // so the cap makes sure it never recommends more than the day can actually still take.
-  function slotTarget(cat, slotKey) {
-    if (!targetMacros || !mealSplit || targetCal <= 0) return null
-    const pct = (mealSplit[cat] || 0) / 100
-    const nominal = { cal: targetCal * pct, prot: targetMacros.protein_g * pct, carb: targetMacros.carbs_g * pct, fat: targetMacros.fat_g * pct }
-    if (!slotKey) return nominal
-
+  // What this slot's own macros would need to be for the WHOLE DAY to land exactly on target,
+  // holding every other meal in that option as it actually is right now — not a fixed % of the
+  // day handed to this meal's category regardless of what's happening elsewhere. A meal-split %
+  // is an even-handed guess with no visibility into the rest of the day; this is the actual
+  // number that closes the gap, whether that's because other meals left extra room or already
+  // used more than their share.
+  function slotTarget(slotKey) {
+    if (!targetMacros || targetCal <= 0 || !slotKey) return null
     const optionTotal = OPTION_2_KEYS.includes(slotKey) ? opt2Total : opt1Total
     const mealActual = mealMacrosLayered(editedSlots[slotKey], mealMap, tier, templateOverrides[slotKey], ingredientOverrides[slotKey]) || { cal: 0, prot: 0, carb: 0, fat: 0 }
-    const achievable = {
+    return {
       cal:  targetCal              - (optionTotal.cal  - mealActual.cal),
       prot: targetMacros.protein_g - (optionTotal.prot - mealActual.prot),
       carb: targetMacros.carbs_g   - (optionTotal.carb - mealActual.carb),
       fat:  targetMacros.fat_g     - (optionTotal.fat  - mealActual.fat),
-    }
-    return {
-      cal:  Math.min(nominal.cal,  achievable.cal),
-      prot: Math.min(nominal.prot, achievable.prot),
-      carb: Math.min(nominal.carb, achievable.carb),
-      fat:  Math.min(nominal.fat,  achievable.fat),
     }
   }
   function siblingSlotKey(slotKey) {
@@ -1579,7 +1568,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           applyingToSchedule={applyingToSchedule === recipeModal}
           dayOptionTotals={[{ label: 'Option A', macros: opt1Total }, { label: 'Option B', macros: opt2Total }]}
           dayTargetCal={targetCal > 0 ? targetCal : null}
-          target={slotTarget(ALL_SLOT_DEFS.find(s => s.key === recipeModal)?.cat, recipeModal)}
+          target={slotTarget(recipeModal)}
           siblingMacros={(() => {
             const sibKey = siblingSlotKey(recipeModal)
             return sibKey ? mealMacrosLayered(editedSlots[sibKey], mealMap, tier, templateOverrides[sibKey], ingredientOverrides[sibKey]) : null

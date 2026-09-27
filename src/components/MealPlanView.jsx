@@ -264,25 +264,40 @@ function fmtQty(qty, unit) {
 //    hitting the target itself) - omit for slots with only one option (pre-workout, evening snack).
 // When ingredients/ingredientLib/onAutoFit are all given, a one-tap suggestion for closing the
 // target gap (the biggest lever) appears under the target row - see suggestAutoFit above.
+// One labeled row per comparison ("To hit target" / "To match Option A") — label pinned to the
+// left, the action + macro deltas pinned to the right, each row its own visually separate chip.
+// Replaces the old layout where both comparisons were just stacked lines of wrapping text with
+// no clear boundary between them, making it hard to tell at a glance which macros belonged to
+// which comparison.
+function TargetInfoRow({ label, actual, reference, matchLabel }) {
+  if (!reference || reference.cal <= 0) return null
+  const matches = actual.cal === reference.cal
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-2.5 py-1.5">
+      <span className="text-[11px] text-gray-500 dark:text-gray-400 flex-shrink-0">{label}</span>
+      <div className="flex items-center gap-2 flex-wrap justify-end">
+        <span className={`text-xs font-semibold whitespace-nowrap ${deviationColor(actual.cal, reference.cal)}`}>
+          {matches ? matchLabel : actionText(actual.cal, reference.cal)}
+        </span>
+        <span className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+          <span className="flex items-center gap-0.5"><MacroBadge type="carb" />{macroDiff(actual.carb, reference.carb)}</span>
+          <span className="flex items-center gap-0.5"><MacroBadge type="prot" />{macroDiff(actual.prot, reference.prot)}</span>
+          <span className="flex items-center gap-0.5"><MacroBadge type="fat" />{macroDiff(actual.fat, reference.fat)}</span>
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export function MacroTargetInfo({ macros, target, siblingMacros, siblingLabel = 'other option', ingredients, ingredientLib, onAutoFit }) {
   if (!macros || macros.cal <= 0) return null
   const suggestion = (target && target.cal > 0 && onAutoFit) ? suggestAutoFit(ingredients, macros, target, ingredientLib) : null
   return (
     <div className="space-y-1.5">
-      {target && target.cal > 0 && (
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className={`text-xs font-semibold ${deviationColor(macros.cal, target.cal)}`}>
-            {actionText(macros.cal, target.cal)} to hit target
-          </span>
-          <span className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
-            <span className="flex items-center gap-0.5"><MacroBadge type="carb" />{macroDiff(macros.carb, target.carb)}</span>
-            <span className="flex items-center gap-0.5"><MacroBadge type="prot" />{macroDiff(macros.prot, target.prot)}</span>
-            <span className="flex items-center gap-0.5"><MacroBadge type="fat" />{macroDiff(macros.fat, target.fat)}</span>
-          </span>
-        </div>
-      )}
+      <TargetInfoRow label="To hit target" actual={macros} reference={target} matchLabel="On target" />
+      <TargetInfoRow label={`To match ${siblingLabel}`} actual={macros} reference={siblingMacros} matchLabel={`Matches ${siblingLabel}`} />
       {suggestion && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-0.5">
           <span className="text-[11px] text-brand-600 dark:text-brand-400">
             Try {suggestion.name}: {fmtQty(suggestion.oldQty, suggestion.unit)} → {fmtQty(suggestion.newQty, suggestion.unit)}
             {' '}({suggestion.deltaCal > 0 ? '+' : ''}{suggestion.deltaCal} kcal)
@@ -294,18 +309,6 @@ export function MacroTargetInfo({ macros, target, siblingMacros, siblingLabel = 
           >
             Apply
           </button>
-        </div>
-      )}
-      {siblingMacros && siblingMacros.cal > 0 && (
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className={`text-xs font-semibold ${deviationColor(macros.cal, siblingMacros.cal)}`}>
-            {macros.cal === siblingMacros.cal ? `Matches ${siblingLabel}` : `${actionText(macros.cal, siblingMacros.cal)} to match ${siblingLabel}`}
-          </span>
-          <span className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
-            <span className="flex items-center gap-0.5"><MacroBadge type="carb" />{macroDiff(macros.carb, siblingMacros.carb)}</span>
-            <span className="flex items-center gap-0.5"><MacroBadge type="prot" />{macroDiff(macros.prot, siblingMacros.prot)}</span>
-            <span className="flex items-center gap-0.5"><MacroBadge type="fat" />{macroDiff(macros.fat, siblingMacros.fat)}</span>
-          </span>
         </div>
       )}
     </div>

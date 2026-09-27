@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
-import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { macrosForQty } from '../../lib/ingredientMacros'
 import {
   normalizeOverrides, hasAnyOverride, applyIngredientOverrides, sumIngredientMacros,
@@ -59,8 +58,6 @@ export default function WeeklyTemplateEditor() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [savedMsg, setSavedMsg] = useState(false)
-
-  const mealSplit = normalizeMealSplit(profile?.meal_split)
 
   function setField(field, value) {
     setForm(f => ({ ...f, [field]: value }))
@@ -163,22 +160,16 @@ export default function WeeklyTemplateEditor() {
   const option1Total = sumSlots(OPTION_1_SLOTS)
   const option2Total = sumSlots(OPTION_2_SLOTS)
 
-  // This slot's share of the day's calorie target, from the coach's standard meal-split % —
-  // the same "add/remove X kcal" guidance used everywhere else a meal's macros are edited.
-  // Capped at whatever room that option's day actually has left: a slot can be under its OWN
-  // nominal split while the day overall is already over target, because other slots overshot
-  // theirs by more — suggesting "Add" to this slot in that case is bad advice regardless of its
-  // own split.
+  // What this slot's own calories would need to be for the WHOLE DAY to land exactly on target,
+  // holding every other slot in that option as it's actually composed right now — not a fixed %
+  // of the day handed to this slot's category regardless of what's in the rest of the day. Same
+  // "add/remove X kcal" guidance used everywhere else a meal's macros are edited.
   function slotTarget(slotKey) {
-    const cat = SLOT_TYPES.find(s => s.value === slotKey)?.cat
     const dayTarget = parseInt(form.calorie_target)
-    if (!cat || !dayTarget) return null
-    const pct = (mealSplit[cat] || 0) / 100
-    const nominal = dayTarget * pct
+    if (!dayTarget) return null
     const optionTotal = OPTION_2_SLOTS.includes(slotKey) && !OPTION_1_SLOTS.includes(slotKey) ? option2Total : option1Total
     const mealCal = slotCalories(slotKey) || 0
-    const achievable = dayTarget - (optionTotal - mealCal)
-    return { cal: Math.min(nominal, achievable) }
+    return { cal: dayTarget - (optionTotal - mealCal) }
   }
   const target = form.calorie_target !== '' ? parseInt(form.calorie_target) : null
 

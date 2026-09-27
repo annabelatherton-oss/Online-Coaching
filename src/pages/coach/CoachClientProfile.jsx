@@ -2335,12 +2335,6 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   const option1Total = addMacros(addMacros(option1Subtotal, preworkoutTotal), snackTotal)
   const option2Total = addMacros(addMacros(option2Subtotal, preworkoutTotal), snackTotal)
 
-  // This client's own version of the coach's standard meal split — a removed category's % share
-  // is folded into whatever's left (see redistributeMealSplit) so every remaining meal's own
-  // target (slotTarget below) grows to cover it, and the auto-resize on removal/restore targets
-  // the exact same numbers this shows.
-  const effectiveMealSplit = redistributeMealSplit(mealSplit, removedCategories)
-
   // Full day's macro targets (not just calories) — protein from this client's own logged
   // bodyweight, carbs/fat from the same goal-phase split used everywhere else (Overview tab,
   // client's own check-ins), so "remaining" below means the same thing it does anywhere else.
@@ -2358,34 +2352,19 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     }
   }
 
-  // A slot's own share of the day's targets — its category's % of the coach's standard meal
-  // split, applied to the full daily targets above. Shown next to each meal card so the coach can
-  // see at a glance whether what's actually in that slot roughly matches what it's meant to carry.
-  // Capped at whatever room Option 1's day actually has left: a meal can be under its OWN nominal
-  // split while the day overall is already over target, because other meals overshot theirs by
-  // more — suggesting "Add" to this meal in that case is bad advice regardless of its own split.
-  function slotTarget(cat, mealActual) {
-    if (!dailyMacroTargets) return null
-    const pct = (effectiveMealSplit?.[cat] || 0) / 100
-    const nominal = {
-      cal:  dailyMacroTargets.cal * pct,
-      prot: dailyMacroTargets.protein_g * pct,
-      carb: dailyMacroTargets.carbs_g * pct,
-      fat:  dailyMacroTargets.fat_g * pct,
-    }
-    if (!mealActual) return nominal
-
-    const achievable = {
+  // What this slot's own macros would need to be for the WHOLE DAY to land exactly on target,
+  // holding every other meal in Option 1 as it actually is right now — not a fixed % of the day
+  // handed to this meal's category regardless of what's happening elsewhere. A meal-split % is an
+  // even-handed guess with no visibility into the rest of the day; this is the actual number that
+  // closes the gap, whether that's because other meals left extra room or already used more than
+  // their share.
+  function slotTarget(mealActual) {
+    if (!dailyMacroTargets || !mealActual) return null
+    return {
       cal:  dailyMacroTargets.cal        - (option1Total.cal  - mealActual.cal),
       prot: dailyMacroTargets.protein_g  - (option1Total.prot - mealActual.prot),
       carb: dailyMacroTargets.carbs_g    - (option1Total.carb - mealActual.carb),
       fat:  dailyMacroTargets.fat_g      - (option1Total.fat  - mealActual.fat),
-    }
-    return {
-      cal:  Math.min(nominal.cal,  achievable.cal),
-      prot: Math.min(nominal.prot, achievable.prot),
-      carb: Math.min(nominal.carb, achievable.carb),
-      fat:  Math.min(nominal.fat,  achievable.fat),
     }
   }
 
@@ -2818,7 +2797,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     // Option A only ever needs to hit the day's category target; Option B only ever needs to
     // match Option A — never the other way round, and never both at once.
     const isOptionB = OPTION_2_KEYS.includes(slotKey)
-    const slotTgt = isOptionB ? null : slotTarget(cat, macros)
+    const slotTgt = isOptionB ? null : slotTarget(macros)
     const siblingKey = isOptionB ? OPTION_1_KEYS[OPTION_2_KEYS.indexOf(slotKey)] : null
     const siblingId = siblingKey ? (editedSlots[siblingKey] || '') : ''
     const siblingSlotMacros = siblingKey ? mealMacros(siblingId, mealMap, tier, ingredientOverrides[siblingKey], templateOverrides[siblingKey]) : null
