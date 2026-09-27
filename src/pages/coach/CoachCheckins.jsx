@@ -1116,15 +1116,18 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
               const relevantSlots = group.slots.filter(s => editedSlots[s.key] || templateSlots[s.key])
               if (relevantSlots.length === 0) return null
 
-              // A vs B banner — only meaningful when this group actually has both options in
-              // play. Framed as what B needs to change by to match A (not just the raw
-              // difference), same +/- convention as every other "hit target" number in the app.
+              // Banner above each meal type — up to two small lines: what B needs to change by
+              // to match A, and what A itself needs to change by to hit its own slice of the
+              // day's real target (slotTarget — whole-day-derived, not a fixed %). Both framed
+              // the same +/- way as every other "hit target" number in the app.
               const [slotA, slotB] = group.slots
               const hasBothOptions = slotA && slotB && editedSlots[slotA.key] && editedSlots[slotB.key]
-              const abDiff = hasBothOptions ? (() => {
-                const macrosA = mealMacrosLayered(editedSlots[slotA.key], mealMap, tier, templateOverrides[slotA.key], ingredientOverrides[slotA.key])
+              const macrosA = slotA && editedSlots[slotA.key]
+                ? mealMacrosLayered(editedSlots[slotA.key], mealMap, tier, templateOverrides[slotA.key], ingredientOverrides[slotA.key])
+                : null
+              const abDiff = (hasBothOptions && macrosA) ? (() => {
                 const macrosB = mealMacrosLayered(editedSlots[slotB.key], mealMap, tier, templateOverrides[slotB.key], ingredientOverrides[slotB.key])
-                if (!macrosA || !macrosB) return null
+                if (!macrosB) return null
                 return {
                   cal:  Math.round(macrosA.cal  - macrosB.cal),
                   carb: Math.round(macrosA.carb - macrosB.carb),
@@ -1132,21 +1135,44 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                   fat:  Math.round(macrosA.fat  - macrosB.fat),
                 }
               })() : null
+              const targetA = slotA ? slotTarget(slotA.key) : null
+              const aTargetDiff = (macrosA && targetA && targetA.cal > 0) ? {
+                cal:  Math.round(targetA.cal  - macrosA.cal),
+                carb: Math.round(targetA.carb - macrosA.carb),
+                prot: Math.round(targetA.prot - macrosA.prot),
+                fat:  Math.round(targetA.fat  - macrosA.fat),
+              } : null
 
               return (
                 <section key={group.label}>
                   <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{group.label}</h3>
-                  {abDiff && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-2.5 py-1.5 mb-2">
-                      {abDiff.cal === 0 && abDiff.carb === 0 && abDiff.prot === 0 && abDiff.fat === 0 ? (
-                        <span className="text-green-600 dark:text-green-400 font-medium">B matches A</span>
-                      ) : (
-                        <>
-                          <span className="font-medium text-gray-600 dark:text-gray-300">B → A:</span>{' '}
-                          {formatSigned(abDiff.cal)} kcal · {formatSigned(abDiff.carb)}g C · {formatSigned(abDiff.prot)}g P · {formatSigned(abDiff.fat)}g F
-                        </>
+                  {(abDiff || aTargetDiff) && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-2.5 py-1.5 mb-2 space-y-1">
+                      {abDiff && (
+                        <p>
+                          {abDiff.cal === 0 && abDiff.carb === 0 && abDiff.prot === 0 && abDiff.fat === 0 ? (
+                            <span className="text-green-600 dark:text-green-400 font-medium">B matches A</span>
+                          ) : (
+                            <>
+                              <span className="font-medium text-gray-600 dark:text-gray-300">B → A:</span>{' '}
+                              {formatSigned(abDiff.cal)} kcal · {formatSigned(abDiff.carb)}g C · {formatSigned(abDiff.prot)}g P · {formatSigned(abDiff.fat)}g F
+                            </>
+                          )}
+                        </p>
                       )}
-                    </p>
+                      {aTargetDiff && (
+                        <p>
+                          {aTargetDiff.cal === 0 && aTargetDiff.carb === 0 && aTargetDiff.prot === 0 && aTargetDiff.fat === 0 ? (
+                            <span className="text-green-600 dark:text-green-400 font-medium">{slotA.optionLabel ? 'A' : slotA.label} on target for the day</span>
+                          ) : (
+                            <>
+                              <span className="font-medium text-gray-600 dark:text-gray-300">{slotA.optionLabel ? 'A' : slotA.label} → Target:</span>{' '}
+                              {formatSigned(aTargetDiff.cal)} kcal · {formatSigned(aTargetDiff.carb)}g C · {formatSigned(aTargetDiff.prot)}g P · {formatSigned(aTargetDiff.fat)}g F
+                            </>
+                          )}
+                        </p>
+                      )}
+                    </div>
                   )}
                   <div className="grid grid-cols-2 gap-3">
                     {relevantSlots.map(slot => (
