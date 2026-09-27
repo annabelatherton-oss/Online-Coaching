@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { supabase, supabaseAdmin } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
-import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams } from '../../lib/macros'
+import { MACRO_SPLIT, calcMacrosFromSplit } from '../../lib/macros'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
 import { DIETS, DIET_LABELS } from '../../lib/diets'
 import DislikePicker from '../../components/DislikePicker'
 
-export default function ClientModal({ onClose, onSaved, duplicateData }) {
+export default function ClientModal({ onClose, onSaved }) {
   const { profile } = useAuth()
 
   const [form, setForm] = useState({
@@ -31,25 +31,6 @@ export default function ClientModal({ onClose, onSaved, duplicateData }) {
   const [error, setError] = useState('')
   // The carbs/protein/fat split (% of calories) driving the gram fields below.
   const [split, setSplit] = useState({ ...MACRO_SPLIT })
-
-  useEffect(() => {
-    if (duplicateData) {
-      setForm(f => ({
-        ...f,
-        goal: duplicateData.goal || '',
-        current_calories: duplicateData.current_calories || '',
-        current_protein: duplicateData.current_protein || '',
-        current_carbs: duplicateData.current_carbs || '',
-        current_fat: duplicateData.current_fat || '',
-        access_weeks: duplicateData.access_weeks || 12,
-        tags: duplicateData.tags || [],
-      }))
-      setSplit(splitPercentFromGrams(
-        { protein_g: duplicateData.current_protein, carbs_g: duplicateData.current_carbs, fat_g: duplicateData.current_fat },
-        duplicateData.current_calories
-      ))
-    }
-  }, [duplicateData])
 
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }))
@@ -181,13 +162,11 @@ export default function ClientModal({ onClose, onSaved, duplicateData }) {
     }
   }
 
-  const title = duplicateData ? 'Duplicate Client' : 'Add New Client'
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Add New Client</h2>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"

@@ -236,13 +236,15 @@ export default function ClientsList() {
   // Deep-linkable from the dashboard's Expiring Soon / Expired stat cards (?status=expiring / ?status=expired).
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'All')
   const [showModal, setShowModal] = useState(false)
-  const [duplicateData, setDuplicateData] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [alsoDeleteLogin, setAlsoDeleteLogin] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [actionLoading, setActionLoading] = useState(null)
   const [pauseClientIds, setPauseClientIds] = useState(new Set())
   const [extendClient, setExtendClient] = useState(null)
+  // Client's own week count — same "week N of your plan" number shown throughout the client app,
+  // i.e. however many check-ins they've submitted so far, plus the one they're currently on.
+  const [checkinCounts, setCheckinCounts] = useState({})
 
   async function loadClients() {
     const { data, error } = await supabase
@@ -260,15 +262,22 @@ export default function ClientsList() {
     else {
       setClients(data || [])
       if (data && data.length > 0) {
-        const { data: pauses } = await supabase
-          .from('plan_pauses')
-          .select('client_id')
-          .in('client_id', data.map(c => c.id))
-          .eq('status', 'pending')
+        const clientIds = data.map(c => c.id)
+        const [{ data: pauses }, { data: checkinRows }] = await Promise.all([
+          supabase.from('plan_pauses').select('client_id').in('client_id', clientIds).eq('status', 'pending'),
+          supabase.from('client_checkins').select('client_id').in('client_id', clientIds),
+        ])
         setPauseClientIds(new Set((pauses || []).map(p => p.client_id)))
+        const counts = {}
+        for (const row of (checkinRows || [])) counts[row.client_id] = (counts[row.client_id] || 0) + 1
+        setCheckinCounts(counts)
       }
     }
     setLoading(false)
+  }
+
+  function currentWeek(client) {
+    return (checkinCounts[client.id] || 0) + 1
   }
 
   useEffect(() => { loadClients() }, [profile.id])
@@ -353,23 +362,6 @@ export default function ClientsList() {
     setActionLoading(null)
   }
 
-  function openDuplicate(client) {
-    setDuplicateData({
-      goal: client.goal,
-      current_calories: client.current_calories,
-      current_protein: client.current_protein,
-      current_carbs: client.current_carbs,
-      current_fat: client.current_fat,
-      access_weeks: client.access_weeks,
-      tags: client.tags,
-    })
-    setShowModal(true)
-  }
-
-  function closeModal() {
-    setShowModal(false)
-    setDuplicateData(null)
-  }
 
   // Collect all unique tags across clients
   const allTags = [...new Set(clients.flatMap(c => c.tags || []))].sort()
@@ -412,7 +404,7 @@ export default function ClientsList() {
           </p>
         </div>
         <button
-          onClick={() => { setDuplicateData(null); setShowModal(true) }}
+          onClick={() => setShowModal(true)}
           className="btn-primary"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -468,7 +460,7 @@ export default function ClientsList() {
             <>
               <p className="text-gray-400 dark:text-gray-500 mb-3">You haven't added any clients yet.</p>
               <button
-                onClick={() => { setDuplicateData(null); setShowModal(true) }}
+                onClick={() => setShowModal(true)}
                 className="btn-primary"
               >
                 Add your first client
@@ -491,6 +483,7 @@ export default function ClientsList() {
                 <tr className="border-b border-gray-200 dark:border-gray-800">
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Client</th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Week</th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Access</th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Expires</th>
                   <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
@@ -531,6 +524,9 @@ export default function ClientsList() {
                         )}
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-gray-600 dark:text-gray-400 font-medium">
+                      Week {currentWeek(client)}
+                    </td>
                     <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
                       {client.access_weeks} week{client.access_weeks !== 1 ? 's' : ''}
                     </td>
@@ -539,13 +535,6 @@ export default function ClientsList() {
                     </td>
                     <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => openDuplicate(client)}
-                          className="btn-secondary py-1.5 px-3 text-xs"
-                          title="Duplicate client settings"
-                        >
-                          Dupe
-                        </button>
                         <button
                           onClick={() => togglePause(client)}
                           disabled={actionLoading === client.id}
@@ -615,10 +604,10 @@ export default function ClientsList() {
                   </div>
                 )}
                 <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                  <p className="font-medium text-gray-700 dark:text-gray-300">Week {currentWeek(client)}</p>
                   <p>Access: {client.access_weeks} weeks · Expires: {formatDate(client.access_expires_at)}</p>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => openDuplicate(client)} className="btn-secondary py-1.5 px-3 text-xs">Dupe</button>
                   <button onClick={() => togglePause(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">{client.is_paused ? 'Resume' : 'Pause'}</button>
                   <button onClick={() => setExtendClient(client)} disabled={actionLoading === client.id} className={`btn-secondary py-1.5 px-3 text-xs ${extendUrgency(client)?.className || ''}`}>{extendUrgency(client)?.label || 'Extend…'}</button>
                   <button onClick={() => toggleArchive(client)} disabled={actionLoading === client.id} className="btn-secondary py-1.5 px-3 text-xs">{client.is_archived ? 'Unarchive' : 'Archive'}</button>
@@ -641,12 +630,11 @@ export default function ClientsList() {
         />
       )}
 
-      {/* Add/Duplicate modal */}
+      {/* Add client modal */}
       {showModal && (
         <ClientModal
-          duplicateData={duplicateData}
-          onClose={closeModal}
-          onSaved={() => { closeModal(); loadClients() }}
+          onClose={() => setShowModal(false)}
+          onSaved={() => { setShowModal(false); loadClients() }}
         />
       )}
 
