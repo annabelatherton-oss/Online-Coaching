@@ -75,14 +75,20 @@ export default function CoachDashboard() {
         const expired = clients.filter(c => c.access_expires_at && new Date(c.access_expires_at) < now)
 
         const clientIds = clients.map(c => c.id)
+        // How many clients currently have an unresponded check-in — not a raw count of every
+        // unresponded row ever, which would also catch old historical check-ins from before a
+        // client's most recent one (including a one-off starting check-in a coach never responds
+        // to) and wildly overstate what's actually still outstanding right now.
         let pendingCheckins = 0
         if (clientIds.length > 0) {
-          const { count } = await supabase
+          const { data: checkinRows } = await supabase
             .from('client_checkins')
-            .select('id', { count: 'exact', head: true })
+            .select('client_id, week_number, coach_responded_at')
             .in('client_id', clientIds)
-            .is('coach_responded_at', null)
-          pendingCheckins = count ?? 0
+            .order('week_number', { ascending: false })
+          const latestByClient = {}
+          ;(checkinRows || []).forEach(c => { if (!(c.client_id in latestByClient)) latestByClient[c.client_id] = c })
+          pendingCheckins = Object.values(latestByClient).filter(c => !c.coach_responded_at).length
         }
 
         // Archived clients are excluded from the query above on purpose (see its comment) — this
