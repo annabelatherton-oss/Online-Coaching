@@ -61,6 +61,8 @@ serve(async (req) => {
     goal_phase,
     phase,
     bulking_cutting_maintaining,
+    preferred_start_date,
+    start_date: formStartDate,
   } = body
 
   // The intake form's gender question may come through as "gender" or "sex", and as
@@ -162,6 +164,9 @@ serve(async (req) => {
   }
   const normalizedTargetDate = normalizeDate(target_date) ?? normalizeDate(event_date) ?? normalizeDate(important_date)
   const normalizedTargetEventName = (target_event_name || event_name || '').trim() || null
+  // "When would you like to start?" — only used for a brand-new client, and only when it actually
+  // parses as a date; falls back to today (the previous, only behaviour) otherwise.
+  const normalizedStartDate = normalizeDate(preferred_start_date) ?? normalizeDate(formStartDate)
 
   if (!email || !full_name) {
     return new Response(JSON.stringify({ error: 'email and full_name are required' }), { status: 400 })
@@ -290,7 +295,7 @@ serve(async (req) => {
       target_date: normalizedTargetDate,
       target_event_name: normalizedTargetEventName,
       intake_form: intakeForm,
-      start_date: new Date().toISOString().split('T')[0],
+      start_date: normalizedStartDate ?? new Date().toISOString().split('T')[0],
       access_weeks: 12,
     }).select('id').single()
 
