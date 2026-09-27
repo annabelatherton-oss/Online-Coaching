@@ -2210,8 +2210,8 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             onClick={() => setShowDeliveryPanel(true)}
             className="btn-primary py-2 px-4 text-sm"
           >
-            {current.coach_response && !delivered
-              ? `Edit & resubmit Week ${deliveryPersonalWeek} Plan →`
+            {current.coach_response
+              ? 'Edit check-in →'
               : `Submit Week ${deliveryPersonalWeek} Plan →`}
           </button>
         </div>
