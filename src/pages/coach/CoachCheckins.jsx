@@ -1550,7 +1550,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
             <div className="card space-y-2">
               <label className="label text-xs">Training notes for this week (optional)</label>
               <textarea
-                className="input w-full text-sm resize-none"
+                className="input w-full text-sm resize-none min-h-[80px]"
                 rows={3}
                 placeholder="Any changes to training, extra rest days, focus points…"
                 value={trainingNotes}
