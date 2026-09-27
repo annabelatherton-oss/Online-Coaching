@@ -2830,8 +2830,62 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   // Wraps a category's meal card(s) with a header offering to remove/restore the whole category —
   // when removed, the cards are hidden entirely (there's nothing to pick since the client isn't
   // eating this meal) and a short note explains where its share went.
-  function renderCategoryGroup(cat, label, cardsJSX) {
+  // bannerKeys (optional) = [slotAKey, slotBKey] — when given, shows the same "A → Target" /
+  // "B → A" banner the check-in uses above a category's meal cards, and lays those cards out
+  // side by side (grid) instead of stacked, matching the check-in's layout exactly.
+  function renderCategoryGroup(cat, label, cardsJSX, bannerKeys = null) {
     const isRemoved = removedCategories.includes(cat)
+    let banner = null
+    if (bannerKeys) {
+      const [keyA, keyB] = bannerKeys
+      const idA = editedSlots[keyA] || ''
+      const idB = editedSlots[keyB] || ''
+      const macrosA = idA ? mealMacros(idA, mealMap, tier, ingredientOverrides[keyA], templateOverrides[keyA]) : null
+      const macrosB = idB ? mealMacros(idB, mealMap, tier, ingredientOverrides[keyB], templateOverrides[keyB]) : null
+      const targetA = macrosA ? slotTarget(macrosA) : null
+      const aTargetDiff = (macrosA && targetA && targetA.cal > 0) ? {
+        cal:  Math.round(targetA.cal  - macrosA.cal),
+        carb: Math.round(targetA.carb - macrosA.carb),
+        prot: Math.round(targetA.prot - macrosA.prot),
+        fat:  Math.round(targetA.fat  - macrosA.fat),
+      } : null
+      const abDiff = (macrosA && macrosB) ? {
+        cal:  Math.round(macrosA.cal  - macrosB.cal),
+        carb: Math.round(macrosA.carb - macrosB.carb),
+        prot: Math.round(macrosA.prot - macrosB.prot),
+        fat:  Math.round(macrosA.fat  - macrosB.fat),
+      } : null
+      if (aTargetDiff || abDiff) {
+        banner = (
+          <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-2.5 py-1.5 mb-2 space-y-1">
+            {aTargetDiff && (
+              <p>
+                {aTargetDiff.cal === 0 && aTargetDiff.carb === 0 && aTargetDiff.prot === 0 && aTargetDiff.fat === 0 ? (
+                  <span className="text-green-600 dark:text-green-400 font-medium">A on target for the day</span>
+                ) : (
+                  <>
+                    <span className="font-medium text-gray-600 dark:text-gray-300">A → Target:</span>{' '}
+                    {formatSigned(aTargetDiff.cal)} kcal · {formatSigned(aTargetDiff.carb)}g C · {formatSigned(aTargetDiff.prot)}g P · {formatSigned(aTargetDiff.fat)}g F
+                  </>
+                )}
+              </p>
+            )}
+            {abDiff && (
+              <p>
+                {abDiff.cal === 0 && abDiff.carb === 0 && abDiff.prot === 0 && abDiff.fat === 0 ? (
+                  <span className="text-green-600 dark:text-green-400 font-medium">B matches A</span>
+                ) : (
+                  <>
+                    <span className="font-medium text-gray-600 dark:text-gray-300">B → A:</span>{' '}
+                    {formatSigned(abDiff.cal)} kcal · {formatSigned(abDiff.carb)}g C · {formatSigned(abDiff.prot)}g P · {formatSigned(abDiff.fat)}g F
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+        )
+      }
+    }
     return (
       <div className="space-y-3 pt-4 first:pt-0 border-t-2 border-gray-100 dark:border-gray-800 first:border-t-0">
         <div className="flex items-center justify-between">
@@ -2848,7 +2902,12 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
           <p className="text-xs text-gray-400 dark:text-gray-500 italic px-1">
             Removed from this client's day — the other meals were automatically sized up to cover it.
           </p>
-        ) : cardsJSX}
+        ) : (
+          <>
+            {banner}
+            <div className={bannerKeys ? 'grid grid-cols-2 gap-3' : ''}>{cardsJSX}</div>
+          </>
+        )}
       </div>
     )
   }
@@ -3372,10 +3431,10 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
             )}
 
             <div className="space-y-5">
-              {renderCategoryGroup('breakfast', 'Breakfast', MEAL_SLOTS.slice(0, 2).map(slot => renderSlotCard(slot.key, slot.label, slot.cat)))}
-              {renderCategoryGroup('lunch', 'Lunch', MEAL_SLOTS.slice(2, 4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat)))}
+              {renderCategoryGroup('breakfast', 'Breakfast', MEAL_SLOTS.slice(0, 2).map(slot => renderSlotCard(slot.key, slot.label, slot.cat)), ['breakfast1', 'breakfast2'])}
+              {renderCategoryGroup('lunch', 'Lunch', MEAL_SLOTS.slice(2, 4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat)), ['lunch1', 'lunch2'])}
               {renderCategoryGroup('pre_workout', 'Pre-workout', renderSlotCard('preworkout', 'Pre-workout', 'pre_workout', 'preworkout_static', 'preworkout_meal_id'))}
-              {renderCategoryGroup('dinner', 'Dinner', MEAL_SLOTS.slice(4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat)))}
+              {renderCategoryGroup('dinner', 'Dinner', MEAL_SLOTS.slice(4).map(slot => renderSlotCard(slot.key, slot.label, slot.cat)), ['dinner1', 'dinner2'])}
               {renderCategoryGroup('evening_snack', 'Evening Snack', renderSlotCard('evening_snack', 'Evening snack', 'evening_snack', 'evening_snack_static', 'evening_snack_meal_id'))}
             </div>
 
