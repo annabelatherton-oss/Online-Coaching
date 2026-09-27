@@ -467,9 +467,33 @@ function _fmtDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+// Pins this client's meal plan to whatever week it's on right now, for the duration of a pause —
+// otherwise a client who isn't checking in would still see the plan group's current_week keep
+// advancing without them while they're away, exactly the "still moving forward" problem a pause
+// is meant to prevent. Leaves an existing deliberate override alone rather than clobbering it.
+async function freezeClientWeek(clientId) {
+  const { data: asgn } = await supabase.from('client_plan_assignments')
+    .select('id, plan_group_id, week_override').eq('client_id', clientId).eq('active', true)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (!asgn || asgn.week_override != null) return
+  const { data: pg } = asgn.plan_group_id
+    ? await supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).maybeSingle()
+    : { data: null }
+  await supabase.from('client_plan_assignments').update({ week_override: pg?.current_week ?? 1 }).eq('id', asgn.id)
+}
+
+// Releases the freeze once a pause ends, so the client resumes following the plan group's own
+// current_week again — wherever that's moved on to while they were away, same as everyone else.
+async function releaseClientWeek(clientId) {
+  await supabase.from('client_plan_assignments').update({ week_override: null }).eq('client_id', clientId).eq('active', true)
+}
+
 function ClientPauseCard({ clientId }) {
   const [pause, setPause] = useState(null)
   const [acting, setActing] = useState(false)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [addForm, setAddForm] = useState({ pause_start_date: '', first_checkin_date: '' })
+  const [addError, setAddError] = useState('')
 
   async function load() {
     const { data } = await supabase.from('plan_pauses').select('*')
@@ -484,11 +508,64 @@ function ClientPauseCard({ clientId }) {
   async function act(newStatus) {
     setActing(true)
     await supabase.from('plan_pauses').update({ status: newStatus }).eq('id', pause.id)
+    if (newStatus === 'approved') await freezeClientWeek(clientId)
+    else if (newStatus === 'completed' || newStatus === 'rejected') await releaseClientWeek(clientId)
     await load()
     setActing(false)
   }
 
-  if (!pause) return null
+  async function addPause(e) {
+    e.preventDefault()
+    if (!addForm.pause_start_date || !addForm.first_checkin_date) return
+    setActing(true); setAddError('')
+    const start = new Date(addForm.pause_start_date + 'T00:00:00')
+    const firstCheckin = new Date(addForm.first_checkin_date + 'T00:00:00')
+    const weeksPaused = Math.max(0, Math.round((firstCheckin - start) / (7 * 24 * 60 * 60 * 1000)))
+    const { error } = await supabase.from('plan_pauses').insert({
+      client_id: clientId,
+      status: 'approved',
+      pause_start_date: addForm.pause_start_date,
+      return_date: addForm.first_checkin_date,
+      first_checkin_date: addForm.first_checkin_date,
+      weeks_paused: weeksPaused,
+    })
+    if (error) { setAddError('Could not add pause.'); setActing(false); return }
+    await freezeClientWeek(clientId)
+    setShowAddForm(false)
+    setAddForm({ pause_start_date: '', first_checkin_date: '' })
+    await load()
+    setActing(false)
+  }
+
+  if (!pause) {
+    return showAddForm ? (
+      <form onSubmit={addPause} className="card space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Add a holiday pause</h3>
+          <button type="button" onClick={() => setShowAddForm(false)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">Cancel</button>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          Pins their plan to this week until they're back, so it doesn't keep moving on without them while they're away.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label text-xs">Pause starts</label>
+            <input className="input" type="date" required value={addForm.pause_start_date} onChange={e => setAddForm(f => ({ ...f, pause_start_date: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label text-xs">First check-in back</label>
+            <input className="input" type="date" required value={addForm.first_checkin_date} onChange={e => setAddForm(f => ({ ...f, first_checkin_date: e.target.value }))} />
+          </div>
+        </div>
+        {addError && <p className="text-xs text-red-500">{addError}</p>}
+        <button type="submit" disabled={acting} className="btn-primary py-1.5 px-3 text-xs">{acting ? 'Adding…' : 'Add pause'}</button>
+      </form>
+    ) : (
+      <button type="button" onClick={() => setShowAddForm(true)} className="text-xs text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 font-medium">
+        🌴 Add a holiday pause for this client
+      </button>
+    )
+  }
 
   const isPending = pause.status === 'pending'
 
