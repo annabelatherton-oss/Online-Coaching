@@ -38,18 +38,22 @@
      !important is required here: the app's own .input class (a class selector) carries text-sm
      (14px), which beats a bare `input` type-selector rule on specificity alone regardless of
      source order — that's why the first attempt at this fix didn't actually change anything. */
+  /* A native date input's own internal layout (the calendar icon plus its text) imposes a
+     minimum width wider than a lot of grid/flex cells — width: 100% alone doesn't override that,
+     since form controls default to min-width: auto (their intrinsic content size) rather than
+     min-width: 0 like a normal block element. Deliberately NOT gated to a mobile media query:
+     it used to only apply below 640px, but sm:grid-cols-2 (the exact thing squeezing these cells
+     in two-column forms) also turns on at 640px — so right where the grid goes two-column, this
+     fix switched off at the same breakpoint, leaving date fields unconstrained again in that zone.
+     Shrinking below intrinsic width is harmless wherever the track isn't actually that narrow, so
+     this just applies everywhere. */
+  input[type="date"] {
+    min-width: 0;
+  }
+
   @media (max-width: 640px) {
     input, select, textarea {
       font-size: 16px !important;
-    }
-
-    /* A native date input's own internal layout (the calendar icon plus its text) imposes a
-       minimum width wider than most phone-width grid/flex cells — width: 100% alone doesn't
-       override that, since form controls default to min-width: auto (their intrinsic content
-       size) rather than min-width: 0 like a normal block element. That's what was pushing date
-       fields past the screen edge. */
-    input[type="date"] {
-      min-width: 0;
     }
   }
 
