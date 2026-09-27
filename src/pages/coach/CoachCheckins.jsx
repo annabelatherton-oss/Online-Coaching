@@ -96,30 +96,6 @@ function appendQuickReply(current, text) {
   return current?.trim() ? `${current.trim()}\n\n${text}` : text
 }
 
-// A fixed-height, resize-none textarea clips anything past its rows the moment content grows past
-// them — most visibly right after picking a Quick Reply, which can add several lines in one go
-// and land mostly hidden below the fold with no visual hint there's more to scroll to. Grows to
-// fit its own content instead (up to minRows as a floor), on every value change regardless of
-// whether that change came from typing or a programmatic update like a Quick Reply.
-function AutoGrowTextarea({ value, minRows = 3, className = '', ...props }) {
-  const ref = useRef(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }, [value])
-  return (
-    <textarea
-      ref={ref}
-      value={value}
-      rows={minRows}
-      className={`${className} resize-none overflow-hidden`}
-      {...props}
-    />
-  )
-}
-
 // Check-in submitted Mon or Tue = late re-submit for the previous week
 function isLateSubmission(checkin) {
   const iso = checkin?.updated_at || checkin?.submitted_at
@@ -942,10 +918,10 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           <div className="card space-y-3">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Message to client</h2>
             <QuickReplies onPick={text => setCoachNotes(v => appendQuickReply(v, text))} />
-            <AutoGrowTextarea
+            <textarea
               autoFocus
-              className="input w-full text-sm"
-              minRows={5}
+              className="input w-full text-sm resize-none"
+              rows={5}
               placeholder="Weekly feedback, notes and encouragement…"
               value={coachNotes}
               onChange={e => setCoachNotes(e.target.value)}
@@ -962,12 +938,12 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                 {current.struggles.map(s => (
                   <div key={s}>
                     <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 mb-1.5">{s}</span>
-                    <AutoGrowTextarea
-                      minRows={1}
+                    <textarea
+                      rows={1}
                       value={struggleComments[s] || ''}
                       onChange={e => setStruggleComments(prev => ({ ...prev, [s]: e.target.value }))}
                       placeholder={`Your advice for "${s}"…`}
-                      className="input w-full text-sm py-1.5"
+                      className="input w-full text-sm py-1.5 resize-none"
                     />
                   </div>
                 ))}
@@ -1672,7 +1648,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     setResponding(null)
     const updated = checkins.map(c => c.id === checkinId ? { ...c, coach_response: text, coach_responded_at: new Date().toISOString() } : c)
     setCheckins(updated)
-    onResponded(checkinId, text)
+    onResponded(checkinId, text, client.id)
   }
 
   // Show the full delivery panel when the coach clicks "Submit Week X Plan"
@@ -1692,7 +1668,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             setCheckins(prev => prev.map(c => c.id === current.id
               ? { ...c, coach_response: notes, coach_responded_at: new Date().toISOString() }
               : c))
-            onResponded(current.id, notes)
+            onResponded(current.id, notes, client.id)
             setActiveAssignment(prev => prev ? { ...prev, calorie_target: calTarget } : prev)
           }}
         />
@@ -2216,7 +2192,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             {responding === c.id ? (
               <div className="space-y-2">
                 <QuickReplies onPick={text => setResponseText(v => appendQuickReply(v, text))} />
-                <AutoGrowTextarea autoFocus className="input w-full text-sm" minRows={3} value={responseText} onChange={e => setResponseText(e.target.value)} placeholder="Write your response…" />
+                <textarea autoFocus className="input w-full text-sm resize-none" rows={3} value={responseText} onChange={e => setResponseText(e.target.value)} placeholder="Write your response…" />
                 <div className="flex gap-2">
                   <button onClick={() => sendResponse(c.id)} disabled={saving || !responseText.trim()} className="btn-primary py-1.5 px-4 text-sm">{saving ? 'Sending…' : 'Send'}</button>
                   <button onClick={() => setResponding(null)} className="btn-secondary py-1.5 px-3 text-sm">Cancel</button>
@@ -2242,6 +2218,10 @@ export default function CoachCheckins() {
   const [loading, setLoading] = useState(true)
   const [selectedClientId, setSelectedClientId] = useState(null)
   const [pendingPauses, setPendingPauses] = useState([])
+  // Clients responded to just now, this session — shown with a green confirmation badge and
+  // pushed to the bottom of the list, so responding doesn't just make them silently vanish
+  // (and reflow the whole list) the moment the coach backs out to it.
+  const [justRespondedIds, setJustRespondedIds] = useState(new Set())
 
   async function load() {
     const [{ data: clientData }, { data: checkinData }] = await Promise.all([
@@ -2273,8 +2253,9 @@ export default function CoachCheckins() {
 
   useEffect(() => { load() }, [])
 
-  function handleResponded(id, text) {
+  function handleResponded(id, text, clientId) {
     setCheckins(prev => prev.map(c => c.id === id ? { ...c, coach_response: text } : c))
+    if (clientId) setJustRespondedIds(prev => new Set(prev).add(clientId))
   }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
@@ -2312,7 +2293,11 @@ export default function CoachCheckins() {
   const missing = clients.filter(c => clientStatus(c) === 'missing')
     .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
   const upToDate = clients.filter(c => clientStatus(c) === 'ok')
-    .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
+    .sort((a, b) => {
+      const aJust = justRespondedIds.has(a.id), bJust = justRespondedIds.has(b.id)
+      if (aJust !== bJust) return aJust ? 1 : -1
+      return (a.full_name || '').localeCompare(b.full_name || '')
+    })
 
   function ClientRow({ client }) {
     const latest = latestByClient[client.id]
@@ -2334,6 +2319,11 @@ export default function CoachCheckins() {
         {pendingPauses.some(p => p.client_id === client.id) && (
           <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-full px-2.5 py-1 font-medium flex-shrink-0">
             🌴 Pause
+          </span>
+        )}
+        {status === 'ok' && justRespondedIds.has(client.id) && (
+          <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-full px-2.5 py-1 font-medium flex-shrink-0">
+            ✓ Check-in submitted
           </span>
         )}
         {status === 'needs-response' && (
