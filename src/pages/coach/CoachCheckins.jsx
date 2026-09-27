@@ -216,6 +216,83 @@ function PhotoLightbox({ photos, initialAngle, onClose }) {
   )
 }
 
+// Full-screen start-vs-now (vs last-week, when it's a distinct week) comparison — the same pose,
+// side by side, swiped (or arrow-button-clicked) through each angle in turn. `getCols(angle)`
+// returns that angle's columns as [{ label, url }, ...]; how many columns there are can vary by
+// angle since an in-between week's photos might be missing that one.
+function ComparisonLightbox({ angles, getCols, onClose }) {
+  const [index, setIndex] = useState(0)
+  const touchX = useRef(null)
+
+  function go(delta) {
+    setIndex(i => (i + delta + angles.length) % angles.length)
+  }
+
+  function handleTouchStart(e) { touchX.current = e.touches[0].clientX }
+  function handleTouchEnd(e) {
+    if (touchX.current == null) return
+    const delta = e.changedTouches[0].clientX - touchX.current
+    touchX.current = null
+    if (Math.abs(delta) > 40) go(delta < 0 ? 1 : -1)
+  }
+
+  const angle = angles[index]
+  const cols = getCols(angle)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={onClose}>
+      <div
+        className="relative max-w-3xl w-full select-none"
+        onClick={e => e.stopPropagation()}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <p className="text-center text-sm font-medium text-white capitalize mb-3">{angle}</p>
+        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols.length}, 1fr)` }}>
+          {cols.map(col => (
+            <div key={col.label} className="space-y-1.5">
+              {col.url ? (
+                <img src={col.url} alt={col.label} className="w-full aspect-[3/4] object-cover rounded-xl" />
+              ) : (
+                <div className="w-full aspect-[3/4] rounded-xl bg-gray-800 flex items-center justify-center text-xs text-gray-500">No photo</div>
+              )}
+              <p className="text-xs text-center text-gray-300">{col.label}</p>
+            </div>
+          ))}
+        </div>
+        <button onClick={onClose} className="absolute -top-1 right-1 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+        <button
+          onClick={() => go(-1)}
+          className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        </button>
+        <button
+          onClick={() => go(1)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+        </button>
+        <div className="flex items-center justify-center gap-3 mt-3">
+          {angles.map((a, i) => (
+            <button
+              key={a}
+              onClick={() => setIndex(i)}
+              className={`text-xs px-1.5 pb-1 border-b-2 transition-colors capitalize ${
+                i === index ? 'border-white text-white font-medium' : 'border-transparent text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {a}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Plan delivery panel ───────────────────────────────────────────────────────
 function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
   const { profile } = useAuth()
@@ -2022,11 +2099,11 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           {first && first.id !== current.id && (
             <div className="flex justify-center">
               <button
-                onClick={() => setShowPhotoComparison(v => !v)}
+                onClick={() => setShowPhotoComparison(true)}
                 className="text-xs font-medium text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 flex items-center gap-1"
               >
-                {showPhotoComparison ? 'Hide comparison' : 'See comparison'}
-                <svg className={`w-3.5 h-3.5 transition-transform ${showPhotoComparison ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                See comparison
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
@@ -2138,51 +2215,31 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         </div>
       )}
 
-      {/* Photo comparison: start / last week / now — behind the "See comparison" toggle above.
-          Always opens once there's more than one check-in; if neither has photos yet it just
-          says so, rather than the toggle button itself disappearing with no explanation. */}
+      {/* "See comparison" opens straight into a full-screen start-vs-now viewer — the same pose
+          side by side, swiped through each angle — rather than a small inline row of thumbnails.
+          If neither week has photos yet it says so in the same full-screen spot instead of the
+          button just disappearing with no explanation. */}
       {showPhotoComparison && (
-        <div className="card space-y-5">
-          <div>
-            <h3 className="font-semibold text-gray-900 dark:text-white">Photo Comparison</h3>
-            {showComparison && (
-              <p className="text-xs text-gray-400 mt-0.5">
-                Start (Wk {personalWeekMap[firstP.id]})
-                {prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && ` · Last week (Wk ${personalWeekMap[prevP.id]})`}
-                {` · Now (Wk ${personalWeekMap[newestP.id]})`}
-              </p>
-            )}
-          </div>
-          {showComparison ? compAngles.map(angle => {
-            const cols = [
-              { label: `Start · Wk ${personalWeekMap[firstP.id]}`, photos: photoUrlsByCheckin[firstP.id] },
+        showComparison ? (
+          <ComparisonLightbox
+            angles={compAngles}
+            getCols={angle => [
+              { label: `Start · Wk ${personalWeekMap[firstP.id]}`, url: photoUrlsByCheckin[firstP.id]?.[angle] },
               prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && prevP.progress_photos?.[angle]
-                ? { label: `Last week · Wk ${personalWeekMap[prevP.id]}`, photos: photoUrlsByCheckin[prevP.id] }
+                ? { label: `Last week · Wk ${personalWeekMap[prevP.id]}`, url: photoUrlsByCheckin[prevP.id]?.[angle] }
                 : null,
-              { label: `Now · Wk ${personalWeekMap[newestP.id]}`, photos: photoUrlsByCheckin[newestP.id] },
-            ].filter(Boolean)
-            return (
-              <div key={angle}>
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2 capitalize">{angle}</p>
-                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols.length}, 1fr)` }}>
-                  {cols.map(col => {
-                    const url = col.photos?.[angle]
-                    return (
-                      <div key={col.label} className="space-y-1">
-                        <button onClick={() => url && setLightbox({ photos: col.photos, angle })} disabled={!url} className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity block disabled:hover:opacity-100">
-                          {url ? <img src={url} alt={col.label} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xs text-gray-300 dark:text-gray-600">No photo</div>}
-                        </button>
-                        <p className="text-xs text-center text-gray-400">{col.label}</p>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          }) : (
-            <p className="text-sm text-gray-400">No photos yet to compare — this client hasn't submitted progress photos on more than one check-in.</p>
-          )}
-        </div>
+              { label: `Now · Wk ${personalWeekMap[newestP.id]}`, url: photoUrlsByCheckin[newestP.id]?.[angle] },
+            ].filter(Boolean)}
+            onClose={() => setShowPhotoComparison(false)}
+          />
+        ) : (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setShowPhotoComparison(false)}>
+            <div className="bg-white dark:bg-gray-900 rounded-xl p-5 max-w-xs text-center space-y-3" onClick={e => e.stopPropagation()}>
+              <p className="text-sm text-gray-500 dark:text-gray-400">No photos yet to compare — this client hasn't submitted progress photos on more than one check-in.</p>
+              <button onClick={() => setShowPhotoComparison(false)} className="btn-secondary py-1.5 px-4 text-sm">Close</button>
+            </div>
+          </div>
+        )
       )}
 
       {/* Progress history table — check-ins merged with manual weight logs */}
