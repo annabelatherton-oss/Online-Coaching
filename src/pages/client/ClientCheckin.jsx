@@ -340,6 +340,7 @@ export default function ClientCheckin() {
   const [viewingId, setViewingId] = useState(null)
   const [upcomingPause, setUpcomingPause] = useState(null)
   const [isLateResubmit, setIsLateResubmit] = useState(false)
+  const [earlyAccess, setEarlyAccess] = useState(false)
   const [form, setForm] = useState({
     weight_kg: '',
     waist_cm: '',
@@ -366,12 +367,14 @@ export default function ClientCheckin() {
     async function load() {
       const { data: clientRow } = await supabase
         .from('clients')
-        .select('id, coach_id, collect_measurements, top_lifts, target_date, target_event_name')
+        .select('id, coach_id, collect_measurements, top_lifts, target_date, target_event_name, checkin_early_access')
         .eq('profile_id', session.user.id)
         .single()
       if (!clientRow) { setLoading(false); return }
       setClientData(clientRow)
       setCollectMeasurements(!!clientRow.collect_measurements)
+      const earlyAccessOn = !!clientRow.checkin_early_access
+      setEarlyAccess(earlyAccessOn)
 
       const { data: struggleRows } = await supabase
         .from('client_struggle_tracking')
@@ -491,14 +494,27 @@ export default function ClientCheckin() {
       const isFirstEver = histWithWeeks.length === 0
       const targetWeek = isFirstEver ? 0 : nextWeekNumber
       const dow = new Date().getDay()
-      const isLate = !checkin && targetWeek !== 0 && (dow === 3 || dow === 4)
 
-      setWeekNumber(checkin ? checkin.week_number : targetWeek)
+      // A coach can open the *next* week's check-in early for one client (e.g. they're away
+      // during their normal window). That always lands one week past whatever this real-calendar
+      // window would otherwise be — whether or not that window's own check-in was ever filled in
+      // — so an unfilled window is simply skipped/missed rather than backfilled, and the plan's
+      // calendar-based access countdown (start_date + access_weeks) is untouched either way.
+      const normalWeekNumber = checkin ? checkin.week_number : targetWeek
+      const effectiveWeekNumber = (earlyAccessOn && !isFirstEver) ? normalWeekNumber + 1 : normalWeekNumber
+      // Only treat the window-matched row as "existing" if it's actually the row we're now
+      // targeting — an early jump past a filled or unfilled current week should start from a
+      // blank form, not the old week's saved values.
+      const matchedExisting = checkin && checkin.week_number === effectiveWeekNumber ? checkin : null
+      const isLate = !checkin && !earlyAccessOn && targetWeek !== 0 && (dow === 3 || dow === 4)
+
+      setWeekNumber(effectiveWeekNumber)
       setIsLateResubmit(isLate)
       setHistoryList([...histWithWeeks].reverse())
-      setPersonalWeek(checkin ? checkin.personal_week : (targetWeek === 0 ? null : personalCounter + 1))
+      setPersonalWeek(matchedExisting ? matchedExisting.personal_week : (effectiveWeekNumber === 0 ? null : personalCounter + 1))
 
-      if (checkin) {
+      if (matchedExisting) {
+        const checkin = matchedExisting
         setExisting(checkin)
         setForm(f => ({
           ...f,
@@ -655,6 +671,13 @@ export default function ClientCheckin() {
       checkinId = data?.id
     }
 
+    // Early access is a one-shot jump-ahead — clear it once used so the next visit falls back to
+    // normal window-based behaviour (which will now correctly find this same submission).
+    if (earlyAccess) {
+      await supabase.from('clients').update({ checkin_early_access: false }).eq('id', clientData.id)
+      setEarlyAccess(false)
+    }
+
     // Start tracking any newly-flagged struggle so next week's check-in
     // knows it has history and should ask for a progress update.
     const openLabels = new Set(openStruggles.map(s => s.label))
@@ -788,6 +811,22 @@ export default function ClientCheckin() {
             </p>
             <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
               Monday and Tuesday check-ins count for the previous week.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {earlyAccess && !existing && (
+        <div className="rounded-xl border border-brand-300 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/10 px-4 py-3 flex items-start gap-3">
+          <svg className="w-5 h-5 text-brand-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+          </svg>
+          <div>
+            <p className="font-medium text-brand-800 dark:text-brand-300 text-sm">
+              Your coach has opened Week {weekNumber} early
+            </p>
+            <p className="text-sm text-brand-700 dark:text-brand-400 mt-0.5">
+              You can submit it now instead of waiting for your usual window.
             </p>
           </div>
         </div>

@@ -1339,6 +1339,23 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const [editingCalorie, setEditingCalorie] = useState(false)
   const [calorieDraft, setCalorieDraft] = useState('')
   const [savingCalorie, setSavingCalorie] = useState(false)
+  const [earlyAccess, setEarlyAccess] = useState(false)
+  const [togglingEarlyAccess, setTogglingEarlyAccess] = useState(false)
+
+  useEffect(() => {
+    if (!client?.id) return
+    supabase.from('clients').select('checkin_early_access').eq('id', client.id).maybeSingle()
+      .then(({ data }) => setEarlyAccess(!!data?.checkin_early_access))
+  }, [client?.id])
+
+  async function toggleEarlyAccess() {
+    if (!client?.id) return
+    setTogglingEarlyAccess(true)
+    const next = !earlyAccess
+    const { error } = await supabase.from('clients').update({ checkin_early_access: next }).eq('id', client.id)
+    if (!error) setEarlyAccess(next)
+    setTogglingEarlyAccess(false)
+  }
 
   const [weightEntries, setWeightEntries] = useState([])
   useEffect(() => {
@@ -1537,6 +1554,19 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             </div>
           )}
         </div>
+        <button
+          onClick={toggleEarlyAccess}
+          disabled={togglingEarlyAccess}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors flex-shrink-0 disabled:opacity-50 ${
+            earlyAccess
+              ? 'bg-brand-50 dark:bg-brand-900/20 border-brand-300 dark:border-brand-700 text-brand-700 dark:text-brand-400'
+              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+          }`}
+          title="Let this client submit next week's check-in early. If they haven't checked in for the current week yet, it's simply skipped — their plan's time remaining isn't affected."
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+          {earlyAccess ? 'Next week open early' : 'Open next week early'}
+        </button>
       </div>
 
       {unseenResolvedStruggles.length > 0 && (
