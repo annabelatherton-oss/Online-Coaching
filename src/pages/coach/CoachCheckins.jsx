@@ -803,9 +803,20 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     setSaving(true)
     const newCalTarget = calorieTarget ? parseInt(calorieTarget) : activeAssignment.calorie_target
 
-    await supabase.from('client_checkins')
+    // .update() alone reports no error even when a missing/mismatched RLS policy silently
+    // matches zero rows — chaining .select() and checking what actually came back is the only
+    // way to tell "saved" from "quietly did nothing" (bit us for real on this exact table once
+    // already — see coach-struggle-comments-migration.sql). Bail out before touching anything
+    // else if the response itself never actually saved, rather than reporting success anyway.
+    const { data: savedCheckin, error: checkinError } = await supabase.from('client_checkins')
       .update({ coach_response: coachNotes.trim() || null, coach_responded_at: new Date().toISOString(), coach_struggle_comments: struggleComments })
       .eq('id', current.id)
+      .select()
+    if (checkinError || !savedCheckin?.length) {
+      setSaving(false)
+      window.alert('Could not save your response. Please try again, or check with support if this keeps happening.')
+      return
+    }
 
     await supabase.from('client_week_meals').upsert({
       client_id: client.id,
@@ -1759,11 +1770,20 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   async function sendResponse(checkinId) {
     setSaving(true)
     const text = responseText.trim()
-    await supabase
+    // .update() alone reports no error even when a missing/mismatched RLS policy silently
+    // matches zero rows — chaining .select() and checking what actually came back is the only
+    // way to tell "saved" from "quietly did nothing" (bit us for real on this exact table once
+    // already — see coach-struggle-comments-migration.sql).
+    const { data, error } = await supabase
       .from('client_checkins')
       .update({ coach_response: text, coach_responded_at: new Date().toISOString() })
       .eq('id', checkinId)
+      .select()
     setSaving(false)
+    if (error || !data?.length) {
+      window.alert('Could not save your response. Please try again, or check with support if this keeps happening.')
+      return
+    }
     setResponding(null)
     const updated = checkins.map(c => c.id === checkinId ? { ...c, coach_response: text, coach_responded_at: new Date().toISOString() } : c)
     setCheckins(updated)
