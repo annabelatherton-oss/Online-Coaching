@@ -1245,12 +1245,16 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
               )}
             </div>
             {training ? (() => {
+              // Tracks the same personal-week count as the rest of the check-in (deliveryPersonalWeek —
+              // "Submit Week N Plan" above) rather than counting calendar weeks since the training
+              // block's own start_date. Those two used to drift apart whenever a client checked in
+              // early/late a few times, or the training block was assigned on a different date than
+              // the meal plan — "week 2 of the plan" showing as "week 1 of the block" for the exact
+              // same client, same week, right next to each other on this same screen.
               const blockTotal = training.training_programs?.weeks_total ?? 12
-              const blockStart = training.start_date || training.created_at
-              const weeksElapsed = Math.floor((Date.now() - new Date(blockStart).getTime()) / (7 * 24 * 60 * 60 * 1000))
-              const currentWeek = Math.min(weeksElapsed + 1, blockTotal)
-              const weeksLeft = Math.max(0, blockTotal - weeksElapsed)
-              const isComplete = weeksElapsed >= blockTotal
+              const currentWeek = Math.min(deliveryPersonalWeek, blockTotal)
+              const weeksLeft = Math.max(0, blockTotal - currentWeek + 1)
+              const isComplete = deliveryPersonalWeek > blockTotal
               return (
                 <div className="space-y-2">
                   <div className={`flex items-center gap-3 p-3 rounded-xl ${isComplete ? 'bg-amber-50 dark:bg-amber-900/10 border border-amber-300 dark:border-amber-700' : 'bg-blue-50 dark:bg-blue-900/10'}`}>
