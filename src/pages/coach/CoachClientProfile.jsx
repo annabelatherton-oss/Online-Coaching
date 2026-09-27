@@ -1162,7 +1162,7 @@ function WeightTab({ clientId, client }) {
   )
 }
 
-function MeasurementsTab({ clientId }) {
+function MeasurementsTab({ clientId, collectMeasurements }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -1172,13 +1172,31 @@ function MeasurementsTab({ clientId }) {
   async function load() {
     const [{ data }, { data: checkinData }] = await Promise.all([
       supabase.from('measurements').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false }),
-      supabase.from('client_checkins').select('submitted_at, updated_at').eq('client_id', clientId),
+      collectMeasurements
+        ? supabase.from('client_checkins').select('waist_cm, hips_cm, submitted_at, updated_at').eq('client_id', clientId)
+        : Promise.resolve({ data: [] }),
     ])
     const timeline = buildWeekTimeline(checkinData)
-    setEntries((data || []).map(e => ({ ...e, week: weekForDate(e.recorded_at, timeline) })))
+    const manual = data || []
+    // Same "manual entry, else the check-in's own logged measurement" merge as the Weight tab —
+    // a check-in only ever logs waist/hips (not chest/thighs/arms), so this only ever fills in
+    // those two, and only for clients who have measurement collection turned on at all.
+    const manualDates = new Set(manual.map(e => e.recorded_at))
+    const fromCheckins = (checkinData || [])
+      .filter(c => c.waist_cm != null || c.hips_cm != null)
+      .map(c => ({
+        id: null, source: 'checkin',
+        recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0],
+        waist_cm: c.waist_cm, hips_cm: c.hips_cm, chest_cm: null, thighs_cm: null, arms_cm: null,
+      }))
+      .filter(c => c.recorded_at && !manualDates.has(c.recorded_at))
+    const combined = [...manual, ...fromCheckins]
+      .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
+      .map(e => ({ ...e, week: weekForDate(e.recorded_at, timeline) }))
+    setEntries(combined)
     setLoading(false)
   }
-  useEffect(() => { load() }, [clientId])
+  useEffect(() => { load() }, [clientId, collectMeasurements])
 
   async function addEntry(e) {
     e.preventDefault(); setSaving(true)
@@ -1231,11 +1249,16 @@ function MeasurementsTab({ clientId }) {
           <table className="w-full text-sm whitespace-nowrap">
             <thead><tr className="border-b border-gray-200 dark:border-gray-800">{['Week','Chest','Waist','Hips','Thighs','Arms',''].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>)}</tr></thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {entries.map(e => (
-                <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+              {entries.map((e, i) => (
+                <tr key={e.id ?? `ci-${i}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{weekLabel(e)}</td>
                   {['chest_cm','waist_cm','hips_cm','thighs_cm','arms_cm'].map(k => <td key={k} className="px-4 py-3 text-gray-600 dark:text-gray-400">{fmtVal(e[k])}</td>)}
-                  <td className="px-4 py-3 text-right"><button onClick={() => deleteEntry(e.id)} className="text-xs text-red-500 hover:text-red-700">Delete</button></td>
+                  <td className="px-4 py-3 text-right">
+                    {e.source === 'checkin'
+                      ? <span className="text-xs text-gray-400 dark:text-gray-500">Check-in</span>
+                      : <button onClick={() => deleteEntry(e.id)} className="text-xs text-red-500 hover:text-red-700">Delete</button>
+                    }
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1368,7 +1391,7 @@ function ProgressTab({ clientId, client }) {
       </div>
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Measurements</h2>
-        <MeasurementsTab clientId={clientId} />
+        <MeasurementsTab clientId={clientId} collectMeasurements={client.collect_measurements} />
       </div>
     </div>
   )
