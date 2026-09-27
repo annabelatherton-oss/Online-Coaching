@@ -330,14 +330,18 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const skipTierReload = useRef(true)
   const skipWeekReload = useRef(true)
 
-  // A brand-new check-in should open on the week AFTER whatever was last delivered (moving the
-  // plan forward). Re-opening one that's already been responded to (Edit check-in) should instead
-  // reopen on the exact week that was actually delivered last time — otherwise every edit silently
-  // bumps the meal plan forward a week again, even when nothing about the week itself changed.
-  const [nextTemplateWeek, setNextTemplateWeek] = useState(() => {
-    if (activeAssignment?.week_override == null) return 1
-    return current?.coach_responded_at ? activeAssignment.week_override : activeAssignment.week_override + 1
-  })
+  // Every client without a deliberate override just follows the plan group's own current_week —
+  // the same "week_override ?? plan_group.current_week" rule the client's own meal plan/shopping
+  // list use — so moving the group on to week 4 moves every client not pinned elsewhere onto week
+  // 4 too, whether or not they checked in for week 3. week_override is only ever non-null here when
+  // the coach has deliberately put this one client on a different week than everyone else (see the
+  // "Put on a different week" control on the Meal Plan tab) — it's re-fetched below once the plan
+  // group's actual current_week loads, so this initial value is only a placeholder until then.
+  const [nextTemplateWeek, setNextTemplateWeek] = useState(activeAssignment?.week_override ?? 1)
+  // The plan group's own current_week — null until loaded, or if this assignment has no plan
+  // group at all. Submitting only writes week_override when the coach picked something other
+  // than this, so a client who's just naturally following along never gets silently pinned.
+  const [groupCurrentWeek, setGroupCurrentWeek] = useState(null)
   const tier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
 
   // Initial data load
@@ -346,12 +350,13 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     async function load() {
       const currentTier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
 
-      // If no prior delivery, look up the plan group's current rotation week so the panel
-      // opens on the right template week without requiring a manual dropdown selection.
+      // Look up the plan group's current rotation week — without a deliberate override, the panel
+      // opens on this week regardless of whatever week this client was last delivered.
       let weekNum = nextTemplateWeek
-      if (activeAssignment.week_override == null && activeAssignment.plan_group_id) {
+      if (activeAssignment.plan_group_id) {
         const { data: pg } = await supabase.from('plan_groups').select('current_week').eq('id', activeAssignment.plan_group_id).maybeSingle()
-        if (pg?.current_week) { weekNum = pg.current_week; setNextTemplateWeek(pg.current_week) }
+        setGroupCurrentWeek(pg?.current_week ?? null)
+        if (activeAssignment.week_override == null && pg?.current_week) { weekNum = pg.current_week; setNextTemplateWeek(pg.current_week) }
       }
 
       const [
@@ -787,8 +792,12 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       ingredient_overrides: ingredientOverrides,
     }, { onConflict: 'assignment_id,week_number' })
 
+    // Only actually pins week_override when the coach picked something other than the plan
+    // group's own current_week — delivering "whatever week the group is naturally on" should
+    // leave this client following it, not silently lock them onto today's week number forever
+    // (which is exactly what always writing this here used to do).
     await supabase.from('client_plan_assignments')
-      .update({ week_override: nextTemplateWeek, calorie_target: newCalTarget, removed_meal_slots: removedMealSlots })
+      .update({ week_override: nextTemplateWeek === groupCurrentWeek ? null : nextTemplateWeek, calorie_target: newCalTarget, removed_meal_slots: removedMealSlots })
       .eq('id', activeAssignment.id)
     // Mirrors onto clients.current_calories too, so the Overview tab's own copy of the target
     // (and the client's task checklist) reflect a calorie change made from a check-in response.
@@ -807,7 +816,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
 
     clearDraftSlots(nextTemplateWeek)
     setSaving(false)
-    onDelivered(coachNotes.trim(), newCalTarget, nextTemplateWeek)
+    onDelivered(coachNotes.trim(), newCalTarget, nextTemplateWeek === groupCurrentWeek ? null : nextTemplateWeek)
   }
 
   // Daily macro totals
@@ -940,17 +949,24 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                 </h2>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Client sees this after you submit</p>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <label className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Template week</label>
-                <select
-                  value={nextTemplateWeek}
-                  onChange={e => setNextTemplateWeek(parseInt(e.target.value))}
-                  className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  {Array.from({ length: 20 }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>Week {i + 1}</option>
-                  ))}
-                </select>
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Template week</label>
+                  <select
+                    value={nextTemplateWeek}
+                    onChange={e => setNextTemplateWeek(parseInt(e.target.value))}
+                    className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    {Array.from({ length: 20 }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>Week {i + 1}</option>
+                    ))}
+                  </select>
+                </div>
+                {groupCurrentWeek != null && (
+                  nextTemplateWeek === groupCurrentWeek
+                    ? <p className="text-[10px] text-gray-400 dark:text-gray-500">Following the plan (Week {groupCurrentWeek})</p>
+                    : <p className="text-[10px] text-orange-500">Individual override — plan is on Week {groupCurrentWeek}</p>
+                )}
               </div>
               {hasMealPlanChanges && (
                 <button
