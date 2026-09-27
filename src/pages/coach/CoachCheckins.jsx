@@ -1148,18 +1148,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                   <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{group.label}</h3>
                   {(abDiff || aTargetDiff) && (
                     <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-2.5 py-1.5 mb-2 space-y-1">
-                      {abDiff && (
-                        <p>
-                          {abDiff.cal === 0 && abDiff.carb === 0 && abDiff.prot === 0 && abDiff.fat === 0 ? (
-                            <span className="text-green-600 dark:text-green-400 font-medium">B matches A</span>
-                          ) : (
-                            <>
-                              <span className="font-medium text-gray-600 dark:text-gray-300">B → A:</span>{' '}
-                              {formatSigned(abDiff.cal)} kcal · {formatSigned(abDiff.carb)}g C · {formatSigned(abDiff.prot)}g P · {formatSigned(abDiff.fat)}g F
-                            </>
-                          )}
-                        </p>
-                      )}
                       {aTargetDiff && (
                         <p>
                           {aTargetDiff.cal === 0 && aTargetDiff.carb === 0 && aTargetDiff.prot === 0 && aTargetDiff.fat === 0 ? (
@@ -1168,6 +1156,18 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                             <>
                               <span className="font-medium text-gray-600 dark:text-gray-300">{slotA.optionLabel ? 'A' : slotA.label} → Target:</span>{' '}
                               {formatSigned(aTargetDiff.cal)} kcal · {formatSigned(aTargetDiff.carb)}g C · {formatSigned(aTargetDiff.prot)}g P · {formatSigned(aTargetDiff.fat)}g F
+                            </>
+                          )}
+                        </p>
+                      )}
+                      {abDiff && (
+                        <p>
+                          {abDiff.cal === 0 && abDiff.carb === 0 && abDiff.prot === 0 && abDiff.fat === 0 ? (
+                            <span className="text-green-600 dark:text-green-400 font-medium">B matches A</span>
+                          ) : (
+                            <>
+                              <span className="font-medium text-gray-600 dark:text-gray-300">B → A:</span>{' '}
+                              {formatSigned(abDiff.cal)} kcal · {formatSigned(abDiff.carb)}g C · {formatSigned(abDiff.prot)}g P · {formatSigned(abDiff.fat)}g F
                             </>
                           )}
                         </p>
