@@ -9,7 +9,7 @@ import {
   normalizeOverrides, hasAnyOverride,
   mealMacros, mealMacrosLayered, addMacros, getIngredients, getIngredientsLayered,
   MealCard, RecipeModal, SwapModal,
-  MacroBadge, MACRO_META,
+  MacroBadge, MACRO_META, formatSigned,
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
@@ -142,6 +142,78 @@ function DeltaTag({ delta, invertColors = false, suffix = ' kg' }) {
   const cls = green ? 'text-green-600 dark:text-green-400' : red ? 'text-red-500 dark:text-red-400' : 'text-gray-400'
   const arrow = up ? '↑ ' : down ? '↓ ' : ''
   return <span className={`text-xs font-semibold ${cls}`}>{arrow}{up ? '+' : ''}{delta}{suffix}</span>
+}
+
+// One angle at a time, swiped through instead of a cramped 4-up grid — much more usable on the
+// phone-width panel this mostly gets viewed in. `photos` is this week's { front, back, ... } url
+// map; missing angles still get a slot in the dots/swipe order, just showing the empty-state.
+function PhotoSwiper({ photos, label, onOpenLightbox }) {
+  const [index, setIndex] = useState(0)
+  const touchX = useRef(null)
+
+  function go(delta) {
+    setIndex(i => (i + delta + PHOTO_ANGLES.length) % PHOTO_ANGLES.length)
+  }
+
+  function handleTouchStart(e) { touchX.current = e.touches[0].clientX }
+  function handleTouchEnd(e) {
+    if (touchX.current == null) return
+    const delta = e.changedTouches[0].clientX - touchX.current
+    touchX.current = null
+    if (Math.abs(delta) > 40) go(delta < 0 ? 1 : -1)
+  }
+
+  const angle = PHOTO_ANGLES[index]
+  const url = photos?.[angle]
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">{label}</p>
+      <div
+        className="relative w-full max-w-xs mx-auto aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 select-none"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        {url ? (
+          <button onClick={() => onOpenLightbox(url)} className="w-full h-full block">
+            <img src={url} alt={angle} className="w-full h-full object-cover" />
+          </button>
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+            <svg className="w-6 h-6 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-xs text-gray-300 dark:text-gray-600">No photo</span>
+          </div>
+        )}
+        <button
+          onClick={() => go(-1)}
+          className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        </button>
+        <button
+          onClick={() => go(1)}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+        </button>
+      </div>
+      <div className="flex items-center justify-center gap-3">
+        {PHOTO_ANGLES.map((a, i) => (
+          <button
+            key={a}
+            onClick={() => setIndex(i)}
+            className={`text-xs px-1.5 pb-1 border-b-2 transition-colors capitalize ${
+              i === index ? 'border-brand-500 text-brand-600 dark:text-brand-400 font-medium' : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+            }`}
+          >
+            {a}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // ── Plan delivery panel ───────────────────────────────────────────────────────
@@ -1053,9 +1125,39 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
               // there's still a card to restore it from).
               const relevantSlots = group.slots.filter(s => editedSlots[s.key] || templateSlots[s.key])
               if (relevantSlots.length === 0) return null
+
+              // A vs B banner — only meaningful when this group actually has both options in
+              // play. Framed as what B needs to change by to match A (not just the raw
+              // difference), same +/- convention as every other "hit target" number in the app.
+              const [slotA, slotB] = group.slots
+              const hasBothOptions = slotA && slotB && editedSlots[slotA.key] && editedSlots[slotB.key]
+              const abDiff = hasBothOptions ? (() => {
+                const macrosA = mealMacrosLayered(editedSlots[slotA.key], mealMap, tier, templateOverrides[slotA.key], ingredientOverrides[slotA.key])
+                const macrosB = mealMacrosLayered(editedSlots[slotB.key], mealMap, tier, templateOverrides[slotB.key], ingredientOverrides[slotB.key])
+                if (!macrosA || !macrosB) return null
+                return {
+                  cal:  Math.round(macrosA.cal  - macrosB.cal),
+                  carb: Math.round(macrosA.carb - macrosB.carb),
+                  prot: Math.round(macrosA.prot - macrosB.prot),
+                  fat:  Math.round(macrosA.fat  - macrosB.fat),
+                }
+              })() : null
+
               return (
                 <section key={group.label}>
                   <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{group.label}</h3>
+                  {abDiff && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-2.5 py-1.5 mb-2">
+                      {abDiff.cal === 0 && abDiff.carb === 0 && abDiff.prot === 0 && abDiff.fat === 0 ? (
+                        <span className="text-green-600 dark:text-green-400 font-medium">B matches A</span>
+                      ) : (
+                        <>
+                          <span className="font-medium text-gray-600 dark:text-gray-300">B → A:</span>{' '}
+                          {formatSigned(abDiff.cal)} kcal · {formatSigned(abDiff.carb)}g C · {formatSigned(abDiff.prot)}g P · {formatSigned(abDiff.fat)}g F
+                        </>
+                      )}
+                    </p>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     {relevantSlots.map(slot => (
                       editedSlots[slot.key] ? (
@@ -1497,6 +1599,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   // has submitted since then, it's missing here entirely. Refetched fresh below.
   const [checkins, setCheckins] = useState(rawCheckins)
   const [lightbox, setLightbox] = useState(null)
+  const [showPhotoComparison, setShowPhotoComparison] = useState(false)
   const [responding, setResponding] = useState(null) // checkin id (past check-ins only)
   const [responseText, setResponseText] = useState('')
   const [saving, setSaving] = useState(false)
@@ -1849,39 +1952,27 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             </div>
           )}
 
-          {/* Photos — current week + first week below for comparison */}
-          <div className="space-y-3">
-            {[
-              { label: `Now — Week ${personalWeekMap[current.id]}`, photos: photoUrlsByCheckin[current.id] },
-              first && first.id !== current.id ? { label: `Start — Week ${personalWeekMap[first.id]}`, photos: photoUrlsByCheckin[first.id] } : null,
-            ].filter(Boolean).map(row => (
-              <div key={row.label}>
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{row.label}</p>
-                <div className="grid grid-cols-4 gap-2">
-                  {PHOTO_ANGLES.map(angle => {
-                    const url = row.photos?.[angle]
-                    return (
-                      <div key={angle} className="space-y-1">
-                        {url ? (
-                          <button onClick={() => setLightbox(url)} className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity block">
-                            <img src={url} alt={angle} className="w-full h-full object-cover" />
-                          </button>
-                        ) : (
-                          <div className="w-full aspect-[3/4] rounded-xl bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center gap-1">
-                            <svg className="w-5 h-5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <span className="text-xs text-gray-300 dark:text-gray-600">No photo</span>
-                          </div>
-                        )}
-                        <p className="text-xs text-center text-gray-400 capitalize">{angle}</p>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* This week's photos — swipe through angles instead of a cramped 4-up grid. "See
+              comparison" reveals the start-vs-now card further down rather than always taking up
+              space when the coach just wants a quick look at this week's pics. */}
+          <PhotoSwiper
+            photos={photoUrlsByCheckin[current.id]}
+            label={`Now — Week ${personalWeekMap[current.id]}`}
+            onOpenLightbox={setLightbox}
+          />
+          {showComparison && (
+            <div className="flex justify-center">
+              <button
+                onClick={() => setShowPhotoComparison(v => !v)}
+                className="text-xs font-medium text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 flex items-center gap-1"
+              >
+                {showPhotoComparison ? 'Hide comparison' : 'See comparison'}
+                <svg className={`w-3.5 h-3.5 transition-transform ${showPhotoComparison ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+          )}
 
           {openStruggleRows.filter(row => row.first_checkin_id !== current.id).length > 0 && (
             <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-3 space-y-3">
@@ -1988,8 +2079,8 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         </div>
       )}
 
-      {/* Photo comparison: start / last week / now */}
-      {showComparison && (
+      {/* Photo comparison: start / last week / now — behind the "See comparison" toggle above */}
+      {showComparison && showPhotoComparison && (
         <div className="card space-y-5">
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Photo Comparison</h3>
