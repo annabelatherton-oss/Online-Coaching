@@ -143,11 +143,11 @@ function DeltaTag({ delta, invertColors = false, suffix = ' kg' }) {
   return <span className={`text-xs font-semibold ${cls}`}>{arrow}{up ? '+' : ''}{delta}{suffix}</span>
 }
 
-// One angle at a time, swiped through instead of a cramped 4-up grid — much more usable on the
-// phone-width panel this mostly gets viewed in. `photos` is this week's { front, back, ... } url
-// map; missing angles still get a slot in the dots/swipe order, just showing the empty-state.
-function PhotoSwiper({ photos, label, onOpenLightbox }) {
-  const [index, setIndex] = useState(0)
+// Full-screen photo viewer, swiped (touch) or arrow-button-clicked through all 4 angles of
+// whichever check-in's photo grid it was opened from — `photos` is that week's own
+// { front, back, ... } url map, `initialAngle` is whichever thumbnail was actually clicked.
+function PhotoLightbox({ photos, initialAngle, onClose }) {
+  const [index, setIndex] = useState(() => Math.max(0, PHOTO_ANGLES.indexOf(initialAngle)))
   const touchX = useRef(null)
 
   function go(delta) {
@@ -166,50 +166,51 @@ function PhotoSwiper({ photos, label, onOpenLightbox }) {
   const url = photos?.[angle]
 
   return (
-    <div className="space-y-2">
-      <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">{label}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
       <div
-        className="relative w-full max-w-xs mx-auto aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 select-none"
+        className="relative max-w-lg w-full select-none"
+        onClick={e => e.stopPropagation()}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
         {url ? (
-          <button onClick={() => onOpenLightbox(url)} className="w-full h-full block">
-            <img src={url} alt={angle} className="w-full h-full object-cover" />
-          </button>
+          <img src={url} alt={angle} className="w-full max-h-[70vh] object-contain rounded-xl" />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-1">
-            <svg className="w-6 h-6 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-full aspect-[3/4] max-h-[70vh] rounded-xl bg-gray-900 flex flex-col items-center justify-center gap-1">
+            <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            <span className="text-xs text-gray-300 dark:text-gray-600">No photo</span>
+            <span className="text-xs text-gray-500">No photo for this angle</span>
           </div>
         )}
+        <button onClick={onClose} className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
         <button
           onClick={() => go(-1)}
-          className="absolute left-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60"
+          className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
         </button>
         <button
           onClick={() => go(1)}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60"
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 text-white flex items-center justify-center hover:bg-black/60"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
         </button>
-      </div>
-      <div className="flex items-center justify-center gap-3">
-        {PHOTO_ANGLES.map((a, i) => (
-          <button
-            key={a}
-            onClick={() => setIndex(i)}
-            className={`text-xs px-1.5 pb-1 border-b-2 transition-colors capitalize ${
-              i === index ? 'border-brand-500 text-brand-600 dark:text-brand-400 font-medium' : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
-            }`}
-          >
-            {a}
-          </button>
-        ))}
+        <div className="flex items-center justify-center gap-3 mt-3">
+          {PHOTO_ANGLES.map((a, i) => (
+            <button
+              key={a}
+              onClick={() => setIndex(i)}
+              className={`text-xs px-1.5 pb-1 border-b-2 transition-colors capitalize ${
+                i === index ? 'border-white text-white font-medium' : 'border-transparent text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {a}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -1771,14 +1772,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   return (
     <div className="space-y-6 max-w-3xl">
       {lightbox && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightbox(null)}>
-          <div className="relative max-w-lg w-full" onClick={e => e.stopPropagation()}>
-            <img src={lightbox} alt="" className="w-full max-h-[85vh] object-contain rounded-xl" />
-            <button onClick={() => setLightbox(null)} className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
-        </div>
+        <PhotoLightbox photos={lightbox.photos} initialAngle={lightbox.angle} onClose={() => setLightbox(null)} />
       )}
 
       {/* Header */}
@@ -1941,15 +1935,41 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             </div>
           )}
 
-          {/* This week's photos — swipe through angles instead of a cramped 4-up grid. "See
-              comparison" reveals the start-vs-now card further down rather than always taking up
-              space when the coach just wants a quick look at this week's pics. */}
-          <PhotoSwiper
-            photos={photoUrlsByCheckin[current.id]}
-            label={`Now — Week ${personalWeekMap[current.id]}`}
-            onOpenLightbox={setLightbox}
-          />
-          {showComparison && (
+          {/* Photos — current week + first week below for comparison. Click any thumbnail to
+              swipe through all 4 angles of that same week full-screen. */}
+          <div className="space-y-3">
+            {[
+              { label: `Now — Week ${personalWeekMap[current.id]}`, photos: photoUrlsByCheckin[current.id] },
+              first && first.id !== current.id ? { label: `Start — Week ${personalWeekMap[first.id]}`, photos: photoUrlsByCheckin[first.id] } : null,
+            ].filter(Boolean).map(row => (
+              <div key={row.label}>
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{row.label}</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {PHOTO_ANGLES.map(angle => {
+                    const url = row.photos?.[angle]
+                    return (
+                      <div key={angle} className="space-y-1">
+                        {url ? (
+                          <button onClick={() => setLightbox({ photos: row.photos, angle })} className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity block">
+                            <img src={url} alt={angle} className="w-full h-full object-cover" />
+                          </button>
+                        ) : (
+                          <div className="w-full aspect-[3/4] rounded-xl bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center gap-1">
+                            <svg className="w-5 h-5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span className="text-xs text-gray-300 dark:text-gray-600">No photo</span>
+                          </div>
+                        )}
+                        <p className="text-xs text-center text-gray-400 capitalize">{angle}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+          {first && first.id !== current.id && (
             <div className="flex justify-center">
               <button
                 onClick={() => setShowPhotoComparison(v => !v)}
@@ -2068,41 +2088,50 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         </div>
       )}
 
-      {/* Photo comparison: start / last week / now — behind the "See comparison" toggle above */}
-      {showComparison && showPhotoComparison && (
+      {/* Photo comparison: start / last week / now — behind the "See comparison" toggle above.
+          Always opens once there's more than one check-in; if neither has photos yet it just
+          says so, rather than the toggle button itself disappearing with no explanation. */}
+      {showPhotoComparison && (
         <div className="card space-y-5">
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Photo Comparison</h3>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Start (Wk {personalWeekMap[firstP.id]})
-              {prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && ` · Last week (Wk ${personalWeekMap[prevP.id]})`}
-              {` · Now (Wk ${personalWeekMap[newestP.id]})`}
-            </p>
+            {showComparison && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                Start (Wk {personalWeekMap[firstP.id]})
+                {prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && ` · Last week (Wk ${personalWeekMap[prevP.id]})`}
+                {` · Now (Wk ${personalWeekMap[newestP.id]})`}
+              </p>
+            )}
           </div>
-          {compAngles.map(angle => {
+          {showComparison ? compAngles.map(angle => {
             const cols = [
-              { label: `Start · Wk ${personalWeekMap[firstP.id]}`, url: photoUrlsByCheckin[firstP.id]?.[angle] },
+              { label: `Start · Wk ${personalWeekMap[firstP.id]}`, photos: photoUrlsByCheckin[firstP.id] },
               prevP && prevP.id !== firstP.id && prevP.id !== newestP.id && prevP.progress_photos?.[angle]
-                ? { label: `Last week · Wk ${personalWeekMap[prevP.id]}`, url: photoUrlsByCheckin[prevP.id]?.[angle] }
+                ? { label: `Last week · Wk ${personalWeekMap[prevP.id]}`, photos: photoUrlsByCheckin[prevP.id] }
                 : null,
-              { label: `Now · Wk ${personalWeekMap[newestP.id]}`, url: photoUrlsByCheckin[newestP.id]?.[angle] },
+              { label: `Now · Wk ${personalWeekMap[newestP.id]}`, photos: photoUrlsByCheckin[newestP.id] },
             ].filter(Boolean)
             return (
               <div key={angle}>
                 <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2 capitalize">{angle}</p>
                 <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols.length}, 1fr)` }}>
-                  {cols.map(col => (
-                    <div key={col.label} className="space-y-1">
-                      <button onClick={() => setLightbox(col.url)} className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity block">
-                        <img src={col.url} alt={col.label} className="w-full h-full object-cover" />
-                      </button>
-                      <p className="text-xs text-center text-gray-400">{col.label}</p>
-                    </div>
-                  ))}
+                  {cols.map(col => {
+                    const url = col.photos?.[angle]
+                    return (
+                      <div key={col.label} className="space-y-1">
+                        <button onClick={() => url && setLightbox({ photos: col.photos, angle })} disabled={!url} className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 hover:opacity-90 transition-opacity block disabled:hover:opacity-100">
+                          {url ? <img src={url} alt={col.label} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xs text-gray-300 dark:text-gray-600">No photo</div>}
+                        </button>
+                        <p className="text-xs text-center text-gray-400">{col.label}</p>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )
-          })}
+          }) : (
+            <p className="text-sm text-gray-400">No photos yet to compare — this client hasn't submitted progress photos on more than one check-in.</p>
+          )}
         </div>
       )}
 
@@ -2234,7 +2263,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                 {PHOTO_ANGLES.filter(a => c.progress_photos[a]).map(angle => {
                   const url = photoUrlsByCheckin[c.id]?.[angle]
                   return (
-                    <button key={angle} onClick={() => url && setLightbox(url)} className="w-14 h-14 rounded-xl overflow-hidden bg-gray-100 hover:opacity-90">
+                    <button key={angle} onClick={() => url && setLightbox({ photos: photoUrlsByCheckin[c.id], angle })} className="w-14 h-14 rounded-xl overflow-hidden bg-gray-100 hover:opacity-90">
                       {url && <img src={url} alt={angle} className="w-full h-full object-cover" />}
                     </button>
                   )
