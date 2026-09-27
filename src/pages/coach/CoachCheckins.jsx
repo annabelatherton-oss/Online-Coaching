@@ -302,8 +302,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         })).sort((a, b) => dayRank(a.name) - dayRank(b.name))
         setSessions(sortedSessions)
         setOriginalSessions(JSON.parse(JSON.stringify(sortedSessions)))
-        const firstDay = WEEK_DAYS.find(d => sortedSessions.some(s => s.name === d || s.name.startsWith(d + ' ') || s.name.startsWith(d + '—') || s.name.startsWith(d + ' —')))
-        if (firstDay) setExpandedDays(new Set([firstDay]))
       }
 
       setLoading(false)
