@@ -2031,29 +2031,31 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           {current.lift_results?.filter(l => l?.name).length > 0 && (
             <div>
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Lifts</p>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {current.lift_results.filter(l => l?.name).map((lift, i) => {
                   const dPrev = liftDelta(lift, prev)
                   const dStart = first && first.id !== current.id ? liftDelta(lift, first) : null
                   return (
-                    <div key={i} className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 truncate">{lift.name}</p>
-                      <p className="text-sm font-bold text-gray-900 dark:text-white">
-                        {lift.weight_kg} kg <span className="text-xs font-normal text-gray-400">× {lift.reps}</span>
-                      </p>
-                      <div className="mt-1.5 space-y-0.5">
+                    <div key={i} className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{lift.name}</p>
+                        <p className="text-sm font-bold text-gray-900 dark:text-white whitespace-nowrap">
+                          {lift.weight_kg} kg <span className="text-xs font-normal text-gray-400">× {lift.reps}</span>
+                        </p>
+                      </div>
+                      <div className="flex-shrink-0 text-right space-y-0.5">
                         {dPrev !== null && (dPrev.kg !== 0 || dPrev.reps !== 0) && (
-                          <div className="flex gap-1.5">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className="text-xs text-gray-400 whitespace-nowrap">vs last wk</span>
                             {dPrev.kg !== 0 && <DeltaTag delta={dPrev.kg} />}
                             {dPrev.reps !== 0 && <DeltaTag delta={dPrev.reps} suffix=" reps" />}
-                            <span className="text-xs text-gray-400">vs last wk</span>
                           </div>
                         )}
                         {dStart !== null && (dStart.kg !== 0 || dStart.reps !== 0) && (
-                          <div className="flex gap-1.5">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className="text-xs text-gray-400 whitespace-nowrap">vs start</span>
                             {dStart.kg !== 0 && <DeltaTag delta={dStart.kg} />}
                             {dStart.reps !== 0 && <DeltaTag delta={dStart.reps} suffix=" reps" />}
-                            <span className="text-xs text-gray-400">vs start</span>
                           </div>
                         )}
                       </div>
@@ -2348,15 +2350,17 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             </div>
 
             {c.lift_results?.filter(l => l?.name).length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {c.lift_results.filter(l => l?.name).map((lift, li) => {
                   const d = liftDelta(lift, p)
                   return (
-                    <div key={li} className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
-                      <p className="text-xs text-gray-400 mb-0.5 truncate">{lift.name}</p>
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{lift.weight_kg} kg <span className="text-xs font-normal text-gray-400">× {lift.reps}</span></p>
+                    <div key={li} className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-400 truncate">{lift.name}</p>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap">{lift.weight_kg} kg <span className="text-xs font-normal text-gray-400">× {lift.reps}</span></p>
+                      </div>
                       {d !== null && (d.kg !== 0 || d.reps !== 0) && (
-                        <div className="flex gap-1 mt-1 flex-wrap">
+                        <div className="flex gap-1 flex-wrap justify-end flex-shrink-0">
                           {d.kg !== 0 && <DeltaTag delta={d.kg} />}
                           {d.reps !== 0 && <DeltaTag delta={d.reps} suffix=" reps" />}
                         </div>
