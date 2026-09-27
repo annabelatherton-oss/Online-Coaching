@@ -1064,109 +1064,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         <LoadingSpinner size="lg" className="py-16" />
       ) : (
         <div className="space-y-8 pt-6">
-          {/* Coach notes */}
-          <div className="card space-y-3">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Message to client</h2>
-            <QuickReplies onPick={text => setCoachNotes(v => appendQuickReply(v, text))} />
-            <textarea
-              autoFocus
-              className="input w-full text-sm resize-none min-h-[120px]"
-              rows={5}
-              placeholder="Weekly feedback, notes and encouragement…"
-              value={coachNotes}
-              onChange={e => setCoachNotes(e.target.value)}
-            />
-          </div>
-
-          {/* Per-struggle advice — one comment against each specific issue the client listed this
-              week (e.g. "Struggling to find time for the gym" -> "let's try a new split"), separate
-              from the general message above. */}
-          {(current.struggles || []).length > 0 && (
-            <div className="card space-y-3">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Struggling with (this week)</h2>
-              <div className="space-y-2.5">
-                {current.struggles.map(s => (
-                  <div key={s}>
-                    <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 mb-1.5">{s}</span>
-                    <textarea
-                      rows={1}
-                      value={struggleComments[s] || ''}
-                      onChange={e => setStruggleComments(prev => ({ ...prev, [s]: e.target.value }))}
-                      placeholder={`Your advice for "${s}"…`}
-                      className="input w-full text-sm py-1.5 resize-none min-h-[56px]"
-                    />
-                  </div>
-                ))}
-              </div>
-              {current.struggles_other && (
-                <p className="text-sm text-gray-600 dark:text-gray-400 italic">"{current.struggles_other}"</p>
-              )}
-            </div>
-          )}
-
-          {/* Calorie target */}
-          <div className="card space-y-3">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Calorie target</h2>
-            <div className="flex items-center gap-4">
-              <div>
-                <label className="label text-xs">kcal/day</label>
-                <input
-                  className="input w-32 text-sm"
-                  type="number" onFocus={e => e.target.select()}
-                  min="0"
-                  step="100"
-                  value={calorieTarget}
-                  onChange={e => setCalorieTarget(e.target.value)}
-                  placeholder="e.g. 1800"
-                />
-              </div>
-              {calDiff !== null && calDiff !== 0 && (
-                <div className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${calDiff > 0 ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'}`}>
-                  {calDiff > 0 ? `↑ +${calDiff}` : `↓ ${calDiff}`} kcal vs last week
-                </div>
-              )}
-            </div>
-            <CalorieSuggestionPanel
-              client={client}
-              currentTarget={prevCalTarget}
-              onApply={v => setCalorieTarget(String(v))}
-            />
-            {/* Daily macro totals, with how far each option lands from the
-                calorie target and the coach's standard macro split for it */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {[{ label: 'Option A', macros: opt1Total }, { label: 'Option B', macros: opt2Total }].map(({ label, macros }) => (
-                <div key={label} className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{label} daily total{targetMacros ? ' vs target' : ''}</p>
-                  <div className="grid grid-cols-4 gap-1 text-center">
-                    {[
-                      { val: Math.round(macros.cal), lbl: 'kcal', target: targetMacros ? targetCal : null, unit: '', type: null },
-                      { val: Math.round(macros.carb), lbl: 'carbs', target: targetMacros?.carbs_g ?? null, unit: 'g', type: 'carb' },
-                      { val: Math.round(macros.prot), lbl: 'prot', target: targetMacros?.protein_g ?? null, unit: 'g', type: 'prot' },
-                      { val: Math.round(macros.fat), lbl: 'fat', target: targetMacros?.fat_g ?? null, unit: 'g', type: 'fat' },
-                    ].map(({ val, lbl, target, unit, type }) => {
-                      const diff = target != null ? val - target : null
-                      const onTarget = diff !== null && Math.abs(diff) <= (lbl === 'kcal' ? 30 : 5)
-                      return (
-                        <div key={lbl}>
-                          <p className={`text-xs font-bold tabular-nums ${type ? MACRO_META[type].text : 'text-gray-900 dark:text-white'}`}>{val}{unit}</p>
-                          <p className="text-[10px] text-gray-400 flex items-center justify-center gap-0.5">
-                            {type && <MacroBadge type={type} />}{lbl}
-                          </p>
-                          {diff !== null && (
-                            <p className={`text-[10px] font-semibold tabular-nums ${onTarget ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                              {diff > 0 ? `+${diff}` : diff === 0 ? '±0' : diff}{unit}
-                            </p>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Meal plan for next week */}
+          {/* Meal plan for next week — shown first, right under the header, so the coach lands
+              straight on the meals (and the A/B-vs-target banners) without scrolling past
+              everything else first. */}
           <div className="space-y-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
@@ -1306,6 +1206,108 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                 <p className="text-xs text-gray-400 mt-1">Set up weekly templates in the plan editor first.</p>
               </div>
             )}
+          </div>
+
+          {/* Coach notes */}
+          <div className="card space-y-3">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Message to client</h2>
+            <QuickReplies onPick={text => setCoachNotes(v => appendQuickReply(v, text))} />
+            <textarea
+              autoFocus
+              className="input w-full text-sm resize-none min-h-[120px]"
+              rows={5}
+              placeholder="Weekly feedback, notes and encouragement…"
+              value={coachNotes}
+              onChange={e => setCoachNotes(e.target.value)}
+            />
+          </div>
+
+          {/* Per-struggle advice — one comment against each specific issue the client listed this
+              week (e.g. "Struggling to find time for the gym" -> "let's try a new split"), separate
+              from the general message above. */}
+          {(current.struggles || []).length > 0 && (
+            <div className="card space-y-3">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Struggling with (this week)</h2>
+              <div className="space-y-2.5">
+                {current.struggles.map(s => (
+                  <div key={s}>
+                    <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 mb-1.5">{s}</span>
+                    <textarea
+                      rows={1}
+                      value={struggleComments[s] || ''}
+                      onChange={e => setStruggleComments(prev => ({ ...prev, [s]: e.target.value }))}
+                      placeholder={`Your advice for "${s}"…`}
+                      className="input w-full text-sm py-1.5 resize-none min-h-[56px]"
+                    />
+                  </div>
+                ))}
+              </div>
+              {current.struggles_other && (
+                <p className="text-sm text-gray-600 dark:text-gray-400 italic">"{current.struggles_other}"</p>
+              )}
+            </div>
+          )}
+
+          {/* Calorie target */}
+          <div className="card space-y-3">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Calorie target</h2>
+            <div className="flex items-center gap-4">
+              <div>
+                <label className="label text-xs">kcal/day</label>
+                <input
+                  className="input w-32 text-sm"
+                  type="number" onFocus={e => e.target.select()}
+                  min="0"
+                  step="100"
+                  value={calorieTarget}
+                  onChange={e => setCalorieTarget(e.target.value)}
+                  placeholder="e.g. 1800"
+                />
+              </div>
+              {calDiff !== null && calDiff !== 0 && (
+                <div className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${calDiff > 0 ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'}`}>
+                  {calDiff > 0 ? `↑ +${calDiff}` : `↓ ${calDiff}`} kcal vs last week
+                </div>
+              )}
+            </div>
+            <CalorieSuggestionPanel
+              client={client}
+              currentTarget={prevCalTarget}
+              onApply={v => setCalorieTarget(String(v))}
+            />
+            {/* Daily macro totals, with how far each option lands from the
+                calorie target and the coach's standard macro split for it */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[{ label: 'Option A', macros: opt1Total }, { label: 'Option B', macros: opt2Total }].map(({ label, macros }) => (
+                <div key={label} className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{label} daily total{targetMacros ? ' vs target' : ''}</p>
+                  <div className="grid grid-cols-4 gap-1 text-center">
+                    {[
+                      { val: Math.round(macros.cal), lbl: 'kcal', target: targetMacros ? targetCal : null, unit: '', type: null },
+                      { val: Math.round(macros.carb), lbl: 'carbs', target: targetMacros?.carbs_g ?? null, unit: 'g', type: 'carb' },
+                      { val: Math.round(macros.prot), lbl: 'prot', target: targetMacros?.protein_g ?? null, unit: 'g', type: 'prot' },
+                      { val: Math.round(macros.fat), lbl: 'fat', target: targetMacros?.fat_g ?? null, unit: 'g', type: 'fat' },
+                    ].map(({ val, lbl, target, unit, type }) => {
+                      const diff = target != null ? val - target : null
+                      const onTarget = diff !== null && Math.abs(diff) <= (lbl === 'kcal' ? 30 : 5)
+                      return (
+                        <div key={lbl}>
+                          <p className={`text-xs font-bold tabular-nums ${type ? MACRO_META[type].text : 'text-gray-900 dark:text-white'}`}>{val}{unit}</p>
+                          <p className="text-[10px] text-gray-400 flex items-center justify-center gap-0.5">
+                            {type && <MacroBadge type={type} />}{lbl}
+                          </p>
+                          {diff !== null && (
+                            <p className={`text-[10px] font-semibold tabular-nums ${onTarget ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                              {diff > 0 ? `+${diff}` : diff === 0 ? '±0' : diff}{unit}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Training — header */}
