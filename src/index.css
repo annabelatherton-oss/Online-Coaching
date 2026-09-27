@@ -10,6 +10,12 @@
        or side-scrolling on a phone. */
     overflow-x: hidden;
     width: 100%;
+    /* overflow-x: hidden stops the DOM itself from scrolling sideways, but on iOS (especially as
+       an installed home-screen app, which is how most clients use this) the native webview can
+       still rubber-band/bounce the whole page left and right on any touch drag, even though
+       there's nothing to actually scroll to — this is what stops that elastic bounce on the X
+       axis specifically, without touching normal vertical scroll/bounce anywhere else. */
+    overscroll-behavior-x: none;
   }
 
   body {
@@ -17,6 +23,7 @@
     overflow-x: hidden;
     width: 100%;
     overflow-wrap: break-word;
+    overscroll-behavior-x: none;
   }
 
   * {
