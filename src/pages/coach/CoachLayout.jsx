@@ -358,7 +358,7 @@ export default function CoachLayout() {
         </header>
 
         {/* Page content — only this area scrolls */}
-        <main ref={mainRef} className="flex-1 overflow-y-auto overscroll-x-none p-4 lg:p-6">
+        <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-x-none p-4 lg:p-6">
           <Outlet />
         </main>
       </div>

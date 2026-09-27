@@ -1064,9 +1064,49 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         <LoadingSpinner size="lg" className="py-16" />
       ) : (
         <div className="space-y-8 pt-6">
-          {/* Meal plan for next week — shown first, right under the header, so the coach lands
-              straight on the meals (and the A/B-vs-target banners) without scrolling past
-              everything else first. */}
+          {/* Coach notes */}
+          <div className="card space-y-3">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Message to client</h2>
+            <QuickReplies onPick={text => setCoachNotes(v => appendQuickReply(v, text))} />
+            <textarea
+              autoFocus
+              className="input w-full text-sm resize-none min-h-[120px]"
+              rows={5}
+              placeholder="Weekly feedback, notes and encouragement…"
+              value={coachNotes}
+              onChange={e => setCoachNotes(e.target.value)}
+            />
+          </div>
+
+          {/* Per-struggle advice — one comment against each specific issue the client listed this
+              week (e.g. "Struggling to find time for the gym" -> "let's try a new split"), separate
+              from the general message above. */}
+          {(current.struggles || []).length > 0 && (
+            <div className="card space-y-3">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Struggling with (this week)</h2>
+              <div className="space-y-2.5">
+                {current.struggles.map(s => (
+                  <div key={s}>
+                    <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 mb-1.5">{s}</span>
+                    <textarea
+                      rows={1}
+                      value={struggleComments[s] || ''}
+                      onChange={e => setStruggleComments(prev => ({ ...prev, [s]: e.target.value }))}
+                      placeholder={`Your advice for "${s}"…`}
+                      className="input w-full text-sm py-1.5 resize-none min-h-[56px]"
+                    />
+                  </div>
+                ))}
+              </div>
+              {current.struggles_other && (
+                <p className="text-sm text-gray-600 dark:text-gray-400 italic">"{current.struggles_other}"</p>
+              )}
+            </div>
+          )}
+
+          {/* Meal plan for next week — shown right after the notes/struggles above, so the coach
+              lands on the meals (and the A/B-vs-target banners) without scrolling past the
+              calorie target and training sections first. */}
           <div className="space-y-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
@@ -1207,46 +1247,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
               </div>
             )}
           </div>
-
-          {/* Coach notes */}
-          <div className="card space-y-3">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Message to client</h2>
-            <QuickReplies onPick={text => setCoachNotes(v => appendQuickReply(v, text))} />
-            <textarea
-              autoFocus
-              className="input w-full text-sm resize-none min-h-[120px]"
-              rows={5}
-              placeholder="Weekly feedback, notes and encouragement…"
-              value={coachNotes}
-              onChange={e => setCoachNotes(e.target.value)}
-            />
-          </div>
-
-          {/* Per-struggle advice — one comment against each specific issue the client listed this
-              week (e.g. "Struggling to find time for the gym" -> "let's try a new split"), separate
-              from the general message above. */}
-          {(current.struggles || []).length > 0 && (
-            <div className="card space-y-3">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Struggling with (this week)</h2>
-              <div className="space-y-2.5">
-                {current.struggles.map(s => (
-                  <div key={s}>
-                    <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 mb-1.5">{s}</span>
-                    <textarea
-                      rows={1}
-                      value={struggleComments[s] || ''}
-                      onChange={e => setStruggleComments(prev => ({ ...prev, [s]: e.target.value }))}
-                      placeholder={`Your advice for "${s}"…`}
-                      className="input w-full text-sm py-1.5 resize-none min-h-[56px]"
-                    />
-                  </div>
-                ))}
-              </div>
-              {current.struggles_other && (
-                <p className="text-sm text-gray-600 dark:text-gray-400 italic">"{current.struggles_other}"</p>
-              )}
-            </div>
-          )}
 
           {/* Calorie target */}
           <div className="card space-y-3">

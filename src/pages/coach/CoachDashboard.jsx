@@ -122,13 +122,15 @@ export default function CoachDashboard() {
         // and a struggle the client marked resolved that hasn't been
         // acknowledged yet.
         const attentionMap = {}
+        let dismissedKeys = new Set()
         function flag(clientId, reason) {
+          if (dismissedKeys.has(`${clientId}::${reason.text}`)) return
           if (!attentionMap[clientId]) attentionMap[clientId] = { clientId, name: clientMap[clientId], reasons: [] }
           attentionMap[clientId].reasons.push(reason)
         }
 
         if (clientIds.length > 0) {
-          const [{ data: checkinRows }, { data: resolvedRows }, { data: mealFlagRows }, { data: everydayRows }, { data: weekSwapRows }] = await Promise.all([
+          const [{ data: checkinRows }, { data: resolvedRows }, { data: mealFlagRows }, { data: everydayRows }, { data: weekSwapRows }, { data: dismissalRows }] = await Promise.all([
             supabase
               .from('client_checkins')
               .select('client_id, week_number, energy_level, sleep_quality, food_adherence, gym_adherence, submitted_at, updated_at')
@@ -155,7 +157,16 @@ export default function CoachDashboard() {
               .select('client_id, week_number')
               .in('client_id', clientIds)
               .eq('needs_coach_review', true),
+            // Reasons the coach has already ticked off — several of these six signals (a low
+            // rating streak, a missed check-in) have no other way to acknowledge them at all, so
+            // this is the only thing making "tick off" stick rather than the item reappearing
+            // the moment the dashboard reloads.
+            supabase
+              .from('coach_attention_dismissals')
+              .select('client_id, reason_text')
+              .eq('coach_id', profile.id),
           ])
+          dismissedKeys = new Set((dismissalRows || []).map(d => `${d.client_id}::${d.reason_text}`))
 
           const checkinsByClient = {}
           ;(checkinRows || []).forEach(c => { (checkinsByClient[c.client_id] ||= []).push(c) })
@@ -229,6 +240,17 @@ export default function CoachDashboard() {
   async function actOnPause(id, status) {
     await supabase.from('plan_pauses').update({ status }).eq('id', id)
     setPendingPauses(prev => prev.filter(p => p.id !== id))
+  }
+
+  // Ticks off one Needs Attention reason for good (until the underlying signal clears and comes
+  // back some other week) — several of these six signals have no other acknowledgment mechanism
+  // at all, so this dismissal log is the only record of "I've seen this, stop showing it".
+  async function dismissReason(clientId, text) {
+    setAttention(prev => prev
+      .map(a => a.clientId === clientId ? { ...a, reasons: a.reasons.filter(r => r.text !== text) } : a)
+      .filter(a => a.reasons.length > 0))
+    await supabase.from('coach_attention_dismissals')
+      .upsert({ coach_id: profile.id, client_id: clientId, reason_text: text }, { onConflict: 'coach_id,client_id,reason_text' })
   }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
@@ -346,11 +368,11 @@ export default function CoachDashboard() {
                 className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 -mx-2 px-2 rounded-lg transition-colors"
               >
                 <p className="font-medium text-sm text-gray-900 dark:text-white flex-shrink-0">{a.name}</p>
-                <div className="flex flex-wrap gap-1.5 justify-end">
+                <div className="flex flex-wrap gap-1.5 justify-end min-w-0">
                   {a.reasons.map((r, i) => (
                     <span
                       key={i}
-                      className={`inline-flex items-center gap-1.5 text-xs font-medium pl-1 pr-2 py-0.5 rounded-full whitespace-nowrap ${
+                      className={`inline-flex items-center gap-1.5 text-xs font-medium pl-1 pr-2 py-0.5 rounded-full max-w-full ${
                         r.tone === 'green'  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                         r.tone === 'amber'  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
                                               'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
@@ -364,7 +386,17 @@ export default function CoachDashboard() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                         </svg>
                       )}
-                      {r.text}
+                      <span className="break-words">{r.text}</span>
+                      <button
+                        type="button"
+                        title="Dismiss — I've dealt with this"
+                        onClick={e => { e.preventDefault(); e.stopPropagation(); dismissReason(a.clientId, r.text) }}
+                        className="flex-shrink-0 -mr-1 w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </span>
                   ))}
                 </div>
