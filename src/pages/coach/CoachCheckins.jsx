@@ -13,19 +13,11 @@ import {
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
-import ExerciseThumb from '../../components/ExerciseThumb'
 import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
+import ClientWeeklyPlan from './ClientWeeklyPlan'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
-
-const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
-const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-function dayRank(name) {
-  const n = (name || '').toLowerCase().substring(0, 3)
-  const idx = DAY_ORDER.indexOf(n)
-  return idx >= 0 ? idx : 99
-}
 
 function fmtDate(d) {
   if (!d) return '—'
@@ -326,19 +318,15 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const [training, setTraining] = useState(null)
   const [swapModal, setSwapModal] = useState(null)
   const [recipeModal, setRecipeModal] = useState(null)
-  const [sessions, setSessions] = useState([])
-  const [originalSessions, setOriginalSessions] = useState([])
-  const [exerciseLibrary, setExerciseLibrary] = useState([])
-  const [expandedDays, setExpandedDays] = useState(new Set())
-  const [editedExercises, setEditedExercises] = useState({})
-  const [removedExerciseIds, setRemovedExerciseIds] = useState(new Set())
-  const [addedExercises, setAddedExercises] = useState({})
-  const [addedSessions, setAddedSessions] = useState([])
-  const [newSessionForm, setNewSessionForm] = useState(null)
   const [saving, setSaving] = useState(false)
   const [allPrograms, setAllPrograms] = useState([])
   const [nextBlockId, setNextBlockId] = useState('')
   const [assigningBlock, setAssigningBlock] = useState(false)
+  // Bridges the "assigned training block" summary card below to ClientWeeklyPlan's own
+  // populate/re-populate logic — same pattern the client's own Training tab uses, so there's one
+  // box for the assigned block instead of two.
+  const weeklyPlanRef = useRef(null)
+  const [populateInfo, setPopulateInfo] = useState(null)
   const skipTierReload = useRef(true)
   const skipWeekReload = useRef(true)
 
@@ -374,7 +362,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         { data: cwm },
         { data: trainingAsgn },
         { data: programs },
-        { data: exercisesData },
       ] = await Promise.all([
         supabase.from('meals').select(`
           id, name, category, instructions, photo_url, photo_position,
@@ -390,9 +377,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', weekNum).maybeSingle(),
         supabase.from('client_training_assignments').select('*, training_programs(name, weeks_total)').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('training_programs').select('id, name').eq('coach_id', coachId).order('name'),
-        supabase.from('exercises').select('id, name').eq('coach_id', coachId).eq('is_archived', false).order('name'),
       ])
-      setExerciseLibrary(exercisesData || [])
 
       const map = {}, byCat = {}
       for (const m of (mealsData || [])) {
@@ -417,21 +402,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       if (cwm?.ingredient_overrides) setIngredientOverrides(cwm.ingredient_overrides)
       setTraining(trainingAsgn)
       setAllPrograms(programs || [])
-
-      if (trainingAsgn) {
-        const { data: sessionsData } = await supabase
-          .from('training_sessions')
-          .select('*, session_exercises(*)')
-          .eq('program_id', trainingAsgn.program_id)
-          .eq('week_number', 1)
-          .order('order_index')
-        const sortedSessions = (sessionsData || []).map(s => ({
-          ...s,
-          session_exercises: [...(s.session_exercises || [])].sort((a, b) => a.order_index - b.order_index),
-        })).sort((a, b) => dayRank(a.name) - dayRank(b.name))
-        setSessions(sortedSessions)
-        setOriginalSessions(JSON.parse(JSON.stringify(sortedSessions)))
-      }
 
       setLoading(false)
       skipTierReload.current = false
@@ -522,14 +492,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   }
   function clearDraftSlots(weekNum) {
     try { localStorage.removeItem(draftKey(weekNum)) } catch (_) {}
-  }
-
-  function toggleDay(day) {
-    setExpandedDays(prev => {
-      const next = new Set(prev)
-      next.has(day) ? next.delete(day) : next.add(day)
-      return next
-    })
   }
 
   function handleSwapOpen(slotKey, label, cat) { setSwapModal({ slotKey, label, cat }) }
@@ -714,82 +676,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     setRemovedMealSlots(prev => prev.filter(k => k !== slotKey))
   }
 
-  function handleUpdateExercise(exId, field, value) {
-    setEditedExercises(prev => ({ ...prev, [exId]: { ...(prev[exId] || {}), [field]: value } }))
-  }
-
-  function handleRemoveExercise(exId) {
-    setRemovedExerciseIds(prev => new Set([...prev, exId]))
-  }
-
-  function handleAddExercise(sessionId) {
-    const tempId = `new-${sessionId}-${Date.now()}`
-    setAddedExercises(prev => ({
-      ...prev,
-      [sessionId]: [...(prev[sessionId] || []), { _tempId: tempId, exercise_id: null, name: '', sets: null, reps: '', rpe: '', notes: '' }],
-    }))
-  }
-
-  function handleUpdateAddedExercise(sessionId, tempId, field, value) {
-    setAddedExercises(prev => ({
-      ...prev,
-      [sessionId]: (prev[sessionId] || []).map(ex => ex._tempId === tempId ? { ...ex, [field]: value } : ex),
-    }))
-  }
-
-  function handleRemoveAddedExercise(sessionId, tempId) {
-    setAddedExercises(prev => ({
-      ...prev,
-      [sessionId]: (prev[sessionId] || []).filter(ex => ex._tempId !== tempId),
-    }))
-  }
-
-  function handleAddSession() {
-    if (!newSessionForm?.name?.trim()) return
-    const copyFrom = newSessionForm.copyFromId
-      ? sessions.find(s => s.id === newSessionForm.copyFromId)
-      : null
-    const exercises = copyFrom
-      ? (copyFrom.session_exercises || [])
-          .filter(ex => !removedExerciseIds.has(ex.id))
-          .map(ex => ({
-            _tempId: `cp-${ex.id}-${Date.now()}`,
-            exercise_id: ex.exercise_id || null, name: ex.name, sets: ex.sets, reps: ex.reps, rpe: ex.rpe, notes: ex.notes,
-          }))
-      : []
-    setAddedSessions(prev => [...prev, {
-      _tempId: `sess-${Date.now()}`,
-      name: newSessionForm.name.trim(),
-      exercises,
-    }])
-    setNewSessionForm(null)
-  }
-
-  function handleRemoveAddedSession(tempId) {
-    setAddedSessions(prev => prev.filter(s => s._tempId !== tempId))
-  }
-
-  function handleAddExToAddedSession(sessTempId) {
-    setAddedSessions(prev => prev.map(s => s._tempId !== sessTempId ? s : {
-      ...s,
-      exercises: [...s.exercises, { _tempId: `nex-${Date.now()}`, exercise_id: null, name: '', sets: null, reps: '', rpe: '', notes: '' }],
-    }))
-  }
-
-  function handleUpdateAddedSessionExercise(sessTempId, exTempId, field, value) {
-    setAddedSessions(prev => prev.map(s => s._tempId !== sessTempId ? s : {
-      ...s,
-      exercises: s.exercises.map(ex => ex._tempId !== exTempId ? ex : { ...ex, [field]: value }),
-    }))
-  }
-
-  function handleRemoveExFromAddedSession(sessTempId, exTempId) {
-    setAddedSessions(prev => prev.map(s => s._tempId !== sessTempId ? s : {
-      ...s,
-      exercises: s.exercises.filter(ex => ex._tempId !== exTempId),
-    }))
-  }
-
   async function assignNextBlock() {
     if (!nextBlockId || !training || !client) return
     setAssigningBlock(true)
@@ -809,14 +695,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     setTraining(newAsgn)
     setNextBlockId('')
     setAssigningBlock(false)
-  }
-
-  function handleRevertTraining() {
-    setEditedExercises({})
-    setRemovedExerciseIds(new Set())
-    setAddedExercises({})
-    setAddedSessions([])
-    setNewSessionForm(null)
   }
 
   // Promotes this ONE client's current ingredient edits for one slot into the shared 50-week
@@ -927,59 +805,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       training_notes: trainingNotes.trim() || null,
     })
 
-    for (const [exId, edits] of Object.entries(editedExercises)) {
-      if (Object.keys(edits).length > 0 && !removedExerciseIds.has(exId)) {
-        await supabase.from('session_exercises').update(edits).eq('id', exId)
-      }
-    }
-
-    if (removedExerciseIds.size > 0) {
-      await supabase.from('session_exercises').delete().in('id', [...removedExerciseIds])
-    }
-
-    for (const [sessionId, newExes] of Object.entries(addedExercises)) {
-      const sess = sessions.find(s => s.id === sessionId)
-      const baseCount = (sess?.session_exercises || []).filter(ex => !removedExerciseIds.has(ex.id)).length
-      const toInsert = newExes.filter(ex => ex.name.trim())
-      for (let idx = 0; idx < toInsert.length; idx++) {
-        const { _tempId, ...fields } = toInsert[idx]
-        await supabase.from('session_exercises').insert({
-          session_id: sessionId,
-          name: fields.name.trim(),
-          sets: fields.sets !== null && fields.sets !== '' ? parseInt(fields.sets) : null,
-          reps: fields.reps || null,
-          rpe: fields.rpe || null,
-          notes: fields.notes || null,
-          order_index: baseCount + idx,
-        })
-      }
-    }
-
-    for (const sess of addedSessions) {
-      if (!sess.name.trim()) continue
-      const { data: newSess } = await supabase.from('training_sessions').insert({
-        program_id: training.program_id,
-        week_number: 1,
-        name: sess.name.trim(),
-        order_index: sessions.length + addedSessions.indexOf(sess),
-      }).select('id').single()
-      if (newSess) {
-        const toInsert = sess.exercises.filter(ex => ex.name?.trim())
-        for (let idx = 0; idx < toInsert.length; idx++) {
-          const { _tempId, ...fields } = toInsert[idx]
-          await supabase.from('session_exercises').insert({
-            session_id: newSess.id,
-            name: fields.name.trim(),
-            sets: fields.sets != null && fields.sets !== '' ? parseInt(fields.sets) : null,
-            reps: fields.reps || null,
-            rpe: fields.rpe || null,
-            notes: fields.notes || null,
-            order_index: idx,
-          })
-        }
-      }
-    }
-
     clearDraftSlots(nextTemplateWeek)
     setSaving(false)
     onDelivered(coachNotes.trim(), newCalTarget, nextTemplateWeek)
@@ -1001,12 +826,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   const hasMealPlanChanges =
     Object.keys(ingredientOverrides).some(k => hasAnyOverride(ingredientOverrides[k])) ||
     Object.keys({ ...templateSlots, ...editedSlots }).some(k => editedSlots[k] !== templateSlots[k])
-
-  const hasTrainingChanges =
-    Object.keys(editedExercises).length > 0 ||
-    removedExerciseIds.size > 0 ||
-    Object.values(addedExercises).some(a => a.length > 0) ||
-    addedSessions.length > 0
 
   const prevCalTarget = activeAssignment?.calorie_target
   const calDiff = calorieTarget && prevCalTarget ? parseInt(calorieTarget) - prevCalTarget : null
@@ -1317,14 +1136,15 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
 
           {/* Training — header */}
           <div className="card space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Training</h2>
-              {hasTrainingChanges && (
+              {populateInfo?.assignedProgram && (
                 <button
-                  onClick={handleRevertTraining}
-                  className="text-xs text-orange-500 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 font-medium"
+                  onClick={() => weeklyPlanRef.current?.populate()}
+                  disabled={populateInfo.populating}
+                  className="text-xs text-brand-500 hover:text-brand-700 font-medium whitespace-nowrap disabled:opacity-50"
                 >
-                  Revert to original
+                  {populateInfo.populating ? 'Populating…' : populateInfo.hasAnySchedule ? 'Re-populate schedule' : 'Populate schedule'}
                 </button>
               )}
             </div>
@@ -1395,239 +1215,18 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
             )}
           </div>
 
-          {/* Training — session blocks (full width) */}
-          {training && (() => {
-            const displaySessions = [
-              ...sessions.map(s => ({ ...s, _kind: 'existing' })),
-              ...addedSessions.map(s => ({ ...s, _kind: 'added' })),
-            ].sort((a, b) => dayRank(a.name) - dayRank(b.name))
-
-            // Exercise name is picked from the coach's Exercise Library only —
-            // no free-typed names — matching how exercises are chosen
-            // everywhere else in the app.
-            const ExRow = ({ ex, onUpdate, onRemove, autoF }) => (
-              <div className="px-3 py-2 space-y-1">
-                <div className="flex items-center gap-1.5">
-                  {ex.illustration_url != null || ex.video_url != null
-                    ? <ExerciseThumb illustrationUrl={ex.illustration_url} videoUrl={ex.video_url} size="sm" />
-                    : <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                        <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                      </div>
-                  }
-                  <select
-                    autoFocus={autoF}
-                    value={ex.exercise_id || (ex.name ? '__unlinked__' : '')}
-                    onChange={e => {
-                      if (e.target.value === '__unlinked__') return
-                      const picked = exerciseLibrary.find(lib => lib.id === e.target.value)
-                      onUpdate('exercise_id', picked?.id || null)
-                      onUpdate('name', picked?.name || '')
-                    }}
-                    className="input flex-1 text-xs py-0.5 px-2 font-medium min-w-0"
-                  >
-                    <option value="">Select exercise…</option>
-                    {!ex.exercise_id && ex.name && (
-                      <option value="__unlinked__">{ex.name} (pick to replace)</option>
-                    )}
-                    {ex.exercise_id && !exerciseLibrary.some(lib => lib.id === ex.exercise_id) && (
-                      <option value={ex.exercise_id}>{ex.name}</option>
-                    )}
-                    {exerciseLibrary.map(lib => <option key={lib.id} value={lib.id}>{lib.name}</option>)}
-                  </select>
-                  <input type="number" onFocus={e => e.target.select()} min="0" value={ex.sets ?? ''} onChange={e => onUpdate('sets', e.target.value ? parseInt(e.target.value) : null)}
-                    className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
-                  <input type="text" value={ex.reps ?? ''} onChange={e => onUpdate('reps', e.target.value || null)}
-                    className="w-12 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
-                  <input type="text" value={ex.rpe ?? ''} onChange={e => onUpdate('rpe', e.target.value || null)}
-                    className="w-10 input text-xs py-0.5 px-1 text-center tabular-nums flex-shrink-0" />
-                  <button onClick={onRemove} className="w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-                <div className="pl-12">
-                  <input type="text" value={ex.notes ?? ''} onChange={e => onUpdate('notes', e.target.value || null)}
-                    className="input w-full text-xs py-0.5 px-2 text-gray-500 dark:text-gray-400" placeholder="Notes…" />
-                </div>
-              </div>
-            )
-
-            const byDay = {}
-            for (const sess of displaySessions) {
-              const day = WEEK_DAYS.find(d => sess.name === d || sess.name.startsWith(d + ' ') || sess.name.startsWith(d + '—') || sess.name.startsWith(d + ' —'))
-              if (day) byDay[day] = sess
-            }
-
-            return (
-              <>
-                {/* Day-by-day accordion — matches the client's own Training tab
-                    layout exactly, with the same brand-coloured header for a
-                    training day and grey "Rest Day" card for days off. */}
-                <div className="space-y-2">
-                  {WEEK_DAYS.map(day => {
-                    const sess = byDay[day]
-
-                    if (!sess) {
-                      return (
-                        <div key={day} className="card px-3 py-2.5 flex items-center justify-between gap-2.5">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
-                              <svg className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                              </svg>
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">{day}</p>
-                              <p className="text-xs text-gray-400 dark:text-gray-500">Rest Day</p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => setNewSessionForm({ name: day, copyFromId: '' })}
-                            className="text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium flex-shrink-0"
-                          >
-                            + Add session
-                          </button>
-                        </div>
-                      )
-                    }
-
-                    const isAdded = sess._kind === 'added'
-                    const dbExercises = isAdded ? [] : (sess.session_exercises || []).filter(ex => !removedExerciseIds.has(ex.id))
-                    const newExercises = isAdded ? sess.exercises : (addedExercises[sess.id] || [])
-                    const exCount = dbExercises.length + newExercises.length
-                    const isOpen = expandedDays.has(day)
-                    const label = sess.name.replace(new RegExp(`^${day}[\\s\\u2013\\u2014\\-]+`), '').trim() || sess.name
-
-                    const onUpdateNew = (exTempId, field, value) => isAdded
-                      ? handleUpdateAddedSessionExercise(sess._tempId, exTempId, field, value)
-                      : handleUpdateAddedExercise(sess.id, exTempId, field, value)
-                    const onRemoveNew = exTempId => isAdded
-                      ? handleRemoveExFromAddedSession(sess._tempId, exTempId)
-                      : handleRemoveAddedExercise(sess.id, exTempId)
-                    const onAddNew = () => isAdded
-                      ? handleAddExToAddedSession(sess._tempId)
-                      : handleAddExercise(sess.id)
-
-                    return (
-                      <div key={day} className="card overflow-hidden p-0">
-                        <button
-                          onClick={() => toggleDay(day)}
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
-                        >
-                          <div className="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center flex-shrink-0">
-                            <svg className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide leading-none mb-0.5">{day}</p>
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight truncate">{label}</p>
-                          </div>
-                          {isAdded && (
-                            <span className="text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full flex-shrink-0">New</span>
-                          )}
-                          <p className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{exCount} ex</p>
-                          <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-
-                        {isOpen && (
-                          <div className="border-t border-gray-100 dark:border-gray-800">
-                            {exCount > 0 && (
-                              <div className="px-3 pt-2 pb-1 flex items-center gap-1.5 text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
-                                <div className="w-10 flex-shrink-0" />
-                                <span className="flex-1 min-w-0">Exercise</span>
-                                <span className="w-10 text-center flex-shrink-0">Sets</span>
-                                <span className="w-12 text-center flex-shrink-0">Reps</span>
-                                <span className="w-10 text-center flex-shrink-0">RPE</span>
-                                <div className="w-6 flex-shrink-0" />
-                              </div>
-                            )}
-                            <div className="divide-y divide-gray-50 dark:divide-gray-800">
-                              {dbExercises.map(ex => {
-                                const edits = editedExercises[ex.id] || {}
-                                const merged = { ...ex, ...edits }
-                                return <ExRow key={ex.id} ex={merged}
-                                  onUpdate={(f, v) => handleUpdateExercise(ex.id, f, v)}
-                                  onRemove={() => handleRemoveExercise(ex.id)} />
-                              })}
-                              {newExercises.map((ex, ni) => (
-                                <ExRow key={ex._tempId} ex={ex} autoF={ni === 0}
-                                  onUpdate={(f, v) => onUpdateNew(ex._tempId, f, v)}
-                                  onRemove={() => onRemoveNew(ex._tempId)} />
-                              ))}
-                            </div>
-                            <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 dark:border-gray-800">
-                              <button onClick={onAddNew} className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium">
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                                Add exercise
-                              </button>
-                              {isAdded && (
-                                <button onClick={() => handleRemoveAddedSession(sess._tempId)} className="text-xs text-gray-400 hover:text-red-500 font-medium">
-                                  Remove day
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {/* Add training day */}
-                {newSessionForm ? (
-                  <div className="card space-y-3">
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Add training day</h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="label text-xs">Day</label>
-                        <select
-                          value={newSessionForm.name}
-                          onChange={e => setNewSessionForm(p => ({ ...p, name: e.target.value }))}
-                          className="input w-full text-sm"
-                        >
-                          <option value="">Select day…</option>
-                          {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => (
-                            <option key={d} value={d}>{d}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="label text-xs">Copy exercises from (optional)</label>
-                        <select
-                          value={newSessionForm.copyFromId || ''}
-                          onChange={e => setNewSessionForm(p => ({ ...p, copyFromId: e.target.value }))}
-                          className="input w-full text-sm"
-                        >
-                          <option value="">— Start empty —</option>
-                          {sessions.map(s => (
-                            <option key={s.id} value={s.id}>{s.name} ({(s.session_exercises || []).length} exercises)</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={handleAddSession} disabled={!newSessionForm.name} className="btn-primary text-sm py-1.5 px-4">
-                        Add day
-                      </button>
-                      <button onClick={() => setNewSessionForm(null)} className="btn-secondary text-sm py-1.5 px-3">
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setNewSessionForm({ name: '', copyFromId: '' })}
-                    className="flex items-center gap-2 text-sm text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 font-medium px-1"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                    Add training day
-                  </button>
-                )}
-              </>
-            )
-          })()}
+          {/* Training — weekly schedule, the exact same day-card editor (workout/HIIT/cardio/rest,
+              drag-and-drop between days) as the client's own Training tab uses — edits here save
+              immediately, same as there, rather than waiting for the check-in's own Submit. */}
+          {training && (
+            <ClientWeeklyPlan
+              ref={weeklyPlanRef}
+              clientId={client.id}
+              coachId={coachId}
+              assignment={training}
+              onPopulateInfo={setPopulateInfo}
+            />
+          )}
 
           {/* Training notes */}
           {training && (
