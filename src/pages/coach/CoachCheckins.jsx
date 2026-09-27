@@ -934,6 +934,32 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
             />
           </div>
 
+          {/* Per-struggle advice — one comment against each specific issue the client listed this
+              week (e.g. "Struggling to find time for the gym" -> "let's try a new split"), separate
+              from the general message above. */}
+          {(current.struggles || []).length > 0 && (
+            <div className="card space-y-3">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Struggling with (this week)</h2>
+              <div className="space-y-2.5">
+                {current.struggles.map(s => (
+                  <div key={s}>
+                    <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 mb-1.5">{s}</span>
+                    <AutoGrowTextarea
+                      minRows={1}
+                      value={struggleComments[s] || ''}
+                      onChange={e => setStruggleComments(prev => ({ ...prev, [s]: e.target.value }))}
+                      placeholder={`Your advice for "${s}"…`}
+                      className="input w-full text-sm py-1.5"
+                    />
+                  </div>
+                ))}
+              </div>
+              {current.struggles_other && (
+                <p className="text-sm text-gray-600 dark:text-gray-400 italic">"{current.struggles_other}"</p>
+              )}
+            </div>
+          )}
+
           {/* Calorie target */}
           <div className="card space-y-3">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Calorie target</h2>
@@ -1892,25 +1918,19 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           )}
 
           {((current.struggles || []).length > 0 || current.struggles_other) && (
-            <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-3 space-y-3">
+            <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-3 space-y-2">
               <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Struggling with (this week)</p>
               {(current.struggles || []).length > 0 && (
-                <div className="space-y-2.5">
+                <div className="flex flex-wrap gap-1.5">
                   {current.struggles.map(s => (
-                    <div key={s}>
-                      <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium bg-white dark:bg-gray-900 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 mb-1.5">{s}</span>
-                      <AutoGrowTextarea
-                        minRows={1}
-                        value={struggleComments[s] || ''}
-                        onChange={e => setStruggleComments(prev => ({ ...prev, [s]: e.target.value }))}
-                        placeholder={`Your advice for "${s}"…`}
-                        className="input w-full text-sm py-1.5"
-                      />
-                    </div>
+                    <span key={s} className="px-2.5 py-1 rounded-full text-xs font-medium bg-white dark:bg-gray-900 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">{s}</span>
                   ))}
                 </div>
               )}
-              {current.struggles_other && <p className="text-sm text-gray-700 dark:text-gray-300 italic">"{current.struggles_other}"</p>}
+              {current.struggles_other && (
+                <p className="text-sm text-gray-700 dark:text-gray-300">{current.struggles_other}</p>
+              )}
+              <p className="text-xs text-amber-600 dark:text-amber-500">Add your advice for each of these when you submit this week's plan.</p>
             </div>
           )}
 
