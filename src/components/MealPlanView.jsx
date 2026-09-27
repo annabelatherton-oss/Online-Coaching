@@ -405,6 +405,16 @@ export function addMacros(a, b) {
   return { cal: az.cal + bz.cal, prot: az.prot + bz.prot, carb: az.carb + bz.carb, fat: az.fat + bz.fat }
 }
 
+// Every "remaining to target" number in the app follows the same rule: positive means there's
+// still room to add, negative means you're over and need to take something away. Formats that as
+// an explicit sign — "+120" to add, "-45" to remove — everywhere the app shows one, rather than
+// leaving positive values sign-less (ambiguous) while only negative ones read as "remove" via
+// JS's own minus sign.
+export function formatSigned(value) {
+  const rounded = Math.round(value)
+  return rounded > 0 ? `+${rounded}` : `${rounded}`
+}
+
 // Looks up the real-world unit ("unit", "tbsp", …) for an ingredient row. Prefers the linked
 // library ingredient; falls back to matching by name, since older/free-typed rows often have no
 // ingredient_id even though a library entry with the same name (and correct unit) exists.
@@ -869,7 +879,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                       {Math.round(dm.cal)} kcal
                       {remCal != null && (
                         <span className={`ml-1.5 text-xs font-semibold ${remCal < 0 ? 'text-orange-500' : 'text-gray-400 dark:text-gray-500'}`}>
-                          ({remCal >= 0 ? `${remCal} left` : `${Math.abs(remCal)} over`})
+                          ({formatSigned(remCal)})
                         </span>
                       )}
                     </p>

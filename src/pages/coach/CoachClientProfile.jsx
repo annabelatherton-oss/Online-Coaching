@@ -23,7 +23,7 @@ import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import DislikePicker from '../../components/DislikePicker'
 import SwapRulePicker from '../../components/SwapRulePicker'
 import TargetDateBanner from '../../components/TargetDateBanner'
-import { MacroTargetInfo, MacroBadge, MACRO_META, deviationColor, libraryUnit } from '../../components/MealPlanView'
+import { MacroTargetInfo, MacroBadge, MACRO_META, deviationColor, libraryUnit, formatSigned } from '../../components/MealPlanView'
 
 const TABS = ['Overview', 'Meal Plan', 'Training', 'Daily Plan', 'Check-ins', 'Progress']
 
@@ -2454,10 +2454,10 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
             {remaining && (
               <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
                 <span className="flex-1">Remaining for the day</span>
-                <span className="tabular-nums w-16 text-right">{remaining.cal} kcal</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{remaining.carb}g</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{remaining.prot}g</span>
-                <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{remaining.fat}g</span>
+                <span className="tabular-nums w-16 text-right">{formatSigned(remaining.cal)} kcal</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{formatSigned(remaining.carb)}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{formatSigned(remaining.prot)}g</span>
+                <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{formatSigned(remaining.fat)}g</span>
               </div>
             )}
           </div>
@@ -2530,10 +2530,10 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     if (!rem) return null
     return (
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        Remaining: <span className={rem.cal < 0 ? 'text-orange-500 font-medium' : 'text-gray-700 dark:text-gray-300 font-medium'}>{rem.cal} kcal</span>
-        {' · '}<span className={rem.carb < 0 ? 'text-orange-500' : ''}>{rem.carb}g C</span>
-        {' · '}<span className={rem.prot < 0 ? 'text-orange-500' : ''}>{rem.prot}g P</span>
-        {' · '}<span className={rem.fat < 0 ? 'text-orange-500' : ''}>{rem.fat}g F</span>
+        Remaining: <span className={rem.cal < 0 ? 'text-orange-500 font-medium' : 'text-gray-700 dark:text-gray-300 font-medium'}>{formatSigned(rem.cal)} kcal</span>
+        {' · '}<span className={rem.carb < 0 ? 'text-orange-500' : ''}>{formatSigned(rem.carb)}g C</span>
+        {' · '}<span className={rem.prot < 0 ? 'text-orange-500' : ''}>{formatSigned(rem.prot)}g P</span>
+        {' · '}<span className={rem.fat < 0 ? 'text-orange-500' : ''}>{formatSigned(rem.fat)}g F</span>
       </p>
     )
   }
@@ -3462,10 +3462,10 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 return (
                   <div className="flex items-center gap-2 text-xs font-semibold">
                     <span className={`flex-1 ${color}`}>Remaining to target</span>
-                    <span className={`tabular-nums w-16 text-right ${color}`}>{everydayRemaining.cal} kcal</span>
-                    <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{everydayRemaining.carb}g</span>
-                    <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{everydayRemaining.prot}g</span>
-                    <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{everydayRemaining.fat}g</span>
+                    <span className={`tabular-nums w-16 text-right ${color}`}>{formatSigned(everydayRemaining.cal)} kcal</span>
+                    <span className={`tabular-nums w-10 text-right ${MACRO_META.carb.text}`}>{formatSigned(everydayRemaining.carb)}g</span>
+                    <span className={`tabular-nums w-10 text-right ${MACRO_META.prot.text}`}>{formatSigned(everydayRemaining.prot)}g</span>
+                    <span className={`tabular-nums w-10 text-right ${MACRO_META.fat.text}`}>{formatSigned(everydayRemaining.fat)}g</span>
                   </div>
                 )
               })()}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { formatSigned } from './MealPlanView'
 
 const EMPTY_MACROS = { cal: 0, prot: 0, carb: 0, fat: 0 }
 
@@ -227,8 +228,8 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-500 dark:text-gray-400">Remaining today (plan + treats)</span>
                 <div className="text-right">
-                  <p className={`font-semibold tabular-nums ${remaining.cal < 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>{remaining.cal} kcal</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{remaining.carb}g C · {remaining.prot}g P · {remaining.fat}g F</p>
+                  <p className={`font-semibold tabular-nums ${remaining.cal < 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>{formatSigned(remaining.cal)} kcal</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{formatSigned(remaining.carb)}g C · {formatSigned(remaining.prot)}g P · {formatSigned(remaining.fat)}g F</p>
                 </div>
               </div>
             </>

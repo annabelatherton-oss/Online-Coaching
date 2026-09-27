@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { MealCard, RecipeModal, SwapModal, mealMacros, normalizeOverrides } from './MealPlanView'
+import { MealCard, RecipeModal, SwapModal, mealMacros, normalizeOverrides, formatSigned } from './MealPlanView'
 
 // All 5 slots behave identically — the client can pick any of them directly, no coach approval
 // needed. Same order the main plan shows its 5 meal categories in.
@@ -216,8 +216,8 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-500 dark:text-gray-400">Remaining to target</span>
                 <div className="text-right">
-                  <p className={`font-semibold tabular-nums ${remaining.cal < 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>{remaining.cal} kcal</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{remaining.carb}g C · {remaining.prot}g P · {remaining.fat}g F</p>
+                  <p className={`font-semibold tabular-nums ${remaining.cal < 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>{formatSigned(remaining.cal)} kcal</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{formatSigned(remaining.carb)}g C · {formatSigned(remaining.prot)}g P · {formatSigned(remaining.fat)}g F</p>
                 </div>
               </div>
             </>
