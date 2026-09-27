@@ -982,7 +982,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
             <QuickReplies onPick={text => setCoachNotes(v => appendQuickReply(v, text))} />
             <textarea
               autoFocus
-              className="input w-full text-sm resize-none"
+              className="input w-full text-sm resize-none min-h-[120px]"
               rows={5}
               placeholder="Weekly feedback, notes and encouragement…"
               value={coachNotes}
@@ -1005,7 +1005,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                       value={struggleComments[s] || ''}
                       onChange={e => setStruggleComments(prev => ({ ...prev, [s]: e.target.value }))}
                       placeholder={`Your advice for "${s}"…`}
-                      className="input w-full text-sm py-1.5 resize-none"
+                      className="input w-full text-sm py-1.5 resize-none min-h-[56px]"
                     />
                   </div>
                 ))}
@@ -2327,7 +2327,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             {responding === c.id ? (
               <div className="space-y-2">
                 <QuickReplies onPick={text => setResponseText(v => appendQuickReply(v, text))} />
-                <textarea autoFocus className="input w-full text-sm resize-none" rows={3} value={responseText} onChange={e => setResponseText(e.target.value)} placeholder="Write your response…" />
+                <textarea autoFocus className="input w-full text-sm resize-none min-h-[80px]" rows={3} value={responseText} onChange={e => setResponseText(e.target.value)} placeholder="Write your response…" />
                 <div className="flex gap-2">
                   <button onClick={() => sendResponse(c.id)} disabled={saving || !responseText.trim()} className="btn-primary py-1.5 px-4 text-sm">{saving ? 'Sending…' : 'Send'}</button>
                   <button onClick={() => setResponding(null)} className="btn-secondary py-1.5 px-3 text-sm">Cancel</button>
