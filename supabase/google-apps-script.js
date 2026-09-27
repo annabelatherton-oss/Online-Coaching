@@ -70,9 +70,13 @@ function onFormSubmit(e) {
     // The cut/bulk/maintain question is actually titled "What are you interested in doing?"
     // (Bulking/Cutting/Maintaining/Other) — there's no question containing the word "phase".
     goal_phase:            get('interested in doing'),
-    // "When would you like to start your plan?" — matched on "start" since the exact wording
-    // isn't fixed. Only used for a brand-new client's start_date; ignored on a resubmission.
-    preferred_start_date:  formatDate(get('start'))
+    // "When would you like to start your plan?" — matched on "like to start" rather than just
+    // "start", since a bare "start" is generic enough that some future unrelated question (e.g.
+    // one about when they started training, or a past injury) could easily contain it too and
+    // get picked up by mistake here instead. Only used for a brand-new client's start_date;
+    // ignored on a resubmission. If you ever reword this question, keep "like to start" in it
+    // somewhere, or update the keyword here to match whatever you change it to.
+    preferred_start_date:  formatDate(get('like to start'))
   };
 
   Logger.log('Sending for email: ' + email);
