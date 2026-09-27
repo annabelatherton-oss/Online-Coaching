@@ -49,6 +49,24 @@
      this just applies everywhere. */
   input[type="date"] {
     min-width: 0;
+    /* WebKit gives a date input its own internal layout for the day/month/year value, which
+       comes centered and with its own line-height/padding baked in — taller than, and
+       misaligned with, every other .input box on the same form even though both share the exact
+       same CSS padding/font-size. Resetting the native chrome and the value's own pseudo-element
+       is what actually fixes both, not just tweaking padding on the input itself. */
+    -webkit-appearance: none;
+    appearance: none;
+    text-align: left;
+  }
+  input[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
+  }
+  input[type="date"]::-webkit-datetime-edit {
+    padding: 0;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    padding: 0;
+    margin-left: 0.5rem;
   }
 
   @media (max-width: 640px) {
