@@ -26,11 +26,12 @@ function fmtDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-// Check-in window: opens Thursday, runs through Tuesday, closed Wednesday —
-// mirrors the client-side window in ClientCheckin.jsx.
-function lastWednesdayMidnight() {
+// Check-in window: opens Friday, runs a full 7 days through the following Thursday, then the
+// next Friday opens straight into a new window — no closed day in between. Mirrors the
+// client-side window in ClientCheckin.jsx.
+function lastFridayMidnight() {
   const now = new Date()
-  const daysSince = (now.getDay() - 3 + 7) % 7 || 7
+  const daysSince = (now.getDay() - 5 + 7) % 7
   const d = new Date(now)
   d.setDate(now.getDate() - daysSince)
   d.setHours(0, 0, 0, 0)
@@ -75,20 +76,25 @@ export default function CoachDashboard() {
         const expired = clients.filter(c => c.access_expires_at && new Date(c.access_expires_at) < now)
 
         const clientIds = clients.map(c => c.id)
-        // How many clients currently have an unresponded check-in — not a raw count of every
-        // unresponded row ever, which would also catch old historical check-ins from before a
-        // client's most recent one (including a one-off starting check-in a coach never responds
-        // to) and wildly overstate what's actually still outstanding right now.
+        // How many clients have submitted a check-in THIS window (Fri-Thu) that's still
+        // unresponded — not a raw count of every unresponded row ever (which would also catch old
+        // historical check-ins from before a client's most recent one, including a one-off
+        // starting check-in a coach never responds to), and not an old check-in from a previous
+        // week that never got a reply — this is only ever meant to be "what do I need to deal with
+        // this week", not accumulated historical debt.
         let pendingCheckins = 0
         if (clientIds.length > 0) {
+          const windowStartISO = lastFridayMidnight().toISOString()
           const { data: checkinRows } = await supabase
             .from('client_checkins')
-            .select('client_id, week_number, coach_responded_at')
+            .select('client_id, week_number, coach_responded_at, submitted_at, updated_at')
             .in('client_id', clientIds)
             .order('week_number', { ascending: false })
           const latestByClient = {}
           ;(checkinRows || []).forEach(c => { if (!(c.client_id in latestByClient)) latestByClient[c.client_id] = c })
-          pendingCheckins = Object.values(latestByClient).filter(c => !c.coach_responded_at).length
+          pendingCheckins = Object.values(latestByClient)
+            .filter(c => !c.coach_responded_at && (c.submitted_at || c.updated_at || '') >= windowStartISO)
+            .length
         }
 
         // Archived clients are excluded from the query above on purpose (see its comment) — this
@@ -177,11 +183,11 @@ export default function CoachDashboard() {
           const checkinsByClient = {}
           ;(checkinRows || []).forEach(c => { (checkinsByClient[c.client_id] ||= []).push(c) })
 
-          // Missed check-in: only flag from Monday through Wednesday, giving
-          // Thu/Fri/weekend as normal submission grace period.
+          // Missed check-in: only flag from Tuesday through Thursday (the back half of the
+          // Fri-Thu window), giving Fri/weekend/Mon as normal submission grace period.
           const dow = now.getDay()
-          if (dow === 1 || dow === 2 || dow === 3) {
-            const windowStartISO = lastWednesdayMidnight().toISOString()
+          if (dow === 2 || dow === 3 || dow === 4) {
+            const windowStartISO = lastFridayMidnight().toISOString()
             active.forEach(client => {
               const rows = checkinsByClient[client.id] || []
               const hasCurrent = rows.some(c => (c.submitted_at || c.updated_at) >= windowStartISO)

@@ -56,38 +56,27 @@ const PHOTO_ANGLES = [
   { key: 'right', label: 'Right side' },
 ]
 
-// Check-in window: opens Thursday, expected Friday, grace period through Tuesday
-// Wednesday is the "closed" day between windows
-function isCheckinWindowOpen() {
-  const dow = new Date().getDay() // 0=Sun,1=Mon,...,4=Thu,5=Fri,6=Sat
-  return dow !== 3 // closed Wednesday only
-}
-
-function nextThursdayLabel() {
-  const d = new Date()
-  const daysUntil = (4 - d.getDay() + 7) % 7 || 7
-  d.setDate(d.getDate() + daysUntil)
-  return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
-}
-
-// Midnight of the most recent Wednesday — marks the start of the current check-in window.
-function lastWednesdayMidnight() {
+// Check-in window: opens Friday, runs a full 7 days through the following Thursday, then the
+// next Friday opens straight into a new window — no closed day in between.
+// Midnight of the most recent Friday — marks the start of the current check-in window. If today
+// IS Friday, that's the start of a brand-new window, so the boundary is today at midnight.
+function lastFridayMidnight() {
   const now = new Date()
-  const daysSince = (now.getDay() - 3 + 7) % 7 || 7 // if today IS Wed, look back 7 days (window just closed)
+  const daysSince = (now.getDay() - 5 + 7) % 7
   const d = new Date(now)
   d.setDate(now.getDate() - daysSince)
   d.setHours(0, 0, 0, 0)
   return d
 }
 
-// Consecutive weekly check-in windows (Thu-Wed) with a submission, walking
-// backward from today. The current, still-open window isn't counted against
-// the streak until it actually closes (Wednesday) without a submission.
+// Consecutive weekly check-in windows (Fri-Thu) with a submission, walking backward from today.
+// The current, still-open window isn't counted against the streak until it's actually had a
+// chance to end (i.e. treat "no submission yet" as pending, not a miss, and start the backward
+// walk from the previous window instead).
 function checkinStreak(checkins) {
-  let cursor = lastWednesdayMidnight()
-  const dow = new Date().getDay()
+  let cursor = lastFridayMidnight()
   const hasCurrent = checkins.some(c => new Date(c.submitted_at || c.updated_at) >= cursor)
-  if (!hasCurrent && dow !== 3) cursor.setDate(cursor.getDate() - 7)
+  if (!hasCurrent) cursor.setDate(cursor.getDate() - 7)
   let streak = 0
   while (streak < 520) {
     const windowStart = new Date(cursor)
@@ -372,13 +361,6 @@ export default function ClientCheckin() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-  // Kept separate so a missing DB column (migration not yet run) can't break the whole page load.
-  const [earlyAccess, setEarlyAccess] = useState(false)
-  useEffect(() => {
-    supabase.from('clients').select('checkin_early_access')
-      .eq('profile_id', session.user.id).maybeSingle()
-      .then(({ data }) => { if (data?.checkin_early_access) setEarlyAccess(true) })
-  }, [session?.user?.id])
 
   useEffect(() => {
     async function load() {
@@ -490,8 +472,8 @@ export default function ClientCheckin() {
       })
       setAllCheckins(histWithWeeks)
 
-      // Find the check-in for this week's window (since last Wednesday midnight).
-      const windowStart = lastWednesdayMidnight().toISOString()
+      // Find the check-in for this week's window (since last Friday midnight).
+      const windowStart = lastFridayMidnight().toISOString()
       const checkin = [...histWithWeeks]
         .filter(c => (c.updated_at || c.submitted_at || '') >= windowStart)
         .sort((a, b) => (b.updated_at || b.submitted_at || '').localeCompare(a.updated_at || a.submitted_at || ''))[0] || null
@@ -509,7 +491,7 @@ export default function ClientCheckin() {
       const isFirstEver = histWithWeeks.length === 0
       const targetWeek = isFirstEver ? 0 : nextWeekNumber
       const dow = new Date().getDay()
-      const isLate = !checkin && targetWeek !== 0 && (dow === 1 || dow === 2)
+      const isLate = !checkin && targetWeek !== 0 && (dow === 3 || dow === 4)
 
       setWeekNumber(checkin ? checkin.week_number : targetWeek)
       setIsLateResubmit(isLate)
@@ -671,11 +653,6 @@ export default function ClientCheckin() {
       const { data } = await supabase.from('client_checkins').select('*').eq('client_id', clientData.id).eq('week_number', weekNumber).maybeSingle()
       setExisting(data)
       checkinId = data?.id
-      // Clear the early-access flag now that the check-in has been submitted
-      if (earlyAccess) {
-        await supabase.from('clients').update({ checkin_early_access: false }).eq('id', clientData.id)
-        setEarlyAccess(false)
-      }
     }
 
     // Start tracking any newly-flagged struggle so next week's check-in
@@ -761,46 +738,9 @@ export default function ClientCheckin() {
     )
   }
 
-  // Gate: no check-in submitted yet AND window is closed (Wednesday) AND coach hasn't opened early
+  // Check-ins are open every day now (Fri-Thu, no closed day), so this only ever needs to know
+  // whether the current one is the one-off starting check-in (week 0).
   const isStartingCheckin = weekNumber === 0
-  if (!isCheckinWindowOpen() && !existing && !earlyAccess && !isStartingCheckin) {
-    return (
-      <div className="flex gap-6">
-        <Sidebar />
-        <div className="flex-1 min-w-0 space-y-6 max-w-lg">
-          <TargetDateBanner targetDate={clientData?.target_date} targetEventName={clientData?.target_event_name} />
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <h1 data-tour="checkin-heading" className="text-2xl font-bold text-gray-900 dark:text-white">Weekly Check-in</h1>
-              {personalWeek != null && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Week {personalWeek}</p>}
-            </div>
-            {streak > 1 && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 flex-shrink-0">
-                <span className="text-base leading-none">🔥</span>
-                <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{streak} week streak</span>
-              </div>
-            )}
-          </div>
-          {viewingCheckin ? (
-            <CheckinReadView checkin={viewingCheckin} collectMeasurements={collectMeasurements} />
-          ) : (
-            <div className="card text-center py-10 space-y-3">
-              <div className="w-12 h-12 rounded-full bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center mx-auto">
-                <svg className="w-6 h-6 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <p className="font-semibold text-gray-900 dark:text-white">Check-in opens Thursday</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Your next check-in will be available on {nextThursdayLabel()}.<br />
-                You'll get a reminder on Friday morning.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="flex gap-6">

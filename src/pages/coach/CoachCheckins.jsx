@@ -24,21 +24,21 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-// Check-in window: opens Thursday, runs through Tuesday, closed Wednesday —
-// mirrors the client-side window in ClientCheckin.jsx.
-function lastWednesdayMidnight() {
+// Check-in window: opens Friday, runs a full 7 days through the following Thursday, then the
+// next Friday opens straight into a new window — no closed day in between. Mirrors the
+// client-side window in ClientCheckin.jsx.
+function lastFridayMidnight() {
   const now = new Date()
-  const daysSince = (now.getDay() - 3 + 7) % 7 || 7
+  const daysSince = (now.getDay() - 5 + 7) % 7
   const d = new Date(now)
   d.setDate(now.getDate() - daysSince)
   d.setHours(0, 0, 0, 0)
   return d
 }
 function checkinStreak(checkins) {
-  let cursor = lastWednesdayMidnight()
-  const dow = new Date().getDay()
+  let cursor = lastFridayMidnight()
   const hasCurrent = checkins.some(c => new Date(c.submitted_at || c.updated_at) >= cursor)
-  if (!hasCurrent && dow !== 3) cursor.setDate(cursor.getDate() - 7)
+  if (!hasCurrent) cursor.setDate(cursor.getDate() - 7)
   let streak = 0
   while (streak < 520) {
     const windowStart = new Date(cursor)
@@ -87,12 +87,12 @@ function appendQuickReply(current, text) {
   return current?.trim() ? `${current.trim()}\n\n${text}` : text
 }
 
-// Check-in submitted Mon or Tue = late re-submit for the previous week
+// Check-in submitted Wed or Thu (the last two days of the Fri-Thu window) = late re-submit
 function isLateSubmission(checkin) {
   const iso = checkin?.updated_at || checkin?.submitted_at
   if (!iso) return false
   const dow = new Date(iso).getDay()
-  return dow === 1 || dow === 2
+  return dow === 3 || dow === 4
 }
 
 function ratingColor(v) {
@@ -1339,16 +1339,6 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const [editingCalorie, setEditingCalorie] = useState(false)
   const [calorieDraft, setCalorieDraft] = useState('')
   const [savingCalorie, setSavingCalorie] = useState(false)
-  const [earlyAccess, setEarlyAccess] = useState(false)
-  const [togglingEarlyAccess, setTogglingEarlyAccess] = useState(false)
-
-  // Load the early-access flag separately — this column may not exist until the migration runs,
-  // and we don't want a missing column to break the entire clients list query.
-  useEffect(() => {
-    if (!client?.id) return
-    supabase.from('clients').select('checkin_early_access').eq('id', client.id).maybeSingle()
-      .then(({ data }) => { if (data) setEarlyAccess(!!data.checkin_early_access) })
-  }, [client?.id])
 
   const [weightEntries, setWeightEntries] = useState([])
   useEffect(() => {
@@ -1392,14 +1382,6 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     return asc
       .filter(c => c.struggle_comments?.[label])
       .map(c => ({ week: personalWeekMap[c.id], comment: c.struggle_comments[label] }))
-  }
-
-  async function toggleEarlyAccess() {
-    setTogglingEarlyAccess(true)
-    const newVal = !earlyAccess
-    await supabase.from('clients').update({ checkin_early_access: newVal }).eq('id', client.id)
-    setEarlyAccess(newVal)
-    setTogglingEarlyAccess(false)
   }
 
   // desc order (most recent first)
@@ -1555,28 +1537,6 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             </div>
           )}
         </div>
-        <button
-          onClick={toggleEarlyAccess}
-          disabled={togglingEarlyAccess}
-          title={earlyAccess ? 'Early check-in is open — click to close it' : 'Open the check-in window early for this client'}
-          className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 flex-shrink-0 ${
-            earlyAccess
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
-              : 'btn-secondary'
-          }`}
-        >
-          {earlyAccess ? (
-            <>
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>
-              Check-in open early
-            </>
-          ) : (
-            <>
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z M17 11V7a5 5 0 00-10 0v4" /></svg>
-              Open check-in early
-            </>
-          )}
-        </button>
       </div>
 
       {unseenResolvedStruggles.length > 0 && (

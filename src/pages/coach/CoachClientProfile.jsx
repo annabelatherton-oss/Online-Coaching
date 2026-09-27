@@ -103,21 +103,21 @@ function _weekEndFor(weekStartISO) {
   return _planISO(d)
 }
 
-// Check-in window: opens Thursday, runs through Tuesday, closed Wednesday —
-// mirrors the client-side window in ClientCheckin.jsx.
-function _lastWednesdayMidnight() {
+// Check-in window: opens Friday, runs a full 7 days through the following Thursday, then the
+// next Friday opens straight into a new window — no closed day in between. Mirrors the
+// client-side window in ClientCheckin.jsx.
+function _lastFridayMidnight() {
   const now = new Date()
-  const daysSince = (now.getDay() - 3 + 7) % 7 || 7
+  const daysSince = (now.getDay() - 5 + 7) % 7
   const d = new Date(now)
   d.setDate(now.getDate() - daysSince)
   d.setHours(0, 0, 0, 0)
   return d
 }
 function _checkinStreak(checkins) {
-  let cursor = _lastWednesdayMidnight()
-  const dow = new Date().getDay()
+  let cursor = _lastFridayMidnight()
   const hasCurrent = checkins.some(c => new Date(c.submitted_at || c.updated_at) >= cursor)
-  if (!hasCurrent && dow !== 3) cursor.setDate(cursor.getDate() - 7)
+  if (!hasCurrent) cursor.setDate(cursor.getDate() - 7)
   let streak = 0
   while (streak < 520) {
     const windowStart = new Date(cursor)
