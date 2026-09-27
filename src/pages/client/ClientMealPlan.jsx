@@ -322,14 +322,32 @@ export default function ClientMealPlan() {
   const dailyMacroTargets = assignment?.calorie_target && goalMacroSplits
     ? { cal: assignment.calorie_target, ...calcBodyweightMacros(assignment.calorie_target, weightKg, proteinPerKg, clientData?.goal_type, goalMacroSplits) }
     : null
-  function slotTarget(cat) {
+  // Capped at whatever room Option A's day actually has left — a meal can be under its OWN
+  // nominal split while the day overall is already over target, because other meals overshot
+  // theirs by more; suggesting "Add" to this meal in that case is bad advice regardless of its
+  // own split.
+  function slotTarget(cat, mealActual) {
     if (!dailyMacroTargets || !mealSplit) return null
     const pct = (redistributeMealSplit(mealSplit, removedCategories)[cat] || 0) / 100
-    return {
+    const nominal = {
       cal:  dailyMacroTargets.cal * pct,
       prot: dailyMacroTargets.protein_g * pct,
       carb: dailyMacroTargets.carbs_g * pct,
       fat:  dailyMacroTargets.fat_g * pct,
+    }
+    if (!mealActual) return nominal
+
+    const achievable = {
+      cal:  dailyMacroTargets.cal       - (opt1Total.cal  - mealActual.cal),
+      prot: dailyMacroTargets.protein_g - (opt1Total.prot - mealActual.prot),
+      carb: dailyMacroTargets.carbs_g   - (opt1Total.carb - mealActual.carb),
+      fat:  dailyMacroTargets.fat_g     - (opt1Total.fat  - mealActual.fat),
+    }
+    return {
+      cal:  Math.min(nominal.cal,  achievable.cal),
+      prot: Math.min(nominal.prot, achievable.prot),
+      carb: Math.min(nominal.carb, achievable.carb),
+      fat:  Math.min(nominal.fat,  achievable.fat),
     }
   }
 
@@ -576,7 +594,7 @@ export default function ClientMealPlan() {
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
           onRevertIngredients={handleRevertIngredients}
-          target={OPTION_2_KEYS.includes(recipeModal) ? null : slotTarget(ALL_SLOT_DEFS.find(s => s.key === recipeModal)?.cat)}
+          target={OPTION_2_KEYS.includes(recipeModal) ? null : slotTarget(ALL_SLOT_DEFS.find(s => s.key === recipeModal)?.cat, mealMacrosLayered(editedSlots[recipeModal], mealMap, tier, templateOverrides[recipeModal], ingredientOverrides[recipeModal], swapCtx))}
           siblingMacros={OPTION_2_KEYS.includes(recipeModal) ? (() => {
             const sibKey = siblingSlotKey(recipeModal)
             return sibKey ? mealMacrosLayered(editedSlots[sibKey], mealMap, tier, templateOverrides[sibKey], ingredientOverrides[sibKey], swapCtx) : null

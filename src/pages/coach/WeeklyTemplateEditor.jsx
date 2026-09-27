@@ -156,22 +156,30 @@ export default function WeeklyTemplateEditor() {
     return slotMacros(slotKey)?.cal || null
   }
 
-  // This slot's share of the day's calorie target, from the coach's standard meal-split % —
-  // the same "add/remove X kcal" guidance used everywhere else a meal's macros are edited.
-  function slotTarget(slotKey) {
-    const cat = SLOT_TYPES.find(s => s.value === slotKey)?.cat
-    const dayTarget = parseInt(form.calorie_target)
-    if (!cat || !dayTarget) return null
-    const pct = (mealSplit[cat] || 0) / 100
-    return { cal: dayTarget * pct }
-  }
-
   function sumSlots(slotKeys) {
     return slotKeys.reduce((sum, key) => sum + (slotCalories(key) || 0), 0)
   }
 
   const option1Total = sumSlots(OPTION_1_SLOTS)
   const option2Total = sumSlots(OPTION_2_SLOTS)
+
+  // This slot's share of the day's calorie target, from the coach's standard meal-split % —
+  // the same "add/remove X kcal" guidance used everywhere else a meal's macros are edited.
+  // Capped at whatever room that option's day actually has left: a slot can be under its OWN
+  // nominal split while the day overall is already over target, because other slots overshot
+  // theirs by more — suggesting "Add" to this slot in that case is bad advice regardless of its
+  // own split.
+  function slotTarget(slotKey) {
+    const cat = SLOT_TYPES.find(s => s.value === slotKey)?.cat
+    const dayTarget = parseInt(form.calorie_target)
+    if (!cat || !dayTarget) return null
+    const pct = (mealSplit[cat] || 0) / 100
+    const nominal = dayTarget * pct
+    const optionTotal = OPTION_2_SLOTS.includes(slotKey) && !OPTION_1_SLOTS.includes(slotKey) ? option2Total : option1Total
+    const mealCal = slotCalories(slotKey) || 0
+    const achievable = dayTarget - (optionTotal - mealCal)
+    return { cal: Math.min(nominal, achievable) }
+  }
   const target = form.calorie_target !== '' ? parseInt(form.calorie_target) : null
 
   function rangeError(label, total, target) {
