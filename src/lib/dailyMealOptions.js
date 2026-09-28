@@ -59,15 +59,6 @@ export async function loadDailyMealOptions(clientId) {
     ? { cal: asgn.calorie_target, ...calcBodyweightMacros(asgn.calorie_target, weightKg, coachProfile?.protein_g_per_kg, clientRow.goal_type, goalMacroSplits) }
     : null
 
-  const { data: mealsData } = await supabase.from('meals').select(`
-    id, name, category,
-    meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, scaling_type),
-    meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
-      meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
-  `).eq('coach_id', clientRow.coach_id)
-  const mealMap = {}
-  for (const m of (mealsData || [])) mealMap[m.id] = m
-
   const tier = CALORIE_TIERS.includes(asgn.calorie_target) ? asgn.calorie_target : null
   const [{ data: tierTmpl }, { data: stdTmpl }, { data: cwm }] = await Promise.all([
     tier
@@ -86,6 +77,26 @@ export async function loadDailyMealOptions(clientId) {
   if (asgn.evening_snack_static && asgn.evening_snack_meal_id) templateSlots.evening_snack = asgn.evening_snack_meal_id
   const finalSlots = { ...templateSlots, ...(cwm?.slots || {}) }
   const clientOverrides = cwm?.ingredient_overrides || {}
+
+  // Only the handful of meals actually in play today (up to 8: breakfast/lunch/dinner A+B,
+  // pre-workout, evening snack, plus whatever's picked for Everyday meals) — not the coach's whole
+  // library. That full-library fetch (every meal, every ingredient, every calorie-tier version) is
+  // what was making this page take upwards of 10 seconds to show anything.
+  const neededMealIds = [...new Set([
+    ...Object.values(finalSlots),
+    ...(everydayRows || []).map(r => r.meal_id),
+  ].filter(Boolean))]
+
+  const { data: mealsData } = neededMealIds.length > 0
+    ? await supabase.from('meals').select(`
+        id, name, category,
+        meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, scaling_type),
+        meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
+          meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
+      `).in('id', neededMealIds)
+    : { data: [] }
+  const mealMap = {}
+  for (const m of (mealsData || [])) mealMap[m.id] = m
 
   // `resolvedIngredients` is the fully-layered (tier + weekly-schedule template + this client's own
   // standing week edit) ingredient list — already exactly what's actually in the meal, before any
