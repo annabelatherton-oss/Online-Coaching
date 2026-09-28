@@ -356,7 +356,7 @@ export default function ClientMealPlan() {
       { onConflict: 'assignment_id,week_number' }
     )
     setSaving(false)
-    if (error) { setSaveError('Could not save. Please try again.'); return }
+    if (error) { setSaveError(error.message ? `Could not save: ${error.message}` : 'Could not save. Please try again.'); return }
     setLastSavedSlots(editedSlots)
     if (hasNewSwap) notifyCoachOfSwap(weekNumber)
     setSlotsDirty(false); setSaved(true); setTimeout(() => setSaved(false), 2500)
