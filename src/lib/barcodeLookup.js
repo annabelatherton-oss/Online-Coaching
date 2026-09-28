@@ -4,6 +4,30 @@ import { supabase } from './supabase'
 // from the browser rather than through an Edge Function — there's no secret to protect.
 const OFF_URL = 'https://world.openfoodfacts.org/api/v2/product'
 
+function normalizeName(str) {
+  return (str || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ')
+}
+
+// Catches "already in the library under a slightly different name" (a coach-typed "Snickers" vs
+// Open Food Facts' "Snickers Bar — Mars", or punctuation/case differences) without a full fuzzy-
+// matching library: exact match on the normalized name, or every word of the shorter normalized
+// name appearing in the longer one. Requires at least 2 words on the shorter side so a single
+// generic word (e.g. "Milk") doesn't match everything that happens to contain it.
+function findFuzzyNameMatch(names, candidates) {
+  const targets = names.map(normalizeName).filter(Boolean)
+  for (const cand of candidates) {
+    const candNorm = normalizeName(cand.name)
+    if (!candNorm) continue
+    for (const t of targets) {
+      if (candNorm === t) return cand
+      const [shorter, longer] = candNorm.length <= t.length ? [candNorm, t] : [t, candNorm]
+      const shortWords = shorter.split(' ').filter(Boolean)
+      if (shortWords.length >= 2 && shortWords.every(w => longer.includes(w))) return cand
+    }
+  }
+  return null
+}
+
 function macrosFromOFF(product) {
   const n = product?.nutriments || {}
   const per100 = {
@@ -55,6 +79,20 @@ export async function lookupBarcode(barcode, coachId) {
 
   const macros = macrosFromOFF(product)
   const name = [product.product_name, product.brands].filter(Boolean).join(' — ').slice(0, 200) || `Scanned item (${barcode})`
+
+  // Before creating a new entry, check whether this product is already in the library under a
+  // slightly different name — added directly by the coach, or cached from a scan before barcodes
+  // were tracked at all. If so, just tag that existing row with this barcode and use it, rather
+  // than growing the library with a near-duplicate every time someone scans it.
+  const { data: existing } = await supabase.from('ingredients').select('*').eq('coach_id', coachId)
+  const fuzzyMatch = findFuzzyNameMatch([name, product.product_name], existing || [])
+  if (fuzzyMatch) {
+    if (!fuzzyMatch.barcode) {
+      await supabase.from('ingredients').update({ barcode }).eq('id', fuzzyMatch.id)
+    }
+    return { ...fuzzyMatch, barcode }
+  }
+
   const row = {
     coach_id: coachId,
     barcode,

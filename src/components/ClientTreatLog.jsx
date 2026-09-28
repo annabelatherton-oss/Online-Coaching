@@ -52,6 +52,8 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
   const [addSaving, setAddSaving] = useState(false)
   const [addError, setAddError] = useState('')
 
+  const [recentIds, setRecentIds] = useState([]) // this client's own most-recently-logged ingredient ids, deduped
+
   async function load() {
     const { start, end } = dayBounds(dateStr)
     const { data } = await supabase
@@ -67,6 +69,31 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
 
   useEffect(() => { load() }, [clientId, dateStr])
 
+  // This client's own recent history (not scoped to `dateStr` — spans every day they've logged
+  // anything) so the picker opens on what THEY actually reach for, rather than an arbitrary
+  // alphabetical slice of the whole library that looked like suggested examples.
+  useEffect(() => {
+    if (!clientId) return
+    supabase
+      .from('client_treat_logs')
+      .select('ingredient_id, logged_at')
+      .eq('client_id', clientId)
+      .not('ingredient_id', 'is', null)
+      .order('logged_at', { ascending: false })
+      .limit(50)
+      .then(({ data }) => {
+        const seen = new Set()
+        const ids = []
+        for (const row of (data || [])) {
+          if (seen.has(row.ingredient_id)) continue
+          seen.add(row.ingredient_id)
+          ids.push(row.ingredient_id)
+          if (ids.length >= 10) break
+        }
+        setRecentIds(ids)
+      })
+  }, [clientId])
+
   const ingredientList = useMemo(() => {
     const all = Object.values(ingredientLib || {})
     // Treats/snacks first, then everything else alphabetically — a client can still log anything
@@ -79,11 +106,19 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
     })
   }, [ingredientLib])
 
+  const recentIngredients = useMemo(
+    () => recentIds.map(id => ingredientLib[id]).filter(Boolean),
+    [recentIds, ingredientLib],
+  )
+
+  // Nothing shows until the client actually searches, other than their own recent adds — the
+  // point being not to greet them with an arbitrary slice of the whole library that reads like
+  // suggested examples.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    const base = q ? ingredientList.filter(i => i.name.toLowerCase().includes(q)) : ingredientList
-    return base.slice(0, 25)
-  }, [ingredientList, search])
+    if (!q) return recentIngredients
+    return ingredientList.filter(i => i.name.toLowerCase().includes(q)).slice(0, 25)
+  }, [ingredientList, recentIngredients, search])
 
   const selectedIng = selected ? ingredientLib[selected] : null
   // Whichever way the client got here — searching the library, or scanning a barcode — the
@@ -288,8 +323,13 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
                 </button>
               </div>
               <div className="max-h-48 overflow-y-auto space-y-1">
+                {!search.trim() && filtered.length > 0 && (
+                  <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide px-2 pt-1">Recently added</p>
+                )}
                 {filtered.length === 0 && (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 py-2 text-center">No matches</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 py-2 text-center">
+                    {search.trim() ? 'No matches' : 'Search to find something to add'}
+                  </p>
                 )}
                 {filtered.map(ing => (
                   <button
