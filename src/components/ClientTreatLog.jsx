@@ -5,6 +5,8 @@ import { lookupBarcode } from '../lib/barcodeLookup'
 import BarcodeScanner from './BarcodeScanner'
 
 const EMPTY_MACROS = { cal: 0, prot: 0, carb: 0, fat: 0 }
+const UNIT_OPTIONS = ['g', 'ml', 'unit', 'bar', 'tin', 'slice', 'scoop', 'cup']
+const EMPTY_ADD_FORM = { title: '', brand: '', servingSize: '1', servingUnit: 'g', customUnit: '', calories: '', protein: '', carbs: '', fat: '' }
 
 function addMacros(a, b) {
   return { cal: a.cal + b.cal, prot: a.prot + b.prot, carb: a.carb + b.carb, fat: a.fat + b.fat }
@@ -34,9 +36,13 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
   const [servings, setServings] = useState(1)
   const [saving, setSaving] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
-  const [scannedIng, setScannedIng] = useState(null) // ingredient-shaped object from a barcode lookup
+  const [scannedIng, setScannedIng] = useState(null) // ingredient-shaped object from a barcode lookup or manual add
   const [scanLoading, setScanLoading] = useState(false)
   const [scanError, setScanError] = useState('')
+  const [addFoodOpen, setAddFoodOpen] = useState(false)
+  const [addForm, setAddForm] = useState({ ...EMPTY_ADD_FORM })
+  const [addSaving, setAddSaving] = useState(false)
+  const [addError, setAddError] = useState('')
 
   async function load() {
     const { data } = await supabase
@@ -81,6 +87,44 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
     setServings(1)
     setScannedIng(null)
     setScanError('')
+    setAddFoodOpen(false)
+    setAddForm({ ...EMPTY_ADD_FORM })
+    setAddError('')
+  }
+
+  function setAddField(field, value) { setAddForm(f => ({ ...f, [field]: value })) }
+
+  const addFormValid = addForm.title.trim() && addForm.brand.trim()
+    && parseFloat(addForm.servingSize) > 0 && addForm.servingUnit
+    && addForm.calories !== '' && addForm.protein !== '' && addForm.carbs !== '' && addForm.fat !== ''
+
+  // Goes straight into the coach's shared library as `pending_approval` — visible only to this
+  // client (see client-submitted-foods-migration.sql's read policy) until the coach approves it,
+  // at which point every other client of theirs can find and log it too. Logging it for today
+  // doesn't wait on that: it's usable for this client's own log the moment it's saved.
+  async function handleAddFood(e) {
+    e.preventDefault()
+    if (!addFormValid) { setAddError('Please fill in every field.'); return }
+    setAddSaving(true)
+    setAddError('')
+    const { data: newIng, error } = await supabase.from('ingredients').insert({
+      coach_id: coachId,
+      name: addForm.title.trim(),
+      product_brand: addForm.brand.trim(),
+      category: 'snacks',
+      serving_size: parseFloat(addForm.servingSize),
+      serving_unit: addForm.servingUnit,
+      calories_per_serving: parseFloat(addForm.calories) || 0,
+      protein_per_serving: parseFloat(addForm.protein) || 0,
+      carbs_per_serving: parseFloat(addForm.carbs) || 0,
+      fat_per_serving: parseFloat(addForm.fat) || 0,
+      pending_approval: true,
+      submitted_by_client_id: clientId,
+    }).select().single()
+    setAddSaving(false)
+    if (error) { setAddError('Could not save that. Please try again.'); return }
+    setAddFoodOpen(false)
+    setScannedIng({ ...newIng, name: `${newIng.name} (${newIng.product_brand})` })
   }
 
   async function handleBarcodeDetected(barcode) {
@@ -174,7 +218,41 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
 
       {pickerOpen && (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-3 space-y-3">
-          {!confirmIng ? (
+          {!confirmIng ? (addFoodOpen ? (
+            <form onSubmit={handleAddFood} className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">Add a food</p>
+                <button type="button" onClick={() => setAddFoodOpen(false)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Back to search</button>
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Your coach reviews new foods before they're added to the shared list — it still counts towards today either way.</p>
+              <input type="text" value={addForm.title} onChange={e => setAddField('title', e.target.value)} placeholder="Title, e.g. Protein Bar" className="input-field text-sm" />
+              <input type="text" value={addForm.brand} onChange={e => setAddField('brand', e.target.value)} placeholder="Brand, e.g. Grenade" className="input-field text-sm" />
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min="0.01" step="0.01"
+                  value={addForm.servingSize}
+                  onChange={e => setAddField('servingSize', e.target.value)}
+                  placeholder="1"
+                  className="input-field text-sm w-20"
+                />
+                <select value={addForm.servingUnit} onChange={e => setAddField('servingUnit', e.target.value)} className="input-field text-sm flex-1">
+                  {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+                <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">size these macros are for</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input type="number" min="0" step="1" value={addForm.calories} onChange={e => setAddField('calories', e.target.value)} placeholder="Calories" className="input-field text-sm" />
+                <input type="number" min="0" step="0.1" value={addForm.protein} onChange={e => setAddField('protein', e.target.value)} placeholder="Protein (g)" className="input-field text-sm" />
+                <input type="number" min="0" step="0.1" value={addForm.carbs} onChange={e => setAddField('carbs', e.target.value)} placeholder="Carbs (g)" className="input-field text-sm" />
+                <input type="number" min="0" step="0.1" value={addForm.fat} onChange={e => setAddField('fat', e.target.value)} placeholder="Fat (g)" className="input-field text-sm" />
+              </div>
+              {addError && <p className="text-xs text-red-500">{addError}</p>}
+              <div className="flex items-center gap-2">
+                <button type="submit" disabled={addSaving || !addFormValid} className="btn-primary py-1.5 px-4 text-sm disabled:opacity-50">{addSaving ? 'Saving…' : 'Add & log it'}</button>
+                <button type="button" onClick={closePicker} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Cancel</button>
+              </div>
+            </form>
+          ) : (
             <>
               {scanError && (
                 <p className="text-xs text-amber-600 dark:text-amber-400">{scanError}</p>
@@ -185,7 +263,7 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
                   type="text"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Search for a chocolate bar, drink, snack…"
+                  placeholder="Search to add extra"
                   className="input-field text-sm"
                 />
                 <button
@@ -213,9 +291,12 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
                   </button>
                 ))}
               </div>
-              <button type="button" onClick={closePicker} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Cancel</button>
+              <div className="flex items-center justify-between">
+                <button type="button" onClick={() => setAddFoodOpen(true)} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">Can't find it? + Add a food</button>
+                <button type="button" onClick={closePicker} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Cancel</button>
+              </div>
             </>
-          ) : (
+          )) : (
             <>
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-gray-900 dark:text-white">{confirmIng.name}</p>

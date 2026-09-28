@@ -490,6 +490,7 @@ export default function IngredientsLibrary() {
   const { profile } = useAuth()
   const [ingredients, setIngredients] = useState([])
   const [swapsMap, setSwapsMap] = useState({}) // ingredient_id -> [{ id, name }]
+  const [clientNameById, setClientNameById] = useState({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState('all')
@@ -497,11 +498,13 @@ export default function IngredientsLibrary() {
   const [editing, setEditing] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
   const [deleteError, setDeleteError] = useState('')
+  const [approvingId, setApprovingId] = useState(null)
 
   async function load() {
-    const [{ data }, { data: swapRows }] = await Promise.all([
+    const [{ data }, { data: swapRows }, { data: clientRows }] = await Promise.all([
       supabase.from('ingredients').select('*').eq('coach_id', profile.id).order('name', { ascending: true }),
       supabase.from('ingredient_swaps').select('ingredient_id, alternative_ingredient_id').eq('coach_id', profile.id),
+      supabase.from('clients').select('id, full_name').eq('coach_id', profile.id),
     ])
     setIngredients(data || [])
     const nameById = {}
@@ -512,10 +515,33 @@ export default function IngredientsLibrary() {
       map[row.ingredient_id].push({ id: row.alternative_ingredient_id, name: nameById[row.alternative_ingredient_id] || '?' })
     }
     setSwapsMap(map)
+    setClientNameById(Object.fromEntries((clientRows || []).map(c => [c.id, c.full_name])))
     setLoading(false)
   }
 
   useEffect(() => { load() }, [profile.id])
+
+  // A client-submitted food (see client-submitted-foods-migration.sql) stays invisible to every
+  // other client until approved here — approving just flips the flag, so it's then the exact same
+  // row everyone reads from rather than a copy. Rejecting deletes it outright: the client's own
+  // treat log entry already snapshotted its own name/macros at log time, so nothing about their
+  // day changes — only the ingredient_id link on that entry quietly goes null.
+  const pendingIngredients = ingredients.filter(i => i.pending_approval)
+
+  async function approveIngredient(id) {
+    setApprovingId(id)
+    await supabase.from('ingredients').update({ pending_approval: false }).eq('id', id)
+    setApprovingId(null)
+    load()
+  }
+
+  async function rejectIngredient(id) {
+    if (!confirm("Reject this food? It won't be added to your library — the client's own log entry is unaffected.")) return
+    setApprovingId(id)
+    await supabase.from('ingredients').delete().eq('id', id)
+    setApprovingId(null)
+    load()
+  }
 
   async function handleDelete(id) {
     if (!confirm('Delete this ingredient? Meals that already use it will keep their saved values.')) return
@@ -532,15 +558,17 @@ export default function IngredientsLibrary() {
   function handleSaved() { setModalOpen(false); load() }
 
   const filtered = ingredients.filter(ing => {
+    if (ing.pending_approval) return false
     const matchesSearch = ing.name.toLowerCase().includes(search.toLowerCase())
     const matchesCat = activeCategory === 'all' || ing.category === activeCategory
     return matchesSearch && matchesCat
   })
 
   const categoryCounts = CATEGORIES.reduce((acc, c) => {
+    const approved = ingredients.filter(i => !i.pending_approval)
     acc[c.value] = c.value === 'all'
-      ? ingredients.length
-      : ingredients.filter(i => i.category === c.value).length
+      ? approved.length
+      : approved.filter(i => i.category === c.value).length
     return acc
   }, {})
 
@@ -589,7 +617,7 @@ export default function IngredientsLibrary() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Ingredient Library</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {ingredients.length} ingredient{ingredients.length !== 1 ? 's' : ''} — add once, reuse in any meal
+            {ingredients.length - pendingIngredients.length} ingredient{ingredients.length - pendingIngredients.length !== 1 ? 's' : ''} — add once, reuse in any meal
           </p>
         </div>
         <button onClick={openAdd} className="btn-primary">
@@ -599,6 +627,45 @@ export default function IngredientsLibrary() {
           Add Ingredient
         </button>
       </div>
+
+      {pendingIngredients.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-900/10 p-4 space-y-3">
+          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+            {pendingIngredients.length} new food{pendingIngredients.length !== 1 ? 's' : ''} from clients — approve to add to the shared library
+          </p>
+          <div className="space-y-2">
+            {pendingIngredients.map(ing => (
+              <div key={ing.id} className="flex items-center justify-between gap-3 bg-white dark:bg-gray-800/60 rounded-xl px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {ing.name}{ing.product_brand ? ` (${ing.product_brand})` : ''}
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    {ing.serving_size}{ing.serving_unit} · {Math.round(ing.calories_per_serving)} kcal · {ing.protein_per_serving}g P · {ing.carbs_per_serving}g C · {ing.fat_per_serving}g F
+                    {clientNameById[ing.submitted_by_client_id] ? ` · from ${clientNameById[ing.submitted_by_client_id]}` : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => approveIngredient(ing.id)}
+                    disabled={approvingId === ing.id}
+                    className="text-xs font-medium text-green-600 hover:text-green-700 dark:text-green-400 disabled:opacity-50"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => rejectIngredient(ing.id)}
+                    disabled={approvingId === ing.id}
+                    className="text-xs font-medium text-red-500 hover:text-red-600 dark:text-red-400 disabled:opacity-50"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {deleteError && (
         <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
