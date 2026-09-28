@@ -2991,7 +2991,12 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         ) : (
           <>
             {banner}
-            <div className={bannerKeys ? 'grid grid-cols-2 gap-3' : ''}>{cardsJSX}</div>
+            {/* Side-by-side only once there's genuinely enough width for each card's ingredient
+                table to lay out on one line per row (it uses viewport-relative breakpoints
+                internally, so it doesn't know it's been squeezed into half a narrower column) —
+                below that it stacks full-width, which reads far better than two cramped, wrapped
+                columns. */}
+            <div className={bannerKeys ? 'grid grid-cols-1 2xl:grid-cols-2 gap-3' : ''}>{cardsJSX}</div>
           </>
         )}
       </div>
