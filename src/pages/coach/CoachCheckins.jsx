@@ -1128,7 +1128,10 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                       { val: Math.round(macros.prot), lbl: 'prot', target: targetMacros?.protein_g ?? null, unit: 'g', type: 'prot' },
                       { val: Math.round(macros.fat), lbl: 'fat', target: targetMacros?.fat_g ?? null, unit: 'g', type: 'fat' },
                     ].map(({ val, lbl, target, unit, type }) => {
-                      const diff = target != null ? val - target : null
+                      // target - val (not val - target): phrased as the action still needed to
+                      // hit target, same convention as MacroTargetInfo's macroDiff elsewhere in
+                      // the app - positive means add this much more, negative means remove it.
+                      const diff = target != null ? target - val : null
                       const onTarget = diff !== null && Math.abs(diff) <= (lbl === 'kcal' ? 30 : 5)
                       return (
                         <div key={lbl}>
