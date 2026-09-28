@@ -521,10 +521,6 @@ export default function ClientTodoList() {
             </div>
           )}
 
-          {/* Meal tracking — which option (A / B / Everyday) this day is following, with room to
-              scale meals up or down and log treats, scoped to whichever day is selected above. */}
-          <ClientDailyMealTracker clientId={clientId} dateISO={toISO(selectedDate)} />
-
           {/* Daily habits */}
           <div data-tour="daily-habits" className="space-y-2">
             <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Daily habits</h2>
@@ -603,6 +599,10 @@ export default function ClientTodoList() {
               </div>
             )}
           </div>
+
+          {/* Meal tracking — which option (A / B / Everyday) this day is following, with room to
+              scale meals up or down and log treats, scoped to whichever day is selected above. */}
+          <ClientDailyMealTracker clientId={clientId} dateISO={toISO(selectedDate)} />
         </div>
       )}
 
