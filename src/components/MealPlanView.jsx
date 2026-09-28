@@ -562,7 +562,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onRemove, swapCtx, target, siblingMacros, siblingLabel, onApplyToSchedule, canApplyToSchedule, applyingToSchedule, dayOptionTotals, dayTargetCal }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onStaticQtyChange, onRemove, swapCtx, target, siblingMacros, siblingLabel, onApplyToSchedule, canApplyToSchedule, applyingToSchedule, dayOptionTotals, dayTargetCal }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
   const [prepDays, setPrepDays] = useState(null)
@@ -734,7 +734,25 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                     const isStatic = ing.is_static && !ing._isAdded
                     return (
                       <div key={ing._tempId || ing.id || i} className="flex items-center gap-2 flex-wrap">
-                        {onRemoveIngredient && !isStatic && (
+                        {onToggleStatic && !ing._isAdded && (
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); onToggleStatic(ing) }}
+                            title={isStatic ? 'Static — click to unlock for all calorie tiers' : 'Click to lock this ingredient\'s quantity across all calorie tiers'}
+                            className={`w-5 h-5 flex items-center justify-center flex-shrink-0 transition-colors ${isStatic ? 'text-amber-400 hover:text-amber-600' : 'text-gray-300 hover:text-gray-500'}`}
+                          >
+                            {isStatic ? (
+                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                                <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
+                              </svg>
+                            ) : (
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 018 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                              </svg>
+                            )}
+                          </button>
+                        )}
+                        {onRemoveIngredient && !isStatic && !(onToggleStatic && !ing._isAdded) && (
                           <button
                             onClick={e => { e.stopPropagation(); onRemoveIngredient(slotKey, ing) }}
                             className="w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 transition-colors"
@@ -744,7 +762,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                             </svg>
                           </button>
                         )}
-                        {onRemoveIngredient && isStatic && (
+                        {onRemoveIngredient && isStatic && !onToggleStatic && (
                           <span className="w-5 h-5 flex items-center justify-center flex-shrink-0 text-amber-400" title="Static ingredient — cannot be removed">
                             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                               <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
@@ -758,12 +776,12 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                               <QtyInput
                                 min="0"
                                 step="1"
-                                disabled={isStatic}
+                                disabled={isStatic && !onStaticQtyChange}
                                 value={ing.quantity_g}
-                                onCommit={qty => onUpdateIngredient(slotKey, ing._tempId || ing.id, qty)}
+                                onCommit={qty => isStatic ? onStaticQtyChange?.(ing, qty) : onUpdateIngredient(slotKey, ing._tempId || ing.id, qty)}
                                 className={`w-20 text-sm text-right border rounded-lg px-2 py-1 focus:outline-none tabular-nums ${
                                   isStatic
-                                    ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 cursor-not-allowed'
+                                    ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400' + (onStaticQtyChange ? '' : ' cursor-not-allowed')
                                     : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-brand-400'
                                 }`}
                               />

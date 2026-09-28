@@ -590,6 +590,77 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
     })
   }
 
+  // Static ingredients aren't a per-client override — locking one edits the meal's actual
+  // recipe (base row + every calorie-tier version) so the fixed quantity applies to every
+  // client on that meal, mirroring toggleIngredientStatic/updateStaticIngredientQty in
+  // CoachClientProfile.jsx.
+  async function toggleIngredientStatic(mealId, ing) {
+    const meal = mealMap[mealId]
+    if (!meal || ing._isAdded) return
+    const newVal = !ing.is_static
+    const baseIng = meal.meal_ingredients.find(b =>
+      (ing.ingredient_id && b.ingredient_id === ing.ingredient_id) || b.name === ing.name
+    )
+    if (!baseIng) return
+    await supabase.from('meal_ingredients').update({ is_static: newVal }).eq('id', baseIng.id)
+    const tierVersionIds = (meal.meal_tier_versions || []).map(v => v.id)
+    if (tierVersionIds.length > 0) {
+      const q = supabase.from('meal_tier_ingredients').update({ is_static: newVal }).in('tier_version_id', tierVersionIds)
+      ing.ingredient_id ? await q.eq('ingredient_id', ing.ingredient_id) : await q.eq('name', ing.name)
+    }
+    setMealMap(prev => {
+      const m = { ...prev[mealId] }
+      m.meal_ingredients = m.meal_ingredients.map(b => b.id === baseIng.id ? { ...b, is_static: newVal } : b)
+      m.meal_tier_versions = (m.meal_tier_versions || []).map(v => ({
+        ...v,
+        meal_tier_ingredients: (v.meal_tier_ingredients || []).map(ti =>
+          (ing.ingredient_id ? ti.ingredient_id === ing.ingredient_id : ti.name === ing.name)
+            ? { ...ti, is_static: newVal }
+            : ti
+        ),
+      }))
+      return { ...prev, [mealId]: m }
+    })
+  }
+
+  async function updateStaticIngredientQty(mealId, ing, newQty) {
+    const meal = mealMap[mealId]
+    if (!meal) return
+    const baseIng = meal.meal_ingredients.find(b =>
+      (ing.ingredient_id && b.ingredient_id === ing.ingredient_id) || b.name === ing.name
+    )
+    if (!baseIng) return
+    const libIng = ing.ingredient_id ? ingredientLib[ing.ingredient_id] : null
+    const factor = libIng && libIng.serving_size > 0 ? newQty / libIng.serving_size : newQty > 0 ? newQty / (parseFloat(baseIng.quantity_g) || 1) : 0
+    const macros = libIng ? {
+      calories:  Math.round(factor * libIng.calories_per_serving * 10) / 10,
+      protein_g: Math.round(factor * libIng.protein_per_serving  * 10) / 10,
+      carbs_g:   Math.round(factor * libIng.carbs_per_serving    * 10) / 10,
+      fat_g:     Math.round(factor * libIng.fat_per_serving      * 10) / 10,
+    } : {}
+    await supabase.from('meal_ingredients').update({ quantity_g: newQty, ...macros }).eq('id', baseIng.id)
+    const tierVersionIds = (meal.meal_tier_versions || []).map(v => v.id)
+    if (tierVersionIds.length > 0) {
+      const q = supabase.from('meal_tier_ingredients').update({ quantity_g: newQty, ...macros }).in('tier_version_id', tierVersionIds)
+      ing.ingredient_id ? await q.eq('ingredient_id', ing.ingredient_id) : await q.eq('name', ing.name)
+    }
+    setMealMap(prev => {
+      const m = { ...prev[mealId] }
+      m.meal_ingredients = m.meal_ingredients.map(b =>
+        b.id === baseIng.id ? { ...b, quantity_g: newQty, ...macros } : b
+      )
+      m.meal_tier_versions = (m.meal_tier_versions || []).map(v => ({
+        ...v,
+        meal_tier_ingredients: (v.meal_tier_ingredients || []).map(ti =>
+          (ing.ingredient_id ? ti.ingredient_id === ing.ingredient_id : ti.name === ing.name)
+            ? { ...ti, quantity_g: newQty, ...macros }
+            : ti
+        ),
+      }))
+      return { ...prev, [mealId]: m }
+    })
+  }
+
   // snapToConstraints only rounds when the ingredient has an explicit
   // serving_step configured in the library — most don't (it's an optional
   // per-ingredient field), so without a fallback here the redistribution
@@ -1314,6 +1385,8 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
           onRevertIngredients={handleRevertIngredients}
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
+          onToggleStatic={ing => toggleIngredientStatic(editedSlots[recipeModal], ing)}
+          onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(editedSlots[recipeModal], ing, qty)}
           onRemove={handleRemoveMeal}
           onApplyToSchedule={applyEditToSchedule}
           canApplyToSchedule={!!activeTemplateId && (editedSlots[recipeModal] || null) === (templateSlots[recipeModal] || null)}
