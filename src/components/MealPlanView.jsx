@@ -846,12 +846,14 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
             )}
 
             <div className="flex items-center gap-3 pt-2 pb-2">
-              <button
-                onClick={() => { onSwap(slotKey, slotDef?.label || '', slotDef?.cat || ''); onClose() }}
-                className="btn-primary flex-1"
-              >
-                Swap meal
-              </button>
+              {onSwap && (
+                <button
+                  onClick={() => { onSwap(slotKey, slotDef?.label || '', slotDef?.cat || ''); onClose() }}
+                  className="btn-primary flex-1"
+                >
+                  Swap meal
+                </button>
+              )}
               {isCustom && onRevert && (
                 <button onClick={() => { onRevert(slotKey); onClose() }} className="btn-secondary">
                   Revert

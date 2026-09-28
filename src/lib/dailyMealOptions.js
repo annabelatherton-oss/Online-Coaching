@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { CALORIE_TIERS } from './calorieTiers'
-import { mealMacrosLayered, mealMacros } from '../components/MealPlanView'
+import { mealMacrosLayered, mealMacros, getIngredientsLayered, getIngredients, sumIngredientMacros } from '../components/MealPlanView'
 import { normalizeGoalMacroSplits, calcBodyweightMacros } from './macros'
 
 // Option A/B pull from the client's actual assigned weekly plan (client_week_meals layered over
@@ -87,6 +87,11 @@ export async function loadDailyMealOptions(clientId) {
   const finalSlots = { ...templateSlots, ...(cwm?.slots || {}) }
   const clientOverrides = cwm?.ingredient_overrides || {}
 
+  // `resolvedIngredients` is the fully-layered (tier + weekly-schedule template + this client's own
+  // standing week edit) ingredient list — already exactly what's actually in the meal, before any
+  // per-day tweak. The daily tracker treats this as a synthetic meal's own base ingredients and
+  // applies a THIRD, day-only override layer on top of it (see ClientDailyMealTracker.jsx), the
+  // same way getIngredientsLayered itself stacks the template layer under the client layer.
   function buildPlanOption(defs) {
     return defs.map(d => {
       const mealId = finalSlots[d.slotType] || null
@@ -95,6 +100,10 @@ export async function loadDailyMealOptions(clientId) {
         key: d.key,
         label: d.label,
         name: meal?.name || null,
+        category: meal?.category || null,
+        photoUrl: meal?.photo_url || null,
+        photoPosition: meal?.photo_position || null,
+        resolvedIngredients: meal ? getIngredientsLayered(meal, tier, templateOverrides[d.slotType], clientOverrides[d.slotType]) : [],
         macros: mealMacrosLayered(mealId, mealMap, tier, templateOverrides[d.slotType], clientOverrides[d.slotType]) || { cal: 0, prot: 0, carb: 0, fat: 0 },
       }
     }).filter(s => s.name)
@@ -113,12 +122,21 @@ export async function loadDailyMealOptions(clientId) {
     }
   }).filter(s => s.name)
 
+  // Pre-workout and evening snack sit outside the A/B choice entirely — same meal either way, per
+  // ClientMealPlan.jsx's own preworkoutM/snackM — so they're ticked as their own single items
+  // rather than duplicated per option.
+  const shared = buildPlanOption([
+    { key: 'preworkout',    label: 'Pre-workout',   slotType: 'preworkout' },
+    { key: 'evening_snack', label: 'Evening snack', slotType: 'evening_snack' },
+  ])
+
   return {
     coachId: clientRow.coach_id,
     ingredientLib,
     dailyMacroTargets,
     optionA: buildPlanOption(OPTION_A_SLOTS),
     optionB: buildPlanOption(OPTION_B_SLOTS),
+    shared,
     everyday,
   }
 }
