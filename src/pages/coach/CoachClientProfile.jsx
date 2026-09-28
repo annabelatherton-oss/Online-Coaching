@@ -744,8 +744,16 @@ function OverviewTab({ client, onSaved }) {
       current_fat: fat ? parseInt(fat) : null,
     }
     await saveField(payload)
+    // saveField already shows its own "Saved" on success — but that's only the `clients` row.
+    // This mirror write's own result was previously never checked, so a failure here (or simply
+    // no active assignment yet to mirror onto) looked identical to a fully-successful save even
+    // though the Meal Plan tab — sized off client_plan_assignments.calorie_target, not this row —
+    // would then silently keep showing the old target.
     if (planAssignmentId) {
-      await supabase.from('client_plan_assignments').update({ calorie_target: payload.current_calories }).eq('id', planAssignmentId)
+      const { error: mirrorErr } = await supabase.from('client_plan_assignments').update({ calorie_target: payload.current_calories }).eq('id', planAssignmentId)
+      if (mirrorErr) setError(`Saved, but the Meal Plan tab's target couldn't be updated: ${mirrorErr.message}`)
+    } else {
+      setError("Saved, but couldn't find an active plan assignment to update the Meal Plan tab's target — assign a plan first if this client doesn't have one yet.")
     }
   }
 
