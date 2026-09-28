@@ -129,6 +129,13 @@ export async function loadDailyMealOptions(clientId) {
       key: d.key,
       label: d.label,
       name: meal?.name || null,
+      category: meal?.category || null,
+      photoUrl: meal?.photo_url || null,
+      photoPosition: meal?.photo_position || null,
+      // Everyday meals only ever have the one standing override layer (client_everyday_meals.
+      // ingredient_overrides) — no weekly-schedule template sits underneath them — so this is
+      // getIngredients directly rather than the two-layer getIngredientsLayered used for A/B/shared.
+      resolvedIngredients: meal ? getIngredients(meal, null, row?.ingredient_overrides) : [],
       macros: mealMacros(row?.meal_id, mealMap, null, row?.ingredient_overrides) || { cal: 0, prot: 0, carb: 0, fat: 0 },
     }
   }).filter(s => s.name)

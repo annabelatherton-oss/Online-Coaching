@@ -12,7 +12,6 @@ const MEAL_CATS = [
 ]
 
 function findSlot(list, key) { return list.find(s => s.key === key) }
-function optionTotal(list) { return list.reduce((acc, s) => addMacros(acc, s.macros), EMPTY_MACROS) }
 
 // A ticked slot's macros, with its day-only ingredient tweak (if any) applied on top of the
 // already-resolved (tier + template + standing-week) ingredient list it was loaded with.
@@ -164,7 +163,12 @@ export default function ClientDailyMealTracker({ clientId, dateISO }) {
   if (optionsLoading || dayLoading) return null
   if (!options) return null // no active plan assignment yet
 
-  let actualTotal = options.everyday.length > 0 && ticks.everyday ? optionTotal(options.everyday) : EMPTY_MACROS
+  let actualTotal = EMPTY_MACROS
+  if (ticks.everyday) {
+    for (const s of options.everyday) {
+      actualTotal = addMacros(actualTotal, effectiveMacros(s, overrides[`everyday:${s.key}`]))
+    }
+  }
   for (const s of options.shared) {
     if (ticks[s.key]) actualTotal = addMacros(actualTotal, effectiveMacros(s, overrides[s.key]))
   }
@@ -241,25 +245,30 @@ export default function ClientDailyMealTracker({ clientId, dateISO }) {
 
         {options.everyday.length > 0 && (
           <div className={`rounded-xl border p-3 space-y-2 ${ticks.everyday ? 'border-brand-400 dark:border-brand-600 bg-brand-50/50 dark:bg-brand-900/10' : 'border-gray-200 dark:border-gray-700'}`}>
-            <div className="flex items-center justify-between gap-2">
+            <button type="button" onClick={() => toggle('everyday')} className="w-full flex items-center gap-2.5 text-left">
+              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                ticks.everyday ? 'bg-brand-500 border-brand-500' : 'border-gray-300 dark:border-gray-600'
+              }`}>
+                {ticks.everyday && (
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                )}
+              </span>
               <p className="text-sm font-semibold text-gray-900 dark:text-white">Everyday meals</p>
-              <button
-                type="button"
-                onClick={() => toggle('everyday')}
-                className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors flex-shrink-0 ${
-                  ticks.everyday ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                {ticks.everyday ? '✓ Had these today' : 'I had these'}
-              </button>
-            </div>
-            <div className="space-y-1">
+            </button>
+            <div className="space-y-1 pl-[1.875rem]">
               {options.everyday.map(s => (
                 <div key={s.key} className="flex items-center justify-between gap-2 text-sm">
                   <p className="text-gray-600 dark:text-gray-300 truncate">
                     <span className="text-gray-400 dark:text-gray-500">{s.label}: </span>{s.name}
                   </p>
-                  <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{Math.round(s.macros.cal)} kcal</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(effectiveMacros(s, overrides[`everyday:${s.key}`]).cal)} kcal</span>
+                    {ticks.everyday && (
+                      <button type="button" onClick={() => openEditor(`everyday:${s.key}`, s)} className="p-1 text-gray-400 hover:text-brand-500" title="Edit ingredients for today">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
