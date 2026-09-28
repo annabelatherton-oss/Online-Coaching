@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatSigned } from './MealPlanView'
+import { lookupBarcode } from '../lib/barcodeLookup'
+import BarcodeScanner from './BarcodeScanner'
 
 const EMPTY_MACROS = { cal: 0, prot: 0, carb: 0, fat: 0 }
 
@@ -31,6 +33,10 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
   const [selected, setSelected] = useState(null) // ingredient id
   const [servings, setServings] = useState(1)
   const [saving, setSaving] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [scannedIng, setScannedIng] = useState(null) // ingredient-shaped object from a barcode lookup
+  const [scanLoading, setScanLoading] = useState(false)
+  const [scanError, setScanError] = useState('')
 
   async function load() {
     const { data } = await supabase
@@ -64,28 +70,48 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
   }, [ingredientList, search])
 
   const selectedIng = selected ? ingredientLib[selected] : null
+  // Whichever way the client got here — searching the library, or scanning a barcode — the
+  // "confirm quantity and log it" step below works off whichever one is actually populated.
+  const confirmIng = selectedIng || scannedIng
 
   function closePicker() {
     setPickerOpen(false)
     setSearch('')
     setSelected(null)
     setServings(1)
+    setScannedIng(null)
+    setScanError('')
+  }
+
+  async function handleBarcodeDetected(barcode) {
+    setScannerOpen(false)
+    setScanLoading(true)
+    setScanError('')
+    const ing = await lookupBarcode(barcode, coachId)
+    setScanLoading(false)
+    if (!ing) {
+      setScanError("Couldn't find that product — try searching for it below instead.")
+      setPickerOpen(true)
+      return
+    }
+    setScannedIng(ing)
+    setPickerOpen(true)
   }
 
   async function handleLog() {
-    if (!selectedIng) return
+    if (!confirmIng) return
     setSaving(true)
     const ratio = parseFloat(servings) || 0
     const row = {
       client_id: clientId,
       coach_id: coachId,
-      ingredient_id: selectedIng.id,
-      name: selectedIng.name,
+      ingredient_id: confirmIng.id || null,
+      name: confirmIng.name,
       servings: ratio,
-      calories: Math.round((selectedIng.calories_per_serving || 0) * ratio * 10) / 10,
-      protein_g: Math.round((selectedIng.protein_per_serving || 0) * ratio * 10) / 10,
-      carbs_g: Math.round((selectedIng.carbs_per_serving || 0) * ratio * 10) / 10,
-      fat_g: Math.round((selectedIng.fat_per_serving || 0) * ratio * 10) / 10,
+      calories: Math.round((confirmIng.calories_per_serving || 0) * ratio * 10) / 10,
+      protein_g: Math.round((confirmIng.protein_per_serving || 0) * ratio * 10) / 10,
+      carbs_g: Math.round((confirmIng.carbs_per_serving || 0) * ratio * 10) / 10,
+      fat_g: Math.round((confirmIng.fat_per_serving || 0) * ratio * 10) / 10,
       logged_at: new Date().toISOString(),
     }
     const { data, error } = await supabase.from('client_treat_logs').insert(row).select().single()
@@ -121,28 +147,56 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Log anything off-plan so it still counts towards today.</p>
         </div>
         {!pickerOpen && (
-          <button
-            type="button"
-            onClick={() => setPickerOpen(true)}
-            className="btn-secondary py-1.5 px-3 text-xs flex-shrink-0"
-          >
-            + Log a treat
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setScannerOpen(true)}
+              className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1.5"
+              title="Scan a barcode"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7V5a1 1 0 011-1h2M4 17v2a1 1 0 001 1h2m10-14h2a1 1 0 011 1v2m-3 12h2a1 1 0 001-1v-2M7 8v8m3-8v8m4-8v8m3-8v8" /></svg>
+              Scan
+            </button>
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="btn-secondary py-1.5 px-3 text-xs"
+            >
+              + Log a treat
+            </button>
+          </div>
         )}
       </div>
 
+      {scanLoading && (
+        <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-1">Looking that up…</p>
+      )}
+
       {pickerOpen && (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-3 space-y-3">
-          {!selectedIng ? (
+          {!confirmIng ? (
             <>
-              <input
-                autoFocus
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search for a chocolate bar, drink, snack…"
-                className="input-field text-sm"
-              />
+              {scanError && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">{scanError}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search for a chocolate bar, drink, snack…"
+                  className="input-field text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setScannerOpen(true)}
+                  className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0"
+                  title="Scan a barcode"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7V5a1 1 0 011-1h2M4 17v2a1 1 0 001 1h2m10-14h2a1 1 0 011 1v2m-3 12h2a1 1 0 001-1v-2M7 8v8m3-8v8m4-8v8m3-8v8" /></svg>
+                </button>
+              </div>
               <div className="max-h-48 overflow-y-auto space-y-1">
                 {filtered.length === 0 && (
                   <p className="text-xs text-gray-400 dark:text-gray-500 py-2 text-center">No matches</p>
@@ -164,8 +218,8 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
           ) : (
             <>
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedIng.name}</p>
-                <button type="button" onClick={() => setSelected(null)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Change</button>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{confirmIng.name}</p>
+                <button type="button" onClick={() => { setSelected(null); setScannedIng(null) }} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Change</button>
               </div>
               <div className="flex items-center gap-3">
                 <label className="text-xs text-gray-500 dark:text-gray-400">Quantity</label>
@@ -177,13 +231,13 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
                   onChange={e => setServings(e.target.value)}
                   className="input-field text-sm w-20 py-1"
                 />
-                <span className="text-xs text-gray-400 dark:text-gray-500">× {selectedIng.serving_size}{selectedIng.serving_unit}</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">× {confirmIng.serving_size}{confirmIng.serving_unit}</span>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {Math.round((selectedIng.calories_per_serving || 0) * (parseFloat(servings) || 0))} kcal ·{' '}
-                {Math.round((selectedIng.carbs_per_serving || 0) * (parseFloat(servings) || 0))}g C ·{' '}
-                {Math.round((selectedIng.protein_per_serving || 0) * (parseFloat(servings) || 0))}g P ·{' '}
-                {Math.round((selectedIng.fat_per_serving || 0) * (parseFloat(servings) || 0))}g F
+                {Math.round((confirmIng.calories_per_serving || 0) * (parseFloat(servings) || 0))} kcal ·{' '}
+                {Math.round((confirmIng.carbs_per_serving || 0) * (parseFloat(servings) || 0))}g C ·{' '}
+                {Math.round((confirmIng.protein_per_serving || 0) * (parseFloat(servings) || 0))}g P ·{' '}
+                {Math.round((confirmIng.fat_per_serving || 0) * (parseFloat(servings) || 0))}g F
               </p>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={handleLog} disabled={saving} className="btn-primary py-1.5 px-4 text-sm">{saving ? 'Logging…' : 'Log it'}</button>
@@ -235,6 +289,13 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
             </>
           )}
         </div>
+      )}
+
+      {scannerOpen && (
+        <BarcodeScanner
+          onDetected={handleBarcodeDetected}
+          onClose={() => setScannerOpen(false)}
+        />
       )}
     </div>
   )
