@@ -937,9 +937,82 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
             </div>
           )}
 
-          {/* Meal plan for next week — shown right after the notes/struggles above, so the coach
-              lands on the meals (and the A/B-vs-target banners) without scrolling past the
-              calorie target and training sections first. */}
+          {/* Calorie target — shown before the meal plan below, so the coach sees what they're
+              aiming for (and how each option currently measures up against it) before scrolling
+              down to the actual meal choices. */}
+          <div className="card space-y-3">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Calorie target</h2>
+            <div className="flex items-center gap-4">
+              <div>
+                <label className="label text-xs">kcal/day</label>
+                <input
+                  className="input w-32 text-sm"
+                  type="number" onFocus={e => e.target.select()}
+                  min="0"
+                  step="100"
+                  value={calorieTarget}
+                  onChange={e => setCalorieTarget(e.target.value)}
+                  placeholder="e.g. 1800"
+                />
+              </div>
+              {calDiff !== null && calDiff !== 0 && (
+                <div className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${calDiff > 0 ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'}`}>
+                  {calDiff > 0 ? `↑ +${calDiff}` : `↓ ${calDiff}`} kcal vs last week
+                </div>
+              )}
+            </div>
+            <CalorieSuggestionPanel
+              client={client}
+              currentTarget={prevCalTarget}
+              onApply={v => setCalorieTarget(String(v))}
+            />
+            {targetMacros && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                <span className="font-medium text-gray-700 dark:text-gray-300">Macro target:</span>{' '}
+                {targetCal} kcal · {Math.round(targetMacros.carbs_g)}g C · {Math.round(targetMacros.protein_g)}g P · {Math.round(targetMacros.fat_g)}g F
+              </p>
+            )}
+            {/* Daily macro totals, with how far each option lands from the
+                calorie target and the coach's standard macro split for it */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[{ label: 'Option A', macros: opt1Total }, { label: 'Option B', macros: opt2Total }].map(({ label, macros }) => (
+                <div key={label} className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{label} daily total{targetMacros ? ' vs target' : ''}</p>
+                  <div className="grid grid-cols-4 gap-1 text-center">
+                    {[
+                      { val: Math.round(macros.cal), lbl: 'kcal', target: targetMacros ? targetCal : null, unit: '', type: null },
+                      { val: Math.round(macros.carb), lbl: 'carbs', target: targetMacros?.carbs_g ?? null, unit: 'g', type: 'carb' },
+                      { val: Math.round(macros.prot), lbl: 'prot', target: targetMacros?.protein_g ?? null, unit: 'g', type: 'prot' },
+                      { val: Math.round(macros.fat), lbl: 'fat', target: targetMacros?.fat_g ?? null, unit: 'g', type: 'fat' },
+                    ].map(({ val, lbl, target, unit, type }) => {
+                      // target - val (not val - target): phrased as the action still needed to
+                      // hit target, same convention as MacroTargetInfo's macroDiff elsewhere in
+                      // the app - positive means add this much more, negative means remove it.
+                      const diff = target != null ? target - val : null
+                      const onTarget = diff !== null && Math.abs(diff) <= (lbl === 'kcal' ? 30 : 5)
+                      return (
+                        <div key={lbl}>
+                          <p className={`text-xs font-bold tabular-nums ${type ? MACRO_META[type].text : 'text-gray-900 dark:text-white'}`}>{val}{unit}</p>
+                          <p className="text-[10px] text-gray-400 flex items-center justify-center gap-0.5">
+                            {type && <MacroBadge type={type} />}{lbl}
+                          </p>
+                          {diff !== null && (
+                            <p className={`text-[10px] font-semibold tabular-nums ${onTarget ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                              {diff > 0 ? `+${diff}` : diff === 0 ? '±0' : diff}{unit}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Meal plan for next week — shown right after the calorie target above, so the coach
+              already knows what they're aiming for (and how each option compares) before picking
+              or reviewing the actual meals. */}
           <div className="space-y-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
@@ -1086,71 +1159,6 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                 <p className="text-xs text-gray-400 mt-1">Set up weekly templates in the plan editor first.</p>
               </div>
             )}
-          </div>
-
-          {/* Calorie target */}
-          <div className="card space-y-3">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Calorie target</h2>
-            <div className="flex items-center gap-4">
-              <div>
-                <label className="label text-xs">kcal/day</label>
-                <input
-                  className="input w-32 text-sm"
-                  type="number" onFocus={e => e.target.select()}
-                  min="0"
-                  step="100"
-                  value={calorieTarget}
-                  onChange={e => setCalorieTarget(e.target.value)}
-                  placeholder="e.g. 1800"
-                />
-              </div>
-              {calDiff !== null && calDiff !== 0 && (
-                <div className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${calDiff > 0 ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'}`}>
-                  {calDiff > 0 ? `↑ +${calDiff}` : `↓ ${calDiff}`} kcal vs last week
-                </div>
-              )}
-            </div>
-            <CalorieSuggestionPanel
-              client={client}
-              currentTarget={prevCalTarget}
-              onApply={v => setCalorieTarget(String(v))}
-            />
-            {/* Daily macro totals, with how far each option lands from the
-                calorie target and the coach's standard macro split for it */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {[{ label: 'Option A', macros: opt1Total }, { label: 'Option B', macros: opt2Total }].map(({ label, macros }) => (
-                <div key={label} className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{label} daily total{targetMacros ? ' vs target' : ''}</p>
-                  <div className="grid grid-cols-4 gap-1 text-center">
-                    {[
-                      { val: Math.round(macros.cal), lbl: 'kcal', target: targetMacros ? targetCal : null, unit: '', type: null },
-                      { val: Math.round(macros.carb), lbl: 'carbs', target: targetMacros?.carbs_g ?? null, unit: 'g', type: 'carb' },
-                      { val: Math.round(macros.prot), lbl: 'prot', target: targetMacros?.protein_g ?? null, unit: 'g', type: 'prot' },
-                      { val: Math.round(macros.fat), lbl: 'fat', target: targetMacros?.fat_g ?? null, unit: 'g', type: 'fat' },
-                    ].map(({ val, lbl, target, unit, type }) => {
-                      // target - val (not val - target): phrased as the action still needed to
-                      // hit target, same convention as MacroTargetInfo's macroDiff elsewhere in
-                      // the app - positive means add this much more, negative means remove it.
-                      const diff = target != null ? target - val : null
-                      const onTarget = diff !== null && Math.abs(diff) <= (lbl === 'kcal' ? 30 : 5)
-                      return (
-                        <div key={lbl}>
-                          <p className={`text-xs font-bold tabular-nums ${type ? MACRO_META[type].text : 'text-gray-900 dark:text-white'}`}>{val}{unit}</p>
-                          <p className="text-[10px] text-gray-400 flex items-center justify-center gap-0.5">
-                            {type && <MacroBadge type={type} />}{lbl}
-                          </p>
-                          {diff !== null && (
-                            <p className={`text-[10px] font-semibold tabular-nums ${onTarget ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                              {diff > 0 ? `+${diff}` : diff === 0 ? '±0' : diff}{unit}
-                            </p>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* Training — header */}
