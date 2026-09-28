@@ -400,20 +400,22 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
         </div>
       )}
 
-      {treatsTotal.cal > 0 && (
+      {(treatsTotal.cal > 0 || remaining) && (
         <div className="pt-3 border-t border-gray-100 dark:border-gray-800 space-y-1.5">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-500 dark:text-gray-400">Treats today</span>
-            <div className="text-right">
-              <p className="font-semibold text-gray-900 dark:text-white tabular-nums">{Math.round(treatsTotal.cal)} kcal</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{Math.round(treatsTotal.carb)}g C · {Math.round(treatsTotal.prot)}g P · {Math.round(treatsTotal.fat)}g F</p>
+          {treatsTotal.cal > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-500 dark:text-gray-400">Treats today</span>
+              <div className="text-right">
+                <p className="font-semibold text-gray-900 dark:text-white tabular-nums">{Math.round(treatsTotal.cal)} kcal</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{Math.round(treatsTotal.carb)}g C · {Math.round(treatsTotal.prot)}g P · {Math.round(treatsTotal.fat)}g F</p>
+              </div>
             </div>
-          </div>
+          )}
           {remaining && (
             <>
-              <div className="border-t border-gray-100 dark:border-gray-800" />
+              {treatsTotal.cal > 0 && <div className="border-t border-gray-100 dark:border-gray-800" />}
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500 dark:text-gray-400">Remaining today (plan + treats)</span>
+                <span className="text-gray-500 dark:text-gray-400">Remaining today{treatsTotal.cal > 0 ? ' (plan + treats)' : ''}</span>
                 <div className="text-right">
                   <p className={`font-semibold tabular-nums ${remaining.cal < 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>{formatSigned(remaining.cal)} kcal</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{formatSigned(remaining.carb)}g C · {formatSigned(remaining.prot)}g P · {formatSigned(remaining.fat)}g F</p>
