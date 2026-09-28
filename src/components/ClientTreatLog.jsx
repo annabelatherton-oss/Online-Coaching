@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { formatSigned } from './MealPlanView'
 import { lookupBarcode } from '../lib/barcodeLookup'
 import BarcodeScanner from './BarcodeScanner'
+import { scrollSearchIntoView } from '../lib/scrollSearchIntoView'
 
 const EMPTY_MACROS = { cal: 0, prot: 0, carb: 0, fat: 0 }
 const UNIT_OPTIONS = ['g', 'ml', 'unit', 'bar', 'tin', 'slice', 'scoop', 'cup']
@@ -310,6 +311,7 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
                   type="text"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
+                  onFocus={scrollSearchIntoView}
                   placeholder="Search to add extra"
                   className="input-field text-sm"
                 />

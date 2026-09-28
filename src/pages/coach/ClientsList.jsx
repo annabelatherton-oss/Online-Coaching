@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import ClientModal from './ClientModal'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -438,6 +439,7 @@ export default function ClientsList() {
             placeholder="Search by name or email…"
             value={search}
             onChange={e => setSearch(e.target.value)}
+            onFocus={scrollSearchIntoView}
           />
         </div>
         {allTags.length > 0 && (

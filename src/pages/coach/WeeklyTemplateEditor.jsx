@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { macrosForQty } from '../../lib/ingredientMacros'
+import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 import {
   normalizeOverrides, hasAnyOverride, applyIngredientOverrides, sumIngredientMacros,
   MacroTargetInfo, MacroBadge, MACRO_META, libraryUnit,
@@ -639,6 +640,7 @@ function TemplateIngredientEditor({ meal, overrides, library, libraryById, onCha
           placeholder="Add an ingredient…"
           value={addSearch}
           onChange={e => setAddSearch(e.target.value)}
+          onFocus={scrollSearchIntoView}
           className="input w-full text-xs py-1"
         />
         {searchMatches.length > 0 && (

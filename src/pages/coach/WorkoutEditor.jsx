@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 import ExerciseThumb from '../../components/ExerciseThumb'
 
 const EQUIPMENT_OPTIONS = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'Pec Deck', 'EZ Bar', 'Straight Bar', 'Kettlebell', 'Bodyweight', 'Band', 'Other']
@@ -313,6 +314,7 @@ export default function WorkoutEditor() {
                   placeholder="Search exercise library or type a name…"
                   value={exSearch}
                   onChange={e => setExSearch(e.target.value)}
+                  onFocus={scrollSearchIntoView}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && exSearch.trim()) addExercise({ id: null, name: exSearch.trim() })
                     if (e.key === 'Escape') { setShowExSearch(false); setExSearch('') }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { scrollSearchIntoView } from '../lib/scrollSearchIntoView'
 
 // Answers that mean "I don't have any dislikes" rather than an actual disliked food — a client
 // typing "No" (or "None", "N/A", etc.) into this field should never be saved as a real dislike,
@@ -84,7 +85,7 @@ export default function DislikePicker({ coachId, value, onChange }) {
         type="text"
         value={search}
         onChange={e => { setSearch(e.target.value); setOpen(true) }}
-        onFocus={() => setOpen(true)}
+        onFocus={e => { setOpen(true); scrollSearchIntoView(e) }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         onKeyDown={handleKeyDown}
         placeholder="Type or search a disliked food…"

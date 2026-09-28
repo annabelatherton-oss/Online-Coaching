@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS, missingTiers, createMissingTiersForMeal, regenerateAllTiersForMeal, withIngredientSwaps } from '../../lib/calorieTierScaling'
+import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { DIETS, DIET_LABELS, mealQualifiesForDiet } from '../../lib/diets'
 
@@ -317,6 +318,7 @@ export default function MealsList() {
             placeholder="Search meals…"
             value={search}
             onChange={e => setSearch(e.target.value)}
+            onFocus={scrollSearchIntoView}
           />
         </div>
         <div className="grid grid-cols-2 gap-2 sm:contents">

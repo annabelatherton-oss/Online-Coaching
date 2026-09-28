@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 
 const MUSCLE_GROUPS = ['Glutes', 'Quads', 'Hamstrings', 'Chest', 'Shoulders', 'Upper Back', 'Lats', 'Lower Back', 'Biceps', 'Triceps', 'Core', 'Calves', 'Adductors', 'Abductors', 'Hip Flexors', 'Full Body']
 const EQUIPMENT_LIST = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Smith Machine', 'EZ Bar', 'Straight Bar', 'Resistance Band', 'Bodyweight', 'Kettlebell', 'Pull-up Bar', 'Trap Bar', 'Landmine', 'Battle Ropes', 'Sled', 'TRX', 'Medicine Ball']
@@ -618,6 +619,7 @@ function SwapsManager({ exercises, onClose }) {
             placeholder="Search exercises…"
             value={search}
             onChange={e => setSearch(e.target.value)}
+            onFocus={scrollSearchIntoView}
           />
           <select className="input text-sm py-1.5" value={filterMuscle} onChange={e => setFilterMuscle(e.target.value)}>
             <option value="">All muscles</option>
@@ -851,6 +853,7 @@ export default function ExerciseLibrary() {
           placeholder="Search exercises…"
           value={search}
           onChange={e => setSearch(e.target.value)}
+          onFocus={scrollSearchIntoView}
         />
         <select className="input text-sm py-1.5" value={filterMuscle} onChange={e => setFilterMuscle(e.target.value)}>
           <option value="">All muscles</option>

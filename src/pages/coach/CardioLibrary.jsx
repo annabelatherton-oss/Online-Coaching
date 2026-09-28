@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 
 const TYPE_LABELS = {
   zone2: 'Zone 2',
@@ -242,7 +243,7 @@ export default function CardioLibrary() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <input className="input text-sm py-1.5 w-48" placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} />
+        <input className="input text-sm py-1.5 w-48" placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} onFocus={scrollSearchIntoView} />
         <select className="input text-sm py-1.5" value={filterType} onChange={e => setFilterType(e.target.value)}>
           <option value="">All types</option>
           {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}

@@ -6,6 +6,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { calcStandardMacros } from '../../lib/macros'
+import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 import {
   getIngredients, formatAmount, mealMacros as sharedMealMacros, hasAnyOverride, normalizeOverrides,
   sumIngredientMacros, MacroTargetInfo, MacroBadge, MACRO_META, deviationColor, suggestAutoFit,
@@ -398,6 +399,7 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
               placeholder="Add an ingredient…"
               value={addSearch}
               onChange={e => setAddSearch(e.target.value)}
+              onFocus={scrollSearchIntoView}
               className="input w-full text-xs py-1"
             />
             {searchMatches.length > 0 && (

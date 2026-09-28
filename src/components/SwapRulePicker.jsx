@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { scaledSwapIngredient } from '../lib/mealSwaps'
+import { scrollSearchIntoView } from '../lib/scrollSearchIntoView'
 
 /**
  * Lets a coach turn a one-off "swap ingredient" fix into a standing rule:
@@ -62,6 +63,7 @@ export default function SwapRulePicker({
         type="text"
         value={search}
         onChange={e => setSearch(e.target.value)}
+        onFocus={scrollSearchIntoView}
         placeholder="Search ingredients to swap to…"
       />
       {error && <p className="text-xs text-red-500">{error}</p>}

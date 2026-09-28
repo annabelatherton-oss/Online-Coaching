@@ -18,6 +18,7 @@ import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import { getMealConflicts, findSafeMeal, findSafeAlternative } from '../../lib/mealSwaps'
 import { macrosForQty } from '../../lib/ingredientMacros'
+import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 import { notifyClient } from '../../lib/pushNotifications'
 import { ACTIVITY_LABELS, GOAL_LABELS, estimateMaintenanceCalories } from '../../lib/calorieSuggestion'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
@@ -2026,6 +2027,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverride
               placeholder="Search your ingredient library…"
               value={addSearch}
               onChange={e => { setAddSearch(e.target.value); setAddSelected(null) }}
+              onFocus={scrollSearchIntoView}
             />
             {addSearch && !addSelected && (
               <div className="absolute z-20 left-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg w-full max-h-40 overflow-y-auto">

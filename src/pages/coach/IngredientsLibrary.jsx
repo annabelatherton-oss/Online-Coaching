@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { propagateIngredientRuleChange } from '../../lib/calorieTierScaling'
 import { predictIngredientDietFlags } from '../../lib/diets'
+import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 
 const UNIT_OPTIONS = ['g', 'ml', 'unit', 'tbsp', 'tsp', 'cup', 'piece', 'square', 'scoop', 'slice', 'handful']
 
@@ -448,6 +449,7 @@ function IngredientModal({ ingredient, ingredientsList, initialSwaps, onSave, on
                     placeholder="Search ingredients…"
                     value={swapSearch}
                     onChange={e => setSwapSearch(e.target.value)}
+                    onFocus={scrollSearchIntoView}
                     onBlur={() => setTimeout(() => { setSwapDropdownOpen(false); setSwapSearch('') }, 150)}
                   />
                   {swapCandidates.length > 0 && (
@@ -589,6 +591,7 @@ export default function IngredientsLibrary() {
             placeholder="Search ingredients…"
             value={search}
             onChange={e => setSearch(e.target.value)}
+            onFocus={scrollSearchIntoView}
           />
         </div>
       </div>

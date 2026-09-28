@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { applyDislikeSwaps } from '../lib/mealSwaps'
 import { mealQualifiesForDiets } from '../lib/diets'
+import { scrollSearchIntoView } from '../lib/scrollSearchIntoView'
 
 /**
  * Shared meal-plan display components and helpers.
@@ -792,6 +793,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                             type="text"
                             placeholder="Search ingredients…"
                             value={ingSearch}
+                            onFocus={scrollSearchIntoView}
                             onChange={e => setIngSearch(e.target.value)}
                             onClick={e => e.stopPropagation()}
                             className="input flex-1 text-sm py-1.5"
@@ -958,6 +960,7 @@ export function SwapModal({ slotKey, label, category, currentMealId, mealMap, me
             placeholder="Search meals…"
             value={search}
             onChange={e => setSearch(e.target.value)}
+            onFocus={scrollSearchIntoView}
             className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
             autoFocus
           />

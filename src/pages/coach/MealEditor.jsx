@@ -9,6 +9,7 @@ import {
   withIngredientSwaps,
 } from '../../lib/calorieTierScaling'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
+import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 import { DIETS, DIET_LABELS, predictMealDietTags } from '../../lib/diets'
 
 const TABS = ['Details', 'Ingredients', 'Calorie Tiers']
@@ -759,6 +760,7 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, instru
                               placeholder="Search…"
                               value={altSearchText}
                               onChange={e => setAltSearchText(e.target.value)}
+                              onFocus={scrollSearchIntoView}
                               onBlur={() => setTimeout(() => { setAltDropdownOpen(null); setAltSearchText('') }, 150)}
                             />
                             {altSearchText && (
