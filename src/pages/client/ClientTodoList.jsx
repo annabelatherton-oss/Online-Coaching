@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { formatZoneBpm } from '../../lib/heartRateZones'
+import ClientDailyMealTracker from '../../components/ClientDailyMealTracker'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -519,6 +520,10 @@ export default function ClientTodoList() {
               </div>
             </div>
           )}
+
+          {/* Meal tracking — which option (A / B / Everyday) this day is following, with room to
+              scale meals up or down and log treats, scoped to whichever day is selected above. */}
+          <ClientDailyMealTracker clientId={clientId} dateISO={toISO(selectedDate)} />
 
           {/* Daily habits */}
           <div data-tour="daily-habits" className="space-y-2">

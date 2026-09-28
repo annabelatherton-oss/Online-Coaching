@@ -11,8 +11,6 @@ import {
 import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../lib/mealSwaps'
 import { normalizeGoalMacroSplits, calcBodyweightMacros } from '../../lib/macros'
 import EverydayMealsClient from '../../components/EverydayMealsClient'
-import ClientTreatLog from '../../components/ClientTreatLog'
-import ClientDailyMealLog from '../../components/ClientDailyMealLog'
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -45,7 +43,6 @@ export default function ClientMealPlan() {
   const [goalMacroSplits, setGoalMacroSplits] = useState(null)
   const [proteinPerKg, setProteinPerKg] = useState(null)
   const [weightKg, setWeightKg] = useState(null)
-  const [todaysEaten, setTodaysEaten] = useState(null) // null until loaded; slotKey -> ate it today?
 
   useEffect(() => {
     async function load() {
@@ -182,20 +179,6 @@ export default function ClientMealPlan() {
   // not this client's own edits.
   const originalDailyTotal = activeSlotDefs.reduce((acc, s) => addMacros(acc, mealMacrosLayered(templateSlots[s.key], mealMap, tier, templateOverrides[s.key], null, swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
   const currentDailyTotal  = activeSlotDefs.reduce((acc, s) => addMacros(acc, mealMacrosLayered(editedSlots[s.key], mealMap, tier, templateOverrides[s.key], ingredientOverrides[s.key], swapCtx)), { cal: 0, prot: 0, carb: 0, fat: 0 })
-
-  // Today's slots with a meal actually assigned, for the "which of today's meals did you eat"
-  // log below — a slot with nothing in it (e.g. a category the coach removed this week) has
-  // nothing to mark eaten or not.
-  const todaysMealSlots = activeSlotDefs
-    .map(s => ({ key: s.key, label: s.label, mealName: mealMap[editedSlots[s.key]]?.name || null,
-      macros: mealMacrosLayered(editedSlots[s.key], mealMap, tier, templateOverrides[s.key], ingredientOverrides[s.key], swapCtx) }))
-    .filter(s => s.mealName)
-  // Falls back to the full plan total until the log has loaded (or if a client never opens/uses
-  // it) so "remaining" behaves exactly as it always has by default — this only changes anything
-  // once a client actually unticks a meal they skipped today.
-  const actualDailyTotal = todaysEaten
-    ? todaysMealSlots.reduce((acc, s) => todaysEaten[s.key] === false ? acc : addMacros(acc, s.macros), { cal: 0, prot: 0, carb: 0, fat: 0 })
-    : currentDailyTotal
 
   const dailyDelta = {
     cal:  Math.round(currentDailyTotal.cal  - originalDailyTotal.cal),
@@ -512,25 +495,6 @@ export default function ClientMealPlan() {
           )}
         </div>
       )}
-
-      {/* Today's meals — lets a client mark off anything they actually skipped today, so the
-          "remaining" macros below reflect reality rather than assuming the full plan was eaten.
-          Purely a per-day log; never touches the weekly plan itself. */}
-      <ClientDailyMealLog
-        clientId={clientData.id}
-        slots={todaysMealSlots}
-        onChange={setTodaysEaten}
-      />
-
-      {/* Treats & extras — off-plan snacks the client logs themselves, weighed against what's
-          actually eaten today (per the log above) so they can see whether it still fits. */}
-      <ClientTreatLog
-        clientId={clientData.id}
-        coachId={clientData.coach_id}
-        ingredientLib={ingredientLib}
-        dailyMacroTargets={dailyMacroTargets}
-        planDailyTotal={actualDailyTotal}
-      />
 
       {/* Everyday meals */}
       <EverydayMealsClient

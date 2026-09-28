@@ -12,22 +12,30 @@ function addMacros(a, b) {
   return { cal: a.cal + b.cal, prot: a.prot + b.prot, carb: a.carb + b.carb, fat: a.fat + b.fat }
 }
 
-function startOfTodayISO() {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d.toISOString()
+function todayISO() {
+  return new Date().toISOString().split('T')[0]
+}
+
+// [start, end) ISO bounds for one calendar date (YYYY-MM-DD), so a treat logged on any given day —
+// not just today — is found regardless of what time of day it happened.
+function dayBounds(dateStr) {
+  const start = new Date(`${dateStr}T00:00:00`)
+  const end = new Date(start); end.setDate(end.getDate() + 1)
+  return { start: start.toISOString(), end: end.toISOString() }
 }
 
 /**
  * Lets a client log an "off plan" treat/snack (a chocolate bar, a drink, etc.) so it's tracked
  * against their day rather than just left out of the picture. Kept as its own always-available
  * card, same pattern as EverydayMealsClient — logs save immediately, no separate Save button.
- * `planDailyTotal` is the client's current totals from their actual meal plan for today
- * (see ClientMealPlan.jsx's currentDailyTotal) so "remaining" here reflects what's actually left
- * once both the plan AND today's treats are accounted for — the whole point being to see whether
- * a treat still fits, not just how big the treat itself is.
+ * `date` (YYYY-MM-DD, defaults to today) scopes which day's treats are shown/logged against, so
+ * this works from the My Daily Plan page's own day navigation, not just "today". `planDailyTotal`
+ * is the client's current totals from their actual meals for that day so "remaining" here reflects
+ * what's actually left once both the day's meals AND its treats are accounted for — the whole point
+ * being to see whether a treat still fits, not just how big the treat itself is.
  */
-export default function ClientTreatLog({ clientId, coachId, ingredientLib, dailyMacroTargets, planDailyTotal }) {
+export default function ClientTreatLog({ clientId, coachId, ingredientLib, dailyMacroTargets, planDailyTotal, date }) {
+  const dateStr = date || todayISO()
   const [treats, setTreats] = useState([])
   const [loading, setLoading] = useState(true)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -45,17 +53,19 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
   const [addError, setAddError] = useState('')
 
   async function load() {
+    const { start, end } = dayBounds(dateStr)
     const { data } = await supabase
       .from('client_treat_logs')
       .select('*')
       .eq('client_id', clientId)
-      .gte('logged_at', startOfTodayISO())
+      .gte('logged_at', start)
+      .lt('logged_at', end)
       .order('logged_at', { ascending: false })
     setTreats(data || [])
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [clientId])
+  useEffect(() => { load() }, [clientId, dateStr])
 
   const ingredientList = useMemo(() => {
     const all = Object.values(ingredientLib || {})
@@ -156,7 +166,9 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
       protein_g: Math.round((confirmIng.protein_per_serving || 0) * ratio * 10) / 10,
       carbs_g: Math.round((confirmIng.carbs_per_serving || 0) * ratio * 10) / 10,
       fat_g: Math.round((confirmIng.fat_per_serving || 0) * ratio * 10) / 10,
-      logged_at: new Date().toISOString(),
+      // Logging against today uses the exact moment; logging against a different day (browsing
+      // back/forward on My Daily Plan) has no "now" of its own, so it just lands at midday there.
+      logged_at: dateStr === todayISO() ? new Date().toISOString() : `${dateStr}T12:00:00.000Z`,
     }
     const { data, error } = await supabase.from('client_treat_logs').insert(row).select().single()
     setSaving(false)
