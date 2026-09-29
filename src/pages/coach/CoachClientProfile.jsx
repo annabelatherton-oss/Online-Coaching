@@ -2079,6 +2079,90 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverride
 
 // ─── Meal Plan Tab ────────────────────────────────────────────────────────────
 
+const MEAL_HISTORY_CATEGORY_ORDER = ['breakfast', 'lunch', 'dinner', 'pre_workout', 'evening_snack', 'snack']
+const MEAL_HISTORY_CATEGORY_LABELS = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', pre_workout: 'Pre-Workout', evening_snack: 'Evening Snack', snack: 'Snack' }
+
+// How many times this client has actually had each meal in their diet, counting only plans that
+// were actually delivered (weekly_deliveries.delivered_slots — a frozen snapshot taken at the
+// moment a plan went out) — never a draft edit made before it was sent. Meals never delivered show
+// as "Not yet had" rather than being left out, so a coach can see gaps in variety at a glance.
+function MealHistoryPanel({ clientId, dietaryRequirements, mealsByCategory }) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [counts, setCounts] = useState(null)
+
+  useEffect(() => {
+    if (!open || counts !== null) return
+    setLoading(true)
+    supabase.from('weekly_deliveries').select('delivered_slots').eq('client_id', clientId).not('delivered_slots', 'is', null)
+      .then(({ data }) => {
+        const c = {}
+        for (const row of (data || [])) {
+          for (const mealId of Object.values(row.delivered_slots || {})) {
+            if (mealId) c[mealId] = (c[mealId] || 0) + 1
+          }
+        }
+        setCounts(c)
+        setLoading(false)
+      })
+  }, [open, clientId, counts])
+
+  const categoriesPresent = MEAL_HISTORY_CATEGORY_ORDER.filter(cat =>
+    (mealsByCategory[cat] || []).some(m => mealQualifiesForDiets(m, dietaryRequirements))
+  )
+
+  return (
+    <div className="card p-0 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+      >
+        <span className="font-semibold text-gray-900 dark:text-white text-sm">Meal history</span>
+        <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="p-4 border-t border-gray-100 dark:border-gray-800 space-y-4">
+          {loading || counts === null ? (
+            <LoadingSpinner size="sm" />
+          ) : (
+            <>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Counts only plans actually sent to this client — an edit made before it went out doesn't count as an instance.
+              </p>
+              {categoriesPresent.length === 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400">No meals in this client's diet yet.</p>
+              )}
+              {categoriesPresent.map(cat => (
+                <div key={cat}>
+                  <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">{MEAL_HISTORY_CATEGORY_LABELS[cat] || cat}</p>
+                  <div className="space-y-1">
+                    {(mealsByCategory[cat] || [])
+                      .filter(m => mealQualifiesForDiets(m, dietaryRequirements))
+                      .sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0) || a.name.localeCompare(b.name))
+                      .map(m => (
+                        <div key={m.id} className="flex items-center justify-between gap-3 py-1">
+                          <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{m.name}</span>
+                          {counts[m.id] ? (
+                            <span className="text-xs font-medium text-brand-600 dark:text-brand-400 flex-shrink-0">{counts[m.id]}×</span>
+                          ) : (
+                            <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">Not yet had</span>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg, onCalorieTargetChanged }) {
   const [clientWeightKg, setClientWeightKg] = useState(null)
   const [planGroups, setPlanGroups] = useState([])
@@ -2884,6 +2968,32 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
       await supabase.from('client_plan_assignments').update(defaults).eq('id', newAssignment.id)
     }
 
+    // Plans assigned directly (not through a check-in response) still land on the client's Meal
+    // Plan page immediately — logging them here means the Check-ins tab's history is complete,
+    // including the very first plan a client ever gets, before they've submitted any check-in.
+    if (newAssignment && form.plan_group_id) {
+      const templateWeek = form.starting_week ? parseInt(form.starting_week) : (group?.current_week || 1)
+      const parsedTier = form.calorie_target && CALORIE_TIERS.includes(parseInt(form.calorie_target)) ? parseInt(form.calorie_target) : null
+      let tmplQuery = supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id)')
+        .eq('plan_group_id', form.plan_group_id).eq('week_number', templateWeek)
+      tmplQuery = parsedTier != null ? tmplQuery.eq('calorie_tier', parsedTier) : tmplQuery.is('calorie_tier', null)
+      const [{ data: tmpl }, { count: pastCheckins }] = await Promise.all([
+        tmplQuery.maybeSingle(),
+        supabase.from('client_checkins').select('id', { count: 'exact', head: true }).eq('client_id', client.id).gt('week_number', 0),
+      ])
+      const deliveredSlots = {}
+      for (const s of (tmpl?.template_meal_slots || [])) deliveredSlots[s.slot_type] = s.meal_id
+      await supabase.from('weekly_deliveries').insert({
+        client_id: client.id,
+        coach_id: coachId,
+        checkin_id: null,
+        personal_week: (pastCheckins || 0) + 1,
+        template_week: templateWeek,
+        calorie_target: form.calorie_target ? parseInt(form.calorie_target) : null,
+        delivered_slots: Object.keys(deliveredSlots).length > 0 ? deliveredSlots : null,
+      })
+    }
+
     setSaving(false); setShowForm(false); load()
     if (form.calorie_target) onCalorieTargetChanged?.()
   }
@@ -3313,6 +3423,8 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
 
   return (
     <div className="space-y-5 max-w-4xl">
+
+      <MealHistoryPanel clientId={client.id} dietaryRequirements={client.dietary_requirements || []} mealsByCategory={mealsByCategory} />
 
       {(mealSwapAcks.length > 0 || everydayReviews.length > 0 || weekNeedsReview) && (
         <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 space-y-2">
@@ -4103,6 +4215,15 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
   const [checkins, setCheckins] = useState([])
   const [loading, setLoading] = useState(true)
   const [lightbox, setLightbox] = useState(null)
+  // Plans sent directly (assigned/changed outside a check-in response) — e.g. the very first plan
+  // a client ever gets, before they've submitted any check-in. These carry no check-in data, just
+  // the fact that a plan went out, so they're listed separately rather than in the cards below.
+  const [directDeliveries, setDirectDeliveries] = useState([])
+  useEffect(() => {
+    supabase.from('weekly_deliveries').select('*').eq('client_id', clientId).is('checkin_id', null)
+      .order('delivered_at', { ascending: false })
+      .then(({ data }) => setDirectDeliveries(data || []))
+  }, [clientId])
   // Map of weekStartISO → { ticked, total, tasksWithNotes }
   const [weekSummaries, setWeekSummaries] = useState({})
   const photoUrlsByCheckin = useSignedProgressPhotosForCheckins(checkins)
@@ -4758,6 +4879,22 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
           </div>
         )
       })}
+
+      {/* ── Plans sent directly (no check-in involved) — e.g. the very first plan ── */}
+      {directDeliveries.map(d => (
+        <div key={d.id} className="card space-y-1.5 border-dashed">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <h3 className="font-semibold text-gray-900 dark:text-white">Week {d.personal_week} plan sent</h3>
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {new Date(d.delivered_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Sent directly by you — not in response to a check-in{d.calorie_target ? ` · ${d.calorie_target} kcal target` : ''}
+          </p>
+          {d.coach_notes && <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{d.coach_notes}</p>}
+        </div>
+      ))}
     </div>
   )
 }

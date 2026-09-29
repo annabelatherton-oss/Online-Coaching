@@ -883,6 +883,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       coach_notes: coachNotes.trim() || null,
       calorie_target: newCalTarget,
       training_notes: trainingNotes.trim() || null,
+      delivered_slots: editedSlots,
     })
 
     clearDraftSlots(nextTemplateWeek)
