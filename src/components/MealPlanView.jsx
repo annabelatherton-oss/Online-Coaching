@@ -752,7 +752,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                             )}
                           </button>
                         )}
-                        {onRemoveIngredient && !isStatic && !(onToggleStatic && !ing._isAdded) && (
+                        {onRemoveIngredient && !isStatic && (
                           <button
                             onClick={e => { e.stopPropagation(); onRemoveIngredient(slotKey, ing) }}
                             className="w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 transition-colors"
