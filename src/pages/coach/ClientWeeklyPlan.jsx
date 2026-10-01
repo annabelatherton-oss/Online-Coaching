@@ -97,6 +97,13 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
   // Rest day sub-type
   const [addRestSubtype, setAddRestSubtype] = useState('rest')
 
+  // "Whenever works for them" cardio — day_of_week = 'Any', not part of the day grid above, so it
+  // gets its own small add form rather than reusing addingToDay/addType (which are day-scoped).
+  const [addingFlexCardio, setAddingFlexCardio] = useState(false)
+  const [addFlexItemId, setAddFlexItemId] = useState('')
+  const [addFlexDuration, setAddFlexDuration] = useState('')
+  const [addFlexZone, setAddFlexZone] = useState('')
+
   // Workout exercise drill-down — expanding a day always shows a read-only view first;
   // editingItemId tracks which one (if any) has been switched into the editable form by an
   // explicit click, so opening a day to look at it never drops the coach straight into editing.
@@ -1227,6 +1234,88 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
               </div>
             )
           })}
+        </div>
+      </div>
+
+      {/* ── Flexible cardio — "whenever works for them" ──────────────────────────
+          Not tied to a specific day, so it lives outside the Mon–Sun grid above. Shows on every
+          day of the client's to-do list; they tick it off once and it counts for the whole week
+          (see ClientTodoList.jsx). */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Flexible Cardio</h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Not tied to a day — shows every day, done once it counts for the whole week</p>
+          </div>
+          {!addingFlexCardio && (
+            <button
+              onClick={() => { setAddingFlexCardio(true); setAddFlexItemId(''); setAddFlexDuration(''); setAddFlexZone('') }}
+              className="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-medium"
+            >
+              + Add flexible cardio
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {items.filter(i => i.day_of_week === 'Any' && i.item_type === 'cardio').map(item => {
+            const name = item.custom_label || cardioSessions.find(c => c.id === item.cardio_session_id)?.name || 'Cardio'
+            const zoneBpm = item.heart_rate_zone ? formatZoneBpm(clientDob, item.heart_rate_zone) : null
+            return (
+              <div key={item.id} className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40">
+                <div>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{name}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    {item.duration_minutes ? `${item.duration_minutes} min` : null}
+                    {item.heart_rate_zone ? `${item.duration_minutes ? ' · ' : ''}${item.heart_rate_zone}${zoneBpm ? ` (${zoneBpm})` : ''}` : null}
+                  </p>
+                </div>
+                <button onClick={() => removeItem(item.id)} className="p-1 text-gray-300 hover:text-red-400 dark:text-gray-700 dark:hover:text-red-400 flex-shrink-0 transition-colors" title="Remove">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            )
+          })}
+
+          {addingFlexCardio && (
+            <div className="p-4 space-y-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40">
+              <select autoFocus className="input w-full" value={addFlexItemId} onChange={e => setAddFlexItemId(e.target.value)}>
+                <option value="">Select cardio session…</option>
+                {cardioSessions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <input
+                type="number" onFocus={e => e.target.select()}
+                min={1}
+                className="input w-full"
+                placeholder="Duration (minutes)"
+                value={addFlexDuration}
+                onChange={e => setAddFlexDuration(e.target.value)}
+              />
+              <select className="input w-full" value={addFlexZone} onChange={e => setAddFlexZone(e.target.value)}>
+                <option value="">Heart rate zone (optional)…</option>
+                {ZONE_OPTIONS.map(z => <option key={z} value={z}>{z}</option>)}
+              </select>
+              {addFlexZone && (
+                formatZoneBpm(clientDob, addFlexZone)
+                  ? <p className="text-xs text-emerald-600 dark:text-emerald-400">Target: {formatZoneBpm(clientDob, addFlexZone)}</p>
+                  : <p className="text-xs text-gray-400">Add this client's date of birth to their profile to show a target heart rate.</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    if (!addFlexItemId) return
+                    await addCardioItem('Any', null, addFlexItemId, addFlexDuration || null, addFlexZone || null)
+                    setAddingFlexCardio(false)
+                  }}
+                  disabled={!addFlexItemId || saving}
+                  className="btn-primary text-sm"
+                >
+                  Add
+                </button>
+                <button onClick={() => setAddingFlexCardio(false)} className="btn-secondary text-sm">Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
