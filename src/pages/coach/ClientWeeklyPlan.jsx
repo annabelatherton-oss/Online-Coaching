@@ -103,6 +103,7 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
   const [addFlexItemId, setAddFlexItemId] = useState('')
   const [addFlexDuration, setAddFlexDuration] = useState('')
   const [addFlexZone, setAddFlexZone] = useState('')
+  const [addFlexTimesPerWeek, setAddFlexTimesPerWeek] = useState('1')
 
   // Workout exercise drill-down — expanding a day always shows a read-only view first;
   // editingItemId tracks which one (if any) has been switched into the editable form by an
@@ -139,7 +140,7 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
     ] = await Promise.all([
       supabase
         .from('client_schedule_items')
-        .select('id, client_id, day_of_week, item_type, workout_id, hiit_circuit_id, cardio_session_id, custom_label, notes, duration_minutes, heart_rate_zone, order_index')
+        .select('id, client_id, day_of_week, item_type, workout_id, hiit_circuit_id, cardio_session_id, custom_label, notes, duration_minutes, heart_rate_zone, times_per_week, order_index')
         .eq('client_id', clientId)
         .order('order_index'),
       supabase
@@ -242,7 +243,7 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
     await supabase.from('clients').update({ day_preferences: next }).eq('id', clientId)
   }
 
-  async function addCardioItem(day, customLabel, cardioSessionId, durationMinutes, heartRateZone) {
+  async function addCardioItem(day, customLabel, cardioSessionId, durationMinutes, heartRateZone, timesPerWeek) {
     setSaving(true)
     const existing = items.filter(i => i.day_of_week === day && i.item_type === 'cardio')
     const record = {
@@ -256,6 +257,7 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
     if (customLabel) record.custom_label = customLabel
     if (durationMinutes) record.duration_minutes = parseInt(durationMinutes)
     if (heartRateZone) record.heart_rate_zone = heartRateZone
+    if (timesPerWeek) record.times_per_week = parseInt(timesPerWeek)
     await supabase.from('client_schedule_items').insert(record)
     setSaving(false)
     await load()
@@ -1249,7 +1251,7 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
           </div>
           {!addingFlexCardio && (
             <button
-              onClick={() => { setAddingFlexCardio(true); setAddFlexItemId(''); setAddFlexDuration(''); setAddFlexZone('') }}
+              onClick={() => { setAddingFlexCardio(true); setAddFlexItemId(''); setAddFlexDuration(''); setAddFlexZone(''); setAddFlexTimesPerWeek('1') }}
               className="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-medium"
             >
               + Add flexible cardio
@@ -1266,8 +1268,9 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
                 <div>
                   <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{name}</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500">
-                    {item.duration_minutes ? `${item.duration_minutes} min` : null}
-                    {item.heart_rate_zone ? `${item.duration_minutes ? ' · ' : ''}${item.heart_rate_zone}${zoneBpm ? ` (${zoneBpm})` : ''}` : null}
+                    {item.times_per_week > 1 ? `${item.times_per_week}x/week` : '1x/week'}
+                    {item.duration_minutes ? ` · ${item.duration_minutes} min` : null}
+                    {item.heart_rate_zone ? ` · ${item.heart_rate_zone}${zoneBpm ? ` (${zoneBpm})` : ''}` : null}
                   </p>
                 </div>
                 <button onClick={() => removeItem(item.id)} className="p-1 text-gray-300 hover:text-red-400 dark:text-gray-700 dark:hover:text-red-400 flex-shrink-0 transition-colors" title="Remove">
@@ -1283,6 +1286,17 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
                 <option value="">Select cardio session…</option>
                 {cardioSessions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              <div>
+                <label className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Times per week</label>
+                <input
+                  type="number" onFocus={e => e.target.select()}
+                  min={1}
+                  className="input w-full"
+                  placeholder="1"
+                  value={addFlexTimesPerWeek}
+                  onChange={e => setAddFlexTimesPerWeek(e.target.value)}
+                />
+              </div>
               <input
                 type="number" onFocus={e => e.target.select()}
                 min={1}
@@ -1304,7 +1318,7 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
                 <button
                   onClick={async () => {
                     if (!addFlexItemId) return
-                    await addCardioItem('Any', null, addFlexItemId, addFlexDuration || null, addFlexZone || null)
+                    await addCardioItem('Any', null, addFlexItemId, addFlexDuration || null, addFlexZone || null, addFlexTimesPerWeek || null)
                     setAddingFlexCardio(false)
                   }}
                   disabled={!addFlexItemId || saving}

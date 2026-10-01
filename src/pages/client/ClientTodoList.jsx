@@ -33,8 +33,9 @@ function parseStepCount(label) {
 
 // Build the system task list from client data + that day's schedule. flexItems are cardio
 // sessions not tied to any specific day ("whenever works for them") — they show up in every
-// day's list, tagged isFlexible so the caller tracks their completion per-week instead of per-day.
-function buildSystemTasks(client, schedItems, flexItems) {
+// day's list, tagged isFlexible. weekFlexRows is every flex_ completion row across the current
+// week (any day), used to show "2/3 this week" progress against each item's own weekly target.
+function buildSystemTasks(client, schedItems, flexItems, weekFlexRows) {
   const tasks = []
 
   // Calories target
@@ -89,13 +90,18 @@ function buildSystemTasks(client, schedItems, flexItems) {
   })
 
   // Flexible cardio ("whenever works for them") — not scheduled on a specific day, so it shows up
-  // every day. Its key is prefixed "flex_" so getSystemRow/toggleSystem/saveSystemNotes (in the
-  // main component) know to track its completion against the whole week instead of just today.
+  // every day. Its key is prefixed "flex_" purely so the main component's isFlexKey can spot it
+  // (e.g. to exclude it from the daily total — see completedCount). Ticking it is still a normal
+  // per-day completion; the label's "x/y this week" count comes from weekFlexRows, since the
+  // target can be more than once a week.
   ;(flexItems || []).filter(i => i.item_type === 'cardio').forEach(item => {
     const name = item.custom_label || item.cardio_sessions?.name
     const zoneBpm = item.heart_rate_zone ? formatZoneBpm(client?.date_of_birth, item.heart_rate_zone) : null
-    const label = `Complete ${name || 'your cardio'}${item.duration_minutes ? ` (${item.duration_minutes} min)` : ''}${item.heart_rate_zone ? ` · ${item.heart_rate_zone}${zoneBpm ? ` (${zoneBpm})` : ''}` : ''} — any day this week`
-    tasks.push({ key: `flex_cardio_${item.id}`, label, isFlexible: true, cardioItem: item.cardio_session_id ? item : null })
+    const key = `flex_cardio_${item.id}`
+    const target = item.times_per_week || 1
+    const doneThisWeek = (weekFlexRows || []).filter(r => r.task_key === key && r.completed).length
+    const label = `Complete ${name || 'your cardio'}${item.duration_minutes ? ` (${item.duration_minutes} min)` : ''}${item.heart_rate_zone ? ` · ${item.heart_rate_zone}${zoneBpm ? ` (${zoneBpm})` : ''}` : ''} — ${doneThisWeek}/${target} this week`
+    tasks.push({ key, label, isFlexible: true, weeklyMet: doneThisWeek >= target, cardioItem: item.cardio_session_id ? item : null })
   })
 
   return tasks
@@ -168,7 +174,10 @@ export default function ClientTodoList() {
   const [scheduleItems, setScheduleItems] = useState([])
   // "Whenever works for them" cardio — not tied to selectedDate's own day, so its tasks are
   // tracked separately, keyed by the week's own start date instead of the exact day.
-  const [weekTasks, setWeekTasks] = useState([])
+  // Every flex_ task row across the current week's 7 days, for the "2/3 this week" progress
+  // count — a flexible cardio item can need completing more than once a week, so its progress is
+  // a count of completed days, not a single yes/no.
+  const [weekFlexRows, setWeekFlexRows] = useState([])
   const [flexScheduleItems, setFlexScheduleItems] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -227,7 +236,7 @@ export default function ClientTodoList() {
       const cutoff = addDays(today, -60)
       const [{ data: allSched }, { data: histTasks }] = await Promise.all([
         supabase.from('client_schedule_items')
-          .select('id, item_type, workout_id, custom_label, hiit_circuit_id, cardio_session_id, duration_minutes, heart_rate_zone, day_of_week, workouts(name), hiit_circuits(name), cardio_sessions(name)')
+          .select('id, item_type, workout_id, custom_label, hiit_circuit_id, cardio_session_id, duration_minutes, heart_rate_zone, times_per_week, day_of_week, workouts(name), hiit_circuits(name), cardio_sessions(name)')
           .eq('client_id', clientId),
         supabase.from('client_daily_tasks')
           .select('task_date, task_type, task_key, completed')
@@ -248,35 +257,41 @@ export default function ClientTodoList() {
     setLoading(true)
     const dateStr = toISO(selectedDate)
     const dayName = DAY_NAMES[selectedDate.getDay()]
-    const weekStartStr = toISO(getWeekStart(selectedDate))
-    const schedColumns = 'id, item_type, workout_id, custom_label, hiit_circuit_id, cardio_session_id, duration_minutes, heart_rate_zone, workouts(name), hiit_circuits(name), cardio_sessions(name)'
-    const [{ data: tasks }, { data: weekTasksData }, { data: sched }, { data: flexSched }] = await Promise.all([
+    const weekStart = getWeekStart(selectedDate)
+    const weekStartStr = toISO(weekStart)
+    const weekEndStr = toISO(addDays(weekStart, 6))
+    const schedColumns = 'id, item_type, workout_id, custom_label, hiit_circuit_id, cardio_session_id, duration_minutes, heart_rate_zone, times_per_week, workouts(name), hiit_circuits(name), cardio_sessions(name)'
+    const [{ data: tasks }, { data: weekFlexData }, { data: sched }, { data: flexSched }] = await Promise.all([
       supabase.from('client_daily_tasks').select('*')
         .eq('client_id', clientId).eq('task_date', dateStr).order('created_at'),
-      // Flexible cardio's own completion record lives on the week's start date, not today's —
-      // see toggleSystem — so it reads the same whichever day of the week is selected.
+      // Every flex_ task across this week's 7 days, so "2/3 this week" counts correctly regardless
+      // of which day is currently selected.
       supabase.from('client_daily_tasks').select('*')
-        .eq('client_id', clientId).eq('task_date', weekStartStr).like('task_key', 'flex%'),
+        .eq('client_id', clientId).gte('task_date', weekStartStr).lte('task_date', weekEndStr).like('task_key', 'flex%'),
       supabase.from('client_schedule_items').select(schedColumns)
         .eq('client_id', clientId).eq('day_of_week', dayName),
       supabase.from('client_schedule_items').select(schedColumns)
         .eq('client_id', clientId).eq('day_of_week', 'Any'),
     ])
     setDbTasks(tasks || [])
-    setWeekTasks(weekTasksData || [])
+    setWeekFlexRows(weekFlexData || [])
     setScheduleItems(sched || [])
     setFlexScheduleItems(flexSched || [])
     setLoading(false)
   }
 
   // --- Derived ---
-  const systemTasks = buildSystemTasks(clientData, scheduleItems, flexScheduleItems)
+  const systemTasks = buildSystemTasks(clientData, scheduleItems, flexScheduleItems, weekFlexRows)
   const customTasks = dbTasks.filter(t => t.task_type === 'custom')
 
+  // Flexible cardio is left out of today's own total/streak — it's a weekly target, not a daily
+  // one, so an unticked day shouldn't read as "today isn't complete". It gets its own weekly
+  // progress (weekFlexStreak below) instead.
+  const dailySystemTasks = systemTasks.filter(t => !t.isFlexible)
   const completedCount =
-    systemTasks.filter(t => getSystemRow(t.key)?.completed).length +
+    dailySystemTasks.filter(t => getSystemRow(t.key)?.completed).length +
     customTasks.filter(t => t.completed).length
-  const totalTasks = systemTasks.length + customTasks.length
+  const totalTasks = dailySystemTasks.length + customTasks.length
 
   // Day streak — consecutive fully-completed days working backward from
   // today. Today's own tasks use the live (currently-editing) state so
@@ -312,14 +327,53 @@ export default function ClientTodoList() {
     }
   }
 
-  // A "flex_"-prefixed key is a whenever-works-for-them cardio task — tracked against weekTasks
-  // (keyed by the week's start date) instead of dbTasks (keyed by the exact selected date), so
-  // completing it on any one day marks it done for the rest of that week too.
+  // Week streak — flexible cardio's own version of dayStreak, since it's a weekly rather than
+  // daily obligation. A week "counts" only when every flexible cardio item met its own
+  // "N times a week" target; weeks with no flexible cardio assigned don't break the streak, they
+  // just don't extend it either (streak stops only at a week that HAD a target and missed it).
+  const currentWeekStartISO = toISO(getWeekStart(today))
+  function weekFlexCompletion(weekStartISO) {
+    const items = (weekStartISO === currentWeekStartISO ? flexScheduleItems : (scheduleByDay['Any'] || []))
+      .filter(i => i.item_type === 'cardio')
+    if (items.length === 0) return null
+    const weekEndISO = toISO(addDays(new Date(weekStartISO + 'T00:00:00'), 6))
+    const rows = weekStartISO === currentWeekStartISO
+      ? weekFlexRows
+      : Object.entries(histTasksByDate)
+          .filter(([date]) => date >= weekStartISO && date <= weekEndISO)
+          .flatMap(([, dayRows]) => dayRows)
+          .filter(r => r.task_type === 'system' && r.task_key?.startsWith('flex_'))
+    return items.every(item => {
+      const key = `flex_cardio_${item.id}`
+      const target = item.times_per_week || 1
+      const done = rows.filter(r => r.task_key === key && r.completed).length
+      return done >= target
+    })
+  }
+  let weekFlexStreak = 0
+  {
+    let cursor = getWeekStart(today)
+    while (weekFlexStreak < 100) {
+      const weekStartISO = toISO(cursor)
+      const complete = weekFlexCompletion(weekStartISO)
+      if (complete === null) break
+      if (!complete) {
+        if (weekStartISO === currentWeekStartISO) { cursor = addDays(cursor, -7); continue }
+        break
+      }
+      weekFlexStreak++
+      cursor = addDays(cursor, -7)
+    }
+  }
+
+  // A "flex_"-prefixed key is a whenever-works-for-them cardio task — still a normal per-day
+  // completion (ticked on whichever day the client actually does it), but its weekly PROGRESS
+  // (e.g. "2/3 this week") is computed separately below from weekFlexRows, since it can need
+  // completing more than once a week.
   function isFlexKey(key) { return key.startsWith('flex_') }
 
   function getSystemRow(key) {
-    const source = isFlexKey(key) ? weekTasks : dbTasks
-    return source.find(t => t.task_type === 'system' && t.task_key === key)
+    return dbTasks.find(t => t.task_type === 'system' && t.task_key === key)
   }
 
   // --- Toggle ---
@@ -328,16 +382,18 @@ export default function ClientTodoList() {
     const flexible = isFlexKey(key)
     if (row) {
       const next = !row.completed
-      if (flexible) setWeekTasks(prev => prev.map(t => t.id === row.id ? { ...t, completed: next } : t))
-      else setDbTasks(prev => prev.map(t => t.id === row.id ? { ...t, completed: next } : t))
+      setDbTasks(prev => prev.map(t => t.id === row.id ? { ...t, completed: next } : t))
+      if (flexible) setWeekFlexRows(prev => prev.map(t => t.id === row.id ? { ...t, completed: next } : t))
       await supabase.from('client_daily_tasks').update({ completed: next }).eq('id', row.id)
     } else {
-      const taskDate = flexible ? toISO(getWeekStart(selectedDate)) : toISO(selectedDate)
       const { data } = await supabase.from('client_daily_tasks').insert({
-        client_id: clientId, task_date: taskDate,
+        client_id: clientId, task_date: toISO(selectedDate),
         task_type: 'system', task_key: key, completed: true, is_private: false,
       }).select().single()
-      if (data) { if (flexible) setWeekTasks(prev => [...prev, data]); else setDbTasks(prev => [...prev, data]) }
+      if (data) {
+        setDbTasks(prev => [...prev, data])
+        if (flexible) setWeekFlexRows(prev => [...prev, data])
+      }
     }
   }
 
@@ -358,18 +414,15 @@ export default function ClientTodoList() {
 
   async function saveSystemNotes(key) {
     const row = getSystemRow(key)
-    const flexible = isFlexKey(key)
     if (row) {
-      if (flexible) setWeekTasks(prev => prev.map(t => t.id === row.id ? { ...t, notes: noteDraft } : t))
-      else setDbTasks(prev => prev.map(t => t.id === row.id ? { ...t, notes: noteDraft } : t))
+      setDbTasks(prev => prev.map(t => t.id === row.id ? { ...t, notes: noteDraft } : t))
       await supabase.from('client_daily_tasks').update({ notes: noteDraft }).eq('id', row.id)
     } else {
-      const taskDate = flexible ? toISO(getWeekStart(selectedDate)) : toISO(selectedDate)
       const { data } = await supabase.from('client_daily_tasks').insert({
-        client_id: clientId, task_date: taskDate,
+        client_id: clientId, task_date: toISO(selectedDate),
         task_type: 'system', task_key: key, completed: false, notes: noteDraft, is_private: false,
       }).select().single()
-      if (data) { if (flexible) setWeekTasks(prev => [...prev, data]); else setDbTasks(prev => [...prev, data]) }
+      if (data) setDbTasks(prev => [...prev, data])
     }
     setExpandedId(null)
   }
@@ -490,6 +543,12 @@ export default function ClientTodoList() {
             <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
               <span className="text-base leading-none">🔥</span>
               <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{dayStreak} day streak</span>
+            </div>
+          )}
+          {weekFlexStreak > 1 && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+              <span className="text-base leading-none">🏃</span>
+              <span className="text-sm font-bold text-blue-700 dark:text-blue-400">{weekFlexStreak} week cardio streak</span>
             </div>
           )}
           {!isSelectedToday && (
