@@ -582,15 +582,33 @@ export function bestIngredientsForTier(baseIngredients, library, targets) {
   return best || generateTierIngredients(baseIngredients, library, targets)
 }
 
+// Which calorie tiers of this meal are currently frozen by an approved/locked week — those tier
+// versions must survive a regenerate untouched, since an approved week's ingredient_overrides
+// pins quantities by the tier_ingredient row's own id, which a delete+reinsert would invalidate
+// even if the values looked identical afterward. See approveWeek in PlanGroupEditor.jsx.
+export async function lockedTiersForMeal(mealId) {
+  const { data } = await supabase
+    .from('template_meal_slots')
+    .select('meal_id, weekly_templates!inner(calorie_tier, locked)')
+    .eq('meal_id', mealId)
+    .eq('weekly_templates.locked', true)
+  return [...new Set((data || []).map(r => r.weekly_templates.calorie_tier).filter(t => t != null))]
+}
+
 // Rebuilds every calorie-tier version from the current base ingredients, overwriting whatever was
 // there before — used whenever a meal's base recipe is saved, so tiers never drift out of sync.
-export async function regenerateAllTiersForMeal(mealId, category, baseIngredients, library, mealSplit) {
-  const { data: existing } = await supabase.from('meal_tier_versions').select('id').eq('meal_id', mealId)
-  if (existing?.length) {
-    await supabase.from('meal_tier_versions').delete().in('id', existing.map(v => v.id))
+// Any tier passed in skipTiers is left completely untouched, not just unreplaced — an approved
+// week's frozen ingredient amounts for that tier depend on those exact rows still existing.
+export async function regenerateAllTiersForMeal(mealId, category, baseIngredients, library, mealSplit, skipTiers = []) {
+  const skip = new Set(skipTiers)
+  const { data: existing } = await supabase.from('meal_tier_versions').select('id, calorie_tier').eq('meal_id', mealId)
+  const toDelete = (existing || []).filter(v => !skip.has(v.calorie_tier))
+  if (toDelete.length) {
+    await supabase.from('meal_tier_versions').delete().in('id', toDelete.map(v => v.id))
   }
   const baseTotals = calcTotals(baseIngredients)
   for (const tier of CALORIE_TIERS) {
+    if (skip.has(tier)) continue
     const targets = tierTargetsForCategory(tier, category, mealSplit, baseTotals)
     await insertTierVersion(mealId, tier, bestIngredientsForTier(baseIngredients, library, targets))
   }

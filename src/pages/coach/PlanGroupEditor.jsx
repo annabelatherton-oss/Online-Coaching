@@ -13,6 +13,7 @@ import {
 } from '../../components/MealPlanView'
 import {
   generateTierIngredients, insertTierVersion, tierTargetsForCategory, allIngredientsFixed, balanceDayIngredients, calcTotals,
+  lockedTiersForMeal,
 } from '../../lib/calorieTierScaling'
 import { macrosForQty } from '../../lib/ingredientMacros'
 import { DIETS, DIET_LABELS, mealQualifiesForDiet } from '../../lib/diets'
@@ -465,6 +466,9 @@ export default function PlanGroupEditor() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [optimizing, setOptimizing] = useState(false)
+  // templateId of the week currently being approved/frozen, or null — guards the button's own
+  // double-click and shows a brief "Approving…" state while the slot writes are in flight.
+  const [approvingWeek, setApprovingWeek] = useState(null)
   // `${weekIdx}:${slotKey}` of the ingredient editor currently open, or null.
   const [editingIngredients, setEditingIngredients] = useState(null)
   // Currently-edited default meal for whichever scope (Standard or a specific tier) is active —
@@ -502,7 +506,7 @@ export default function PlanGroupEditor() {
         supabase.from('plan_groups').select('*').eq('id', groupId).single(),
         supabase
           .from('weekly_templates')
-          .select('id, week_number, calorie_tier, template_meal_slots(slot_type, meal_id, ingredient_overrides)')
+          .select('id, week_number, calorie_tier, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)')
           .eq('plan_group_id', groupId)
           .order('week_number'),
         supabase
@@ -562,7 +566,7 @@ export default function PlanGroupEditor() {
           slots[s.slot_type] = s.meal_id
           if (s.ingredient_overrides) overrides[s.slot_type] = s.ingredient_overrides
         }
-        const week = { templateId: t.id, weekNum: t.week_number, slots, overrides }
+        const week = { templateId: t.id, weekNum: t.week_number, slots, overrides, locked: !!t.locked }
         if (t.calorie_tier == null) master.push(week)
         else (byTier[t.calorie_tier] = byTier[t.calorie_tier] || []).push(week)
       }
@@ -670,7 +674,7 @@ export default function PlanGroupEditor() {
     }
 
     const newWeeks = inserted
-      .map(ins => ({ templateId: ins.id, weekNum: ins.week_number, slots: { ...(weeks.find(w => w.weekNum === ins.week_number)?.slots || {}) }, overrides: {} }))
+      .map(ins => ({ templateId: ins.id, weekNum: ins.week_number, slots: { ...(weeks.find(w => w.weekNum === ins.week_number)?.slots || {}) }, overrides: {}, locked: false }))
       .sort((a, b) => a.weekNum - b.weekNum)
     setTierWeeks(prev => ({ ...prev, [tier]: newWeeks }))
     setForking(false)
@@ -697,8 +701,18 @@ export default function PlanGroupEditor() {
     const weekNums = isStatic ? currentWeeks.map(w => w.weekNum) : [currentWeeks[weekIdx].weekNum]
     const weekNumSet = new Set(weekNums)
 
+    if (currentWeeks[weekIdx]?.locked) {
+      window.alert('This week is approved and locked for this calorie tier — unlock it first to change its meals.')
+      return
+    }
+
+    // A locked tier's week is never touched here even when the edit comes from Standard or a
+    // different tier — approving a week is supposed to mean it genuinely never changes again,
+    // not just "unless someone edits it from somewhere else".
+    let skippedLocked = false
     const apply = w => {
       if (!weekNumSet.has(w.weekNum)) return w
+      if (w.locked) { skippedLocked = true; return w }
       const nextOverrides = { ...w.overrides }
       delete nextOverrides[slotKey]
       return { ...w, slots: { ...w.slots, [slotKey]: mealId || null }, overrides: nextOverrides }
@@ -709,11 +723,12 @@ export default function PlanGroupEditor() {
       for (const [tier, tw] of Object.entries(prev)) next[tier] = tw.map(apply)
       return next
     })
+    if (skippedLocked) window.alert('One or more calorie tiers for this week are approved and locked, so they were left unchanged.')
 
     const allWeeks = [...weeks, ...Object.values(tierWeeks).flat()]
     setDirty(prev => {
       const s = new Set(prev)
-      allWeeks.forEach(w => { if (weekNumSet.has(w.weekNum)) s.add(w.templateId) })
+      allWeeks.forEach(w => { if (weekNumSet.has(w.weekNum) && !w.locked) s.add(w.templateId) })
       return s
     })
   }
@@ -731,6 +746,10 @@ export default function PlanGroupEditor() {
   // Writes a slot's ingredient override (persisted as template_meal_slots.ingredient_overrides)
   // and mirrors it into local state. Passing an empty/no-op override clears the column entirely.
   async function patchSlotOverrides(week, slotKey, nextOverrides) {
+    if (week.locked) {
+      window.alert('This week is approved and locked for this calorie tier — unlock it first to change its ingredients.')
+      return
+    }
     const cleaned = hasAnyOverride(nextOverrides) ? nextOverrides : null
     await supabase.from('template_meal_slots').update({ ingredient_overrides: cleaned })
       .eq('template_id', week.templateId).eq('slot_type', slotKey)
@@ -841,6 +860,13 @@ export default function PlanGroupEditor() {
     const meal = mealId ? mealsById[mealId] : null
     if (!meal) return
     const tierLabel = activeTier != null ? `${activeTier} kcal` : 'Standard'
+    if (activeTier != null) {
+      const locked = await lockedTiersForMeal(mealId)
+      if (locked.includes(activeTier)) {
+        window.alert(`This meal is approved/locked at ${activeTier} kcal in at least one week — unlock it first, since this would rewrite that week's frozen ingredients too.`)
+        return
+      }
+    }
     if (!window.confirm(`Make this week's ingredients the new ${tierLabel} default for this meal? Every week using it will pick up this change immediately.`)) return
 
     const effective = getIngredients(meal, activeTier, week.overrides?.[slotKey])
@@ -992,7 +1018,10 @@ export default function PlanGroupEditor() {
 
   // Whether THIS tier's version of a week still matches what was last actually live for it (see
   // sentSnapshots) — 'new' (never recorded as sent), 'unchanged' (safe to reuse as-is once the
-  // rotation cycles back to it), or 'changed' (edited since it was last sent — worth a check).
+  // rotation cycles back to it), or 'changed' (edited since it was approved — worth a re-check).
+  // Approval (see approveWeek below) is the only thing that ever writes a snapshot here — never
+  // just advancing the current week, which is a calendar/rotation event, not a judgement call that
+  // this specific combination is actually good for this tier.
   function weekSendStatus(tier, week) {
     if (tier == null) return null
     const snap = sentSnapshots[`${tier}:${week.weekNum}`]
@@ -1002,34 +1031,76 @@ export default function PlanGroupEditor() {
     return same ? 'unchanged' : 'changed'
   }
 
-  // Advancing the plan's current week is the moment every client currently assigned a tier on this
-  // plan actually finishes receiving whatever week is being left behind — so that outgoing week's
-  // meal combination gets snapshotted per tier here, which is what weekSendStatus above compares
-  // future edits against.
+  // Moving the rotation's shared pointer forward is just that — a calendar event so the next
+  // check-in response defaults to the right week. It says nothing about whether any tier's
+  // combination for the outgoing week was ever actually reviewed, so it must never touch
+  // plan_week_sends/locked state itself; see approveWeek for the only path that does.
   async function updateCurrentWeek(newWeek) {
-    const outgoingWeekNum = planGroup?.current_week
-    if (outgoingWeekNum != null && availableTiers.length > 0) {
-      const rows = availableTiers
-        .map(tier => {
-          const w = (tierWeeks[tier] || weeks).find(w => w.weekNum === outgoingWeekNum)
-          return w ? { plan_group_id: groupId, calorie_tier: tier, week_number: outgoingWeekNum, meal_combination: buildCombination(w) } : null
-        })
-        .filter(Boolean)
-      if (rows.length) {
-        const { data: upserted } = await supabase.from('plan_week_sends')
-          .upsert(rows, { onConflict: 'plan_group_id,calorie_tier,week_number' })
-          .select('calorie_tier, week_number, meal_combination')
-        if (upserted) {
-          setSentSnapshots(prev => {
-            const next = { ...prev }
-            for (const r of upserted) next[`${r.calorie_tier}:${r.week_number}`] = r.meal_combination
-            return next
-          })
-        }
-      }
-    }
     await supabase.from('plan_groups').update({ current_week: newWeek }).eq('id', groupId)
     setPlanGroup(prev => ({ ...prev, current_week: newWeek }))
+  }
+
+  // Approving a week for the active tier is a deliberate "I'm happy with this" from the coach —
+  // the only action that (a) marks it as sent/approved (the green tick), and (b) freezes it: every
+  // slot's currently-resolved ingredients get written as an explicit per-slot override, so a later
+  // change to the underlying meal's recipe or tier portions (a regenerate, or "Optimise
+  // combinations") can never silently alter what this specific week/tier actually delivers, even
+  // though multiple weeks can share the same meal underneath.
+  async function approveWeek(weekIdx) {
+    if (activeTier == null) return
+    const week = currentWeeks[weekIdx]
+    if (!week || week.locked) return
+    setApprovingWeek(week.templateId)
+
+    const frozenOverrides = {}
+    for (const slot of SLOTS) {
+      const mealId = week.slots[slot.key]
+      if (!mealId) continue
+      const meal = mealsById[mealId]
+      const effective = getIngredients(meal, activeTier, week.overrides?.[slot.key])
+      const existing = week.overrides?.[slot.key] || {}
+      frozenOverrides[slot.key] = {
+        ...existing,
+        qty: Object.fromEntries(effective.filter(ing => !ing._isAdded).map(ing => [ing.id, ing.quantity_g])),
+      }
+    }
+
+    const slotUpdates = Object.entries(frozenOverrides).map(([slotKey, overrides]) =>
+      supabase.from('template_meal_slots').update({ ingredient_overrides: overrides }).eq('template_id', week.templateId).eq('slot_type', slotKey)
+    )
+    await Promise.all(slotUpdates)
+    await supabase.from('weekly_templates').update({ locked: true }).eq('id', week.templateId)
+
+    const { data: upserted } = await supabase.from('plan_week_sends')
+      .upsert([{ plan_group_id: groupId, calorie_tier: activeTier, week_number: week.weekNum, meal_combination: buildCombination(week) }], { onConflict: 'plan_group_id,calorie_tier,week_number' })
+      .select('calorie_tier, week_number, meal_combination')
+    if (upserted) {
+      setSentSnapshots(prev => {
+        const next = { ...prev }
+        for (const r of upserted) next[`${r.calorie_tier}:${r.week_number}`] = r.meal_combination
+        return next
+      })
+    }
+
+    setTierWeeks(prev => ({
+      ...prev,
+      [activeTier]: (prev[activeTier] || []).map(w => w.templateId === week.templateId ? { ...w, overrides: frozenOverrides, locked: true } : w),
+    }))
+    setApprovingWeek(null)
+  }
+
+  // Unlocks a previously-approved week so it can be edited again — leaves the frozen ingredient
+  // amounts in place (nothing silently reverts); the coach can change whatever they need to from
+  // here, and the "Edited since approved" badge will reflect it until it's approved again.
+  async function unlockWeek(weekIdx) {
+    if (activeTier == null) return
+    const week = currentWeeks[weekIdx]
+    if (!week) return
+    await supabase.from('weekly_templates').update({ locked: false }).eq('id', week.templateId)
+    setTierWeeks(prev => ({
+      ...prev,
+      [activeTier]: (prev[activeTier] || []).map(w => w.templateId === week.templateId ? { ...w, locked: false } : w),
+    }))
   }
 
   // Default pre-workout/evening-snack meals are set per scope: the Standard template has its own
@@ -1306,7 +1377,9 @@ export default function PlanGroupEditor() {
       week.weekNum,
       Object.fromEntries(MAIN_SLOTS.map(s => [s.key, scheds[s.key][i]])),
     ]))
-    const applyOptimized = w => byWeekNum.has(w.weekNum) ? { ...w, slots: { ...w.slots, ...byWeekNum.get(w.weekNum) } } : w
+    // An approved/locked week is excluded entirely — approving it is a promise that it won't
+    // change again, so optimisation must leave it exactly as it is rather than fold it back in.
+    const applyOptimized = w => (w.locked || !byWeekNum.has(w.weekNum)) ? w : { ...w, slots: { ...w.slots, ...byWeekNum.get(w.weekNum) } }
 
     setWeeks(prev => prev.map(applyOptimized))
     setTierWeeks(prev => {
@@ -1316,7 +1389,7 @@ export default function PlanGroupEditor() {
     })
 
     const allWeeks = [...weeks, ...Object.values(tierWeeks).flat()]
-    setDirty(new Set(allWeeks.filter(w => byWeekNum.has(w.weekNum)).map(w => w.templateId)))
+    setDirty(new Set(allWeeks.filter(w => !w.locked && byWeekNum.has(w.weekNum)).map(w => w.templateId)))
     setOptimizing(false)
   }
 
@@ -1632,18 +1705,38 @@ export default function PlanGroupEditor() {
                     Unsaved
                   </span>
                 )}
-                {sendStatus === 'unchanged' && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" title="Unchanged since this week was last live for this calorie tier — safe to reuse as-is">
-                    Unchanged since sent
+                {week.locked && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" title="Approved and locked — nothing can change this week's meals or amounts for this calorie tier until it's unlocked">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" /></svg>
+                    Approved
                   </span>
                 )}
-                {sendStatus === 'changed' && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Edited since this week was last live for this calorie tier — worth a check before it's reused">
-                    Edited since sent
+                {!week.locked && sendStatus === 'changed' && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Edited since this was last approved for this calorie tier — re-check and approve again when you're happy with it">
+                    Edited since approved
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
+                {activeTier != null && (week.locked ? (
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); unlockWeek(weekIdx) }}
+                    className="text-xs font-medium text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 whitespace-nowrap flex-shrink-0"
+                  >
+                    Unlock
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); approveWeek(weekIdx) }}
+                    disabled={approvingWeek === week.templateId}
+                    title="Confirm you're happy with this week's meals and amounts for this calorie tier — freezes them so nothing can change this week again, even Optimise combinations or a meal's own recipe changing later"
+                    className="text-xs font-semibold text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 whitespace-nowrap flex-shrink-0 disabled:opacity-50"
+                  >
+                    {approvingWeek === week.templateId ? 'Approving…' : 'Approve'}
+                  </button>
+                ))}
                 <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>

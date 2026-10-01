@@ -6,7 +6,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import {
   CALORIE_TIERS, regenerateAllTiersForMeal, bestIngredientsForTier,
   tierTargetsForCategory, insertTierVersion, snapToConstraints, calcTotals, allIngredientsFixed,
-  withIngredientSwaps,
+  withIngredientSwaps, lockedTiersForMeal,
 } from '../../lib/calorieTierScaling'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
 import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
@@ -537,7 +537,13 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, instru
         alternative_ingredient_ids: (ing._alternatives || []).map(a => a.ingredient_id),
       })), ingredientSwapsMap)
       try {
-        await regenerateAllTiersForMeal(mealId, category, baseIngs, library, mealSplit)
+        // Any tier where this meal sits in a coach-approved, locked week must keep its existing
+        // ingredient amounts exactly as they are — that's the whole point of approving a week.
+        const skipTiers = await lockedTiersForMeal(mealId)
+        await regenerateAllTiersForMeal(mealId, category, baseIngs, library, mealSplit, skipTiers)
+        if (skipTiers.length > 0) {
+          window.alert(`${skipTiers.map(t => `${t} kcal`).join(', ')} ${skipTiers.length > 1 ? 'are' : 'is'} approved/locked in at least one week, so ${skipTiers.length > 1 ? 'those tiers were' : 'that tier was'} left unchanged. Unlock the relevant week first if it needs to pick up this recipe change.`)
+        }
       } catch (err) {
         console.error('Failed to auto-update calorie tiers:', err)
       }
@@ -881,6 +887,12 @@ function CalorieTiersTab({ mealId, coachId, category, mealSplit }) {
   useEffect(() => { load() }, [mealId])
 
   async function createFromBase(tier) {
+    const locked = await lockedTiersForMeal(mealId)
+    if (locked.includes(tier)) {
+      window.alert(`This meal is approved/locked at ${tier} kcal in at least one week — unlock that week first if it needs to pick up a regenerated version.`)
+      return
+    }
+
     setCreating(tier)
     setError('')
 
@@ -992,6 +1004,11 @@ function CalorieTiersTab({ mealId, coachId, category, mealSplit }) {
   async function deleteTier(tier) {
     const v = tierMap[tier]
     if (!v?.id) return
+    const locked = await lockedTiersForMeal(mealId)
+    if (locked.includes(tier)) {
+      window.alert(`This meal is approved/locked at ${tier} kcal in at least one week — unlock that week first before deleting this tier.`)
+      return
+    }
     await supabase.from('meal_tier_versions').delete().eq('id', v.id)
     if (expandedTier === tier) setExpandedTier(null)
     load()
