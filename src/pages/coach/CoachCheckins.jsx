@@ -311,6 +311,11 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   // schedule" writes its result to this row's template_meal_slots. Never falls back cross-scope
   // (a tier's own row only) — see buildTemplateOverrides vs this for why.
   const [activeTemplateId, setActiveTemplateId] = useState(null)
+  // Whether the shared schedule's own week/tier (not this one client's personal edits) has already
+  // been approved — see approveTemplateWeek below. Lets the coach see at a glance, right here while
+  // responding to a check-in, whether this is standard/confirmed or still needs a look.
+  const [activeTemplateLocked, setActiveTemplateLocked] = useState(false)
+  const [approvingTemplate, setApprovingTemplate] = useState(false)
   const [applyingToSchedule, setApplyingToSchedule] = useState(null) // slotKey currently being applied, or null
   const [mealMap, setMealMap] = useState({})
   const [mealsByCategory, setMealsByCategory] = useState({})
@@ -376,9 +381,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         `).eq('coach_id', coachId).order('name'),
         supabase.from('ingredients').select('id, name, serving_size, serving_unit, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', coachId),
         currentTier
-          ? supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).eq('calorie_tier', currentTier).maybeSingle()
+          ? supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).eq('calorie_tier', currentTier).maybeSingle()
           : Promise.resolve({ data: null }),
-        supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
+        supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', weekNum).maybeSingle(),
         supabase.from('client_training_assignments').select('*, training_programs(name, weeks_total)').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('training_programs').select('id, name').eq('coach_id', coachId).order('name'),
@@ -403,6 +408,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
       setActiveTemplateId((currentTier ? tierTmplData : stdTmplData)?.id ?? null)
+      setActiveTemplateLocked(!!(currentTier ? tierTmplData : stdTmplData)?.locked)
       setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
       if (cwm?.ingredient_overrides) setIngredientOverrides(cwm.ingredient_overrides)
       setTraining(trainingAsgn)
@@ -422,9 +428,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       const newTier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
       const [{ data: tierTmplData }, { data: stdTmplData }, { data: cwm }] = await Promise.all([
         newTier
-          ? supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', newTier).maybeSingle()
+          ? supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', newTier).maybeSingle()
           : Promise.resolve({ data: null }),
-        supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
+        supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
       ])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
@@ -433,6 +439,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
       setActiveTemplateId((newTier ? tierTmplData : stdTmplData)?.id ?? null)
+      setActiveTemplateLocked(!!(newTier ? tierTmplData : stdTmplData)?.locked)
       setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
     }
     reloadTemplate()
@@ -445,9 +452,9 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       const currentTier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
       const [{ data: tierTmplData }, { data: stdTmplData }, { data: cwm }] = await Promise.all([
         currentTier
-          ? supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', currentTier).maybeSingle()
+          ? supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', currentTier).maybeSingle()
           : Promise.resolve({ data: null }),
-        supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
+        supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
       ])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
@@ -456,6 +463,7 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
       setActiveTemplateId((currentTier ? tierTmplData : stdTmplData)?.id ?? null)
+      setActiveTemplateLocked(!!(currentTier ? tierTmplData : stdTmplData)?.locked)
       setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
       setIngredientOverrides(cwm?.ingredient_overrides || {})
     }
@@ -750,6 +758,52 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
   function handleRestoreMeal(slotKey) {
     handleRevert(slotKey)
     setRemovedMealSlots(prev => prev.filter(k => k !== slotKey))
+  }
+
+  // Approves the shared schedule's own week/tier — not this one client's personal view — exactly
+  // like the Plan Group editor's own Approve button (src/pages/coach/PlanGroupEditor.jsx
+  // approveWeek), which this mirrors so a week approved from either screen shows the same way in
+  // both. Deliberately resolves from templateSlots/templateOverrides, never editedSlots/
+  // ingredientOverrides — approving reflects the standard every other client on this tier gets, not
+  // whatever this client has swapped. If this client needs something different, that's exactly what
+  // leaving this unapproved (and editing their own plan instead) is for.
+  async function approveTemplateWeek() {
+    if (!activeTemplateId || tier == null) return
+    setApprovingTemplate(true)
+
+    const frozenOverrides = {}
+    for (const def of ALL_SLOT_DEFS) {
+      const mealId = templateSlots[def.key]
+      if (!mealId) continue
+      const meal = mealMap[mealId]
+      const effective = getIngredients(meal, tier, templateOverrides[def.key])
+      const existing = templateOverrides[def.key] || {}
+      frozenOverrides[def.key] = {
+        ...existing,
+        qty: Object.fromEntries(effective.filter(ing => !ing._isAdded).map(ing => [ing.id, ing.quantity_g])),
+      }
+    }
+
+    await Promise.all(Object.entries(frozenOverrides).map(([slotKey, overrides]) =>
+      supabase.from('template_meal_slots').update({ ingredient_overrides: overrides }).eq('template_id', activeTemplateId).eq('slot_type', slotKey)
+    ))
+    await supabase.from('weekly_templates').update({ locked: true }).eq('id', activeTemplateId)
+
+    const combination = Object.fromEntries(ALL_SLOT_DEFS.map(def => [def.key, templateSlots[def.key] || null]))
+    await supabase.from('plan_week_sends').upsert(
+      [{ plan_group_id: activeAssignment.plan_group_id, calorie_tier: tier, week_number: nextTemplateWeek, meal_combination: combination }],
+      { onConflict: 'plan_group_id,calorie_tier,week_number' }
+    )
+
+    setTemplateOverrides(frozenOverrides)
+    setActiveTemplateLocked(true)
+    setApprovingTemplate(false)
+  }
+
+  async function unlockTemplateWeek() {
+    if (!activeTemplateId) return
+    await supabase.from('weekly_templates').update({ locked: false }).eq('id', activeTemplateId)
+    setActiveTemplateLocked(false)
   }
 
   async function assignNextBlock() {
@@ -1122,6 +1176,40 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
                 </button>
               )}
             </div>
+
+            {/* Approval status for the SHARED standard at this tier/week — not this client's own
+                view. Deliberately obvious (its own banner, not a small badge) since knowing at a
+                glance whether a week has actually been checked is the whole point. */}
+            {tier != null && (
+              activeTemplateLocked ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10 px-3 py-2">
+                  <p className="text-xs text-green-700 dark:text-green-400 flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" /></svg>
+                    <span className="font-medium">Approved</span> — the {tier} kcal standard for Week {nextTemplateWeek} is checked and locked
+                  </p>
+                  <button type="button" onClick={unlockTemplateWeek} className="text-xs font-medium text-green-700 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 flex-shrink-0">
+                    Unlock
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <span className="font-medium text-gray-700 dark:text-gray-300">Not yet approved</span> for the {tier} kcal standard, Week {nextTemplateWeek}
+                    {hasMealPlanChanges && ' — this client has their own edits, which approving won\'t include'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={approveTemplateWeek}
+                    disabled={approvingTemplate}
+                    title="Confirms the standard meals/amounts at this tier for this week — locks them so nothing (Optimise combinations, a meal's own recipe changing later) can alter them again. Doesn't affect this client's own edits either way."
+                    className="text-xs font-semibold text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 flex-shrink-0 disabled:opacity-50"
+                  >
+                    {approvingTemplate ? 'Approving…' : 'Approve'}
+                  </button>
+                </div>
+              )
+            )}
+
             {MEAL_GROUPS.map(group => {
               // Show a slot if it currently has a meal, or if it originally
               // had one from the template and has since been removed (so

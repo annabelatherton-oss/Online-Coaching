@@ -2187,7 +2187,10 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   // schedule" writes its result to this row's template_meal_slots.
   const [activeTemplateId, setActiveTemplateId] = useState(null)
   const [applyingToSchedule, setApplyingToSchedule] = useState(null) // slotKey currently being applied, or null
-  const [removedCategories, setRemovedCategories] = useState([])
+  // Shared with the check-in delivery screen (client_plan_assignments.removed_meal_slots) — removing
+  // a meal here or there is the same permanent, client-wide state either way, not a per-week toggle.
+  const [removedSlots, setRemovedSlots] = useState([])
+  const removedCategories = Object.keys(CATEGORY_SLOT_KEYS).filter(cat => CATEGORY_SLOT_KEYS[cat].every(k => removedSlots.includes(k)))
   const [weekNeedsReview, setWeekNeedsReview] = useState(false)
   const [expandedSlots, setExpandedSlots] = useState(new Set())
   const [comparingSlots, setComparingSlots] = useState(new Set())
@@ -2300,7 +2303,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         ? supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).eq('calorie_tier', tier).maybeSingle()
         : Promise.resolve({ data: null }),
       supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
-      supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories, needs_coach_review').eq('assignment_id', asgn.id).eq('week_number', weekNum).maybeSingle(),
+      supabase.from('client_week_meals').select('slots, ingredient_overrides, needs_coach_review').eq('assignment_id', asgn.id).eq('week_number', weekNum).maybeSingle(),
     ])
     const tmpl = tierTmpl || stdTmpl
     const tSlots = {}
@@ -2322,7 +2325,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     setTemplateSlots(tSlots)
     setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
     setIngredientOverrides(cwm?.ingredient_overrides || {})
-    setRemovedCategories(cwm?.removed_categories || [])
+    setRemovedSlots(asgn.removed_meal_slots || [])
     setWeekNeedsReview(!!cwm?.needs_coach_review)
     setSlotsDirty(false)
   }
@@ -2461,13 +2464,17 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   // Restoring a category runs the same resize back down to the normal split.
   function toggleCategoryRemoved(cat) {
     const isRemoving = !removedCategories.includes(cat)
-    const nextRemoved = isRemoving ? [...removedCategories, cat] : removedCategories.filter(c => c !== cat)
-    const newMealSplit = redistributeMealSplit(mealSplit, nextRemoved)
+    const catSlotKeys = CATEGORY_SLOT_KEYS[cat]
+    const nextRemovedSlots = isRemoving
+      ? [...new Set([...removedSlots, ...catSlotKeys])]
+      : removedSlots.filter(k => !catSlotKeys.includes(k))
+    const nextRemovedCats = isRemoving ? [...removedCategories, cat] : removedCategories.filter(c => c !== cat)
+    const newMealSplit = redistributeMealSplit(mealSplit, nextRemovedCats)
     for (const otherCat of MEAL_SPLIT_CATEGORIES) {
-      if (otherCat === cat || nextRemoved.includes(otherCat)) continue
+      if (otherCat === cat || nextRemovedCats.includes(otherCat)) continue
       for (const slotKey of CATEGORY_SLOT_KEYS[otherCat]) autoAdjustSlotForNewTarget(slotKey, otherCat, newMealSplit)
     }
-    setRemovedCategories(nextRemoved)
+    setRemovedSlots(nextRemovedSlots)
     setSlotsDirty(true)
   }
 
@@ -2861,12 +2868,18 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     }
     setSlotsError('')
     setSavingSlots(true)
-    await supabase.from('client_week_meals').upsert(
+    await Promise.all([
       // The coach saving IS the review — whatever they end up changing, this clears the "client
       // swapped a meal, go check it" flag their own save set (see ClientMealPlan.jsx handleSave).
-      { client_id: client.id, coach_id: coachId, assignment_id: assignment.id, week_number: effectiveWeek, slots: editedSlots, ingredient_overrides: ingredientOverrides, removed_categories: removedCategories, needs_coach_review: false },
-      { onConflict: 'assignment_id,week_number' }
-    )
+      supabase.from('client_week_meals').upsert(
+        { client_id: client.id, coach_id: coachId, assignment_id: assignment.id, week_number: effectiveWeek, slots: editedSlots, ingredient_overrides: ingredientOverrides, needs_coach_review: false },
+        { onConflict: 'assignment_id,week_number' }
+      ),
+      // removed_meal_slots lives on the assignment, not the week — a removed meal (e.g. no evening
+      // snack) is a standing client preference shared with the check-in delivery screen, not
+      // something that resets each time the week rolls over.
+      supabase.from('client_plan_assignments').update({ removed_meal_slots: removedSlots }).eq('id', assignment.id),
+    ])
     setSavingSlots(false); setSlotsDirty(false)
     setWeekNeedsReview(false)
   }
@@ -3658,7 +3671,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 )}
                 <div className="flex items-center gap-3">
                   <button onClick={handleSaveSlots} disabled={savingSlots} className="btn-primary py-1.5 px-4 text-sm">{savingSlots ? 'Saving…' : 'Save meal changes'}</button>
-                  <button onClick={() => { setEditedSlots({ ...templateSlots }); setIngredientOverrides({}); setRemovedCategories([]); setSlotsDirty(false); setSlotsError('') }} className="text-sm text-gray-400 hover:text-gray-700">Reset to template</button>
+                  <button onClick={() => { setEditedSlots({ ...templateSlots }); setIngredientOverrides({}); setRemovedSlots(assignment?.removed_meal_slots || []); setSlotsDirty(false); setSlotsError('') }} className="text-sm text-gray-400 hover:text-gray-700">Reset to template</button>
                 </div>
               </div>
             )}
