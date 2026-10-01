@@ -96,15 +96,19 @@ function upcomingMondays(count = 12) {
 }
 
 // Three ways to add access time: a number of weeks on top of whatever's there (the common case —
-// mirrors the old "+4w" button but lets the coach pick how many), an exact new expiry date for
-// when a specific date matters more than a round number of weeks, or picking a Monday to start
-// counting X weeks from (for lining access up with when a new block/plan actually starts).
-function ExtendAccessModal({ client, onClose, onAddWeeks, onSetExactDate, busy }) {
+// mirrors the old "+4w" button but lets the coach pick how many), a start date plus a number of
+// weeks from it (for lining access up with when a new block/plan actually starts, or backdating
+// it), or picking a Monday specifically to start counting X weeks from.
+function ExtendAccessModal({ client, onClose, onAddWeeks, onSetExactDate, onSetStart, busy }) {
   const [mode, setMode] = useState('weeks')
   const [weeks, setWeeks] = useState(4)
-  const [exactDate, setExactDate] = useState(
-    client.access_expires_at ? new Date(client.access_expires_at).toISOString().split('T')[0] : ''
-  )
+  const [startDate, setStartDate] = useState(client.start_date || new Date().toISOString().split('T')[0])
+  const [startWeeks, setStartWeeks] = useState(client.access_weeks || 12)
+  const startExpiry = (() => {
+    const d = new Date(startDate)
+    d.setDate(d.getDate() + parseInt(startWeeks || 0) * 7)
+    return d.toISOString().split('T')[0]
+  })()
   const mondays = upcomingMondays()
   const [mondayStart, setMondayStart] = useState(mondays[0])
   const [mondayWeeks, setMondayWeeks] = useState(4)
@@ -140,7 +144,7 @@ function ExtendAccessModal({ client, onClose, onAddWeeks, onSetExactDate, busy }
             onClick={() => setMode('date')}
             className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'date' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
           >
-            Set exact date
+            Set start date
           </button>
           <button
             type="button"
@@ -166,14 +170,30 @@ function ExtendAccessModal({ client, onClose, onAddWeeks, onSetExactDate, busy }
         )}
 
         {mode === 'date' && (
-          <div>
-            <label className="label">New expiry date</label>
-            <input
-              className="input"
-              type="date"
-              value={exactDate}
-              onChange={e => setExactDate(e.target.value)}
-            />
+          <div className="space-y-3">
+            <div>
+              <label className="label">Start date</label>
+              <input
+                className="input"
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label">Access (weeks)</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                onFocus={e => e.target.select()}
+                value={startWeeks}
+                onChange={e => setStartWeeks(e.target.value)}
+              />
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              New expiry: {new Date(startExpiry).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
           </div>
         )}
 
@@ -210,10 +230,10 @@ function ExtendAccessModal({ client, onClose, onAddWeeks, onSetExactDate, busy }
           <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
           <button
             type="button"
-            disabled={busy || (mode === 'weeks' ? !weeks || parseInt(weeks) < 1 : mode === 'date' ? !exactDate : !mondayStart || !mondayWeeks || parseInt(mondayWeeks) < 1)}
+            disabled={busy || (mode === 'weeks' ? !weeks || parseInt(weeks) < 1 : mode === 'date' ? !startDate || !startWeeks || parseInt(startWeeks) < 1 : !mondayStart || !mondayWeeks || parseInt(mondayWeeks) < 1)}
             onClick={() => {
               if (mode === 'weeks') onAddWeeks(parseInt(weeks))
-              else if (mode === 'date') onSetExactDate(exactDate)
+              else if (mode === 'date') onSetStart(startDate, parseInt(startWeeks))
               else onSetExactDate(mondayExpiry)
             }}
             className="btn-primary flex-1"
@@ -323,6 +343,20 @@ export default function ClientsList() {
     await supabase
       .from('clients')
       .update({ access_weeks: parseInt(client.access_weeks || 0) + weeks })
+      .eq('id', client.id)
+    await loadClients()
+    setActionLoading(null)
+    setExtendClient(null)
+  }
+
+  // Sets start_date + access_weeks together — the trigger-driven path, same as every other access
+  // field in the app — so access_expires_at gets recomputed properly instead of drifting out of
+  // sync with a start date that was never actually updated to match.
+  async function setClientStart(client, isoStartDate, weeks) {
+    setActionLoading(client.id)
+    await supabase
+      .from('clients')
+      .update({ start_date: isoStartDate, access_weeks: weeks })
       .eq('id', client.id)
     await loadClients()
     setActionLoading(null)
@@ -630,6 +664,7 @@ export default function ClientsList() {
           onClose={() => setExtendClient(null)}
           onAddWeeks={weeks => addWeeks(extendClient, weeks)}
           onSetExactDate={date => setExactExpiry(extendClient, date)}
+          onSetStart={(startDate, weeks) => setClientStart(extendClient, startDate, weeks)}
           busy={actionLoading === extendClient.id}
         />
       )}
