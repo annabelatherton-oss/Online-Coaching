@@ -4929,6 +4929,9 @@ export default function CoachClientProfile() {
   const [passwordSaving, setPasswordSaving] = useState(false)
   const [passwordError, setPasswordError] = useState('')
   const [passwordSet, setPasswordSet] = useState('')
+  const [resendingInvite, setResendingInvite] = useState(false)
+  const [resendError, setResendError] = useState('')
+  const [resendSent, setResendSent] = useState(false)
 
   async function loadClient() {
     const { data, error: err } = await supabase.from('clients').select(`
@@ -4962,6 +4965,8 @@ export default function CoachClientProfile() {
     setNewPassword(generatePassword())
     setPasswordError('')
     setPasswordSet('')
+    setResendError('')
+    setResendSent(false)
     setShowPasswordReset(true)
   }
 
@@ -4982,6 +4987,24 @@ export default function CoachClientProfile() {
       return
     }
     setPasswordSet(newPassword)
+  }
+
+  // Resends Supabase's own password/account-setup email — the same one a client gets the first
+  // time, for when they never clicked (or lost) that original link. Goes through the project's
+  // default Supabase email sending, same as the original invite — if that's not reliably arriving
+  // (no custom SMTP configured is a common cause, see handleResetPassword above), "Reset password"
+  // is the guaranteed-to-work fallback: share the password directly instead of waiting on an email.
+  async function handleResendInvite() {
+    if (!client.profiles?.email) return
+    setResendingInvite(true)
+    setResendError('')
+    setResendSent(false)
+    const { error } = await supabase.auth.resetPasswordForEmail(client.profiles.email, {
+      redirectTo: `${window.location.origin}/set-password`,
+    })
+    setResendingInvite(false)
+    if (error) { setResendError(error.message || 'Could not send the email — try again.'); return }
+    setResendSent(true)
   }
 
   if (loading) return <LoadingSpinner size="lg" className="py-20" />
@@ -5068,6 +5091,21 @@ export default function CoachClientProfile() {
                   {passwordSaving ? 'Setting…' : 'Set password'}
                 </button>
                 <button onClick={() => setShowPasswordReset(false)} className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">Cancel</button>
+              </div>
+
+              <div className="pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Or resend their original sign-in email so they can set their own password — worth trying if they just
+                  didn't click the first one. If it still doesn't arrive, "Set password" above always works instead.
+                </p>
+                {resendSent ? (
+                  <p className="text-sm text-green-600 dark:text-green-400">Email sent to {client.profiles?.email}.</p>
+                ) : (
+                  <button onClick={handleResendInvite} disabled={resendingInvite} className="btn-secondary py-1.5 px-4 text-sm">
+                    {resendingInvite ? 'Sending…' : 'Resend sign-in email'}
+                  </button>
+                )}
+                {resendError && <p className="text-sm text-red-600 dark:text-red-400">{resendError}</p>}
               </div>
             </div>
           )}
