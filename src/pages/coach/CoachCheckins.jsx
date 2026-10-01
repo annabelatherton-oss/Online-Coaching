@@ -12,6 +12,7 @@ import {
   MacroBadge, MACRO_META, formatSigned,
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
+import { weekForDate } from '../../lib/planWeek'
 import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
 import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
@@ -1582,17 +1583,30 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
 
   // ascending for history table + personal week mapping. A week_number=0 row (the one-off
   // "starting check-in" some clients submit right after signup, for a baseline weight/photos
-  // before their real Week 1 begins) is never numbered as part of the sequence — otherwise every
-  // real week after it would be off by one, same as everywhere else in the app that counts a
-  // client's weeks. If it's the one currently being viewed, currentPersonalWeek is 0, which
-  // correctly makes deliveryPersonalWeek (used for "Submit Week N Plan") land on 1 — responding
-  // to a starting check-in means delivering their first real week's plan, not a "week 0" plan.
+  // before their real Week 1 begins) is never numbered as part of the sequence.
+  //
+  // Each real check-in's week is calendar-based — weeks elapsed since client.start_date — not a
+  // count of check-ins actually submitted, so a client who misses one doesn't throw every later
+  // week off, and backdating a start date immediately reclassifies their whole history. Falls back
+  // to the old counting behaviour only for a client with no start_date set at all. Likewise
+  // deliveryPersonalWeek (used for "Submit Week N Plan") is the CURRENT calendar week as of right
+  // now, not just "last check-in's week + 1" — it keeps advancing even if check-ins were missed,
+  // catching the client up rather than quietly numbering every late response as the next one along.
   const asc = [...sorted].reverse()
   const personalWeekMap = {}
   let personalCounter = 0
-  asc.forEach(c => { if (c.week_number > 0) { personalCounter++; personalWeekMap[c.id] = personalCounter } })
+  asc.forEach(c => {
+    if (c.week_number > 0) {
+      personalCounter++
+      personalWeekMap[c.id] = client.start_date
+        ? (weekForDate(c.submitted_at || c.updated_at, client.start_date) || personalCounter)
+        : personalCounter
+    }
+  })
   const currentPersonalWeek = current ? (current.week_number === 0 ? 0 : personalWeekMap[current.id]) : 0
-  const deliveryPersonalWeek = currentPersonalWeek + 1
+  const deliveryPersonalWeek = client.start_date
+    ? (weekForDate(new Date().toISOString(), client.start_date) || currentPersonalWeek + 1)
+    : currentPersonalWeek + 1
 
   // When there's no previous check-in, fall back to the last weight_entries row recorded before
   // this check-in's submission date so first-time check-ins still show a meaningful delta.
@@ -2240,7 +2254,7 @@ export default function CoachCheckins() {
 
   async function load() {
     const [{ data: clientData }, { data: checkinData }] = await Promise.all([
-      supabase.from('clients').select('id, collect_measurements, height_cm, date_of_birth, sex, activity_level, goal_type, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id).eq('is_archived', false),
+      supabase.from('clients').select('id, collect_measurements, height_cm, date_of_birth, sex, activity_level, goal_type, start_date, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id).eq('is_archived', false),
       supabase.from('client_checkins').select('*').eq('coach_id', profile.id).order('week_number', { ascending: false }),
     ])
     const mapped = (clientData || []).map(c => ({ ...c, full_name: c.profiles?.full_name }))

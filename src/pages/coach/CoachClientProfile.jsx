@@ -12,7 +12,7 @@ import { DIETS, DIET_LABELS, mealQualifiesForDiets, ingredientQualifiesForDiets 
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { writeCalorieTarget } from '../../lib/calorieTarget'
 import { computeLiftProgress } from '../../lib/liftProgress'
-import { buildWeekTimeline, weekForDate } from '../../lib/planWeek'
+import { weekForDate } from '../../lib/planWeek'
 import StrengthProgress from '../../components/StrengthProgress'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
@@ -138,19 +138,15 @@ function _checkinStreak(checkins) {
 // Earliest and latest weight for a client, merging manual weight_entries with any weight logged
 // on a check-in — the same "manual entry, else most recent/earliest check-in" sourcing the Weight
 // tab itself uses, so the numbers never disagree between tabs.
-async function fetchWeightSummary(clientId) {
+async function fetchWeightSummary(clientId, startDate) {
   const [{ data: weightRows }, { data: checkinRows }] = await Promise.all([
     supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', clientId).order('recorded_at', { ascending: true }),
     supabase.from('client_checkins').select('weight_kg, week_number, submitted_at, updated_at').eq('client_id', clientId).not('weight_kg', 'is', null).order('updated_at', { ascending: true }),
   ])
-  // Excludes the one-off starting check-in (week_number 0) from the timeline used to label
-  // entries by week — its own weight still counts as the earliest entry below (so "Start" can
-  // correctly be it), it just shouldn't shift every real week's label up by one.
-  const timeline = buildWeekTimeline((checkinRows || []).filter(c => c.week_number > 0))
   const fromEntries = (weightRows || []).map(r => ({ weight_kg: r.weight_kg, recorded_at: r.recorded_at }))
   const fromCheckins = (checkinRows || []).map(c => ({ weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0] }))
   const all = [...fromEntries, ...fromCheckins].filter(w => w.recorded_at).sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))
-    .map(w => ({ ...w, week: weekForDate(w.recorded_at, timeline) }))
+    .map(w => ({ ...w, week: weekForDate(w.recorded_at, startDate) }))
   return { startWeight: all[0] || null, latestWeight: all[all.length - 1] || null }
 }
 
@@ -711,13 +707,13 @@ function OverviewTab({ client, onSaved }) {
   const [startWeight, setStartWeight] = useState(null)
   useEffect(() => {
     let cancelled = false
-    fetchWeightSummary(client.id).then(({ startWeight, latestWeight }) => {
+    fetchWeightSummary(client.id, client.start_date).then(({ startWeight, latestWeight }) => {
       if (cancelled) return
       setStartWeight(startWeight)
       setLatestWeight(latestWeight)
     })
     return () => { cancelled = true }
-  }, [client.id])
+  }, [client.id, client.start_date])
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
 
@@ -1183,13 +1179,9 @@ function WeightTab({ clientId, client }) {
     const fromCheckins = withWeight
       .map(c => ({ id: null, weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0], source: 'checkin' }))
       .filter(c => c.recorded_at && !manualDates.has(c.recorded_at))
-    // Excludes the starting check-in (week_number 0) from the timeline used to label entries by
-    // week — its own weight still appears in fromCheckins above, it just shouldn't shift every
-    // real week's label up by one.
-    const timeline = buildWeekTimeline((checkinData || []).filter(c => c.week_number > 0))
     const combined = [...manual, ...fromCheckins]
       .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
-      .map(e => ({ ...e, week: weekForDate(e.recorded_at, timeline) }))
+      .map(e => ({ ...e, week: weekForDate(e.recorded_at, client.start_date) }))
     setEntries(combined)
     setLiftProgress(computeLiftProgress(checkinData || []))
 
@@ -1254,7 +1246,7 @@ function WeightTab({ clientId, client }) {
   )
 }
 
-function MeasurementsTab({ clientId, collectMeasurements }) {
+function MeasurementsTab({ clientId, collectMeasurements, startDate }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -1268,10 +1260,6 @@ function MeasurementsTab({ clientId, collectMeasurements }) {
         ? supabase.from('client_checkins').select('waist_cm, hips_cm, week_number, submitted_at, updated_at').eq('client_id', clientId)
         : Promise.resolve({ data: [] }),
     ])
-    // Excludes the starting check-in (week_number 0) from the timeline used to label entries by
-    // week — its own measurements still appear in fromCheckins below, it just shouldn't shift
-    // every real week's label up by one.
-    const timeline = buildWeekTimeline((checkinData || []).filter(c => c.week_number > 0))
     const manual = data || []
     // Same "manual entry, else the check-in's own logged measurement" merge as the Weight tab —
     // a check-in only ever logs waist/hips (not chest/thighs/arms), so this only ever fills in
@@ -1287,11 +1275,11 @@ function MeasurementsTab({ clientId, collectMeasurements }) {
       .filter(c => c.recorded_at && !manualDates.has(c.recorded_at))
     const combined = [...manual, ...fromCheckins]
       .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
-      .map(e => ({ ...e, week: weekForDate(e.recorded_at, timeline) }))
+      .map(e => ({ ...e, week: weekForDate(e.recorded_at, startDate) }))
     setEntries(combined)
     setLoading(false)
   }
-  useEffect(() => { load() }, [clientId, collectMeasurements])
+  useEffect(() => { load() }, [clientId, collectMeasurements, startDate])
 
   async function addEntry(e) {
     e.preventDefault(); setSaving(true)
@@ -1486,7 +1474,7 @@ function ProgressTab({ clientId, client }) {
       </div>
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Measurements</h2>
-        <MeasurementsTab clientId={clientId} collectMeasurements={client.collect_measurements} />
+        <MeasurementsTab clientId={clientId} collectMeasurements={client.collect_measurements} startDate={client.start_date} />
       </div>
     </div>
   )
@@ -4248,14 +4236,14 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
   const [configuredLiftNames, setConfiguredLiftNames] = useState([])
   useEffect(() => {
     let cancelled = false
-    fetchWeightSummary(clientId).then(({ startWeight, latestWeight }) => {
+    fetchWeightSummary(clientId, client.start_date).then(({ startWeight, latestWeight }) => {
       if (cancelled) return
       setStartWeight(startWeight)
       setLatestWeight(latestWeight)
     })
     fetchConfiguredLiftNames(clientId, client).then(names => { if (!cancelled) setConfiguredLiftNames(names) })
     return () => { cancelled = true }
-  }, [clientId])
+  }, [clientId, client.start_date])
 
   // Client-initiated changes (currently just training-availability edits — see
   // DayAvailabilityRows) attach to whichever check-in comes next after they happened, so nothing

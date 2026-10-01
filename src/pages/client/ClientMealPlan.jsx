@@ -11,6 +11,7 @@ import {
 import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../lib/mealSwaps'
 import { normalizeGoalMacroSplits, calcBodyweightMacros } from '../../lib/macros'
 import EverydayMealsClient from '../../components/EverydayMealsClient'
+import { weekForDate } from '../../lib/planWeek'
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -63,7 +64,9 @@ export default function ClientMealPlan() {
       ])
       const effectiveWeek = asgn.week_override ?? pg?.current_week ?? 1
       setWeekNumber(effectiveWeek)
-      setPersonalWeek((checkinCount ?? 0) + 1)
+      // Calendar-based — weeks elapsed since start_date — not a count of check-ins actually
+      // submitted, so missing one doesn't make this look a week behind where it really is.
+      setPersonalWeek(clientRow.start_date ? (weekForDate(new Date().toISOString(), clientRow.start_date) || (checkinCount ?? 0) + 1) : (checkinCount ?? 0) + 1)
 
       const [{ data: mealsData }, { data: libData }, { data: coachProfile }, { data: weightRows }, { data: checkinRows }] = await Promise.all([
         supabase.from('meals').select(`

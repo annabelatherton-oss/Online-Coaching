@@ -7,7 +7,7 @@ import { useSignedProgressPhotos, useSignedProgressPhotosForCheckins } from '../
 import TargetDateBanner from '../../components/TargetDateBanner'
 import StrengthProgress from '../../components/StrengthProgress'
 import { computeLiftProgress } from '../../lib/liftProgress'
-import { buildWeekTimeline, weekForDate } from '../../lib/planWeek'
+import { weekForDate } from '../../lib/planWeek'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
@@ -183,7 +183,7 @@ export default function ClientProgress() {
     async function load() {
       const { data: client } = await supabase
         .from('clients')
-        .select('id, target_date, target_event_name')
+        .select('id, target_date, target_event_name, start_date')
         .eq('profile_id', session.user.id)
         .single()
 
@@ -210,24 +210,25 @@ export default function ClientProgress() {
     ? (parseFloat(currentWeight) - parseFloat(startWeight)).toFixed(1)
     : null
 
-  // Personal week = 1-based position in ascending week_number order — used by the photo
-  // comparison section below and the check-in history list. A week_number=0 row (the one-off
-  // starting check-in some clients submit before their real Week 1) maps to 0 itself rather than
-  // joining the 1-based sequence, so it doesn't push every real week's own number up by one.
+  // Personal week — used by the photo comparison section below and the check-in history list.
+  // Calendar-based (weeks elapsed since start_date) rather than a running count of check-ins
+  // actually submitted, so a missed week doesn't throw every later week's number off. A
+  // week_number=0 row (the one-off starting check-in some clients submit before their real Week 1)
+  // maps to 0 itself rather than joining the sequence. Falls back to counting only when
+  // start_date isn't set at all.
   const sorted = [...checkins].sort((a, b) => a.week_number - b.week_number)
   const weekToPersonal = {}
   let personalCounter = 0
   sorted.forEach(ci => {
-    if (ci.week_number > 0) { personalCounter++; weekToPersonal[ci.week_number] = personalCounter }
-    else weekToPersonal[ci.week_number] = 0
+    if (ci.week_number > 0) {
+      personalCounter++
+      const calendarWeek = clientData?.start_date ? weekForDate(ci.submitted_at || ci.updated_at, clientData.start_date) : null
+      weekToPersonal[ci.week_number] = calendarWeek || personalCounter
+    } else weekToPersonal[ci.week_number] = 0
   })
   const liftProgress = computeLiftProgress(checkins)
 
-  // Excludes that same starting check-in from the timeline used to label manually-logged weight
-  // entries by week — it isn't a real week, so nothing should ever be labelled "Week 1" just for
-  // landing on or after its date but before the real Week 1 check-in.
-  const weightWeekTimeline = buildWeekTimeline(checkins.filter(c => c.week_number > 0))
-  const weightChartEntries = weightEntries.map(e => ({ ...e, week: weekForDate(e.recorded_at, weightWeekTimeline) }))
+  const weightChartEntries = weightEntries.map(e => ({ ...e, week: weekForDate(e.recorded_at, clientData?.start_date) }))
 
   return (
     <div className="space-y-6">

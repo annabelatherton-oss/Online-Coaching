@@ -1,28 +1,18 @@
-// Maps an arbitrary date to "which week of the plan" it falls in. There's no calendar-week
-// concept stored anywhere for most progress data (manual weight entries, measurements) — the
-// only real timeline a client has is their own check-in history, so a date's "week" is just how
-// many check-ins had happened by that date. This matches the personal-week convention used
-// elsewhere in the app (week N = the Nth check-in ever submitted).
-export function buildWeekTimeline(checkins) {
-  return [...new Set((checkins || []).map(c => c.submitted_at || c.updated_at).filter(Boolean))]
-    .map(d => new Date(d).getTime())
-    .filter(t => !Number.isNaN(t))
-    .sort((a, b) => a - b)
-}
-
-export function weekForDate(dateStr, timeline) {
-  if (!dateStr || !timeline?.length) return null
+// Maps an arbitrary date to "which week of the plan" it falls in, counted in whole 7-day periods
+// elapsed since the client's start date — so the week number advances with calendar time whether
+// or not a check-in was actually submitted that week. A start date set retrospectively (e.g. the
+// coach backdates it) immediately reclassifies every date since then, including past entries.
+export function weekForDate(dateStr, startDate) {
+  if (!dateStr || !startDate) return null
   const target = new Date(dateStr).getTime()
-  if (Number.isNaN(target)) return null
-  let week = 0
-  for (const t of timeline) {
-    if (t <= target) week++
-    else break
-  }
-  return week || null
+  const start = new Date(startDate).getTime()
+  if (Number.isNaN(target) || Number.isNaN(start)) return null
+  const diffDays = (target - start) / (1000 * 60 * 60 * 24)
+  if (diffDays < 0) return null
+  return Math.floor(diffDays / 7) + 1
 }
 
-export function weekLabel(dateStr, timeline) {
-  const w = weekForDate(dateStr, timeline)
+export function weekLabel(dateStr, startDate) {
+  const w = weekForDate(dateStr, startDate)
   return w != null ? `Week ${w}` : 'Pre-plan'
 }

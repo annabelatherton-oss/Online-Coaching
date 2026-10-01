@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import ClientModal from './ClientModal'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
+import { weekForDate } from '../../lib/planWeek'
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -299,7 +300,11 @@ export default function ClientsList() {
     setLoading(false)
   }
 
+  // Calendar-based — weeks elapsed since the client's start date — not a count of check-ins
+  // actually submitted, so a client who misses one doesn't look stuck a week behind where they
+  // really are. Falls back to the old counting behaviour only when start_date isn't set at all.
   function currentWeek(client) {
+    if (client.start_date) return weekForDate(new Date().toISOString(), client.start_date) || 1
     return (checkinCounts[client.id] || 0) + 1
   }
 

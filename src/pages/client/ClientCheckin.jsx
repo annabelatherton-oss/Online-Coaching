@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { compressImage, useSignedProgressPhotos } from '../../lib/progressPhotos'
 import TargetDateBanner from '../../components/TargetDateBanner'
+import { weekForDate } from '../../lib/planWeek'
 
 const RATING_LABELS = {
   energy_level:   ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
@@ -367,7 +368,7 @@ export default function ClientCheckin() {
     async function load() {
       const { data: clientRow } = await supabase
         .from('clients')
-        .select('id, coach_id, collect_measurements, top_lifts, target_date, target_event_name, checkin_early_access')
+        .select('id, coach_id, collect_measurements, top_lifts, target_date, target_event_name, checkin_early_access, start_date')
         .eq('profile_id', session.user.id)
         .single()
       if (!clientRow) { setLoading(false); return }
@@ -468,10 +469,14 @@ export default function ClientCheckin() {
       const { data: allHistory } = await supabase.from('client_checkins')
         .select('*').eq('client_id', clientRow.id).order('updated_at', { ascending: true })
 
+      // Calendar-based — weeks elapsed since start_date — not a running count of check-ins
+      // actually submitted, so a missed week doesn't throw every later week's label off. Falls
+      // back to counting only when start_date isn't set at all.
       let personalCounter = 0
       const histWithWeeks = (allHistory || []).map(c => {
         if (c.week_number > 0) personalCounter++
-        return { ...c, personal_week: c.week_number > 0 ? personalCounter : null }
+        const calendarWeek = clientRow.start_date ? weekForDate(c.updated_at || c.submitted_at, clientRow.start_date) : null
+        return { ...c, personal_week: c.week_number > 0 ? (calendarWeek || personalCounter) : null }
       })
       setAllCheckins(histWithWeeks)
 
@@ -511,7 +516,8 @@ export default function ClientCheckin() {
       setWeekNumber(effectiveWeekNumber)
       setIsLateResubmit(isLate)
       setHistoryList([...histWithWeeks].reverse())
-      setPersonalWeek(matchedExisting ? matchedExisting.personal_week : (effectiveWeekNumber === 0 ? null : personalCounter + 1))
+      const calendarNowWeek = clientRow.start_date ? weekForDate(new Date().toISOString(), clientRow.start_date) : null
+      setPersonalWeek(matchedExisting ? matchedExisting.personal_week : (effectiveWeekNumber === 0 ? null : (calendarNowWeek || personalCounter + 1)))
 
       if (matchedExisting) {
         const checkin = matchedExisting
