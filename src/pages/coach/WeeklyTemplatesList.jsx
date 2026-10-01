@@ -100,13 +100,15 @@ export default function WeeklyTemplatesList() {
                 </div>
               </div>
 
-              {/* Current week is read-only here — it advances automatically every Friday, and any
-                  manual override belongs in the Plan editor, which (unlike this list used to) also
-                  snapshots the outgoing week for the "sent"/"changed" tracking on each tier. */}
+              {/* Current week is read-only here — change it from inside the Plan editor instead,
+                  which (unlike this list used to) also snapshots the outgoing week for the
+                  "sent"/"changed" tracking on each tier. Advancing is a deliberate call only you
+                  can make once every client's check-in for that week is actually handled — never
+                  automatic, since nothing else knows whether everyone's been delivered yet. */}
               <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-sm">
                 <span className="text-gray-500 dark:text-gray-400">Current week:</span>
                 <span className="font-semibold text-gray-900 dark:text-white">{group.current_week}</span>
-                <span className="text-xs text-gray-400 dark:text-gray-500">— advances automatically every Friday</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">— change it from the Plan editor</span>
               </div>
             </div>
           ))}
