@@ -1027,10 +1027,13 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
                 <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mb-0.5 truncate">Weight</p>
                 <p className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white">{current.weight_kg != null ? `${current.weight_kg} kg` : '—'}</p>
                 {(weightDeltaPrev != null || weightDeltaPrev2 != null) && (
-                  <p className="mt-0.5 text-[10px] sm:text-xs leading-tight">
-                    {weightDeltaPrev != null && <DeltaTag delta={weightDeltaPrev} invertColors />}
-                    {weightDeltaPrev2 != null && <span className="text-gray-400"> / <DeltaTag delta={weightDeltaPrev2} invertColors /></span>}
-                  </p>
+                  <div className="mt-1">
+                    <p className="text-[9px] sm:text-[10px] text-gray-400 uppercase tracking-wide truncate">vs last 2 wks</p>
+                    <p className="text-[10px] sm:text-xs leading-tight">
+                      {weightDeltaPrev != null && <DeltaTag delta={weightDeltaPrev} invertColors />}
+                      {weightDeltaPrev2 != null && <span className="text-gray-400"> / <DeltaTag delta={weightDeltaPrev2} invertColors /></span>}
+                    </p>
+                  </div>
                 )}
               </div>
               {[['Energy', current.energy_level], ['Sleep', current.sleep_quality], ['Food', current.food_adherence], ['Gym', current.gym_adherence]].map(([label, v]) => (
@@ -1930,10 +1933,13 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                 <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Weight</p>
                 <p className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white">{current.weight_kg}<span className="text-[10px] sm:text-sm font-normal text-gray-500"> kg</span></p>
                 {(wDeltaPrev !== null || wDeltaPrev2 !== null) && (
-                  <p className="mt-0.5 text-[10px] sm:text-xs leading-tight">
-                    {wDeltaPrev !== null && <DeltaTag delta={wDeltaPrev} invertColors />}
-                    {wDeltaPrev2 !== null && <span className="text-gray-400"> / <DeltaTag delta={wDeltaPrev2} invertColors /></span>}
-                  </p>
+                  <div className="mt-1">
+                    <p className="text-[9px] sm:text-[10px] text-gray-400 uppercase tracking-wide truncate">vs last 2 wks</p>
+                    <p className="text-[10px] sm:text-xs leading-tight">
+                      {wDeltaPrev !== null && <DeltaTag delta={wDeltaPrev} invertColors />}
+                      {wDeltaPrev2 !== null && <span className="text-gray-400"> / <DeltaTag delta={wDeltaPrev2} invertColors /></span>}
+                    </p>
+                  </div>
                 )}
               </div>
             )}
