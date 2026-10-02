@@ -14,6 +14,7 @@ import {
 import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { weekForDate } from '../../lib/planWeek'
 import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
+import { GOAL_LABELS } from '../../lib/calorieSuggestion'
 import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
@@ -1155,6 +1156,7 @@ function DeliveryPanel({ client, current, prev, activeAssignment, deliveryPerson
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 <span className="font-medium text-gray-700 dark:text-gray-300">Macro target:</span>{' '}
                 {targetCal} kcal · {Math.round(targetMacros.carbs_g)}g C · {Math.round(targetMacros.protein_g)}g P · {Math.round(targetMacros.fat_g)}g F
+                {client?.goal_type && GOAL_LABELS[client.goal_type] && <> · <span className="font-medium text-gray-700 dark:text-gray-300">{GOAL_LABELS[client.goal_type]}</span></>}
               </p>
             )}
             {/* Daily macro totals, with how far each option lands from the
