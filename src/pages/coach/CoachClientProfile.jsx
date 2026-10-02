@@ -1155,14 +1155,18 @@ function OverviewTab({ client, onSaved }) {
 function WeightTab({ clientId, client }) {
   const [entries, setEntries] = useState([])
   const [liftProgress, setLiftProgress] = useState([])
+  const [liftEntries, setLiftEntries] = useState([])
   const [configuredLiftNames, setConfiguredLiftNames] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], weight_kg: '' })
   const [saving, setSaving] = useState(false)
+  const [showLiftForm, setShowLiftForm] = useState(false)
+  const [liftForm, setLiftForm] = useState({ date: new Date().toISOString().split('T')[0], lift_name: '', weight_kg: '', reps: '' })
+  const [liftSaving, setLiftSaving] = useState(false)
 
   async function load() {
-    const [{ data: weightData }, { data: checkinData }, { data: trainingAsgn }] = await Promise.all([
+    const [{ data: weightData }, { data: checkinData }, { data: trainingAsgn }, { data: liftData }] = await Promise.all([
       supabase.from('weight_entries').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false }),
       supabase.from('client_checkins').select('week_number, weight_kg, submitted_at, updated_at, lift_results').eq('client_id', clientId),
       // Same "training block's own top lifts, else the client-level override" fallback the
@@ -1170,6 +1174,7 @@ function WeightTab({ clientId, client }) {
       // but no check-in submitted yet", instead of both looking like an empty section.
       supabase.from('client_training_assignments').select('program_id').eq('client_id', clientId).eq('active', true)
         .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('lift_entries').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false }),
     ])
     const manual = weightData || []
     const manualDates = new Set(manual.map(e => e.recorded_at))
@@ -1183,7 +1188,8 @@ function WeightTab({ clientId, client }) {
       .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
       .map(e => ({ ...e, week: weekForDate(e.recorded_at, client.start_date) }))
     setEntries(combined)
-    setLiftProgress(computeLiftProgress(checkinData || []))
+    setLiftEntries(liftData || [])
+    setLiftProgress(computeLiftProgress(checkinData || [], liftData || [], client.start_date))
 
     let trainingLifts = []
     if (trainingAsgn?.program_id) {
@@ -1202,12 +1208,61 @@ function WeightTab({ clientId, client }) {
     setSaving(false); setShowForm(false); setForm({ date: new Date().toISOString().split('T')[0], weight_kg: '' }); load()
   }
   async function deleteEntry(id) { await supabase.from('weight_entries').delete().eq('id', id); load() }
+
+  async function addLiftEntry(e) {
+    e.preventDefault(); setLiftSaving(true)
+    await supabase.from('lift_entries').insert({
+      client_id: clientId, lift_name: liftForm.lift_name.trim(),
+      weight_kg: parseFloat(liftForm.weight_kg), reps: parseInt(liftForm.reps), recorded_at: liftForm.date,
+    })
+    setLiftSaving(false); setShowLiftForm(false)
+    setLiftForm({ date: new Date().toISOString().split('T')[0], lift_name: '', weight_kg: '', reps: '' })
+    load()
+  }
+  async function deleteLiftEntry(id) { await supabase.from('lift_entries').delete().eq('id', id); load() }
+
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="card"><h3 className="font-semibold text-gray-900 dark:text-white mb-4">Weight Trend</h3><WeightChart data={entries} /></div>
       <StrengthProgress liftProgress={liftProgress} configuredLiftNames={configuredLiftNames} />
+
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-gray-900 dark:text-white">Lift Entries</h3>
+        <button onClick={() => setShowLiftForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showLiftForm ? 'Cancel' : 'Add Lift Entry'}</button>
+      </div>
+      {showLiftForm && (
+        <form onSubmit={addLiftEntry} className="card flex flex-col sm:flex-row gap-3 items-end flex-wrap">
+          <div className="flex-1 min-w-[140px]"><label className="label">Date</label><input className="input" type="date" required value={liftForm.date} onChange={e => setLiftForm(f => ({ ...f, date: e.target.value }))} /></div>
+          <div className="flex-1 min-w-[140px]">
+            <label className="label">Lift</label>
+            <input className="input" list="lift-entry-names" required value={liftForm.lift_name} onChange={e => setLiftForm(f => ({ ...f, lift_name: e.target.value }))} placeholder="e.g. Back Squat" />
+            <datalist id="lift-entry-names">{configuredLiftNames.map(n => <option key={n} value={n} />)}</datalist>
+          </div>
+          <div className="w-28"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.5" min="0" required value={liftForm.weight_kg} onChange={e => setLiftForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder="e.g. 80" /></div>
+          <div className="w-24"><label className="label">Reps</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="1" required value={liftForm.reps} onChange={e => setLiftForm(f => ({ ...f, reps: e.target.value }))} placeholder="e.g. 5" /></div>
+          <button type="submit" disabled={liftSaving} className="btn-primary whitespace-nowrap">{liftSaving ? 'Saving…' : 'Add'}</button>
+        </form>
+      )}
+      {liftEntries.length > 0 && (
+        <div className="card p-0 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead><tr className="border-b border-gray-200 dark:border-gray-800">{['Date','Lift','Weight × Reps',''].map(h => <th key={h} className={`${h === '' ? 'text-right' : 'text-left'} px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {liftEntries.map(e => (
+                <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{e.recorded_at}</td>
+                  <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{e.lift_name}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{e.weight_kg} kg × {e.reps}</td>
+                  <td className="px-4 py-3 text-right"><button onClick={() => deleteLiftEntry(e.id)} className="text-xs text-red-500 hover:text-red-700">Delete</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-gray-900 dark:text-white">Entries</h3>
         <button onClick={() => setShowForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showForm ? 'Cancel' : 'Add Entry'}</button>

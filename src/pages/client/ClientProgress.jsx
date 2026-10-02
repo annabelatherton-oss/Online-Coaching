@@ -175,6 +175,7 @@ export default function ClientProgress() {
   const [clientData, setClientData] = useState(null)
   const [weightEntries, setWeightEntries] = useState([])
   const [checkins, setCheckins] = useState([])
+  const [liftEntries, setLiftEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [lightbox, setLightbox] = useState(null)
   const photoUrlsByCheckin = useSignedProgressPhotosForCheckins(checkins)
@@ -190,13 +191,15 @@ export default function ClientProgress() {
       if (!client) { setLoading(false); return }
       setClientData(client)
 
-      const [{ data: weights }, { data: cis }] = await Promise.all([
+      const [{ data: weights }, { data: cis }, { data: lifts }] = await Promise.all([
         supabase.from('weight_entries').select('*').eq('client_id', client.id).order('recorded_at', { ascending: false }),
         supabase.from('client_checkins').select('*').eq('client_id', client.id).order('week_number', { ascending: false }),
+        supabase.from('lift_entries').select('*').eq('client_id', client.id).order('recorded_at', { ascending: false }),
       ])
 
       setWeightEntries(weights || [])
       setCheckins(cis || [])
+      setLiftEntries(lifts || [])
       setLoading(false)
     }
     load()
@@ -226,7 +229,7 @@ export default function ClientProgress() {
       weekToPersonal[ci.week_number] = calendarWeek || personalCounter
     } else weekToPersonal[ci.week_number] = 0
   })
-  const liftProgress = computeLiftProgress(checkins)
+  const liftProgress = computeLiftProgress(checkins, liftEntries, clientData?.start_date)
 
   const weightChartEntries = weightEntries.map(e => ({ ...e, week: weekForDate(e.recorded_at, clientData?.start_date) }))
 

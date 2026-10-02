@@ -1539,6 +1539,33 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
       .then(({ data }) => setWeightEntries(data || []))
   }, [client?.id])
 
+  // Lets the coach backfill a past body weight or lift log right from here, while reviewing a
+  // check-in, instead of needing to go to the client's own profile page for it.
+  const [showAddEntry, setShowAddEntry] = useState(false)
+  const [addEntryType, setAddEntryType] = useState('weight')
+  const [addEntryForm, setAddEntryForm] = useState({ date: new Date().toISOString().split('T')[0], weight_kg: '', lift_name: '', reps: '' })
+  const [addEntrySaving, setAddEntrySaving] = useState(false)
+  useEffect(() => { setShowAddEntry(false) }, [client?.id])
+
+  async function submitAddEntry(e) {
+    e.preventDefault()
+    setAddEntrySaving(true)
+    if (addEntryType === 'weight') {
+      await supabase.from('weight_entries').insert({ client_id: client.id, weight_kg: parseFloat(addEntryForm.weight_kg), recorded_at: addEntryForm.date })
+      const { data } = await supabase.from('weight_entries').select('weight_kg, recorded_at')
+        .eq('client_id', client.id).order('recorded_at', { ascending: false })
+      setWeightEntries(data || [])
+    } else {
+      await supabase.from('lift_entries').insert({
+        client_id: client.id, lift_name: addEntryForm.lift_name.trim(),
+        weight_kg: parseFloat(addEntryForm.weight_kg), reps: parseInt(addEntryForm.reps), recorded_at: addEntryForm.date,
+      })
+    }
+    setAddEntrySaving(false)
+    setShowAddEntry(false)
+    setAddEntryForm({ date: new Date().toISOString().split('T')[0], weight_kg: '', lift_name: '', reps: '' })
+  }
+
   // Refetch this client's own check-ins fresh on open, rather than trusting the parent list's
   // snapshot — a client who submitted after that snapshot was taken would otherwise be invisible
   // here (their weight, energy/sleep/food/gym ratings, struggles — all of it) until the coach
@@ -2054,6 +2081,37 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           </div>
         )
       )}
+
+      {/* Add a past weight or lift entry — for backfilling history while reviewing a check-in */}
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Add previous weight or lift</h3>
+          <button onClick={() => setShowAddEntry(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showAddEntry ? 'Cancel' : 'Add Entry'}</button>
+        </div>
+        {showAddEntry && (
+          <form onSubmit={submitAddEntry} className="space-y-3">
+            <div className="flex gap-2">
+              {['weight', 'lift'].map(t => (
+                <button key={t} type="button" onClick={() => setAddEntryType(t)}
+                  className={`text-xs font-medium px-3 py-1.5 rounded-full ${addEntryType === t ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'}`}>
+                  {t === 'weight' ? 'Weight' : 'Lift'}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 items-end flex-wrap">
+              <div className="flex-1 min-w-[140px]"><label className="label">Date</label><input className="input" type="date" required value={addEntryForm.date} onChange={e => setAddEntryForm(f => ({ ...f, date: e.target.value }))} /></div>
+              {addEntryType === 'lift' && (
+                <div className="flex-1 min-w-[140px]"><label className="label">Lift</label><input className="input" required value={addEntryForm.lift_name} onChange={e => setAddEntryForm(f => ({ ...f, lift_name: e.target.value }))} placeholder="e.g. Back Squat" /></div>
+              )}
+              <div className="w-28"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step={addEntryType === 'weight' ? '0.1' : '0.5'} min="0" required value={addEntryForm.weight_kg} onChange={e => setAddEntryForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder={addEntryType === 'weight' ? 'e.g. 72.5' : 'e.g. 80'} /></div>
+              {addEntryType === 'lift' && (
+                <div className="w-24"><label className="label">Reps</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="1" required value={addEntryForm.reps} onChange={e => setAddEntryForm(f => ({ ...f, reps: e.target.value }))} placeholder="e.g. 5" /></div>
+              )}
+              <button type="submit" disabled={addEntrySaving} className="btn-primary whitespace-nowrap">{addEntrySaving ? 'Saving…' : 'Add'}</button>
+            </div>
+          </form>
+        )}
+      </div>
 
       {/* Progress history table — check-ins merged with manual weight logs */}
       {(sorted.length > 0 || weightEntries.length > 0) && (() => {
