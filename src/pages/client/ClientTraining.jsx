@@ -91,6 +91,7 @@ export default function ClientTraining() {
   const [sessions, setSessions] = useState([])
   const [expanded, setExpanded] = useState(new Set())
   const [coachNotes, setCoachNotes] = useState('')
+  const [planChanges, setPlanChanges] = useState([])
   const [prevWeekLogs, setPrevWeekLogs] = useState({})
   const [inputs, setInputs] = useState({}) // exId → [{weight, reps}, …]
   const [detailEx, setDetailEx] = useState(null)
@@ -265,9 +266,10 @@ export default function ClientTraining() {
       }
 
       const { data: delivery } = await supabase
-        .from('weekly_deliveries').select('training_notes')
+        .from('weekly_deliveries').select('training_notes, plan_changes')
         .eq('client_id', client.id).order('delivered_at', { ascending: false }).limit(1).maybeSingle()
       if (delivery?.training_notes) setCoachNotes(delivery.training_notes)
+      if (delivery?.plan_changes?.length) setPlanChanges(delivery.plan_changes)
 
       setLoading(false)
     }
@@ -341,6 +343,17 @@ export default function ClientTraining() {
         <div className="card border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-900/10 p-3 space-y-1">
           <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Coach's notes</p>
           <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line leading-relaxed">{coachNotes}</p>
+        </div>
+      )}
+
+      {planChanges.length > 0 && (
+        <div className="card border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-900/10 p-3 space-y-1.5">
+          <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide">What's changed this week</p>
+          <ul className="space-y-1">
+            {planChanges.map((c, i) => (
+              <li key={i} className="text-sm text-gray-700 dark:text-gray-300">• {c}</li>
+            ))}
+          </ul>
         </div>
       )}
 

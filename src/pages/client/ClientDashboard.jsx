@@ -124,7 +124,7 @@ export default function ClientDashboard() {
       if (data?.id) {
         const [{ data: delivery }, { data: pause }] = await Promise.all([
           supabase.from('weekly_deliveries')
-            .select('id, coach_notes, personal_week, delivered_at')
+            .select('id, coach_notes, personal_week, delivered_at, plan_changes')
             .eq('client_id', data.id)
             .is('seen_at', null)
             .order('delivered_at', { ascending: false })
@@ -284,6 +284,16 @@ export default function ClientDashboard() {
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5 line-clamp-2">{newDelivery.coach_notes}</p>
               ) : (
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Your coach has updated your plan — tap to view.</p>
+              )}
+              {newDelivery.plan_changes?.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-brand-200/60 dark:border-brand-800/60">
+                  <p className="text-xs font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wide mb-1">What's changed</p>
+                  <ul className="space-y-0.5">
+                    {newDelivery.plan_changes.map((c, i) => (
+                      <li key={i} className="text-xs text-gray-600 dark:text-gray-400">• {c}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
             <svg className="w-4 h-4 text-brand-400 flex-shrink-0 self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24">

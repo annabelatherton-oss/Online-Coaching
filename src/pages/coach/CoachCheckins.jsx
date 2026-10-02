@@ -16,6 +16,7 @@ import { weekForDate } from '../../lib/planWeek'
 import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
 import { GOAL_LABELS } from '../../lib/calorieSuggestion'
 import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
+import { diffAndSnapshotPlan } from '../../lib/planChanges'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 
@@ -930,6 +931,26 @@ function DeliveryPanel({ client, current, prev, activeAssignment, deliveryPerson
     // (and the client's task checklist) reflect a calorie change made from a check-in response.
     await supabase.from('clients').update({ current_calories: newCalTarget }).eq('id', client.id)
 
+    // "What's changed" for the client — training plan and calorie/step changes only (meal content
+    // changes every week regardless, so it's not worth flagging). Diffed against whatever schedule
+    // snapshot the PREVIOUS delivery stored; a brand new client with no previous delivery just gets
+    // no item-level changes reported, since there's nothing yet to compare against.
+    const [{ data: scheduleItems }, { data: prevDelivery }, { data: clientRow }] = await Promise.all([
+      supabase.from('client_schedule_items')
+        .select('id, day_of_week, item_type, custom_label, duration_minutes, heart_rate_zone, times_per_week, workouts(name), hiit_circuits(name), cardio_sessions(name)')
+        .eq('client_id', client.id),
+      supabase.from('weekly_deliveries').select('schedule_snapshot')
+        .eq('client_id', client.id).order('delivered_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('clients').select('steps_target').eq('id', client.id).maybeSingle(),
+    ])
+    const { changes: planChanges, snapshot: scheduleSnapshot } = diffAndSnapshotPlan({
+      prevSnapshot: prevDelivery?.schedule_snapshot || null,
+      currentItems: scheduleItems || [],
+      currentStepsTarget: clientRow?.steps_target ?? null,
+      prevCalorieTarget: activeAssignment.calorie_target,
+      currentCalorieTarget: newCalTarget,
+    })
+
     supabase.from('weekly_deliveries').insert({
       client_id: client.id,
       coach_id: coachId,
@@ -940,6 +961,8 @@ function DeliveryPanel({ client, current, prev, activeAssignment, deliveryPerson
       calorie_target: newCalTarget,
       training_notes: trainingNotes.trim() || null,
       delivered_slots: editedSlots,
+      plan_changes: planChanges.length ? planChanges : null,
+      schedule_snapshot: scheduleSnapshot,
     })
 
     clearDraftSlots(nextTemplateWeek)
