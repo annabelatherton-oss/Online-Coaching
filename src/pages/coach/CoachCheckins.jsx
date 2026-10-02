@@ -290,7 +290,7 @@ function ComparisonLightbox({ angles, getCols, onClose }) {
 }
 
 // ── Plan delivery panel ───────────────────────────────────────────────────────
-function DeliveryPanel({ client, current, prev, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
+function DeliveryPanel({ client, current, prev, prev2, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
   const { profile } = useAuth()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [loading, setLoading] = useState(true)
@@ -1058,7 +1058,8 @@ function DeliveryPanel({ client, current, prev, activeAssignment, deliveryPerson
               <div>
                 <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">Weight</p>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">{current.weight_kg != null ? `${current.weight_kg} kg` : '—'}</p>
-                <DeltaTag delta={weightDelta(current, prev)} invertColors />
+                {weightDelta(current, prev) !== null && <p><DeltaTag delta={weightDelta(current, prev)} invertColors /> <span className="text-xs text-gray-400">vs last wk</span></p>}
+                {weightDelta(current, prev2) !== null && <p><DeltaTag delta={weightDelta(current, prev2)} invertColors /> <span className="text-xs text-gray-400">vs 2 wks ago</span></p>}
               </div>
               {[['Energy', current.energy_level], ['Sleep', current.sleep_quality], ['Food', current.food_adherence], ['Gym', current.gym_adherence]].map(([label, v]) => (
                 <div key={label}>
@@ -1709,6 +1710,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const current = sorted[0]
   const first = sorted[sorted.length - 1]
   const prev = sorted[1] || null
+  const prev2 = sorted[2] || null
 
   // ascending for history table + personal week mapping. A week_number=0 row (the one-off
   // "starting check-in" some clients submit right after signup, for a baseline weight/photos
@@ -1756,6 +1758,10 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         ? weightDelta(current, { weight_kg: oldestLog.weight_kg })
         : null)
   const wDeltaStartLabel = (current && first && current.id !== first.id) ? 'since start' : 'since first log'
+
+  // Two-week view — the week-before-last, for a quick read on the trend rather than just the one
+  // most recent change. Only shown once there's actually a check-in that far back.
+  const wDeltaPrev2 = prev2 ? weightDelta(current, prev2) : null
 
   const withPhotos = sorted.filter(c => c.progress_photos && Object.values(c.progress_photos).some(Boolean))
   const newestP = withPhotos[0]
@@ -1825,6 +1831,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           client={client}
           current={current}
           prev={prev}
+          prev2={prev2}
           activeAssignment={activeAssignment}
           deliveryPersonalWeek={deliveryPersonalWeek}
           coachId={profile.id}
@@ -1938,6 +1945,12 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Weight</p>
                 <p className="text-lg font-bold text-gray-900 dark:text-white">{current.weight_kg} <span className="text-sm font-normal text-gray-500">kg</span></p>
+                {(wDeltaPrev !== null || wDeltaPrev2 !== null) && (
+                  <div className="mt-1 space-y-0.5">
+                    {wDeltaPrev !== null && <p><DeltaTag delta={wDeltaPrev} invertColors /> <span className="text-xs text-gray-400">vs last wk</span></p>}
+                    {wDeltaPrev2 !== null && <p><DeltaTag delta={wDeltaPrev2} invertColors /> <span className="text-xs text-gray-400">vs 2 wks ago</span></p>}
+                  </div>
+                )}
               </div>
             )}
             {current.energy_level != null && (
