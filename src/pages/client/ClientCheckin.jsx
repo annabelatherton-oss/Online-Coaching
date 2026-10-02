@@ -613,6 +613,16 @@ export default function ClientCheckin() {
     e.preventDefault()
     if (!clientData) return
 
+    // Ratings don't apply to the very first ("starting") check-in — no week has happened yet.
+    if (weekNumber !== 0) {
+      const missingRatingField = ['energy_level', 'sleep_quality', 'food_adherence', 'gym_adherence']
+        .find(field => !form[field])
+      if (missingRatingField) {
+        setError('Please fill in all 4 ratings above before submitting.')
+        return
+      }
+    }
+
     const missingComment = ongoingStruggles.find(row => !(form.struggle_comments?.[row.label] || '').trim())
     if (missingComment) {
       setError(`Please add a quick update on "${missingComment.label}" before submitting — or use "I'm ok with this now" if it's resolved.`)
