@@ -287,7 +287,7 @@ function ComparisonLightbox({ angles, getCols, onClose }) {
 }
 
 // ── Plan delivery panel ───────────────────────────────────────────────────────
-function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
+function DeliveryPanel({ client, current, prev, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
   const { profile } = useAuth()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [loading, setLoading] = useState(true)
@@ -1024,6 +1024,64 @@ function DeliveryPanel({ client, current, activeAssignment, deliveryPersonalWeek
         <LoadingSpinner size="lg" className="py-16" />
       ) : (
         <div className="space-y-8 pt-6">
+          {/* What the client actually sent this week — kept visible here (not just on the check-in
+              list you came from) so it's on screen the whole time you're writing feedback below,
+              instead of having to flip back and forth to remember what they said. */}
+          <div className="card space-y-4">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">This week's check-in</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">Weight</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{current.weight_kg != null ? `${current.weight_kg} kg` : '—'}</p>
+                <DeltaTag delta={weightDelta(current, prev)} invertColors />
+              </div>
+              {[['Energy', current.energy_level], ['Sleep', current.sleep_quality], ['Food', current.food_adherence], ['Gym', current.gym_adherence]].map(([label, v]) => (
+                <div key={label}>
+                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">{label}</p>
+                  <p className={`text-sm font-semibold ${ratingColor(v)}`}>{v != null ? `${v}/5` : '—'}</p>
+                </div>
+              ))}
+            </div>
+            {(current.lift_results || []).filter(l => l?.name).length > 0 && (
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1.5">Lifts logged</p>
+                <div className="space-y-1">
+                  {current.lift_results.filter(l => l?.name).map((l, i) => {
+                    const d = liftDelta(l, prev)
+                    return (
+                      <div key={i} className="flex items-center justify-between text-sm gap-2">
+                        <span className="text-gray-700 dark:text-gray-300">{l.name}</span>
+                        <span className="flex items-center gap-2 flex-shrink-0">
+                          <span className="font-medium text-gray-900 dark:text-white tabular-nums">{l.weight_kg ?? '—'} kg × {l.reps ?? '—'}</span>
+                          {d && (d.kg !== 0 || d.reps !== 0) && <DeltaTag delta={d.kg} />}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {((current.struggles || []).length > 0 || current.struggles_other) && (
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1.5">Struggling with</p>
+                {(current.struggles || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {current.struggles.map(s => (
+                      <span key={s} className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">{s}</span>
+                    ))}
+                  </div>
+                )}
+                {current.struggles_other && <p className="text-sm text-gray-700 dark:text-gray-300 mt-1.5">{current.struggles_other}</p>}
+              </div>
+            )}
+            {current.notes && (
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Client note</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300 italic">"{current.notes}"</p>
+              </div>
+            )}
+          </div>
+
           {/* Coach notes */}
           <div className="card space-y-3">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Message to client</h2>
@@ -1725,6 +1783,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         <DeliveryPanel
           client={client}
           current={current}
+          prev={prev}
           activeAssignment={activeAssignment}
           deliveryPersonalWeek={deliveryPersonalWeek}
           coachId={profile.id}
