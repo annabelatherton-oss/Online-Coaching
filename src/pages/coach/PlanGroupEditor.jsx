@@ -272,10 +272,15 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
 
   const ingredients = getIngredients(meal, tier, overridesForSlot)
   const isAdjusted = hasAnyOverride(overridesForSlot)
-  // The official recipe's own amounts — same meal/tier, no override at all — shown in grey next to
-  // each editable amount below as a "here's roughly what's normal" reference.
-  const officialQtyById = {}
-  getIngredients(meal, tier, null).forEach(ing => { officialQtyById[ing.id] = ing.quantity_g })
+  // The Meal Library's own standard recipe amounts — always the plain (non-tier) recipe, regardless
+  // of which calorie tier is being edited here — shown in grey next to each editable amount below as
+  // a "here's roughly what's normal" reference. Matched by library ingredient (or by name for a
+  // freeform one with no ingredient_id), since a calorie tier's own ingredient rows are separate
+  // records whose ids never match the standard recipe's rows directly.
+  const officialQtyByKey = {}
+  ;(meal.meal_ingredients || []).forEach(bi => {
+    officialQtyByKey[bi.ingredient_id || (bi.name || '').toLowerCase()] = bi.quantity_g
+  })
   // Every ingredient can be removed for just this one week, which would otherwise look identical
   // to the meal genuinely having no ingredients — offer to clear the override so the shared
   // default shows again.
@@ -311,6 +316,7 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
       )}
       {ingredients.map(ing => {
         const isStatic = ing.is_static
+        const officialQty = officialQtyByKey[ing.ingredient_id || (ing.name || '').toLowerCase()]
         return (
         <div key={ing.id} className="flex items-center gap-2 text-xs">
           {onRemove && !isStatic && (
@@ -365,9 +371,9 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
               }}
             />
             <span className="text-gray-400 text-[10px]">{ing.unit || 'g'}</span>
-            {officialQtyById[ing.id] != null && (
-              <span className="text-gray-400 text-[10px] whitespace-nowrap" title="Official recipe amount, unedited">
-                ({Math.round(officialQtyById[ing.id])})
+            {officialQty != null && (
+              <span className="text-gray-400 text-[10px] whitespace-nowrap" title="Meal Library's standard recipe amount">
+                ({Math.round(officialQty)})
               </span>
             )}
           </span>

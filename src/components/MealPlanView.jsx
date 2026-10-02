@@ -576,11 +576,16 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
   const templateOverridesForSlot = templateOverrides?.[slotKey]
   const ingredients = meal ? getIngredientsLayered(meal, tier, templateOverridesForSlot, overrides, swapCtx) : []
   const macros = mealMacrosLayered(mealId, mealMap, tier, templateOverridesForSlot, overrides, swapCtx)
-  // The official recipe's own amounts — same meal/tier, no template or client overrides at all —
-  // shown in grey next to each editable amount below as a "here's roughly what's normal" reference,
-  // so a big edit doesn't have to be made blind.
-  const officialQtyById = {}
-  ;(meal ? getIngredients(meal, tier, null) : []).forEach(ing => { officialQtyById[ing.id] = ing.quantity_g })
+  // The Meal Library's own standard recipe amounts — always the plain (non-tier) recipe, regardless
+  // of which calorie tier is being viewed here — shown in grey next to each editable amount below as
+  // a "here's roughly what's normal" reference, so a big edit doesn't have to be made blind. Matched
+  // by library ingredient (or by name for a freeform one with no ingredient_id), since a calorie
+  // tier's own ingredient rows are separate records with their own ids that never match the standard
+  // recipe's rows directly.
+  const officialQtyByKey = {}
+  ;(meal?.meal_ingredients || []).forEach(bi => {
+    officialQtyByKey[bi.ingredient_id || (bi.name || '').toLowerCase()] = bi.quantity_g
+  })
   const isCustom = (mealId || null) !== ((templateSlots[slotKey]) || null)
   const slotDef = ALL_SLOT_DEFS.find(s => s.key === slotKey)
 
@@ -737,6 +742,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                     const libUnit = libraryUnit(ing, ingredientLib)
                     const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libUnit && libUnit !== 'g') ? libUnit : 'g'
                     const isStatic = ing.is_static && !ing._isAdded
+                    const officialQty = !ing._isAdded ? officialQtyByKey[ing.ingredient_id || (ing.name || '').toLowerCase()] : null
                     return (
                       <div key={ing._tempId || ing.id || i} className="flex items-center gap-2 flex-wrap">
                         {onToggleStatic && !ing._isAdded && (
@@ -791,9 +797,9 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                                 }`}
                               />
                               <span className="text-xs text-gray-400 dark:text-gray-500 w-6">{unit}</span>
-                              {officialQtyById[ing.id] != null && (
-                                <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap" title="Official recipe amount, unedited">
-                                  ({fmtQty(officialQtyById[ing.id], unit)})
+                              {officialQty != null && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap" title="Meal Library's standard recipe amount">
+                                  ({fmtQty(officialQty, unit)})
                                 </span>
                               )}
                             </div>

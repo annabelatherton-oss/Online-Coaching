@@ -1843,12 +1843,17 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverride
   const templated = applyIngredientOverrides(baseIngredients, templateOverridesForSlot)
   const ingredients = applyIngredientOverrides(templated, overrides)
 
-  // The official recipe's own amount for each ingredient — this exact meal/tier, with no template
-  // or client override at all — shown as a quiet grey reference next to the box so an edit (or a
-  // dramatic auto-scale, e.g. flour dropping while milk doubles for the same recipe) is visible at
-  // a glance instead of only showing up once the finished meal no longer works.
+  // The Meal Library's own standard recipe amount for each ingredient — always the plain (non-tier)
+  // recipe, regardless of which calorie tier is being viewed here — shown as a quiet grey reference
+  // next to the box so an edit (or a dramatic auto-scale, e.g. flour dropping while milk doubles for
+  // the same recipe) is visible at a glance instead of only showing up once the finished meal no
+  // longer works. Matched by library ingredient (or by name for a freeform one with no
+  // ingredient_id), since a calorie tier's own ingredient rows are separate records whose ids never
+  // match the standard recipe's rows directly.
   const baseRecipeQty = {}
-  for (const bi of baseIngredients) baseRecipeQty[bi.id] = bi.quantity_g
+  for (const bi of (meal.meal_ingredients || [])) {
+    baseRecipeQty[bi.ingredient_id || (bi.name || '').toLowerCase()] = bi.quantity_g
+  }
 
   function handleBlur(ing) {
     const libIng = ing.ingredient_id ? libraryById[ing.ingredient_id] : null
@@ -1937,7 +1942,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverride
             const overridden = !ing._isAdded && overrideQty[ing.id] != null
             const isStatic = ing.is_static && !ing._isAdded
             const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libraryUnit(ing, libraryById) || 'g')
-            const recipeQty = !ing._isAdded ? baseRecipeQty[ing.id] : null
+            const recipeQty = !ing._isAdded ? baseRecipeQty[ing.ingredient_id || (ing.name || '').toLowerCase()] : null
             return (
               <div key={ing.id || i} className="flex flex-wrap items-center gap-x-1.5 sm:gap-x-2 gap-y-1.5 text-xs">
                 {onToggleStatic && !ing._isAdded && (
@@ -2010,7 +2015,7 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverride
                     <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">{unit}</span>
                   </div>
                   {recipeQty != null && (
-                    <span className="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5" title="Official recipe amount, unedited">
+                    <span className="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5" title="Meal Library's standard recipe amount">
                       recipe: {round1(recipeQty)}{unit}
                     </span>
                   )}
