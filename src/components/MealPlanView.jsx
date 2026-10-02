@@ -576,6 +576,11 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
   const templateOverridesForSlot = templateOverrides?.[slotKey]
   const ingredients = meal ? getIngredientsLayered(meal, tier, templateOverridesForSlot, overrides, swapCtx) : []
   const macros = mealMacrosLayered(mealId, mealMap, tier, templateOverridesForSlot, overrides, swapCtx)
+  // The official recipe's own amounts — same meal/tier, no template or client overrides at all —
+  // shown in grey next to each editable amount below as a "here's roughly what's normal" reference,
+  // so a big edit doesn't have to be made blind.
+  const officialQtyById = {}
+  ;(meal ? getIngredients(meal, tier, null) : []).forEach(ing => { officialQtyById[ing.id] = ing.quantity_g })
   const isCustom = (mealId || null) !== ((templateSlots[slotKey]) || null)
   const slotDef = ALL_SLOT_DEFS.find(s => s.key === slotKey)
 
@@ -786,6 +791,11 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                                 }`}
                               />
                               <span className="text-xs text-gray-400 dark:text-gray-500 w-6">{unit}</span>
+                              {officialQtyById[ing.id] != null && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap" title="Official recipe amount, unedited">
+                                  ({fmtQty(officialQtyById[ing.id], unit)})
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{formatAmount(ing, ingredientLib)}</span>

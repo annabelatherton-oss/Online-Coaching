@@ -272,6 +272,10 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
 
   const ingredients = getIngredients(meal, tier, overridesForSlot)
   const isAdjusted = hasAnyOverride(overridesForSlot)
+  // The official recipe's own amounts — same meal/tier, no override at all — shown in grey next to
+  // each editable amount below as a "here's roughly what's normal" reference.
+  const officialQtyById = {}
+  getIngredients(meal, tier, null).forEach(ing => { officialQtyById[ing.id] = ing.quantity_g })
   // Every ingredient can be removed for just this one week, which would otherwise look identical
   // to the meal genuinely having no ingredients — offer to clear the override so the shared
   // default shows again.
@@ -361,6 +365,11 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
               }}
             />
             <span className="text-gray-400 text-[10px]">{ing.unit || 'g'}</span>
+            {officialQtyById[ing.id] != null && (
+              <span className="text-gray-400 text-[10px] whitespace-nowrap" title="Official recipe amount, unedited">
+                ({Math.round(officialQtyById[ing.id])})
+              </span>
+            )}
           </span>
           <span className="w-14 text-right text-gray-500 dark:text-gray-400 tabular-nums">{round1(ing.calories)}</span>
           <span className={`w-10 text-right tabular-nums ${MACRO_META.carb.text}`}>{round1(ing.carbs_g)}</span>
