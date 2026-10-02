@@ -1160,7 +1160,7 @@ function WeightTab({ clientId, client }) {
   const [configuredLiftNames, setConfiguredLiftNames] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], weight_kg: '' })
+  const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], weight_kg: '', week_number: '' })
   const [saving, setSaving] = useState(false)
   const [showLiftForm, setShowLiftForm] = useState(false)
   const [liftForm, setLiftForm] = useState({ date: new Date().toISOString().split('T')[0], lift_name: '', weight_kg: '', reps: '' })
@@ -1187,7 +1187,7 @@ function WeightTab({ clientId, client }) {
       .filter(c => c.recorded_at && !manualDates.has(c.recorded_at))
     const combined = [...manual, ...fromCheckins]
       .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
-      .map(e => ({ ...e, week: weekForDate(e.recorded_at, client.start_date) }))
+      .map(e => ({ ...e, week: e.week_number ?? weekForDate(e.recorded_at, client.start_date) }))
     setEntries(combined)
     setLiftEntries(liftData || [])
     setLiftProgress(computeLiftProgress(checkinData || [], liftData || [], client.start_date))
@@ -1205,8 +1205,11 @@ function WeightTab({ clientId, client }) {
 
   async function addEntry(e) {
     e.preventDefault(); setSaving(true)
-    await supabase.from('weight_entries').insert({ client_id: clientId, weight_kg: parseFloat(form.weight_kg), recorded_at: form.date })
-    setSaving(false); setShowForm(false); setForm({ date: new Date().toISOString().split('T')[0], weight_kg: '' }); load()
+    await supabase.from('weight_entries').insert({
+      client_id: clientId, weight_kg: parseFloat(form.weight_kg), recorded_at: form.date,
+      week_number: form.week_number ? parseInt(form.week_number) : null,
+    })
+    setSaving(false); setShowForm(false); setForm({ date: new Date().toISOString().split('T')[0], weight_kg: '', week_number: '' }); load()
   }
   async function deleteEntry(id) { await supabase.from('weight_entries').delete().eq('id', id); load() }
 
@@ -1278,9 +1281,10 @@ function WeightTab({ clientId, client }) {
         <button onClick={() => setShowForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showForm ? 'Cancel' : 'Add Entry'}</button>
       </div>
       {showForm && (
-        <form onSubmit={addEntry} className="card flex flex-col sm:flex-row gap-3 items-end">
-          <div className="flex-1"><label className="label">Date</label><input className="input" type="date" required value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
-          <div className="flex-1"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" required value={form.weight_kg} onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder="e.g. 72.5" /></div>
+        <form onSubmit={addEntry} className="card flex flex-col sm:flex-row gap-3 items-end flex-wrap">
+          <div className="flex-1 min-w-[120px]"><label className="label">Date</label><input className="input" type="date" required value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
+          <div className="flex-1 min-w-[120px]"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" required value={form.weight_kg} onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder="e.g. 72.5" /></div>
+          <div className="w-28"><label className="label">Week # (optional)</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="0" value={form.week_number} onChange={e => setForm(f => ({ ...f, week_number: e.target.value }))} placeholder="auto" /></div>
           <button type="submit" disabled={saving} className="btn-primary whitespace-nowrap">{saving ? 'Saving…' : 'Add'}</button>
         </form>
       )}
