@@ -18,6 +18,7 @@ import { GOAL_LABELS } from '../../lib/calorieSuggestion'
 import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import { diffAndSnapshotPlan } from '../../lib/planChanges'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
+import LiftNameField from '../../components/LiftNameField'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
@@ -1635,6 +1636,20 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const [addEntrySaving, setAddEntrySaving] = useState(false)
   useEffect(() => { setShowAddEntry(false) }, [client?.id])
 
+  // Every lift name already logged for this client — from past check-ins or a previous manual
+  // entry — so a new entry links to one of those instead of free text that could typo into a
+  // second, disconnected lift.
+  const [manualLiftNames, setManualLiftNames] = useState([])
+  useEffect(() => {
+    if (!client?.id) return
+    supabase.from('lift_entries').select('lift_name').eq('client_id', client.id)
+      .then(({ data }) => setManualLiftNames((data || []).map(r => r.lift_name)))
+  }, [client?.id])
+  const knownLiftNames = Array.from(new Set([
+    ...manualLiftNames,
+    ...checkins.flatMap(c => (c.lift_results || []).map(l => l?.name).filter(Boolean)),
+  ]))
+
   async function submitAddEntry(e) {
     e.preventDefault()
     setAddEntrySaving(true)
@@ -1646,6 +1661,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         client_id: client.id, lift_name: addEntryForm.lift_name.trim(),
         weight_kg: parseFloat(addEntryForm.weight_kg), reps: parseInt(addEntryForm.reps), recorded_at: addEntryForm.date,
       })
+      setManualLiftNames(prev => Array.from(new Set([...prev, addEntryForm.lift_name.trim()])))
     }
     setAddEntrySaving(false)
     setShowAddEntry(false)
@@ -2188,7 +2204,10 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             <div className="flex flex-col sm:flex-row gap-3 items-end flex-wrap">
               <div className="flex-1 min-w-[140px]"><label className="label">Date</label><input className="input" type="date" required value={addEntryForm.date} onChange={e => setAddEntryForm(f => ({ ...f, date: e.target.value }))} /></div>
               {addEntryType === 'lift' && (
-                <div className="flex-1 min-w-[140px]"><label className="label">Lift</label><input className="input" required value={addEntryForm.lift_name} onChange={e => setAddEntryForm(f => ({ ...f, lift_name: e.target.value }))} placeholder="e.g. Back Squat" /></div>
+                <div className="flex-1 min-w-[140px]">
+                  <label className="label">Lift</label>
+                  <LiftNameField value={addEntryForm.lift_name} onChange={v => setAddEntryForm(f => ({ ...f, lift_name: v }))} knownLiftNames={knownLiftNames} />
+                </div>
               )}
               <div className="w-28"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step={addEntryType === 'weight' ? '0.1' : '0.5'} min="0" required value={addEntryForm.weight_kg} onChange={e => setAddEntryForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder={addEntryType === 'weight' ? 'e.g. 72.5' : 'e.g. 80'} /></div>
               {addEntryType === 'lift' && (

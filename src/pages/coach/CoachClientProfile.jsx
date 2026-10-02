@@ -14,6 +14,7 @@ import { writeCalorieTarget } from '../../lib/calorieTarget'
 import { computeLiftProgress } from '../../lib/liftProgress'
 import { weekForDate } from '../../lib/planWeek'
 import StrengthProgress from '../../components/StrengthProgress'
+import LiftNameField from '../../components/LiftNameField'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 import { compressImage, useSignedUrls, useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import { getMealConflicts, findSafeMeal, findSafeAlternative } from '../../lib/mealSwaps'
@@ -1223,6 +1224,10 @@ function WeightTab({ clientId, client }) {
 
   if (loading) return <LoadingSpinner size="lg" className="py-12" />
 
+  // Every lift name this client has ever had logged against them (check-ins or manual entries)
+  // plus whatever's currently configured to be requested — the full pool a new entry can link to.
+  const knownLiftNames = Array.from(new Set([...configuredLiftNames, ...liftProgress.map(l => l.name)]))
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="card"><h3 className="font-semibold text-gray-900 dark:text-white mb-4">Weight Trend</h3><WeightChart data={entries} /></div>
@@ -1237,8 +1242,11 @@ function WeightTab({ clientId, client }) {
           <div className="flex-1 min-w-[140px]"><label className="label">Date</label><input className="input" type="date" required value={liftForm.date} onChange={e => setLiftForm(f => ({ ...f, date: e.target.value }))} /></div>
           <div className="flex-1 min-w-[140px]">
             <label className="label">Lift</label>
-            <input className="input" list="lift-entry-names" required value={liftForm.lift_name} onChange={e => setLiftForm(f => ({ ...f, lift_name: e.target.value }))} placeholder="e.g. Back Squat" />
-            <datalist id="lift-entry-names">{configuredLiftNames.map(n => <option key={n} value={n} />)}</datalist>
+            <LiftNameField
+              value={liftForm.lift_name}
+              onChange={v => setLiftForm(f => ({ ...f, lift_name: v }))}
+              knownLiftNames={knownLiftNames}
+            />
           </div>
           <div className="w-28"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.5" min="0" required value={liftForm.weight_kg} onChange={e => setLiftForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder="e.g. 80" /></div>
           <div className="w-24"><label className="label">Reps</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="1" required value={liftForm.reps} onChange={e => setLiftForm(f => ({ ...f, reps: e.target.value }))} placeholder="e.g. 5" /></div>
