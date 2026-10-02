@@ -1654,17 +1654,22 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   async function submitAddEntry(e) {
     e.preventDefault()
     setAddEntrySaving(true)
+    let error = null
     if (addEntryType === 'weight') {
-      await supabase.from('weight_entries').insert({ client_id: client.id, weight_kg: parseFloat(addEntryForm.weight_kg), recorded_at: addEntryForm.date })
-      loadWeightEntries()
+      ;({ error } = await supabase.from('weight_entries').insert({ client_id: client.id, weight_kg: parseFloat(addEntryForm.weight_kg), recorded_at: addEntryForm.date }))
+      if (!error) loadWeightEntries()
     } else {
-      await supabase.from('lift_entries').insert({
+      ;({ error } = await supabase.from('lift_entries').insert({
         client_id: client.id, lift_name: addEntryForm.lift_name.trim(),
         weight_kg: parseFloat(addEntryForm.weight_kg), reps: parseInt(addEntryForm.reps), recorded_at: addEntryForm.date,
-      })
-      setManualLiftNames(prev => Array.from(new Set([...prev, addEntryForm.lift_name.trim()])))
+      }))
+      if (!error) setManualLiftNames(prev => Array.from(new Set([...prev, addEntryForm.lift_name.trim()])))
     }
     setAddEntrySaving(false)
+    if (error) {
+      window.alert(`Could not save: ${error.message}`)
+      return
+    }
     setShowAddEntry(false)
     setAddEntryForm({ date: new Date().toISOString().split('T')[0], weight_kg: '', lift_name: '', reps: '' })
   }

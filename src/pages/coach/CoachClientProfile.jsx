@@ -1212,11 +1212,13 @@ function WeightTab({ clientId, client }) {
 
   async function addLiftEntry(e) {
     e.preventDefault(); setLiftSaving(true)
-    await supabase.from('lift_entries').insert({
+    const { error } = await supabase.from('lift_entries').insert({
       client_id: clientId, lift_name: liftForm.lift_name.trim(),
       weight_kg: parseFloat(liftForm.weight_kg), reps: parseInt(liftForm.reps), recorded_at: liftForm.date,
     })
-    setLiftSaving(false); setShowLiftForm(false)
+    setLiftSaving(false)
+    if (error) { window.alert(`Could not save: ${error.message}`); return }
+    setShowLiftForm(false)
     setLiftForm({ date: new Date().toISOString().split('T')[0], lift_name: '', weight_kg: '', reps: '' })
     load()
   }
