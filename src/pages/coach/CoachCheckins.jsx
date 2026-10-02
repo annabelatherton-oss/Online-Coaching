@@ -19,6 +19,8 @@ import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
 import { diffAndSnapshotPlan } from '../../lib/planChanges'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import LiftNameField from '../../components/LiftNameField'
+import StrengthProgress from '../../components/StrengthProgress'
+import { computeLiftProgress } from '../../lib/liftProgress'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
@@ -258,7 +260,7 @@ function ComparisonLightbox({ angles, getCols, onClose }) {
 }
 
 // ── Plan delivery panel ───────────────────────────────────────────────────────
-function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev2, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
+function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev2, liftProgress, configuredLiftNames, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
   const { profile } = useAuth()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [loading, setLoading] = useState(true)
@@ -1083,6 +1085,10 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
             )}
           </div>
 
+          {/* Full lift history — every lift ever logged, check-ins and manually backfilled alike,
+              so it's visible here too while actually responding, not just on the check-in list. */}
+          <StrengthProgress liftProgress={liftProgress} configuredLiftNames={configuredLiftNames} />
+
           {/* Coach notes */}
           <div className="card space-y-3">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Message to client</h2>
@@ -1593,7 +1599,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const [weightEntries, setWeightEntries] = useState([])
   function loadWeightEntries() {
     if (!client?.id) return
-    supabase.from('weight_entries').select('id, weight_kg, recorded_at')
+    supabase.from('weight_entries').select('id, weight_kg, recorded_at, week_number')
       .eq('client_id', client.id).order('recorded_at', { ascending: false })
       .then(({ data }) => setWeightEntries(data || []))
   }
@@ -1607,19 +1613,21 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   // check-in, instead of needing to go to the client's own profile page for it.
   const [showAddEntry, setShowAddEntry] = useState(false)
   const [addEntryType, setAddEntryType] = useState('weight')
-  const [addEntryForm, setAddEntryForm] = useState({ date: new Date().toISOString().split('T')[0], weight_kg: '', lift_name: '', reps: '' })
+  const [addEntryForm, setAddEntryForm] = useState({ date: new Date().toISOString().split('T')[0], weight_kg: '', week_number: '', lift_name: '', reps: '' })
   const [addEntrySaving, setAddEntrySaving] = useState(false)
   useEffect(() => { setShowAddEntry(false) }, [client?.id])
 
-  // Every lift name already logged for this client — from past check-ins or a previous manual
-  // entry — so a new entry links to one of those instead of free text that could typo into a
-  // second, disconnected lift.
-  const [manualLiftNames, setManualLiftNames] = useState([])
-  useEffect(() => {
+  // Full manually-backfilled lift rows for this client — used both for the known-lift-names list
+  // (so a new entry links to one of those instead of free text that could typo into a second,
+  // disconnected lift) and to feed the full Strength Progress history below, merged with whatever
+  // lifts actually got logged on check-ins.
+  const [liftEntries, setLiftEntries] = useState([])
+  function loadLiftEntries() {
     if (!client?.id) return
-    supabase.from('lift_entries').select('lift_name').eq('client_id', client.id)
-      .then(({ data }) => setManualLiftNames((data || []).map(r => r.lift_name)))
-  }, [client?.id])
+    supabase.from('lift_entries').select('*').eq('client_id', client.id)
+      .then(({ data }) => setLiftEntries(data || []))
+  }
+  useEffect(() => { loadLiftEntries() }, [client?.id])
 
   // Also pull in the client's currently-configured top lifts — the ones the check-in form itself
   // asks them to log — so a brand new client who hasn't submitted a check-in with them yet still
@@ -1646,23 +1654,61 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
 
   const knownLiftNames = Array.from(new Set([
     ...configuredLiftNames,
-    ...manualLiftNames,
+    ...liftEntries.map(e => e.lift_name),
     ...checkins.flatMap(c => (c.lift_results || []).map(l => l?.name).filter(Boolean)),
   ]))
+  const liftProgress = computeLiftProgress(checkins, liftEntries, client.start_date)
+
+  // One weight/reps row per configured top lift, shown automatically — the coach just fills in
+  // numbers rather than picking the lift from a dropdown each time, since it's almost always one
+  // of these three. "+ Add another lift" below covers anything outside that set.
+  const [topLiftValues, setTopLiftValues] = useState([])
+  useEffect(() => {
+    setTopLiftValues(configuredLiftNames.map(() => ({ weight_kg: '', reps: '' })))
+  }, [configuredLiftNames])
+  const [extraLiftRows, setExtraLiftRows] = useState([])
+
+  function updateTopLift(idx, field, value) {
+    setTopLiftValues(vals => vals.map((v, i) => i === idx ? { ...v, [field]: value } : v))
+  }
+  function addExtraLiftRow() {
+    setExtraLiftRows(rows => [...rows, { lift_name: '', weight_kg: '', reps: '' }])
+  }
+  function updateExtraLiftRow(idx, field, value) {
+    setExtraLiftRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: value } : r))
+  }
+  function removeExtraLiftRow(idx) {
+    setExtraLiftRows(rows => rows.filter((_, i) => i !== idx))
+  }
 
   async function submitAddEntry(e) {
     e.preventDefault()
     setAddEntrySaving(true)
     let error = null
     if (addEntryType === 'weight') {
-      ;({ error } = await supabase.from('weight_entries').insert({ client_id: client.id, weight_kg: parseFloat(addEntryForm.weight_kg), recorded_at: addEntryForm.date }))
+      ;({ error } = await supabase.from('weight_entries').insert({
+        client_id: client.id, weight_kg: parseFloat(addEntryForm.weight_kg), recorded_at: addEntryForm.date,
+        week_number: addEntryForm.week_number ? parseInt(addEntryForm.week_number) : null,
+      }))
       if (!error) loadWeightEntries()
     } else {
-      ;({ error } = await supabase.from('lift_entries').insert({
-        client_id: client.id, lift_name: addEntryForm.lift_name.trim(),
-        weight_kg: parseFloat(addEntryForm.weight_kg), reps: parseInt(addEntryForm.reps), recorded_at: addEntryForm.date,
-      }))
-      if (!error) setManualLiftNames(prev => Array.from(new Set([...prev, addEntryForm.lift_name.trim()])))
+      const topRows = configuredLiftNames
+        .map((name, i) => ({ lift_name: name, ...topLiftValues[i] }))
+        .filter(r => r.weight_kg !== '' && r.weight_kg != null && r.reps !== '' && r.reps != null)
+      const extraRows = extraLiftRows.filter(r => r.lift_name.trim() && r.weight_kg !== '' && r.reps !== '')
+      const rowsToSave = [...topRows, ...extraRows]
+      if (rowsToSave.length === 0) {
+        setAddEntrySaving(false)
+        window.alert("Enter a weight and reps for at least one lift before saving.")
+        return
+      }
+      ;({ error } = await supabase.from('lift_entries').insert(
+        rowsToSave.map(r => ({
+          client_id: client.id, lift_name: r.lift_name.trim(),
+          weight_kg: parseFloat(r.weight_kg), reps: parseInt(r.reps), recorded_at: addEntryForm.date,
+        }))
+      ))
+      if (!error) loadLiftEntries()
     }
     setAddEntrySaving(false)
     if (error) {
@@ -1670,7 +1716,9 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
       return
     }
     setShowAddEntry(false)
-    setAddEntryForm({ date: new Date().toISOString().split('T')[0], weight_kg: '', lift_name: '', reps: '' })
+    setAddEntryForm({ date: new Date().toISOString().split('T')[0], weight_kg: '', week_number: '', lift_name: '', reps: '' })
+    setTopLiftValues(configuredLiftNames.map(() => ({ weight_kg: '', reps: '' })))
+    setExtraLiftRows([])
   }
 
   // Refetch this client's own check-ins fresh on open, rather than trusting the parent list's
@@ -1844,6 +1892,8 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           prev={prev}
           weightDeltaPrev={wDeltaPrev}
           weightDeltaPrev2={wDeltaPrev2}
+          liftProgress={liftProgress}
+          configuredLiftNames={configuredLiftNames}
           activeAssignment={activeAssignment}
           deliveryPersonalWeek={deliveryPersonalWeek}
           coachId={profile.id}
@@ -1993,6 +2043,10 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               </div>
             )}
           </div>
+
+          {/* Full lift history — every lift ever logged (check-ins and manually backfilled alike),
+              with start vs now and the week-by-week trend, same as the client's own profile page. */}
+          <StrengthProgress liftProgress={liftProgress} configuredLiftNames={configuredLiftNames} />
 
           {/* Current week lifts vs prev and vs start */}
           {current.lift_results?.filter(l => l?.name).length > 0 && (
@@ -2229,20 +2283,44 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                 </button>
               ))}
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 items-end flex-wrap">
-              <div className="flex-1 min-w-[140px]"><label className="label">Date</label><input className="input" type="date" required value={addEntryForm.date} onChange={e => setAddEntryForm(f => ({ ...f, date: e.target.value }))} /></div>
-              {addEntryType === 'lift' && (
-                <div className="flex-1 min-w-[140px]">
-                  <label className="label">Lift</label>
-                  <LiftNameField value={addEntryForm.lift_name} onChange={v => setAddEntryForm(f => ({ ...f, lift_name: v }))} knownLiftNames={knownLiftNames} />
+            <div className="max-w-[160px]"><label className="label">Date</label><input className="input" type="date" required value={addEntryForm.date} onChange={e => setAddEntryForm(f => ({ ...f, date: e.target.value }))} /></div>
+
+            {addEntryType === 'weight' ? (
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="w-28"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" required value={addEntryForm.weight_kg} onChange={e => setAddEntryForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder="e.g. 72.5" /></div>
+                <div className="w-28">
+                  <label className="label">Week # (optional)</label>
+                  <input className="input" type="number" onFocus={e => e.target.select()} step="1" min="0" value={addEntryForm.week_number} onChange={e => setAddEntryForm(f => ({ ...f, week_number: e.target.value }))} placeholder="auto" />
                 </div>
-              )}
-              <div className="w-28"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step={addEntryType === 'weight' ? '0.1' : '0.5'} min="0" required value={addEntryForm.weight_kg} onChange={e => setAddEntryForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder={addEntryType === 'weight' ? 'e.g. 72.5' : 'e.g. 80'} /></div>
-              {addEntryType === 'lift' && (
-                <div className="w-24"><label className="label">Reps</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="1" required value={addEntryForm.reps} onChange={e => setAddEntryForm(f => ({ ...f, reps: e.target.value }))} placeholder="e.g. 5" /></div>
-              )}
-              <button type="submit" disabled={addEntrySaving} className="btn-primary whitespace-nowrap">{addEntrySaving ? 'Saving…' : 'Add'}</button>
-            </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {configuredLiftNames.length === 0 && extraLiftRows.length === 0 && (
+                  <p className="text-xs text-gray-400">No top lifts configured for this client yet — add one below.</p>
+                )}
+                {configuredLiftNames.map((name, idx) => (
+                  <div key={name} className="flex gap-2 items-end flex-wrap">
+                    <p className="flex-1 min-w-[100px] pb-2 text-sm font-medium text-gray-700 dark:text-gray-300">{name}</p>
+                    <div className="w-24"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.5" min="0" value={topLiftValues[idx]?.weight_kg ?? ''} onChange={e => updateTopLift(idx, 'weight_kg', e.target.value)} placeholder="e.g. 80" /></div>
+                    <div className="w-20"><label className="label">Reps</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="1" value={topLiftValues[idx]?.reps ?? ''} onChange={e => updateTopLift(idx, 'reps', e.target.value)} placeholder="e.g. 5" /></div>
+                  </div>
+                ))}
+                {extraLiftRows.map((row, idx) => (
+                  <div key={idx} className="flex gap-2 items-end flex-wrap">
+                    <div className="flex-1 min-w-[120px]">
+                      <label className="label">Lift</label>
+                      <LiftNameField value={row.lift_name} onChange={v => updateExtraLiftRow(idx, 'lift_name', v)} knownLiftNames={knownLiftNames} />
+                    </div>
+                    <div className="w-24"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.5" min="0" value={row.weight_kg} onChange={e => updateExtraLiftRow(idx, 'weight_kg', e.target.value)} placeholder="e.g. 80" /></div>
+                    <div className="w-20"><label className="label">Reps</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="1" value={row.reps} onChange={e => updateExtraLiftRow(idx, 'reps', e.target.value)} placeholder="e.g. 5" /></div>
+                    <button type="button" onClick={() => removeExtraLiftRow(idx)} className="text-xs text-red-500 hover:text-red-700 pb-2">Remove</button>
+                  </div>
+                ))}
+                <button type="button" onClick={addExtraLiftRow} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">+ Add another lift</button>
+              </div>
+            )}
+
+            <button type="submit" disabled={addEntrySaving} className="btn-primary whitespace-nowrap">{addEntrySaving ? 'Saving…' : 'Add'}</button>
           </form>
         )}
       </div>
@@ -2253,7 +2331,12 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         const checkinDates = new Set(asc.map(c => (c.updated_at || c.submitted_at || '').split('T')[0]))
         const standaloneEntries = weightEntries
           .filter(e => e.recorded_at && !checkinDates.has(e.recorded_at))
-          .map(e => ({ _type: 'log', id: e.id, recorded_at: e.recorded_at, weight_kg: e.weight_kg }))
+          .map(e => ({
+            _type: 'log', id: e.id, recorded_at: e.recorded_at, weight_kg: e.weight_kg,
+            // An explicit week number the coach typed in when adding this entry wins; otherwise
+            // falls back to the same calendar-based week everything else on this page uses.
+            week: e.week_number ?? weekForDate(e.recorded_at, client.start_date),
+          }))
         const checkinRows = asc.map(c => ({ _type: 'checkin', ...c }))
         const timeline = [...checkinRows, ...standaloneEntries]
           .sort((a, b) => {
@@ -2288,7 +2371,9 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                       <tr key={isLog ? `log-${row.id}` : row.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/30 ${isLog ? 'opacity-70' : ''}`}>
                         <td className="py-2.5 pr-4 whitespace-nowrap">
                           {isLog
-                            ? <span className="text-xs text-gray-400 italic">Weight log</span>
+                            ? (row.week != null
+                                ? <span className="font-semibold text-gray-900 dark:text-white">Wk {row.week}</span>
+                                : <span className="text-xs text-gray-400 italic">Pre-plan</span>)
                             : <span className="font-semibold text-gray-900 dark:text-white">Wk {personalWeekMap[row.id]}</span>
                           }
                         </td>
