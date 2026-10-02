@@ -1588,10 +1588,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   // Each real check-in's week is calendar-based — weeks elapsed since client.start_date — not a
   // count of check-ins actually submitted, so a client who misses one doesn't throw every later
   // week off, and backdating a start date immediately reclassifies their whole history. Falls back
-  // to the old counting behaviour only for a client with no start_date set at all. Likewise
-  // deliveryPersonalWeek (used for "Submit Week N Plan") is the CURRENT calendar week as of right
-  // now, not just "last check-in's week + 1" — it keeps advancing even if check-ins were missed,
-  // catching the client up rather than quietly numbering every late response as the next one along.
+  // to the old counting behaviour only for a client with no start_date set at all.
   const asc = [...sorted].reverse()
   const personalWeekMap = {}
   let personalCounter = 0
@@ -1604,8 +1601,13 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     }
   })
   const currentPersonalWeek = current ? (current.week_number === 0 ? 0 : personalWeekMap[current.id]) : 0
+  // deliveryPersonalWeek (used for "Submit Week N Plan") is normally one past the week this
+  // check-in itself reports on — responding to a Week 2 check-in delivers Week 3. But it's never
+  // allowed to fall behind today's own calendar week (weeks elapsed since client.start_date): if
+  // check-ins were missed and today is already further along than "current + 1", it catches the
+  // client up to today instead of quietly numbering a late response as just the next one along.
   const deliveryPersonalWeek = client.start_date
-    ? (weekForDate(new Date().toISOString(), client.start_date) || currentPersonalWeek + 1)
+    ? Math.max(currentPersonalWeek + 1, weekForDate(new Date().toISOString(), client.start_date) || (currentPersonalWeek + 1))
     : currentPersonalWeek + 1
 
   // When there's no previous check-in, fall back to the last weight_entries row recorded before
