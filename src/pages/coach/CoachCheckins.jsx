@@ -1620,7 +1620,32 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     supabase.from('lift_entries').select('lift_name').eq('client_id', client.id)
       .then(({ data }) => setManualLiftNames((data || []).map(r => r.lift_name)))
   }, [client?.id])
+
+  // Also pull in the client's currently-configured top lifts — the ones the check-in form itself
+  // asks them to log — so a brand new client who hasn't submitted a check-in with them yet still
+  // gets them offered here, instead of only ever showing up once they've already been logged once.
+  const [configuredLiftNames, setConfiguredLiftNames] = useState([])
+  useEffect(() => {
+    if (!client?.id) return
+    async function loadConfiguredLifts() {
+      const [{ data: trainingAsgn }, { data: clientRow }] = await Promise.all([
+        supabase.from('client_training_assignments').select('program_id').eq('client_id', client.id).eq('active', true)
+          .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('clients').select('top_lifts').eq('id', client.id).maybeSingle(),
+      ])
+      let trainingLifts = []
+      if (trainingAsgn?.program_id) {
+        const { data: prog } = await supabase.from('training_programs').select('top_lifts').eq('id', trainingAsgn.program_id).maybeSingle()
+        trainingLifts = (prog?.top_lifts || []).filter(l => l?.name)
+      }
+      const clientLifts = (clientRow?.top_lifts || []).filter(l => l?.name)
+      setConfiguredLiftNames((trainingLifts.length > 0 ? trainingLifts : clientLifts).map(l => l.name))
+    }
+    loadConfiguredLifts()
+  }, [client?.id])
+
   const knownLiftNames = Array.from(new Set([
+    ...configuredLiftNames,
     ...manualLiftNames,
     ...checkins.flatMap(c => (c.lift_results || []).map(l => l?.name).filter(Boolean)),
   ]))
