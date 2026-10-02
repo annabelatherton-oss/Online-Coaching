@@ -1532,12 +1532,17 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   }
 
   const [weightEntries, setWeightEntries] = useState([])
-  useEffect(() => {
+  function loadWeightEntries() {
     if (!client?.id) return
-    supabase.from('weight_entries').select('weight_kg, recorded_at')
+    supabase.from('weight_entries').select('id, weight_kg, recorded_at')
       .eq('client_id', client.id).order('recorded_at', { ascending: false })
       .then(({ data }) => setWeightEntries(data || []))
-  }, [client?.id])
+  }
+  useEffect(() => { loadWeightEntries() }, [client?.id])
+  async function deleteWeightEntry(id) {
+    await supabase.from('weight_entries').delete().eq('id', id)
+    loadWeightEntries()
+  }
 
   // Lets the coach backfill a past body weight or lift log right from here, while reviewing a
   // check-in, instead of needing to go to the client's own profile page for it.
@@ -1552,9 +1557,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     setAddEntrySaving(true)
     if (addEntryType === 'weight') {
       await supabase.from('weight_entries').insert({ client_id: client.id, weight_kg: parseFloat(addEntryForm.weight_kg), recorded_at: addEntryForm.date })
-      const { data } = await supabase.from('weight_entries').select('weight_kg, recorded_at')
-        .eq('client_id', client.id).order('recorded_at', { ascending: false })
-      setWeightEntries(data || [])
+      loadWeightEntries()
     } else {
       await supabase.from('lift_entries').insert({
         client_id: client.id, lift_name: addEntryForm.lift_name.trim(),
@@ -2119,7 +2122,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         const checkinDates = new Set(asc.map(c => (c.updated_at || c.submitted_at || '').split('T')[0]))
         const standaloneEntries = weightEntries
           .filter(e => e.recorded_at && !checkinDates.has(e.recorded_at))
-          .map(e => ({ _type: 'log', recorded_at: e.recorded_at, weight_kg: e.weight_kg }))
+          .map(e => ({ _type: 'log', id: e.id, recorded_at: e.recorded_at, weight_kg: e.weight_kg }))
         const checkinRows = asc.map(c => ({ _type: 'checkin', ...c }))
         const timeline = [...checkinRows, ...standaloneEntries]
           .sort((a, b) => {
@@ -2136,7 +2139,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 dark:border-gray-800">
-                    {['Week', 'Date', 'Weight', 'Change', 'Energy', 'Sleep', 'Food', 'Gym'].map(h => (
+                    {['Week', 'Date', 'Weight', 'Change', 'Energy', 'Sleep', 'Food', 'Gym', ''].map(h => (
                       <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -2151,7 +2154,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                     const isLog = row._type === 'log'
                     const date = isLog ? row.recorded_at : (row.updated_at || row.submitted_at || '')
                     return (
-                      <tr key={isLog ? `log-${row.recorded_at}` : row.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/30 ${isLog ? 'opacity-70' : ''}`}>
+                      <tr key={isLog ? `log-${row.id}` : row.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/30 ${isLog ? 'opacity-70' : ''}`}>
                         <td className="py-2.5 pr-4 whitespace-nowrap">
                           {isLog
                             ? <span className="text-xs text-gray-400 italic">Weight log</span>
@@ -2166,15 +2169,18 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                             : <span className="text-gray-300 dark:text-gray-700">—</span>}
                         </td>
                         {isLog ? (
-                          <><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 text-gray-300 dark:text-gray-700">—</td></>
+                          <><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td></>
                         ) : (
                           <>
                             <td className="py-2.5 pr-4"><span className={`text-xs font-semibold ${ratingColor(row.energy_level)}`}>{row.energy_level != null ? `${row.energy_level}/5` : '—'}</span></td>
                             <td className="py-2.5 pr-4"><span className={`text-xs font-semibold ${ratingColor(row.sleep_quality)}`}>{row.sleep_quality != null ? `${row.sleep_quality}/5` : '—'}</span></td>
                             <td className="py-2.5 pr-4"><span className={`text-xs font-semibold ${ratingColor(row.food_adherence)}`}>{row.food_adherence != null ? `${row.food_adherence}/5` : '—'}</span></td>
-                            <td className="py-2.5"><span className={`text-xs font-semibold ${ratingColor(row.gym_adherence)}`}>{row.gym_adherence != null ? `${row.gym_adherence}/5` : '—'}</span></td>
+                            <td className="py-2.5 pr-4"><span className={`text-xs font-semibold ${ratingColor(row.gym_adherence)}`}>{row.gym_adherence != null ? `${row.gym_adherence}/5` : '—'}</span></td>
                           </>
                         )}
+                        <td className="py-2.5">
+                          {isLog && <button onClick={() => deleteWeightEntry(row.id)} className="text-xs text-red-500 hover:text-red-700 whitespace-nowrap">Remove</button>}
+                        </td>
                       </tr>
                     )
                   })}
