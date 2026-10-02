@@ -290,7 +290,7 @@ function ComparisonLightbox({ angles, getCols, onClose }) {
 }
 
 // ── Plan delivery panel ───────────────────────────────────────────────────────
-function DeliveryPanel({ client, current, prev, prev2, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
+function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev2, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
   const { profile } = useAuth()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [loading, setLoading] = useState(true)
@@ -1058,8 +1058,8 @@ function DeliveryPanel({ client, current, prev, prev2, activeAssignment, deliver
               <div>
                 <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">Weight</p>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">{current.weight_kg != null ? `${current.weight_kg} kg` : '—'}</p>
-                {weightDelta(current, prev) !== null && <p><DeltaTag delta={weightDelta(current, prev)} invertColors /> <span className="text-xs text-gray-400">vs last wk</span></p>}
-                {weightDelta(current, prev2) !== null && <p><DeltaTag delta={weightDelta(current, prev2)} invertColors /> <span className="text-xs text-gray-400">vs 2 wks ago</span></p>}
+                {weightDeltaPrev != null && <p><DeltaTag delta={weightDeltaPrev} invertColors /> <span className="text-xs text-gray-400">vs last wk</span></p>}
+                {weightDeltaPrev2 != null && <p><DeltaTag delta={weightDeltaPrev2} invertColors /> <span className="text-xs text-gray-400">vs 2 wks ago</span></p>}
               </div>
               {[['Energy', current.energy_level], ['Sleep', current.sleep_quality], ['Food', current.food_adherence], ['Gym', current.gym_adherence]].map(([label, v]) => (
                 <div key={label}>
@@ -1715,7 +1715,6 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const current = sorted[0]
   const first = sorted[sorted.length - 1]
   const prev = sorted[1] || null
-  const prev2 = sorted[2] || null
 
   // ascending for history table + personal week mapping. A week_number=0 row (the one-off
   // "starting check-in" some clients submit right after signup, for a baseline weight/photos
@@ -1746,14 +1745,26 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     ? Math.max(currentPersonalWeek + 1, weekForDate(new Date().toISOString(), client.start_date) || (currentPersonalWeek + 1))
     : currentPersonalWeek + 1
 
-  // When there's no previous check-in, fall back to the last weight_entries row recorded before
-  // this check-in's submission date so first-time check-ins still show a meaningful delta.
+  // "vs last week"/"vs 2 weeks ago" need every known weight observation, not just actual check-in
+  // rows — a client with only one real check-in so far but a manually backfilled weight log (added
+  // from the client's profile, or right here while reviewing this check-in) should still show a
+  // comparison against that log, same as if it had come from an actual check-in. Merges check-ins'
+  // own weights with weight_entries into one timeline, deduplicated by date (a check-in's weight is
+  // already mirrored into weight_entries on submit, so the same date never double-counts).
   const checkinDate = (current?.submitted_at || current?.updated_at || '').split('T')[0]
-  const prevLogEntry = !prev && current?.weight_kg != null && checkinDate
-    ? (weightEntries.find(e => e.recorded_at < checkinDate) ?? null)
-    : null
-  const wDeltaPrev = weightDelta(current, prev ?? (prevLogEntry ? { weight_kg: prevLogEntry.weight_kg } : null))
-  const wDeltaPrevLabel = prev ? 'vs last week' : 'vs prev. log'
+  const weightByDate = new Map()
+  weightEntries.forEach(e => { if (e.recorded_at && e.weight_kg != null) weightByDate.set(e.recorded_at, parseFloat(e.weight_kg)) })
+  asc.forEach(c => {
+    const d = (c.updated_at || c.submitted_at || '').split('T')[0]
+    if (d && c.weight_kg != null) weightByDate.set(d, parseFloat(c.weight_kg))
+  })
+  const priorWeights = Array.from(weightByDate.entries())
+    .filter(([date]) => date < checkinDate)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([, weight_kg]) => weight_kg)
+  const wDeltaPrev = priorWeights[0] != null ? weightDelta(current, { weight_kg: priorWeights[0] }) : null
+  const wDeltaPrevLabel = 'vs last week'
+  const wDeltaPrev2 = priorWeights[1] != null ? weightDelta(current, { weight_kg: priorWeights[1] }) : null
 
   // "since start": use oldest check-in; fall back to oldest weight_entry for first-check-in clients
   const oldestLog = weightEntries.length > 0 ? weightEntries[weightEntries.length - 1] : null
@@ -1763,10 +1774,6 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         ? weightDelta(current, { weight_kg: oldestLog.weight_kg })
         : null)
   const wDeltaStartLabel = (current && first && current.id !== first.id) ? 'since start' : 'since first log'
-
-  // Two-week view — the week-before-last, for a quick read on the trend rather than just the one
-  // most recent change. Only shown once there's actually a check-in that far back.
-  const wDeltaPrev2 = prev2 ? weightDelta(current, prev2) : null
 
   const withPhotos = sorted.filter(c => c.progress_photos && Object.values(c.progress_photos).some(Boolean))
   const newestP = withPhotos[0]
@@ -1836,7 +1843,8 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           client={client}
           current={current}
           prev={prev}
-          prev2={prev2}
+          weightDeltaPrev={wDeltaPrev}
+          weightDeltaPrev2={wDeltaPrev2}
           activeAssignment={activeAssignment}
           deliveryPersonalWeek={deliveryPersonalWeek}
           coachId={profile.id}
