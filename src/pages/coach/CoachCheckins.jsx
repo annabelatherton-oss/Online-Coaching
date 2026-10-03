@@ -377,14 +377,20 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
 
       setRemovedMealSlots(activeAssignment.removed_meal_slots || [])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
-      let draft = {}
-      try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${weekNum}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
+      const draft = loadDraft(weekNum)
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
       setActiveTemplateId((currentTier ? tierTmplData : stdTmplData)?.id ?? null)
       setActiveTemplateLocked(!!(currentTier ? tierTmplData : stdTmplData)?.locked)
-      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
+      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...(draft.editedSlots || {}) })
       if (cwm?.ingredient_overrides) setIngredientOverrides(cwm.ingredient_overrides)
+      // A locally-saved draft always wins over both the delivered defaults above and whatever was
+      // there before — it only exists if the coach was mid-edit here and never actually submitted.
+      if (draft.ingredientOverrides) setIngredientOverrides(draft.ingredientOverrides)
+      if (draft.coachNotes !== undefined) setCoachNotes(draft.coachNotes)
+      if (draft.struggleComments) setStruggleComments(draft.struggleComments)
+      if (draft.calorieTarget !== undefined) setCalorieTarget(draft.calorieTarget)
+      if (draft.trainingNotes !== undefined) setTrainingNotes(draft.trainingNotes)
       setTraining(trainingAsgn)
       setAllPrograms(programs || [])
 
@@ -408,13 +414,12 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
       ])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
-      let draft = {}
-      try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${nextTemplateWeek}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
+      const draft = loadDraft(nextTemplateWeek)
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
       setActiveTemplateId((newTier ? tierTmplData : stdTmplData)?.id ?? null)
       setActiveTemplateLocked(!!(newTier ? tierTmplData : stdTmplData)?.locked)
-      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
+      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...(draft.editedSlots || {}) })
     }
     reloadTemplate()
   }, [calorieTarget])
@@ -432,17 +437,28 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
       ])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
-      let draft = {}
-      try { const s = localStorage.getItem(`meal-draft-${client.id}-${activeAssignment.id}-${nextTemplateWeek}`); draft = s ? JSON.parse(s) : {} } catch (_) {}
+      const draft = loadDraft(nextTemplateWeek)
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
       setActiveTemplateId((currentTier ? tierTmplData : stdTmplData)?.id ?? null)
       setActiveTemplateLocked(!!(currentTier ? tierTmplData : stdTmplData)?.locked)
-      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...draft })
-      setIngredientOverrides(cwm?.ingredient_overrides || {})
+      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...(draft.editedSlots || {}) })
+      setIngredientOverrides(draft.ingredientOverrides || cwm?.ingredient_overrides || {})
     }
     reloadWeek()
   }, [nextTemplateWeek])
+
+  // Auto-saves the draft on every edit — see loadDraft above for what this restores and why.
+  // Skipped while still loading (the initial load's own restore calls would otherwise immediately
+  // overwrite the very draft they just read, turning every open into a silent reset).
+  useEffect(() => {
+    if (loading || !activeAssignment) return
+    try {
+      localStorage.setItem(draftKey(nextTemplateWeek), JSON.stringify({
+        coachNotes, struggleComments, calorieTarget, trainingNotes, editedSlots, ingredientOverrides,
+      }))
+    } catch (_) {}
+  }, [coachNotes, struggleComments, calorieTarget, trainingNotes, editedSlots, ingredientOverrides])
 
   function buildTemplateSlots(tierTmplData, stdTmplData, asgn) {
     const tmpl = tierTmplData || stdTmplData
@@ -468,14 +484,16 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
     return overrides
   }
 
+  // Everything the coach can edit here before hitting Submit — the message, calorie target,
+  // ingredient tweaks, swapped meals, struggle replies, training notes — auto-saves to this
+  // browser's local storage as it's typed (see the effect below), keyed per client+assignment+week,
+  // so navigating away mid-edit never loses anything: it's all still there, exactly as left, next
+  // time this same check-in is opened. Cleared once the response is actually submitted.
   function draftKey(weekNum) {
     return `meal-draft-${client.id}-${activeAssignment.id}-${weekNum}`
   }
-  function loadDraftSlots(weekNum) {
+  function loadDraft(weekNum) {
     try { const s = localStorage.getItem(draftKey(weekNum)); return s ? JSON.parse(s) : {} } catch (_) { return {} }
-  }
-  function saveDraftSlots(weekNum, slots) {
-    try { localStorage.setItem(draftKey(weekNum), JSON.stringify(slots)) } catch (_) {}
   }
   function clearDraftSlots(weekNum) {
     try { localStorage.removeItem(draftKey(weekNum)) } catch (_) {}
@@ -483,10 +501,8 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
 
   function handleSwapOpen(slotKey, label, cat) { setSwapModal({ slotKey, label, cat }) }
   function handleSwapSelect(slotKey, newMealId) {
-    const newSlots = { ...editedSlots, [slotKey]: newMealId }
-    setEditedSlots(newSlots)
+    setEditedSlots(prev => ({ ...prev, [slotKey]: newMealId }))
     setSwapModal(null)
-    saveDraftSlots(nextTemplateWeek, newSlots)
   }
   function handleRevert(slotKey) {
     setEditedSlots(prev => ({ ...prev, [slotKey]: templateSlots[slotKey] || null }))
@@ -711,7 +727,6 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
       return next
     })
     setRemovedMealSlots(prev => prev.includes(slotKeyToRemove) ? prev : [...prev, slotKeyToRemove])
-    saveDraftSlots(nextTemplateWeek, newSlots)
 
     if (removedCal <= 0) return
 
