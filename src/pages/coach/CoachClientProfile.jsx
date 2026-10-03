@@ -2591,20 +2591,44 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
       (ing.ingredient_id && b.ingredient_id === ing.ingredient_id) || b.name === ing.name
     )
     if (!baseIng) return
-    await supabase.from('meal_ingredients').update({ is_static: newVal }).eq('id', baseIng.id)
+
+    // Locking freezes whatever amount is currently showing — including any not-yet-saved edit —
+    // as the new static value. A static ingredient bypasses the override layer entirely from this
+    // point on, so without carrying the current amount over, it would snap back to the base
+    // recipe's own (pre-edit) amount the instant it locked.
+    let qtyFields = {}
+    if (newVal) {
+      const newQty = parseFloat(ing.quantity_g) || 0
+      const libIng = ing.ingredient_id ? libraryById[ing.ingredient_id] : null
+      const factor = libIng && libIng.serving_size > 0 ? newQty / libIng.serving_size : newQty > 0 ? newQty / (parseFloat(baseIng.quantity_g) || 1) : 0
+      const macros = libIng ? {
+        calories:  Math.round(factor * libIng.calories_per_serving * 10) / 10,
+        protein_g: Math.round(factor * libIng.protein_per_serving  * 10) / 10,
+        carbs_g:   Math.round(factor * libIng.carbs_per_serving    * 10) / 10,
+        fat_g:     Math.round(factor * libIng.fat_per_serving      * 10) / 10,
+      } : {
+        calories:  parseFloat(ing.calories)  || 0,
+        protein_g: parseFloat(ing.protein_g) || 0,
+        carbs_g:   parseFloat(ing.carbs_g)   || 0,
+        fat_g:     parseFloat(ing.fat_g)     || 0,
+      }
+      qtyFields = { quantity_g: newQty, ...macros }
+    }
+
+    await supabase.from('meal_ingredients').update({ is_static: newVal, ...qtyFields }).eq('id', baseIng.id)
     const tierVersionIds = (meal.meal_tier_versions || []).map(v => v.id)
     if (tierVersionIds.length > 0) {
-      const q = supabase.from('meal_tier_ingredients').update({ is_static: newVal }).in('tier_version_id', tierVersionIds)
+      const q = supabase.from('meal_tier_ingredients').update({ is_static: newVal, ...qtyFields }).in('tier_version_id', tierVersionIds)
       ing.ingredient_id ? await q.eq('ingredient_id', ing.ingredient_id) : await q.eq('name', ing.name)
     }
     setMealMap(prev => {
       const m = { ...prev[mealId] }
-      m.meal_ingredients = m.meal_ingredients.map(b => b.id === baseIng.id ? { ...b, is_static: newVal } : b)
+      m.meal_ingredients = m.meal_ingredients.map(b => b.id === baseIng.id ? { ...b, is_static: newVal, ...qtyFields } : b)
       m.meal_tier_versions = (m.meal_tier_versions || []).map(v => ({
         ...v,
         meal_tier_ingredients: (v.meal_tier_ingredients || []).map(ti =>
           (ing.ingredient_id ? ti.ingredient_id === ing.ingredient_id : ti.name === ing.name)
-            ? { ...ti, is_static: newVal }
+            ? { ...ti, is_static: newVal, ...qtyFields }
             : ti
         ),
       }))
