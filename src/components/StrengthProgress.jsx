@@ -72,28 +72,22 @@ export default function StrengthProgress({ liftProgress, configuredLiftNames }) 
         {liftProgress.map(({ name, first, latest, kgIncrease, pctIncrease, history }) => (
           <div key={name} className="space-y-1.5">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{name}</p>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
-                <p className="text-[10px] text-gray-400 mb-0.5 uppercase tracking-wider">Start · Wk {first.personalWeek}</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{first.weight_kg} kg</p>
-                <p className="text-xs text-gray-400 tabular-nums">× {first.reps} reps</p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
-                <p className="text-[10px] text-gray-400 mb-0.5 uppercase tracking-wider">Now · Wk {latest.personalWeek}</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{latest.weight_kg} kg</p>
-                <p className="text-xs text-gray-400 tabular-nums">× {latest.reps} reps</p>
-              </div>
-              <div className={`p-2.5 rounded-xl ${kgIncrease > 0 ? 'bg-green-50 dark:bg-green-900/20' : kgIncrease < 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-800'}`}>
-                <p className="text-[10px] text-gray-400 mb-0.5 uppercase tracking-wider">Increase</p>
-                <p className={`text-sm font-bold tabular-nums ${kgIncrease > 0 ? 'text-green-600 dark:text-green-400' : kgIncrease < 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-400'}`}>
-                  {kgIncrease > 0 ? '+' : ''}{kgIncrease} kg
-                </p>
-                {pctIncrease !== null && (
-                  <p className={`text-xs font-semibold tabular-nums ${kgIncrease > 0 ? 'text-green-500 dark:text-green-400' : kgIncrease < 0 ? 'text-red-400' : 'text-gray-400'}`}>
-                    {pctIncrease > 0 ? '+' : ''}{pctIncrease}%
-                  </p>
-                )}
-              </div>
+            <div className="flex items-center gap-x-2.5 gap-y-1 flex-wrap rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2">
+              <span className="flex items-baseline gap-1 tabular-nums whitespace-nowrap" title={`Starting point — Week ${first.personalWeek}`}>
+                <span className="text-[10px] text-gray-400">Wk{first.personalWeek}</span>
+                <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">{first.weight_kg}kg×{first.reps}</span>
+              </span>
+              <span className="text-gray-300 dark:text-gray-600">→</span>
+              <span className="flex items-baseline gap-1 tabular-nums whitespace-nowrap" title={`Most recent — Week ${latest.personalWeek}`}>
+                <span className="text-[10px] text-gray-400">Wk{latest.personalWeek}</span>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">{latest.weight_kg}kg×{latest.reps}</span>
+              </span>
+              <span
+                className={`ml-auto text-xs sm:text-sm font-bold tabular-nums px-2 py-0.5 rounded-full whitespace-nowrap ${kgIncrease > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : kgIncrease < 0 ? 'bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}
+                title="Total increase since the starting point"
+              >
+                {kgIncrease > 0 ? '+' : ''}{kgIncrease}kg{pctIncrease !== null ? ` (${pctIncrease > 0 ? '+' : ''}${pctIncrease}%)` : ''}
+              </span>
             </div>
             <LiftChart history={history} />
           </div>
