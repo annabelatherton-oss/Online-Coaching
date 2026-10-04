@@ -133,12 +133,16 @@ function MacroMatchRow({ label, totals, tier, referenceTotals }) {
   }
   const usingReference = referenceTotals?.calories > 0
   const targets = usingReference ? referenceTotals : calcStandardMacros(tier)
+  const macros = { cal: totals.calories, carb: totals.carbs_g, prot: totals.protein_g, fat: totals.fat_g }
+  const targetMacros = { cal: usingReference ? targets.calories : tier, carb: targets.carbs_g, prot: targets.protein_g, fat: targets.fat_g }
   return (
     <div className="flex flex-wrap items-start gap-x-4 gap-y-1 text-xs">
       <span className="font-semibold text-gray-500 dark:text-gray-400 w-16 pt-0.5">{label}</span>
       <MacroTargetInfo
-        macros={{ cal: totals.calories, carb: totals.carbs_g, prot: totals.protein_g, fat: totals.fat_g }}
-        target={{ cal: usingReference ? targets.calories : tier, carb: targets.carbs_g, prot: targets.protein_g, fat: targets.fat_g }}
+        macros={macros}
+        target={usingReference ? null : targetMacros}
+        siblingMacros={usingReference ? targetMacros : null}
+        siblingLabel="Option A"
       />
     </div>
   )
@@ -201,7 +205,7 @@ function DayAutoFitSuggestion({ week, slotKeys, tier, target, mealsById, ingredi
 // touch the meal's shared recipe, so a tweak here can't ripple into any other week or client using
 // the same meal. "Set as new default" is the deliberate, separate action for when a coach actually
 // wants a week's edit to become every week's standard going forward.
-function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onAdd, onSetScalingType, onClearOverride, onSetAsDefault, onGenerated, overrideTarget }) {
+function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit, overridesForSlot, onChangeQty, onRemove, onAdd, onSetScalingType, onClearOverride, onSetAsDefault, onGenerated, overrideTarget, overrideSibling }) {
   const [library, setLibrary] = useState([])
   const [baseIngredients, setBaseIngredients] = useState([])
   const [loadingBase, setLoadingBase] = useState(true)
@@ -390,13 +394,15 @@ function SlotIngredientEditor({ meal, mealId, tier, category, coachId, mealSplit
         // overrideTarget) rather than the generic category share, so the two stay as close as
         // possible to each other — see SIBLING_SLOT above.
         const targets = tierTargetsForCategory(tier, category, mealSplit)
-        const target = overrideTarget || { cal: targets.calories, carb: targets.carbs_g, prot: targets.protein_g, fat: targets.fat_g }
+        const target = overrideSibling ? null : (overrideTarget || { cal: targets.calories, carb: targets.carbs_g, prot: targets.protein_g, fat: targets.fat_g })
         const libraryById = Object.fromEntries(library.map(l => [l.id, l]))
         return (
           <div className="pt-1">
             <MacroTargetInfo
               macros={macros}
               target={target}
+              siblingMacros={overrideSibling}
+              siblingLabel="Option A"
               ingredients={ingredients}
               ingredientLib={libraryById}
               onAutoFit={onChangeQty}
@@ -1817,8 +1823,11 @@ export default function PlanGroupEditor() {
                   const dayTarget = activeTier != null ? { calories: activeTier, ...calcStandardMacros(activeTier) } : null
                   // Only Option B targets its sibling (matching A) — Option A always targets the
                   // day gap, never "match B", even though SIBLING_SLOT is looked up both ways.
-                  const slotTarget = slot.key.endsWith('2') && siblingMacros
+                  const siblingTargetObj = siblingMacros
                     ? { cal: siblingMacros.calories, carb: siblingMacros.carbs_g, prot: siblingMacros.protein_g, fat: siblingMacros.fat_g }
+                    : null
+                  const slotTarget = slot.key.endsWith('2') && siblingTargetObj
+                    ? siblingTargetObj
                     : (macros && dayTarget && opt1Totals?.calories > 0)
                     ? {
                         cal:  macros.calories  + (dayTarget.calories  - opt1Totals.calories),
@@ -2061,7 +2070,8 @@ export default function PlanGroupEditor() {
                             onClearOverride={() => clearSlotOverride(weekIdx, slot.key)}
                             onSetAsDefault={() => setAsNewDefault(weekIdx, slot.key)}
                             onGenerated={() => refreshMeal(mealId)}
-                            overrideTarget={slotTarget}
+                            overrideTarget={slot.key.endsWith('2') ? null : slotTarget}
+                            overrideSibling={slot.key.endsWith('2') ? siblingTargetObj : null}
                           />
                         </div>
                       )}
