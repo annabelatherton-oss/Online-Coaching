@@ -15,7 +15,7 @@ import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { weekForDate } from '../../lib/planWeek'
 import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
 import { GOAL_LABELS } from '../../lib/calorieSuggestion'
-import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
+import { useSignedProgressPhotosForCheckins, compressImage } from '../../lib/progressPhotos'
 import { diffAndSnapshotPlan } from '../../lib/planChanges'
 import CalorieSuggestionPanel from '../../components/CalorieSuggestionPanel'
 import LiftNameField from '../../components/LiftNameField'
@@ -1663,6 +1663,8 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const [addEntryType, setAddEntryType] = useState('weight')
   const [addEntryForm, setAddEntryForm] = useState({ date: new Date().toISOString().split('T')[0], weight_kg: '', week_number: '', lift_name: '', reps: '' })
   const [addEntrySaving, setAddEntrySaving] = useState(false)
+  const [addEntryPhotoFiles, setAddEntryPhotoFiles] = useState([])
+  const addEntryPhotoRef = useRef()
   useEffect(() => { setShowAddEntry(false) }, [client?.id])
 
   // Full manually-backfilled lift rows for this client — used both for the known-lift-names list
@@ -1739,6 +1741,25 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         week_number: addEntryForm.week_number ? parseInt(addEntryForm.week_number) : null,
       }))
       if (!error) loadWeightEntries()
+    } else if (addEntryType === 'photo') {
+      if (addEntryPhotoFiles.length === 0) {
+        setAddEntrySaving(false)
+        window.alert('Choose at least one photo before saving.')
+        return
+      }
+      const weekNumber = addEntryForm.week_number ? parseInt(addEntryForm.week_number) : null
+      for (const file of addEntryPhotoFiles) {
+        const compressed = await compressImage(file)
+        const path = `${client.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+        const { error: uploadErr } = await supabase.storage.from('progress-photos').upload(path, compressed, { contentType: 'image/jpeg' })
+        if (uploadErr) { error = uploadErr; break }
+        ;({ error } = await supabase.from('progress_photos').insert({
+          client_id: client.id, photo_url: path, recorded_at: addEntryForm.date, week_number: weekNumber,
+        }))
+        if (error) break
+      }
+      setAddEntryPhotoFiles([])
+      if (addEntryPhotoRef.current) addEntryPhotoRef.current.value = ''
     } else {
       const topRows = configuredLiftNames
         .map((name, i) => ({ lift_name: name, ...topLiftValues[i] }))
@@ -2321,16 +2342,16 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
       {/* Add a past weight or lift entry — for backfilling history while reviewing a check-in */}
       <div className="card space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900 dark:text-white">Add previous weight or lift</h3>
+          <h3 className="font-semibold text-gray-900 dark:text-white">Add previous weight, lift, or photo</h3>
           <button onClick={() => setShowAddEntry(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showAddEntry ? 'Cancel' : 'Add Entry'}</button>
         </div>
         {showAddEntry && (
           <form onSubmit={submitAddEntry} className="space-y-3">
             <div className="flex gap-2">
-              {['weight', 'lift'].map(t => (
+              {['weight', 'lift', 'photo'].map(t => (
                 <button key={t} type="button" onClick={() => setAddEntryType(t)}
                   className={`text-xs font-medium px-3 py-1.5 rounded-full ${addEntryType === t ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'}`}>
-                  {t === 'weight' ? 'Weight' : 'Lift'}
+                  {t === 'weight' ? 'Weight' : t === 'lift' ? 'Lift' : 'Photo'}
                 </button>
               ))}
             </div>
@@ -2343,6 +2364,20 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                   <label className="label">Week # (optional)</label>
                   <input className="input" type="number" onFocus={e => e.target.select()} step="1" min="0" value={addEntryForm.week_number} onChange={e => setAddEntryForm(f => ({ ...f, week_number: e.target.value }))} placeholder="auto" />
                 </div>
+              </div>
+            ) : addEntryType === 'photo' ? (
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="w-28">
+                  <label className="label">Week # (optional)</label>
+                  <input className="input" type="number" onFocus={e => e.target.select()} step="1" min="0" value={addEntryForm.week_number} onChange={e => setAddEntryForm(f => ({ ...f, week_number: e.target.value }))} placeholder="auto" />
+                </div>
+                <div className="flex-1 min-w-[180px]">
+                  <label className="label">Photos</label>
+                  <input ref={addEntryPhotoRef} type="file" accept="image/*" multiple className="input py-1.5" onChange={e => setAddEntryPhotoFiles(Array.from(e.target.files))} />
+                </div>
+                {addEntryPhotoFiles.length > 0 && (
+                  <p className="text-xs text-gray-400 w-full">{addEntryPhotoFiles.length} photo{addEntryPhotoFiles.length === 1 ? '' : 's'} selected — the date and week above apply to all of them.</p>
+                )}
               </div>
             ) : (
               <div className="space-y-2">
