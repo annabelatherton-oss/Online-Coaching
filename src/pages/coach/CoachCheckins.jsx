@@ -1068,9 +1068,9 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
                 <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mb-0.5 truncate">Weight</p>
                 <p className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white">{current.weight_kg != null ? `${current.weight_kg} kg` : '—'}</p>
                 {(weightDeltaPrev != null || weightDeltaPrev2 != null) && (
-                  <p className="mt-0.5 text-[10px] sm:text-xs flex items-center gap-1 flex-wrap" title="Change vs last week / 2 weeks ago">
+                  <p className="mt-0.5 text-[10px] sm:text-xs whitespace-nowrap" title="Change vs last week / 2 weeks ago">
                     {weightDeltaPrev != null && <DeltaTag delta={weightDeltaPrev} invertColors suffix="" />}
-                    {weightDeltaPrev2 != null && <span className="text-gray-400 flex items-center gap-1">/<DeltaTag delta={weightDeltaPrev2} invertColors suffix="" /></span>}
+                    {weightDeltaPrev2 != null && <span className="text-gray-400"> /<DeltaTag delta={weightDeltaPrev2} invertColors suffix="" /></span>}
                   </p>
                 )}
               </div>
@@ -2038,9 +2038,9 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                 <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Weight</p>
                 <p className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white">{current.weight_kg}<span className="text-[10px] sm:text-sm font-normal text-gray-500"> kg</span></p>
                 {(wDeltaPrev !== null || wDeltaPrev2 !== null) && (
-                  <p className="mt-0.5 text-[10px] sm:text-xs flex items-center gap-1 flex-wrap" title="Change vs last week / 2 weeks ago">
+                  <p className="mt-0.5 text-[10px] sm:text-xs whitespace-nowrap" title="Change vs last week / 2 weeks ago">
                     {wDeltaPrev !== null && <DeltaTag delta={wDeltaPrev} invertColors suffix="" />}
-                    {wDeltaPrev2 !== null && <span className="text-gray-400 flex items-center gap-1">/<DeltaTag delta={wDeltaPrev2} invertColors suffix="" /></span>}
+                    {wDeltaPrev2 !== null && <span className="text-gray-400"> /<DeltaTag delta={wDeltaPrev2} invertColors suffix="" /></span>}
                   </p>
                 )}
               </div>
