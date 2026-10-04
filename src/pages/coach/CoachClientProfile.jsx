@@ -1421,21 +1421,25 @@ function MeasurementsTab({ clientId, collectMeasurements, startDate }) {
   )
 }
 
-function PhotosTab({ clientId }) {
+function PhotosTab({ clientId, startDate }) {
   const [uploaded, setUploaded] = useState([])
   const [checkinPhotos, setCheckinPhotos] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [storageError, setStorageError] = useState(false)
   const [lightbox, setLightbox] = useState(null)
+  const [uploadMeta, setUploadMeta] = useState({ date: new Date().toISOString().split('T')[0], week_number: '' })
   const fileRef = useRef()
 
   // Photos come from two places: ones the coach uploads manually here (the
   // `progress_photos` table), and the front/back/left/right shots a client
   // attaches to their own check-ins (`client_checkins.progress_photos`).
   // Both live in the same storage bucket, so they're merged into one gallery
-  // rather than leaving check-in photos invisible on this tab.
-  const photos = [...uploaded, ...checkinPhotos].sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at))
+  // rather than leaving check-in photos invisible on this tab. A manual upload's week
+  // is whatever the coach typed in (week_number), falling back to the calendar week its
+  // date falls in — same "explicit beats computed" pattern as weight_entries.week_number.
+  const photos = [...uploaded, ...checkinPhotos]
+    .sort((a, b) => (b.week ?? -1) - (a.week ?? -1) || new Date(b.recorded_at) - new Date(a.recorded_at))
   const urlMap = useSignedUrls(photos.map(p => p.photo_url))
 
   async function load() {
@@ -1443,7 +1447,7 @@ function PhotosTab({ clientId }) {
       supabase.from('progress_photos').select('*').eq('client_id', clientId).order('recorded_at', { ascending: false }),
       supabase.from('client_checkins').select('id, week_number, submitted_at, updated_at, progress_photos').eq('client_id', clientId),
     ])
-    setUploaded((uploads || []).map(p => ({ ...p, source: 'upload' })))
+    setUploaded((uploads || []).map(p => ({ ...p, source: 'upload', week: p.week_number ?? weekForDate(p.recorded_at, startDate) })))
     const flattened = []
     ;(checkins || []).forEach(ci => {
       CHECKIN_PHOTO_ANGLES.forEach(({ key, label }) => {
@@ -1453,7 +1457,8 @@ function PhotosTab({ clientId }) {
             id: `checkin-${ci.id}-${key}`,
             photo_url: path,
             recorded_at: ci.updated_at || ci.submitted_at,
-            caption: `Week ${ci.week_number} · ${label}`,
+            week: ci.week_number,
+            angleLabel: label,
             source: 'checkin',
           })
         }
@@ -1462,18 +1467,20 @@ function PhotosTab({ clientId }) {
     setCheckinPhotos(flattened)
     setLoading(false)
   }
-  useEffect(() => { load() }, [clientId])
+  useEffect(() => { load() }, [clientId, startDate])
 
   async function handleUpload(e) {
     const files = Array.from(e.target.files)
     if (!files.length) return
     setUploading(true); setStorageError(false)
+    const recordedAt = uploadMeta.date || new Date().toISOString().split('T')[0]
+    const weekNumber = uploadMeta.week_number ? parseInt(uploadMeta.week_number) : null
     for (const file of files) {
       const compressed = await compressImage(file)
       const path = `${clientId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
       const { error: uploadErr } = await supabase.storage.from('progress-photos').upload(path, compressed, { contentType: 'image/jpeg' })
       if (uploadErr) { setStorageError(true); setUploading(false); return }
-      await supabase.from('progress_photos').insert({ client_id: clientId, photo_url: path, recorded_at: new Date().toISOString().split('T')[0] })
+      await supabase.from('progress_photos').insert({ client_id: clientId, photo_url: path, recorded_at: recordedAt, week_number: weekNumber })
     }
     setUploading(false); if (fileRef.current) fileRef.current.value = ''; load()
   }
@@ -1491,11 +1498,19 @@ function PhotosTab({ clientId }) {
   return (
     <div className="space-y-6">
       {storageError && <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800"><p className="text-sm text-yellow-800 dark:text-yellow-300">Photo storage not configured yet.</p></div>}
-      <div className="flex items-center gap-4">
-        <button onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-primary">{uploading ? 'Uploading…' : 'Upload Photos'}</button>
+      <div className="card flex flex-col sm:flex-row gap-3 items-end flex-wrap">
+        <div className="flex-1 min-w-[140px]">
+          <label className="label">Date</label>
+          <input className="input" type="date" value={uploadMeta.date} onChange={e => setUploadMeta(m => ({ ...m, date: e.target.value }))} />
+        </div>
+        <div className="w-28">
+          <label className="label">Week # (optional)</label>
+          <input className="input" type="number" onFocus={e => e.target.select()} step="1" min="0" value={uploadMeta.week_number} onChange={e => setUploadMeta(m => ({ ...m, week_number: e.target.value }))} placeholder="auto" />
+        </div>
+        <button onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-primary whitespace-nowrap">{uploading ? 'Uploading…' : 'Upload Photos'}</button>
         <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleUpload} />
-        <p className="text-xs text-gray-400">JPG, PNG, HEIC, WebP</p>
       </div>
+      <p className="text-xs text-gray-400 -mt-3">JPG, PNG, HEIC, WebP · set the date and week above before choosing files — it applies to the whole batch</p>
       {photos.length === 0 ? (
         <div className="card text-center py-10"><p className="text-gray-400 text-sm">No photos yet.</p></div>
       ) : (
@@ -1504,8 +1519,8 @@ function PhotosTab({ clientId }) {
             <div key={photo.id} className="group relative rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
               <img src={urlMap[photo.photo_url]} alt="" className="w-full aspect-square object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightbox(photo)} />
               <div className="p-2">
-                <p className="text-xs text-gray-500 dark:text-gray-400">{fmtDate(photo.recorded_at)}</p>
-                {photo.caption && <p className="text-xs text-gray-400 truncate">{photo.caption}</p>}
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">{photo.week != null ? `Week ${photo.week}` : 'Pre-plan'}</p>
+                <p className="text-xs text-gray-400 truncate">{fmtDate(photo.recorded_at)}{photo.angleLabel ? ` · ${photo.angleLabel}` : ''}</p>
               </div>
               {photo.source === 'upload' && (
                 <button onClick={() => deletePhoto(photo)} className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1535,7 +1550,7 @@ function ProgressTab({ clientId, client }) {
     <div className="space-y-10">
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Photos</h2>
-        <PhotosTab clientId={clientId} />
+        <PhotosTab clientId={clientId} startDate={client.start_date} />
       </div>
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Weight</h2>
