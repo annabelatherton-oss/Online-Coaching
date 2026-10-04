@@ -1063,23 +1063,35 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
               instead of having to flip back and forth to remember what they said. */}
           <div className="card space-y-4">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">This week's check-in</h2>
-            <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
-              <div className="min-w-0">
-                <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mb-0.5 truncate">Weight</p>
-                <p className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white">{current.weight_kg != null ? `${current.weight_kg} kg` : '—'}</p>
+            <div className="space-y-2 sm:space-y-3">
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2.5 sm:px-4 sm:py-3">
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider flex-shrink-0">Weight</p>
+                  <p className="text-sm sm:text-base font-semibold text-gray-900 dark:text-white whitespace-nowrap">{current.weight_kg != null ? `${current.weight_kg} kg` : '—'}</p>
+                </div>
                 {(weightDeltaPrev != null || weightDeltaPrev2 != null) && (
-                  <p className="mt-0.5 text-[10px] sm:text-xs whitespace-nowrap" title="Change vs last week / 2 weeks ago">
-                    {weightDeltaPrev != null && <DeltaTag delta={weightDeltaPrev} invertColors suffix="" />}
-                    {weightDeltaPrev2 != null && <span className="text-gray-400"> /<DeltaTag delta={weightDeltaPrev2} invertColors suffix="" /></span>}
-                  </p>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {weightDeltaPrev != null && (
+                      <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-white dark:bg-gray-900 whitespace-nowrap" title="Change vs last week">
+                        <DeltaTag delta={weightDeltaPrev} invertColors suffix="" /><span className="text-gray-400">wk</span>
+                      </span>
+                    )}
+                    {weightDeltaPrev2 != null && (
+                      <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-white dark:bg-gray-900 whitespace-nowrap" title="Change vs 2 weeks ago">
+                        <DeltaTag delta={weightDeltaPrev2} invertColors suffix="" /><span className="text-gray-400">2wk</span>
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
-              {[['Energy', current.energy_level], ['Sleep', current.sleep_quality], ['Food', current.food_adherence], ['Gym', current.gym_adherence]].map(([label, v]) => (
-                <div key={label} className="min-w-0">
-                  <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mb-0.5 truncate">{label}</p>
-                  <p className={`text-xs sm:text-sm font-semibold ${ratingColor(v)}`}>{v != null ? `${v}/5` : '—'}</p>
-                </div>
-              ))}
+              <div className="grid grid-cols-4 gap-1.5 sm:gap-3">
+                {[['Energy', current.energy_level], ['Sleep', current.sleep_quality], ['Food', current.food_adherence], ['Gym', current.gym_adherence]].map(([label, v]) => (
+                  <div key={label} className="p-1.5 sm:p-3 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0">
+                    <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mb-0.5 truncate">{label}</p>
+                    <p className={`text-xs sm:text-sm font-semibold ${ratingColor(v)}`}>{v != null ? `${v}/5` : '—'}</p>
+                  </div>
+                ))}
+              </div>
             </div>
             {(current.lift_results || []).filter(l => l?.name).length > 0 && (
               <div>
@@ -2032,43 +2044,55 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
+          <div className="space-y-2 sm:space-y-3">
             {current.weight_kg != null && (
-              <div className="p-1.5 sm:p-3 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0">
-                <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Weight</p>
-                <p className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white">{current.weight_kg}<span className="text-[10px] sm:text-sm font-normal text-gray-500"> kg</span></p>
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2.5 sm:px-4 sm:py-3">
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider flex-shrink-0">Weight</p>
+                  <p className="text-base sm:text-lg font-bold text-gray-900 dark:text-white whitespace-nowrap">{current.weight_kg}<span className="text-xs sm:text-sm font-normal text-gray-500"> kg</span></p>
+                </div>
                 {(wDeltaPrev !== null || wDeltaPrev2 !== null) && (
-                  <p className="mt-0.5 text-[10px] sm:text-xs whitespace-nowrap" title="Change vs last week / 2 weeks ago">
-                    {wDeltaPrev !== null && <DeltaTag delta={wDeltaPrev} invertColors suffix="" />}
-                    {wDeltaPrev2 !== null && <span className="text-gray-400"> /<DeltaTag delta={wDeltaPrev2} invertColors suffix="" /></span>}
-                  </p>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {wDeltaPrev !== null && (
+                      <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-white dark:bg-gray-900 whitespace-nowrap" title="Change vs last week">
+                        <DeltaTag delta={wDeltaPrev} invertColors suffix="" /><span className="text-gray-400">wk</span>
+                      </span>
+                    )}
+                    {wDeltaPrev2 !== null && (
+                      <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-white dark:bg-gray-900 whitespace-nowrap" title="Change vs 2 weeks ago">
+                        <DeltaTag delta={wDeltaPrev2} invertColors suffix="" /><span className="text-gray-400">2wk</span>
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             )}
-            {current.energy_level != null && (
-              <div className="p-1.5 sm:p-3 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0">
-                <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Energy</p>
-                <p className={`text-sm sm:text-lg font-bold ${ratingColor(current.energy_level)}`}>{current.energy_level}<span className="text-[10px] sm:text-xs font-normal text-gray-400">/5</span></p>
-              </div>
-            )}
-            {current.sleep_quality != null && (
-              <div className="p-1.5 sm:p-3 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0">
-                <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Sleep</p>
-                <p className={`text-sm sm:text-lg font-bold ${ratingColor(current.sleep_quality)}`}>{current.sleep_quality}<span className="text-[10px] sm:text-xs font-normal text-gray-400">/5</span></p>
-              </div>
-            )}
-            {current.food_adherence != null && (
-              <div className="p-1.5 sm:p-3 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0">
-                <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Food</p>
-                <p className={`text-sm sm:text-lg font-bold ${ratingColor(current.food_adherence)}`}>{current.food_adherence}<span className="text-[10px] sm:text-xs font-normal text-gray-400">/5</span></p>
-              </div>
-            )}
-            {current.gym_adherence != null && (
-              <div className="p-1.5 sm:p-3 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0">
-                <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Gym</p>
-                <p className={`text-sm sm:text-lg font-bold ${ratingColor(current.gym_adherence)}`}>{current.gym_adherence}<span className="text-[10px] sm:text-xs font-normal text-gray-400">/5</span></p>
-              </div>
-            )}
+            <div className="grid grid-cols-4 gap-1.5 sm:gap-3">
+              {current.energy_level != null && (
+                <div className="p-1.5 sm:p-3 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0">
+                  <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Energy</p>
+                  <p className={`text-sm sm:text-lg font-bold ${ratingColor(current.energy_level)}`}>{current.energy_level}<span className="text-[10px] sm:text-xs font-normal text-gray-400">/5</span></p>
+                </div>
+              )}
+              {current.sleep_quality != null && (
+                <div className="p-1.5 sm:p-3 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0">
+                  <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Sleep</p>
+                  <p className={`text-sm sm:text-lg font-bold ${ratingColor(current.sleep_quality)}`}>{current.sleep_quality}<span className="text-[10px] sm:text-xs font-normal text-gray-400">/5</span></p>
+                </div>
+              )}
+              {current.food_adherence != null && (
+                <div className="p-1.5 sm:p-3 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0">
+                  <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Food</p>
+                  <p className={`text-sm sm:text-lg font-bold ${ratingColor(current.food_adherence)}`}>{current.food_adherence}<span className="text-[10px] sm:text-xs font-normal text-gray-400">/5</span></p>
+                </div>
+              )}
+              {current.gym_adherence != null && (
+                <div className="p-1.5 sm:p-3 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0">
+                  <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Gym</p>
+                  <p className={`text-sm sm:text-lg font-bold ${ratingColor(current.gym_adherence)}`}>{current.gym_adherence}<span className="text-[10px] sm:text-xs font-normal text-gray-400">/5</span></p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Full lift history — every lift ever logged (check-ins and manually backfilled alike),
@@ -2457,12 +2481,19 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               )}
             </div>
 
-            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-              {c.weight_kg != null && <div className="p-1.5 sm:p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0"><p className="text-[10px] sm:text-xs text-gray-400 mb-0.5 truncate">Weight</p><p className="font-semibold text-gray-900 dark:text-white text-xs sm:text-sm">{c.weight_kg} kg</p></div>}
-              {c.energy_level != null && <div className="p-1.5 sm:p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0"><p className="text-[10px] sm:text-xs text-gray-400 mb-0.5 truncate">Energy</p><p className={`font-semibold text-xs sm:text-sm ${ratingColor(c.energy_level)}`}>{c.energy_level}/5</p></div>}
-              {c.sleep_quality != null && <div className="p-1.5 sm:p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0"><p className="text-[10px] sm:text-xs text-gray-400 mb-0.5 truncate">Sleep</p><p className={`font-semibold text-xs sm:text-sm ${ratingColor(c.sleep_quality)}`}>{c.sleep_quality}/5</p></div>}
-              {c.food_adherence != null && <div className="p-1.5 sm:p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0"><p className="text-[10px] sm:text-xs text-gray-400 mb-0.5 truncate">Food</p><p className={`font-semibold text-xs sm:text-sm ${ratingColor(c.food_adherence)}`}>{c.food_adherence}/5</p></div>}
-              {c.gym_adherence != null && <div className="p-1.5 sm:p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0"><p className="text-[10px] sm:text-xs text-gray-400 mb-0.5 truncate">Gym</p><p className={`font-semibold text-xs sm:text-sm ${ratingColor(c.gym_adherence)}`}>{c.gym_adherence}/5</p></div>}
+            <div className="space-y-1.5 sm:space-y-2">
+              {c.weight_kg != null && (
+                <div className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2 sm:px-4 sm:py-2.5">
+                  <p className="text-[10px] sm:text-xs text-gray-400">Weight</p>
+                  <p className="font-semibold text-gray-900 dark:text-white text-sm sm:text-base">{c.weight_kg} kg</p>
+                </div>
+              )}
+              <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+                {c.energy_level != null && <div className="p-1.5 sm:p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0"><p className="text-[10px] sm:text-xs text-gray-400 mb-0.5 truncate">Energy</p><p className={`font-semibold text-xs sm:text-sm ${ratingColor(c.energy_level)}`}>{c.energy_level}/5</p></div>}
+                {c.sleep_quality != null && <div className="p-1.5 sm:p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0"><p className="text-[10px] sm:text-xs text-gray-400 mb-0.5 truncate">Sleep</p><p className={`font-semibold text-xs sm:text-sm ${ratingColor(c.sleep_quality)}`}>{c.sleep_quality}/5</p></div>}
+                {c.food_adherence != null && <div className="p-1.5 sm:p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0"><p className="text-[10px] sm:text-xs text-gray-400 mb-0.5 truncate">Food</p><p className={`font-semibold text-xs sm:text-sm ${ratingColor(c.food_adherence)}`}>{c.food_adherence}/5</p></div>}
+                {c.gym_adherence != null && <div className="p-1.5 sm:p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 min-w-0"><p className="text-[10px] sm:text-xs text-gray-400 mb-0.5 truncate">Gym</p><p className={`font-semibold text-xs sm:text-sm ${ratingColor(c.gym_adherence)}`}>{c.gym_adherence}/5</p></div>}
+              </div>
             </div>
 
             {c.lift_results?.filter(l => l?.name).length > 0 && (
