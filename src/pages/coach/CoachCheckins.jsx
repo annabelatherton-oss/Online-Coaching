@@ -1068,13 +1068,10 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
                 <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mb-0.5 truncate">Weight</p>
                 <p className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white">{current.weight_kg != null ? `${current.weight_kg} kg` : '—'}</p>
                 {(weightDeltaPrev != null || weightDeltaPrev2 != null) && (
-                  <div className="mt-1">
-                    <p className="text-[9px] sm:text-[10px] text-gray-400 uppercase tracking-wide truncate">vs last 2 wks</p>
-                    <p className="text-[10px] sm:text-xs leading-tight">
-                      {weightDeltaPrev != null && <DeltaTag delta={weightDeltaPrev} invertColors />}
-                      {weightDeltaPrev2 != null && <span className="text-gray-400"> / <DeltaTag delta={weightDeltaPrev2} invertColors /></span>}
-                    </p>
-                  </div>
+                  <p className="mt-0.5 text-[10px] sm:text-xs flex items-center gap-1 flex-wrap" title="Change vs last week / 2 weeks ago">
+                    {weightDeltaPrev != null && <DeltaTag delta={weightDeltaPrev} invertColors suffix="" />}
+                    {weightDeltaPrev2 != null && <span className="text-gray-400 flex items-center gap-1">/<DeltaTag delta={weightDeltaPrev2} invertColors suffix="" /></span>}
+                  </p>
                 )}
               </div>
               {[['Energy', current.energy_level], ['Sleep', current.sleep_quality], ['Food', current.food_adherence], ['Gym', current.gym_adherence]].map(([label, v]) => (
@@ -1849,7 +1846,6 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([, weight_kg]) => weight_kg)
   const wDeltaPrev = priorWeights[0] != null ? weightDelta(current, { weight_kg: priorWeights[0] }) : null
-  const wDeltaPrevLabel = 'vs last week'
   const wDeltaPrev2 = priorWeights[1] != null ? weightDelta(current, { weight_kg: priorWeights[1] }) : null
 
   // "since start": use oldest check-in; fall back to oldest weight_entry for first-check-in clients
@@ -2028,11 +2024,6 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               <p className="text-xs text-gray-400 mt-0.5">{fmtDate(current.updated_at || current.submitted_at)}</p>
             </div>
             <div className="flex gap-2 flex-wrap">
-              {wDeltaPrev !== null && (
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${wDeltaPrev < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : wDeltaPrev > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
-                  {wDeltaPrev > 0 ? '↑ +' : wDeltaPrev < 0 ? '↓ ' : ''}{wDeltaPrev} kg {wDeltaPrevLabel}
-                </span>
-              )}
               {wDeltaStart !== null && (
                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${wDeltaStart < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : wDeltaStart > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
                   {wDeltaStart > 0 ? '↑ +' : wDeltaStart < 0 ? '↓ ' : ''}{wDeltaStart} kg {wDeltaStartLabel}
@@ -2047,13 +2038,10 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                 <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5 sm:mb-1 truncate">Weight</p>
                 <p className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white">{current.weight_kg}<span className="text-[10px] sm:text-sm font-normal text-gray-500"> kg</span></p>
                 {(wDeltaPrev !== null || wDeltaPrev2 !== null) && (
-                  <div className="mt-1">
-                    <p className="text-[9px] sm:text-[10px] text-gray-400 uppercase tracking-wide truncate">vs last 2 wks</p>
-                    <p className="text-[10px] sm:text-xs leading-tight">
-                      {wDeltaPrev !== null && <DeltaTag delta={wDeltaPrev} invertColors />}
-                      {wDeltaPrev2 !== null && <span className="text-gray-400"> / <DeltaTag delta={wDeltaPrev2} invertColors /></span>}
-                    </p>
-                  </div>
+                  <p className="mt-0.5 text-[10px] sm:text-xs flex items-center gap-1 flex-wrap" title="Change vs last week / 2 weeks ago">
+                    {wDeltaPrev !== null && <DeltaTag delta={wDeltaPrev} invertColors suffix="" />}
+                    {wDeltaPrev2 !== null && <span className="text-gray-400 flex items-center gap-1">/<DeltaTag delta={wDeltaPrev2} invertColors suffix="" /></span>}
+                  </p>
                 )}
               </div>
             )}
