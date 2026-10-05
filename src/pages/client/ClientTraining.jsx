@@ -42,6 +42,63 @@ function CardioRow({ item, dob }) {
   )
 }
 
+// Standalone weekly cardio/HIIT summary — shown above the day-by-day training sessions (and
+// whether or not a weight programme is even assigned, since cardio is scheduled independently
+// of it) so it's never hidden behind "no training programme assigned yet".
+function CardioScheduleCard({ cardioByDay, flexCardio, dob }) {
+  const daysWithCardio = DAYS.filter(d => (cardioByDay[d] || []).length > 0)
+  if (daysWithCardio.length === 0 && flexCardio.length === 0) return null
+  return (
+    <div className="card p-0 overflow-hidden">
+      <div className="px-3 py-2.5 border-b border-gray-100 dark:border-gray-800">
+        <p className="text-sm font-semibold text-gray-900 dark:text-white">Cardio & HIIT</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500">What's scheduled, and on which days</p>
+      </div>
+      <div className="divide-y divide-gray-50 dark:divide-gray-800">
+        {daysWithCardio.map(day => (
+          <div key={day} className="px-3 py-2.5">
+            <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">{day}</p>
+            <div className="space-y-1">
+              {cardioByDay[day].map(item => {
+                const { name, detail } = cardioInfo(item, dob)
+                return (
+                  <div key={item.id} className="flex items-center gap-2 text-sm">
+                    <svg className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                    <span className="font-medium text-gray-700 dark:text-gray-300">{name}</span>
+                    {detail && <span className="text-xs text-gray-400 dark:text-gray-500">· {detail}</span>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+        {flexCardio.length > 0 && (
+          <div className="px-3 py-2.5">
+            <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">Whenever suits you</p>
+            <div className="space-y-1">
+              {flexCardio.map(item => {
+                const { name, detail } = cardioInfo(item, dob)
+                return (
+                  <div key={item.id} className="flex items-center gap-2 text-sm">
+                    <svg className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                    <span className="font-medium text-gray-700 dark:text-gray-300">{name}</span>
+                    {detail && <span className="text-xs text-gray-400 dark:text-gray-500">· {detail}</span>}
+                    {item.times_per_week && <span className="text-xs text-gray-400 dark:text-gray-500">· {item.times_per_week}x/week</span>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Strip day prefix from session name for display
 function sessionLabel(name) {
   for (const day of DAYS) {
@@ -357,6 +414,7 @@ export default function ClientTraining() {
       <div className="space-y-4">
         <h1 data-tour="training-heading" className="text-2xl font-bold text-gray-900 dark:text-white">This Week's Training</h1>
         <TrainingAvailabilitySection clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} onSaved={setDayPreferences} />
+        <CardioScheduleCard cardioByDay={cardioByDay} flexCardio={flexCardio} dob={dob} />
         <div className="card text-center py-16">
           <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mx-auto mb-4">
             <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -386,6 +444,8 @@ export default function ClientTraining() {
       </div>
 
       <TrainingAvailabilitySection clientId={clientId} coachId={coachId} dayPreferences={dayPreferences} onSaved={setDayPreferences} />
+
+      <CardioScheduleCard cardioByDay={cardioByDay} flexCardio={flexCardio} dob={dob} />
 
       {coachNotes && (
         <div className="card border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-900/10 p-3 space-y-1">
