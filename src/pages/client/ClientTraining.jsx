@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import ExerciseThumb from '../../components/ExerciseThumb'
 import { DayAvailabilityRows, DAY_NAMES } from '../../components/DayAvailability'
+import { formatZoneBpm } from '../../lib/heartRateZones'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
@@ -13,6 +14,32 @@ function parseDayIndex(name) {
     if (name?.startsWith(DAYS[i])) return i
   }
   return null
+}
+
+// Name + duration/zone line for a cardio or HIIT schedule item, same formatting convention
+// ClientTodoList uses for its "Complete X" task labels, minus the verb since this is a weekly
+// schedule view rather than a checklist.
+function cardioInfo(item, dob) {
+  const name = item.custom_label || item.cardio_sessions?.name || item.hiit_circuits?.name || (item.item_type === 'hiit' ? 'HIIT' : 'Cardio')
+  const zoneBpm = item.heart_rate_zone ? formatZoneBpm(dob, item.heart_rate_zone) : null
+  const detail = [
+    item.duration_minutes ? `${item.duration_minutes} min` : null,
+    item.heart_rate_zone ? `${item.heart_rate_zone}${zoneBpm ? ` (${zoneBpm})` : ''}` : null,
+  ].filter(Boolean).join(' · ')
+  return { name, detail }
+}
+
+function CardioRow({ item, dob }) {
+  const { name, detail } = cardioInfo(item, dob)
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 text-xs">
+      <svg className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+      </svg>
+      <span className="font-medium text-gray-700 dark:text-gray-300">{name}</span>
+      {detail && <span className="text-gray-400 dark:text-gray-500">· {detail}</span>}
+    </div>
+  )
 }
 
 // Strip day prefix from session name for display
@@ -104,6 +131,9 @@ export default function ClientTraining() {
   const [swapOptions, setSwapOptions] = useState(null) // { variations, alternatives }
   const [swapSaving, setSwapSaving] = useState(false)
   const [allowSwapByExId, setAllowSwapByExId] = useState({}) // exercise_id → allow_swap
+  const [cardioByDay, setCardioByDay] = useState({}) // day name → [schedule items]
+  const [flexCardio, setFlexCardio] = useState([]) // items with no fixed day, by times_per_week
+  const [dob, setDob] = useState(null)
 
   async function openSwapPicker(ex) {
     setSwapEx(ex)
@@ -180,11 +210,27 @@ export default function ClientTraining() {
   useEffect(() => {
     async function load() {
       const { data: client } = await supabase
-        .from('clients').select('id, coach_id, day_preferences').eq('profile_id', session.user.id).single()
+        .from('clients').select('id, coach_id, day_preferences, date_of_birth').eq('profile_id', session.user.id).single()
       if (!client) { setLoading(false); return }
       setClientId(client.id)
       setCoachId(client.coach_id)
       setDayPreferences(client.day_preferences || {})
+      setDob(client.date_of_birth || null)
+
+      // Cardio/HIIT items from the client's weekly schedule — separate from the training
+      // programme's own sessions above, so shown alongside them rather than in place of them.
+      const { data: cardioItems } = await supabase
+        .from('client_schedule_items')
+        .select('id, item_type, custom_label, day_of_week, duration_minutes, heart_rate_zone, times_per_week, cardio_session_id, hiit_circuit_id, cardio_sessions(name), hiit_circuits(name)')
+        .eq('client_id', client.id)
+        .in('item_type', ['cardio', 'hiit'])
+      const byDay = {}, flex = []
+      ;(cardioItems || []).forEach(item => {
+        if (item.day_of_week) (byDay[item.day_of_week] ||= []).push(item)
+        else flex.push(item)
+      })
+      setCardioByDay(byDay)
+      setFlexCardio(flex)
 
       const { data: asgn } = await supabase
         .from('client_training_assignments')
@@ -360,19 +406,27 @@ export default function ClientTraining() {
       <div className="space-y-2">
         {DAYS.map((dayName, dayIdx) => {
           const s = sessionByDay[dayIdx]
+          const dayCardio = cardioByDay[dayName] || []
 
           if (!s) {
             return (
-              <div key={dayName} className="card px-3 py-2.5 flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                  </svg>
+              <div key={dayName} className="card p-0 overflow-hidden">
+                <div className="px-3 py-2.5 flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">{dayName}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{dayCardio.length > 0 ? 'Active Rest' : 'Rest Day'}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">{dayName}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">Rest Day</p>
-                </div>
+                {dayCardio.length > 0 && (
+                  <div className="border-t border-gray-100 dark:border-gray-800 divide-y divide-gray-50 dark:divide-gray-800">
+                    {dayCardio.map(item => <CardioRow key={item.id} item={item} dob={dob} />)}
+                  </div>
+                )}
               </div>
             )
           }
@@ -402,6 +456,12 @@ export default function ClientTraining() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
+
+              {dayCardio.length > 0 && (
+                <div className="border-t border-gray-100 dark:border-gray-800 divide-y divide-gray-50 dark:divide-gray-800">
+                  {dayCardio.map(item => <CardioRow key={item.id} item={item} dob={dob} />)}
+                </div>
+              )}
 
               {expanded.has(s.id) && s.exercises.length > 0 && (
                 <div className="border-t border-gray-100 dark:border-gray-800 divide-y divide-gray-50 dark:divide-gray-800">
@@ -496,6 +556,31 @@ export default function ClientTraining() {
           )
         })}
       </div>
+
+      {flexCardio.length > 0 && (
+        <div className="card p-0 overflow-hidden">
+          <div className="px-3 py-2.5 border-b border-gray-100 dark:border-gray-800">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Flexible cardio</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Fit these in whenever suits you this week</p>
+          </div>
+          <div className="divide-y divide-gray-50 dark:divide-gray-800">
+            {flexCardio.map(item => {
+              const { name, detail } = cardioInfo(item, dob)
+              return (
+                <div key={item.id} className="flex items-center gap-2.5 px-3 py-2.5">
+                  <svg className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{name}{detail ? ` · ${detail}` : ''}</p>
+                    {item.times_per_week && <p className="text-xs text-gray-400 dark:text-gray-500">{item.times_per_week}x per week</p>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {detailEx && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
