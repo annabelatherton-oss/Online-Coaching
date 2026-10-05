@@ -226,7 +226,9 @@ export default function ClientTraining() {
         .in('item_type', ['cardio', 'hiit'])
       const byDay = {}, flex = []
       ;(cardioItems || []).forEach(item => {
-        if (item.day_of_week) (byDay[item.day_of_week] ||= []).push(item)
+        // "Whenever works for them" cardio is stored with day_of_week = 'Any' (a sentinel, not
+        // null — see ClientWeeklyPlan.jsx), so that's what has to be checked for, not truthiness.
+        if (item.day_of_week && item.day_of_week !== 'Any') (byDay[item.day_of_week] ||= []).push(item)
         else flex.push(item)
       })
       setCardioByDay(byDay)
