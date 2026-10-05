@@ -6,7 +6,13 @@ alter table push_subscriptions add column if not exists coach_id uuid references
 alter table push_subscriptions drop constraint if exists push_subscriptions_one_owner_check;
 alter table push_subscriptions add constraint push_subscriptions_one_owner_check
   check ((client_id is not null) <> (coach_id is not null));
-create unique index if not exists push_subscriptions_coach_id_key on push_subscriptions(coach_id) where coach_id is not null;
+-- A plain unique constraint, not a partial index — Postgres already allows multiple NULLs under a
+-- normal unique constraint, so "where coach_id is not null" was never needed, and a partial index
+-- can't be used as an upsert's ON CONFLICT target unless the query repeats its WHERE clause (which
+-- the app's upsert doesn't), which made every coach subscription silently fail to save with a 400.
+drop index if exists push_subscriptions_coach_id_key;
+alter table push_subscriptions drop constraint if exists push_subscriptions_coach_id_key;
+alter table push_subscriptions add constraint push_subscriptions_coach_id_key unique (coach_id);
 
 drop policy if exists "Coach manages own push subscription" on push_subscriptions;
 create policy "Coach manages own push subscription"
