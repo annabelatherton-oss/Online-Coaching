@@ -220,10 +220,20 @@ export default function CoachDashboard() {
             }
           })
 
+          // Grouped per client into one pill instead of one per slot — a client who changes
+          // several everyday meals in one sitting used to produce a near-identical pill per
+          // slot, which is what made this card look cluttered.
           const EVERYDAY_SLOT_LABELS = { breakfast1: 'breakfast', lunch1: 'lunch', dinner1: 'dinner', preworkout: 'pre-workout', evening_snack: 'evening snack' }
+          const everydayByClient = {}
           ;(everydayRows || []).forEach(r => {
             const slotLabel = EVERYDAY_SLOT_LABELS[r.slot_type] || 'meal'
-            flag(r.client_id, { text: `Everyday ${slotLabel} changed — check macros`, tone: 'amber' })
+            ;(everydayByClient[r.client_id] ||= []).push(slotLabel)
+          })
+          Object.entries(everydayByClient).forEach(([clientId, slots]) => {
+            const text = slots.length === 1
+              ? `Everyday ${slots[0]} changed — check macros`
+              : `Everyday meals changed (${slots.join(', ')}) — check macros`
+            flag(clientId, { text, tone: 'amber' })
           })
 
           ;(weekSwapRows || []).forEach(r => {
@@ -377,10 +387,10 @@ export default function CoachDashboard() {
               <Link
                 key={a.clientId}
                 to={`/coach/clients/${a.clientId}?tab=Check-ins`}
-                className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 -mx-2 px-2 rounded-lg transition-colors"
+                className="flex flex-col gap-1.5 py-3 first:pt-0 last:pb-0 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 -mx-2 px-2 rounded-lg transition-colors"
               >
-                <p className="font-medium text-sm text-gray-900 dark:text-white flex-shrink-0">{a.name}</p>
-                <div className="flex flex-wrap gap-1.5 justify-end min-w-0">
+                <p className="font-medium text-sm text-gray-900 dark:text-white">{a.name}</p>
+                <div className="flex flex-wrap gap-1.5 min-w-0">
                   {a.reasons.map((r, i) => (
                     <span
                       key={i}
