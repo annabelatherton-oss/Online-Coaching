@@ -315,7 +315,6 @@ export default function ClientTraining() {
         exercises: (s.session_exercises || []).sort((a, b) => a.order_index - b.order_index),
       }))
       setSessions(sorted)
-      if (sorted.length > 0) setExpanded(new Set([sorted[0].id]))
 
       const exMap = {}
       sorted.forEach(s => s.exercises.forEach(e => { exMap[e.id] = e }))
