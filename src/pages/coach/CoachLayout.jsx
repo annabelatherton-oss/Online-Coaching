@@ -197,6 +197,27 @@ export default function CoachLayout() {
     if (profile?.id) registerPushNotifications({ coachId: profile.id })
   }, [profile?.id])
 
+  // Swaps in a coach-specific manifest (different name + start_url than the client's) while this
+  // layout is mounted. iOS identifies an installed "Add to Home Screen" web app by its manifest,
+  // not the page it was added from — both coach and client previously shared the one root
+  // manifest.json, so adding "the coach app" and "the client app" as two separate Home Screen
+  // icons left iOS treating them as the SAME installed app (only one ever showed up in
+  // Settings > Notifications), silently breaking push delivery for whichever one iOS didn't
+  // consider the "real" instance. Restored on unmount so a coach who also views client pages in
+  // the same browser session doesn't leave this applied there too.
+  useEffect(() => {
+    const link = document.querySelector('link[rel="manifest"]')
+    const titleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]')
+    const prevHref = link?.getAttribute('href')
+    const prevTitle = titleMeta?.getAttribute('content')
+    if (link) link.setAttribute('href', '/coach-manifest.json')
+    if (titleMeta) titleMeta.setAttribute('content', 'AAPT Coach')
+    return () => {
+      if (link && prevHref != null) link.setAttribute('href', prevHref)
+      if (titleMeta && prevTitle != null) titleMeta.setAttribute('content', prevTitle)
+    }
+  }, [])
+
   // Save scroll position continuously so it's always up to date.
   useEffect(() => {
     const main = mainRef.current
