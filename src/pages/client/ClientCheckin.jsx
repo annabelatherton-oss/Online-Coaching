@@ -680,6 +680,7 @@ export default function ClientCheckin() {
     }
 
     setSaved(true)
+    supabase.functions.invoke('send-checkin-submitted-notification', { body: { weekNumber } }).catch(() => {})
     let checkinId = existing?.id
     if (!existing) {
       const { data } = await supabase.from('client_checkins').select('*').eq('client_id', clientData.id).eq('week_number', weekNumber).maybeSingle()

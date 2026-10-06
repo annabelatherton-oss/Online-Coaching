@@ -47,6 +47,8 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
       { onConflict: 'client_id,slot_type' }
     )
     await load()
+    const slotLabel = ALL_EVERYDAY_SLOTS.find(s => s.key === slotKey)?.label
+    supabase.functions.invoke('send-everyday-meal-notification', { body: { slotLabel } }).catch(() => {})
   }
 
   async function persistOverrides(slotKey, overrides) {
