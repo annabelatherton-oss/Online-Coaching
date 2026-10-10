@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
-import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams, splitForGoal, normalizeGoalMacroSplits, calcBodyweightMacros, normalizeProteinPerKg } from '../../lib/macros'
+import { MACRO_SPLIT, calcMacrosFromSplit, splitPercentFromGrams, splitForGoal, normalizeGoalMacroSplits, calcBodyweightMacros, normalizeProteinPerKg, clampTargetAtZero } from '../../lib/macros'
 import { normalizeMealSplit, redistributeMealSplit, MEAL_SPLIT_CATEGORIES } from '../../lib/calorieSplit'
 import { generateTierIngredients, tierTargetsForCategory, calcTotals } from '../../lib/calorieTierScaling'
 import { ALLERGENS, ALLERGEN_LABELS } from '../../lib/allergens'
@@ -2706,12 +2706,12 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   // their share.
   function slotTarget(mealActual) {
     if (!dailyMacroTargets || !mealActual) return null
-    return {
+    return clampTargetAtZero({
       cal:  dailyMacroTargets.cal        - (option1Total.cal  - mealActual.cal),
       prot: dailyMacroTargets.protein_g  - (option1Total.prot - mealActual.prot),
       carb: dailyMacroTargets.carbs_g    - (option1Total.carb - mealActual.carb),
       fat:  dailyMacroTargets.fat_g      - (option1Total.fat  - mealActual.fat),
-    }
+    })
   }
 
   // All 5 everyday slots behave identically now — a slot has whatever meal the client (or coach)

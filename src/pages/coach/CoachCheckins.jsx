@@ -13,7 +13,7 @@ import {
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { weekForDate } from '../../lib/planWeek'
-import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
+import { calcBodyweightMacros, normalizeGoalMacroSplits, clampTargetAtZero } from '../../lib/macros'
 import { GOAL_LABELS } from '../../lib/calorieSuggestion'
 import { useSignedProgressPhotosForCheckins, compressImage } from '../../lib/progressPhotos'
 import { diffAndSnapshotPlan } from '../../lib/planChanges'
@@ -1016,12 +1016,12 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
     if (!targetMacros || targetCal <= 0 || !slotKey) return null
     const optionTotal = OPTION_2_KEYS.includes(slotKey) ? opt2Total : opt1Total
     const mealActual = mealMacrosLayered(editedSlots[slotKey], mealMap, tier, templateOverrides[slotKey], ingredientOverrides[slotKey]) || { cal: 0, prot: 0, carb: 0, fat: 0 }
-    return {
+    return clampTargetAtZero({
       cal:  targetCal              - (optionTotal.cal  - mealActual.cal),
       prot: targetMacros.protein_g - (optionTotal.prot - mealActual.prot),
       carb: targetMacros.carbs_g   - (optionTotal.carb - mealActual.carb),
       fat:  targetMacros.fat_g     - (optionTotal.fat  - mealActual.fat),
-    }
+    })
   }
   function siblingSlotKey(slotKey) {
     const i1 = OPTION_1_KEYS.indexOf(slotKey)

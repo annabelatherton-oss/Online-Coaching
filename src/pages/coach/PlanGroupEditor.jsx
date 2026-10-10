@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
-import { calcStandardMacros } from '../../lib/macros'
+import { calcStandardMacros, clampTargetAtZero } from '../../lib/macros'
 import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 import {
   getIngredients, formatAmount, mealMacros as sharedMealMacros, hasAnyOverride, normalizeOverrides,
@@ -1829,12 +1829,12 @@ export default function PlanGroupEditor() {
                   const slotTarget = slot.key.endsWith('2') && siblingTargetObj
                     ? siblingTargetObj
                     : (macros && dayTarget && opt1Totals?.calories > 0)
-                    ? {
+                    ? clampTargetAtZero({
                         cal:  macros.calories  + (dayTarget.calories  - opt1Totals.calories),
                         carb: macros.carbs_g   + (dayTarget.carbs_g   - opt1Totals.carbs_g),
                         prot: macros.protein_g + (dayTarget.protein_g - opt1Totals.protein_g),
                         fat:  macros.fat_g     + (dayTarget.fat_g     - opt1Totals.fat_g),
-                      }
+                      })
                     : null
                   const isStatic = STATIC_SLOT_KEYS.has(slot.key)
                   const editKey = mealId ? `${weekIdx}:${slot.key}` : null
