@@ -859,7 +859,12 @@ export default function ClientCheckin() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      {/* noValidate: without it, a number input whose value doesn't exactly match its step (easy
+          to hit from a mobile numeric keyboard) makes the browser silently block the submit event
+          entirely and just refocus that field — on iOS Safari with no visible error at all, so it
+          looks like the button does nothing except reopen the keyboard. Our own validation below
+          already covers what actually needs to be required. */}
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
         {/* Body metrics */}
         <div className="card space-y-4">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Body metrics</h2>
