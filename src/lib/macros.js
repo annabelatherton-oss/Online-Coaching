@@ -78,22 +78,6 @@ export function calcBodyweightMacros(calories, bodyweightKg, proteinPerKg, goalT
   }
 }
 
-// A meal's "what should this slot's own macros be to close the day's gap" target can come out
-// negative when the rest of the day's meals have already used more than the day's whole target
-// (e.g. protein-heavy lunch/dinner already exceed the day's protein target on their own) — correct
-// arithmetic, but there's no achievable action to match it since a meal can't have negative
-// macros. Floors each component at 0 so "remove 54g protein" (implying -17g protein) instead
-// reads as "remove 37g" (down to this meal's own floor of 0g) — the best this meal can do.
-export function clampTargetAtZero(target) {
-  if (!target) return null
-  return {
-    cal:  Math.max(0, target.cal),
-    prot: Math.max(0, target.prot),
-    carb: Math.max(0, target.carb),
-    fat:  Math.max(0, target.fat),
-  }
-}
-
 // Back-calculates the carbs/protein/fat % split (of calories) from saved gram values,
 // so editing an existing client starts from their actual current split.
 export function splitPercentFromGrams({ protein_g, carbs_g, fat_g }, calories) {

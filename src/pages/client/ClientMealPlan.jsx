@@ -9,7 +9,7 @@ import {
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
 import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../lib/mealSwaps'
-import { normalizeGoalMacroSplits, calcBodyweightMacros, clampTargetAtZero } from '../../lib/macros'
+import { normalizeGoalMacroSplits, calcBodyweightMacros } from '../../lib/macros'
 import EverydayMealsClient from '../../components/EverydayMealsClient'
 import { weekForDate } from '../../lib/planWeek'
 
@@ -333,12 +333,12 @@ export default function ClientMealPlan() {
   // their share.
   function slotTarget(mealActual) {
     if (!dailyMacroTargets || !mealActual) return null
-    return clampTargetAtZero({
+    return {
       cal:  dailyMacroTargets.cal       - (opt1Total.cal  - mealActual.cal),
       prot: dailyMacroTargets.protein_g - (opt1Total.prot - mealActual.prot),
       carb: dailyMacroTargets.carbs_g   - (opt1Total.carb - mealActual.carb),
       fat:  dailyMacroTargets.fat_g     - (opt1Total.fat  - mealActual.fat),
-    })
+    }
   }
 
   async function handleSave() {

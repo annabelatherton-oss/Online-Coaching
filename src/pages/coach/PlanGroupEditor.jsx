@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { normalizeMealSplit } from '../../lib/calorieSplit'
-import { calcStandardMacros, clampTargetAtZero } from '../../lib/macros'
+import { calcStandardMacros } from '../../lib/macros'
 import { scrollSearchIntoView } from '../../lib/scrollSearchIntoView'
 import {
   getIngredients, formatAmount, mealMacros as sharedMealMacros, hasAnyOverride, normalizeOverrides,
@@ -1072,6 +1072,7 @@ export default function PlanGroupEditor() {
     const week = currentWeeks[weekIdx]
     if (!week || week.locked) return
     setApprovingWeek(week.templateId)
+    setSaveError('')
 
     const frozenOverrides = {}
     for (const slot of SLOTS) {
@@ -1086,15 +1087,22 @@ export default function PlanGroupEditor() {
       }
     }
 
-    const slotUpdates = Object.entries(frozenOverrides).map(([slotKey, overrides]) =>
+    // Surface any failure here instead of silently flipping the UI to "Approved" regardless —
+    // without this, a write that got rejected (or just never landed) left no trace: the badge
+    // and lock icon appeared as if it worked, so there was nothing telling the coach to retry.
+    const slotResults = await Promise.all(Object.entries(frozenOverrides).map(([slotKey, overrides]) =>
       supabase.from('template_meal_slots').update({ ingredient_overrides: overrides }).eq('template_id', week.templateId).eq('slot_type', slotKey)
-    )
-    await Promise.all(slotUpdates)
-    await supabase.from('weekly_templates').update({ locked: true }).eq('id', week.templateId)
+    ))
+    const slotErr = slotResults.find(r => r.error)?.error
+    if (slotErr) { setSaveError(slotErr.message); setApprovingWeek(null); return }
 
-    const { data: upserted } = await supabase.from('plan_week_sends')
+    const { error: lockErr } = await supabase.from('weekly_templates').update({ locked: true }).eq('id', week.templateId)
+    if (lockErr) { setSaveError(lockErr.message); setApprovingWeek(null); return }
+
+    const { data: upserted, error: sendErr } = await supabase.from('plan_week_sends')
       .upsert([{ plan_group_id: groupId, calorie_tier: activeTier, week_number: week.weekNum, meal_combination: buildCombination(week) }], { onConflict: 'plan_group_id,calorie_tier,week_number' })
       .select('calorie_tier, week_number, meal_combination')
+    if (sendErr) { setSaveError(sendErr.message); setApprovingWeek(null); return }
     if (upserted) {
       setSentSnapshots(prev => {
         const next = { ...prev }
@@ -1829,12 +1837,12 @@ export default function PlanGroupEditor() {
                   const slotTarget = slot.key.endsWith('2') && siblingTargetObj
                     ? siblingTargetObj
                     : (macros && dayTarget && opt1Totals?.calories > 0)
-                    ? clampTargetAtZero({
+                    ? {
                         cal:  macros.calories  + (dayTarget.calories  - opt1Totals.calories),
                         carb: macros.carbs_g   + (dayTarget.carbs_g   - opt1Totals.carbs_g),
                         prot: macros.protein_g + (dayTarget.protein_g - opt1Totals.protein_g),
                         fat:  macros.fat_g     + (dayTarget.fat_g     - opt1Totals.fat_g),
-                      })
+                      }
                     : null
                   const isStatic = STATIC_SLOT_KEYS.has(slot.key)
                   const editKey = mealId ? `${weekIdx}:${slot.key}` : null

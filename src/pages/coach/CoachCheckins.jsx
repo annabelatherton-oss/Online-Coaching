@@ -13,7 +13,7 @@ import {
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { weekForDate } from '../../lib/planWeek'
-import { calcBodyweightMacros, normalizeGoalMacroSplits, clampTargetAtZero } from '../../lib/macros'
+import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
 import { GOAL_LABELS } from '../../lib/calorieSuggestion'
 import { useSignedProgressPhotosForCheckins, compressImage } from '../../lib/progressPhotos'
 import { diffAndSnapshotPlan } from '../../lib/planChanges'
@@ -797,16 +797,25 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
       }
     }
 
-    await Promise.all(Object.entries(frozenOverrides).map(([slotKey, overrides]) =>
+    // Surface any failure here instead of silently flipping the UI to "Approved" regardless —
+    // without this, a write that got rejected (or just never landed) left no trace: the banner
+    // switched to the green "Approved" state as if it worked, so there was nothing telling the
+    // coach to retry.
+    const slotResults = await Promise.all(Object.entries(frozenOverrides).map(([slotKey, overrides]) =>
       supabase.from('template_meal_slots').update({ ingredient_overrides: overrides }).eq('template_id', activeTemplateId).eq('slot_type', slotKey)
     ))
-    await supabase.from('weekly_templates').update({ locked: true }).eq('id', activeTemplateId)
+    const slotErr = slotResults.find(r => r.error)?.error
+    if (slotErr) { window.alert(`Could not approve: ${slotErr.message}`); setApprovingTemplate(false); return }
+
+    const { error: lockErr } = await supabase.from('weekly_templates').update({ locked: true }).eq('id', activeTemplateId)
+    if (lockErr) { window.alert(`Could not approve: ${lockErr.message}`); setApprovingTemplate(false); return }
 
     const combination = Object.fromEntries(ALL_SLOT_DEFS.map(def => [def.key, templateSlots[def.key] || null]))
-    await supabase.from('plan_week_sends').upsert(
+    const { error: sendErr } = await supabase.from('plan_week_sends').upsert(
       [{ plan_group_id: activeAssignment.plan_group_id, calorie_tier: tier, week_number: nextTemplateWeek, meal_combination: combination }],
       { onConflict: 'plan_group_id,calorie_tier,week_number' }
     )
+    if (sendErr) { window.alert(`Could not approve: ${sendErr.message}`); setApprovingTemplate(false); return }
 
     setTemplateOverrides(frozenOverrides)
     setActiveTemplateLocked(true)
@@ -1016,12 +1025,12 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
     if (!targetMacros || targetCal <= 0 || !slotKey) return null
     const optionTotal = OPTION_2_KEYS.includes(slotKey) ? opt2Total : opt1Total
     const mealActual = mealMacrosLayered(editedSlots[slotKey], mealMap, tier, templateOverrides[slotKey], ingredientOverrides[slotKey]) || { cal: 0, prot: 0, carb: 0, fat: 0 }
-    return clampTargetAtZero({
+    return {
       cal:  targetCal              - (optionTotal.cal  - mealActual.cal),
       prot: targetMacros.protein_g - (optionTotal.prot - mealActual.prot),
       carb: targetMacros.carbs_g   - (optionTotal.carb - mealActual.carb),
       fat:  targetMacros.fat_g     - (optionTotal.fat  - mealActual.fat),
-    })
+    }
   }
   function siblingSlotKey(slotKey) {
     const i1 = OPTION_1_KEYS.indexOf(slotKey)
