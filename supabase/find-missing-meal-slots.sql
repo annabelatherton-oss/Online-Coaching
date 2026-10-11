@@ -43,6 +43,6 @@ left join weekly_templates wt
     ))
   )
 left join template_meal_slots tms
-  on tms.template_id = wt.id and tms.slot_type = es.slot_type
+  on tms.template_id = wt.id and tms.slot_type::text = es.slot_type
 where tms.id is null or tms.meal_id is null
 order by acw.client_name, acw.week_number, es.slot_type;
