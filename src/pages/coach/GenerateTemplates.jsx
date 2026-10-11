@@ -617,7 +617,7 @@ export default function GenerateTemplates() {
     setSaveProgress('Creating plan…')
     const { data: planGroup, error: pgErr } = await supabase
       .from('plan_groups')
-      .insert({ coach_id: profile.id, name: planName.trim() || '50 Week Plan', current_week: 1 })
+      .insert({ coach_id: profile.id, name: planName.trim() || '50 Week Plan', current_week: 1, diet_key: selectedDiet || null })
       .select('id')
       .single()
 

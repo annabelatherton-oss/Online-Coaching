@@ -513,9 +513,9 @@ export default function PlanGroupEditor() {
   // since it was last sent" (safe to reuse once the rotation cycles back to it) vs "edited since"
   // (worth a check) — see weekSendStatus below.
   const [sentSnapshots, setSentSnapshots] = useState({})
-  // "Fill blank slots" picker + last result — this plan group doesn't itself record which diet
-  // it's for (that's only chosen once, transiently, when a diet variant is first cloned in
-  // Generate Templates), so filling a gap here asks which diet's meals are safe to pick from.
+  // "Fill blank slots" picker + last result — defaults to this plan's own diet_key once loaded
+  // (see setFillBlankDiet below), but stays editable since a plan created before diet_key existed
+  // may not have one set.
   const [fillBlankOpen, setFillBlankOpen] = useState(false)
   const [fillBlankDiet, setFillBlankDiet] = useState('')
   const [fillingBlanks, setFillingBlanks] = useState(false)
@@ -555,6 +555,7 @@ export default function PlanGroupEditor() {
         setDefaultEveningSnack(group.default_evening_snack_meal_id || '')
         setPreworkoutByTier(group.default_preworkout_by_tier || {})
         setEveningSnackByTier(group.default_evening_snack_by_tier || {})
+        setFillBlankDiet(group.diet_key || '')
       }
 
       const snapshots = {}
@@ -1299,7 +1300,7 @@ export default function PlanGroupEditor() {
       }
       const cat = MAIN_SLOTS.find(s => s.key === slotKey)?.cat
       ;(mealsByCategory[cat] || [])
-        .filter(m => tiers.some(t => (m.meal_tier_versions || []).some(v => v.calorie_tier === t)))
+        .filter(m => tiers.some(t => (m.meal_tier_versions || []).some(v => v.calorie_tier === t)) && mealQualifiesForDiet(m, planGroup?.diet_key || ''))
         .forEach(m => { if (!seen.has(m.id)) { seen.add(m.id); order.push(m.id) } })
       return order
     }
@@ -1426,8 +1427,9 @@ export default function PlanGroupEditor() {
   // Variant" in Generate Templates ran out of qualifying meals for a day — without touching
   // anything already assigned. Unlike "Optimise combinations" above, this never moves or replaces
   // an existing pick. dietKey (''  = Standard) filters candidates the same way Generate Templates
-  // does, since a plan group itself doesn't record which diet it's for. Picks whichever qualifying,
-  // not-already-used-that-day meal has appeared least often across the current rotation so far, for
+  // does — defaults to this plan's own diet_key but stays a separate editable picker for an older
+  // plan with no diet_key set. Picks whichever qualifying, not-already-used-that-day meal has
+  // appeared least often across the current rotation so far, for
   // variety — same principle as pickSubstitute in Generate Templates, just without an original
   // meal's subtype to match against since these slots never had one.
   function fillBlankSlots(dietKey) {
@@ -1815,7 +1817,12 @@ export default function PlanGroupEditor() {
                     SLOTS.map(s => s.key).filter(k => k !== slot.key).map(k => week.slots[k]).filter(Boolean)
                   )
                   const isDuplicateMeal = mealId && usedElsewhereThisWeek.has(mealId)
-                  const options = (mealsByCategory[slot.cat] || []).filter(m => m.id === mealId || !usedElsewhereThisWeek.has(m.id))
+                  // Keeps the slot's own current meal selectable even if it doesn't actually qualify
+                  // for this plan's diet (legacy data, or a plan from before diet_key existed) — but
+                  // never offers a non-qualifying meal as something NEW to pick.
+                  const options = (mealsByCategory[slot.cat] || []).filter(m =>
+                    m.id === mealId || (!usedElsewhereThisWeek.has(m.id) && mealQualifiesForDiet(m, planGroup?.diet_key || ''))
+                  )
                   const meal = mealId ? mealsById[mealId] : null
                   const overridesForSlot = week.overrides?.[slot.key]
                   const macros = mealMacros(mealId, activeTier, overridesForSlot)
@@ -2095,7 +2102,7 @@ export default function PlanGroupEditor() {
                           </div>
                           <div className="space-y-0.5 max-h-52 overflow-y-auto">
                             {(mealsByCategory[slot.cat] || [])
-                              .filter(m => m.id !== mealId && !usedElsewhereThisWeek.has(m.id))
+                              .filter(m => m.id !== mealId && !usedElsewhereThisWeek.has(m.id) && mealQualifiesForDiet(m, planGroup?.diet_key || ''))
                               .map(candidate => {
                                 const candMacros = mealMacros(candidate.id, activeTier)
                                 const hasTierVersion = activeTier == null || candMacros != null
