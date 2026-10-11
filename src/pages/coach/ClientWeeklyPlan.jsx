@@ -642,19 +642,7 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
             return (
               <div
                 key={day}
-                onDragOver={e => { e.preventDefault(); if (dragItemId) setDragOverDay(day) }}
-                onDragLeave={e => {
-                  if (!e.currentTarget.contains(e.relatedTarget)) setDragOverDay(null)
-                }}
-                onDrop={async e => {
-                  e.preventDefault()
-                  setDragOverDay(null)
-                  if (dragItemId) {
-                    const item = items.find(i => i.id === dragItemId)
-                    if (item && item.day_of_week !== day) await moveItem(dragItemId, day)
-                    setDragItemId(null)
-                  }
-                }}
+                data-day-card={day}
                 className={`rounded-2xl border transition-colors ${
                   isDragTarget
                     ? 'border-brand-400 dark:border-brand-500 bg-brand-50 dark:bg-brand-900/20 ring-2 ring-brand-200 dark:ring-brand-800'
@@ -778,16 +766,9 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
                       return (
                         <div key={item.id}>
                           <div
-                            draggable={!isCardio && !isRest}
-                            onDragStart={e => {
-                              if (isCardio || isRest) return
-                              setDragItemId(item.id)
-                              e.dataTransfer.effectAllowed = 'move'
-                            }}
-                            onDragEnd={() => { setDragItemId(null); setDragOverDay(null) }}
                             className={`flex items-center justify-between rounded-xl px-3 py-2.5 transition-opacity ${
                               isDragging ? 'opacity-40' : ''
-                            } ${!isCardio && !isRest ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                            } ${
                               mergedCardio
                                 ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40'
                                 : isHiit
@@ -800,9 +781,40 @@ const ClientWeeklyPlan = forwardRef(function ClientWeeklyPlan({ clientId, coachI
                             }`}
                           >
                             <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                              {/* Drag handle (workouts/HIIT only) */}
+                              {/* Drag handle (workouts/HIIT only) — Pointer Events rather than the
+                                  HTML5 Drag and Drop API, since that API never fires from a touch
+                                  gesture at all (no iOS/Android support), which made this silently
+                                  do nothing on a phone despite working fine with a mouse. Pointer
+                                  Events unify mouse/touch/pen, so the same handlers drive both.
+                                  touch-action: none stops the browser treating the drag as a page
+                                  scroll. setPointerCapture keeps move/up events routed here even as
+                                  the finger moves over other elements, so elementFromPoint below is
+                                  the only thing needed to figure out which day it's currently over. */}
                               {!isCardio && !isRest && (
-                                <svg className={`w-3.5 h-3.5 flex-shrink-0 ${isHiit ? 'text-orange-300' : 'text-brand-300'}`} fill="currentColor" viewBox="0 0 20 20">
+                                <svg
+                                  className={`w-5 h-5 flex-shrink-0 cursor-grab active:cursor-grabbing ${isHiit ? 'text-orange-300' : 'text-brand-300'}`}
+                                  style={{ touchAction: 'none' }}
+                                  fill="currentColor" viewBox="0 0 20 20"
+                                  onPointerDown={e => {
+                                    e.preventDefault()
+                                    e.currentTarget.setPointerCapture(e.pointerId)
+                                    setDragItemId(item.id)
+                                  }}
+                                  onPointerMove={e => {
+                                    if (dragItemId !== item.id) return
+                                    const dayEl = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-day-card]')
+                                    setDragOverDay(dayEl?.dataset.dayCard || null)
+                                  }}
+                                  onPointerUp={async e => {
+                                    if (dragItemId !== item.id) return
+                                    const dayEl = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-day-card]')
+                                    const toDay = dayEl?.dataset.dayCard
+                                    setDragOverDay(null)
+                                    setDragItemId(null)
+                                    if (toDay && toDay !== item.day_of_week) await moveItem(item.id, toDay)
+                                  }}
+                                  onPointerCancel={() => { setDragItemId(null); setDragOverDay(null) }}
+                                >
                                   <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z"/>
                                 </svg>
                               )}
