@@ -267,7 +267,7 @@ export default function ClientTreatLog({ clientId, coachId, ingredientLib, daily
       {pickerOpen && (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-3 space-y-3">
           {!confirmIng ? (addFoodOpen ? (
-            <form onSubmit={handleAddFood} className="space-y-2.5">
+            <form onSubmit={handleAddFood} noValidate className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-gray-900 dark:text-white">Add a food</p>
                 <button type="button" onClick={() => setAddFoodOpen(false)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Back to search</button>

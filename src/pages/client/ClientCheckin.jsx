@@ -1067,7 +1067,11 @@ export default function ClientCheckin() {
           />
         </div>
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {error && (
+          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+            <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           <button type="submit" disabled={saving || Object.values(uploading).some(Boolean)} className="btn-primary">

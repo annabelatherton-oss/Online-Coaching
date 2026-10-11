@@ -2355,7 +2355,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           <button onClick={() => setShowAddEntry(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showAddEntry ? 'Cancel' : 'Add Entry'}</button>
         </div>
         {showAddEntry && (
-          <form onSubmit={submitAddEntry} className="space-y-3">
+          <form onSubmit={submitAddEntry} noValidate className="space-y-3">
             <div className="flex gap-2">
               {['weight', 'lift', 'photo'].map(t => (
                 <button key={t} type="button" onClick={() => setAddEntryType(t)}

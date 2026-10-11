@@ -1205,11 +1205,13 @@ function WeightTab({ clientId, client }) {
 
   async function addEntry(e) {
     e.preventDefault(); setSaving(true)
-    await supabase.from('weight_entries').insert({
+    const { error } = await supabase.from('weight_entries').insert({
       client_id: clientId, weight_kg: parseFloat(form.weight_kg), recorded_at: form.date,
       week_number: form.week_number ? parseInt(form.week_number) : null,
     })
-    setSaving(false); setShowForm(false); setForm({ date: new Date().toISOString().split('T')[0], weight_kg: '', week_number: '' }); load()
+    setSaving(false)
+    if (error) { window.alert(`Could not save: ${error.message}`); return }
+    setShowForm(false); setForm({ date: new Date().toISOString().split('T')[0], weight_kg: '', week_number: '' }); load()
   }
   async function deleteEntry(id) { await supabase.from('weight_entries').delete().eq('id', id); load() }
 
@@ -1243,7 +1245,7 @@ function WeightTab({ clientId, client }) {
         <button onClick={() => setShowLiftForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showLiftForm ? 'Cancel' : 'Add Lift Entry'}</button>
       </div>
       {showLiftForm && (
-        <form onSubmit={addLiftEntry} className="card flex flex-col sm:flex-row gap-3 items-end flex-wrap">
+        <form onSubmit={addLiftEntry} noValidate className="card flex flex-col sm:flex-row gap-3 items-end flex-wrap">
           <div className="flex-1 min-w-[140px]"><label className="label">Date</label><input className="input" type="date" required value={liftForm.date} onChange={e => setLiftForm(f => ({ ...f, date: e.target.value }))} /></div>
           <div className="flex-1 min-w-[140px]">
             <label className="label">Lift</label>
@@ -1281,7 +1283,7 @@ function WeightTab({ clientId, client }) {
         <button onClick={() => setShowForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showForm ? 'Cancel' : 'Add Entry'}</button>
       </div>
       {showForm && (
-        <form onSubmit={addEntry} className="card flex flex-col sm:flex-row gap-3 items-end flex-wrap">
+        <form onSubmit={addEntry} noValidate className="card flex flex-col sm:flex-row gap-3 items-end flex-wrap">
           <div className="flex-1 min-w-[120px]"><label className="label">Date</label><input className="input" type="date" required value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
           <div className="flex-1 min-w-[120px]"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" required value={form.weight_kg} onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder="e.g. 72.5" /></div>
           <div className="w-28"><label className="label">Week # (optional)</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="0" value={form.week_number} onChange={e => setForm(f => ({ ...f, week_number: e.target.value }))} placeholder="auto" /></div>
@@ -1352,8 +1354,10 @@ function MeasurementsTab({ clientId, collectMeasurements, startDate }) {
 
   async function addEntry(e) {
     e.preventDefault(); setSaving(true)
-    await supabase.from('measurements').insert({ client_id: clientId, recorded_at: form.date, chest_cm: form.chest_cm ? parseFloat(form.chest_cm) : null, waist_cm: form.waist_cm ? parseFloat(form.waist_cm) : null, hips_cm: form.hips_cm ? parseFloat(form.hips_cm) : null, thighs_cm: form.thighs_cm ? parseFloat(form.thighs_cm) : null, arms_cm: form.arms_cm ? parseFloat(form.arms_cm) : null })
-    setSaving(false); setShowForm(false); setForm({ date: new Date().toISOString().split('T')[0], chest_cm: '', waist_cm: '', hips_cm: '', thighs_cm: '', arms_cm: '' }); load()
+    const { error } = await supabase.from('measurements').insert({ client_id: clientId, recorded_at: form.date, chest_cm: form.chest_cm ? parseFloat(form.chest_cm) : null, waist_cm: form.waist_cm ? parseFloat(form.waist_cm) : null, hips_cm: form.hips_cm ? parseFloat(form.hips_cm) : null, thighs_cm: form.thighs_cm ? parseFloat(form.thighs_cm) : null, arms_cm: form.arms_cm ? parseFloat(form.arms_cm) : null })
+    setSaving(false)
+    if (error) { window.alert(`Could not save: ${error.message}`); return }
+    setShowForm(false); setForm({ date: new Date().toISOString().split('T')[0], chest_cm: '', waist_cm: '', hips_cm: '', thighs_cm: '', arms_cm: '' }); load()
   }
   async function deleteEntry(id) { await supabase.from('measurements').delete().eq('id', id); load() }
   function weekLabel(e) { return e.week != null ? `Week ${e.week}` : 'Pre-plan' }
@@ -1381,7 +1385,7 @@ function MeasurementsTab({ clientId, collectMeasurements, startDate }) {
         <button onClick={() => setShowForm(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showForm ? 'Cancel' : 'Add Measurements'}</button>
       </div>
       {showForm && (
-        <form onSubmit={addEntry} className="card space-y-4">
+        <form onSubmit={addEntry} noValidate className="card space-y-4">
           <div><label className="label">Date</label><input className="input" type="date" required value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {[['chest_cm','Chest (cm)'],['waist_cm','Waist (cm)'],['hips_cm','Hips (cm)'],['thighs_cm','Thighs (cm)'],['arms_cm','Arms (cm)']].map(([key, label]) => (

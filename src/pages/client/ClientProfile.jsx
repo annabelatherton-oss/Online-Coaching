@@ -65,12 +65,14 @@ export default function ClientProfile() {
     weight_kg: '',
   })
   const [savingWeight, setSavingWeight] = useState(false)
+  const [weightError, setWeightError] = useState('')
 
   // Info edit form
   const [showInfoEdit, setShowInfoEdit] = useState(false)
   const [infoForm, setInfoForm] = useState({})
   const [savingInfo, setSavingInfo] = useState(false)
   const [infoSaved, setInfoSaved] = useState(false)
+  const [infoError, setInfoError] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -110,12 +112,23 @@ export default function ClientProfile() {
 
   async function addWeightEntry(e) {
     e.preventDefault()
+    setWeightError('')
+    const weightKg = parseFloat(weightForm.weight_kg)
+    if (!weightForm.date || !weightForm.weight_kg || !(weightKg > 0)) {
+      setWeightError('Enter a date and a weight before adding.')
+      return
+    }
     setSavingWeight(true)
-    await supabase.from('weight_entries').insert({
+    const { error } = await supabase.from('weight_entries').insert({
       client_id: clientData.id,
-      weight_kg: parseFloat(weightForm.weight_kg),
+      weight_kg: weightKg,
       recorded_at: weightForm.date,
     })
+    if (error) {
+      setWeightError(error.message || 'Could not save. Please try again.')
+      setSavingWeight(false)
+      return
+    }
     // Reload
     const { data: weights } = await supabase
       .from('weight_entries')
@@ -131,7 +144,8 @@ export default function ClientProfile() {
   async function saveInfo(e) {
     e.preventDefault()
     setSavingInfo(true)
-    await supabase.from('clients').update({
+    setInfoError('')
+    const { error } = await supabase.from('clients').update({
       phone: infoForm.phone || null,
       date_of_birth: infoForm.date_of_birth || null,
       height_cm: infoForm.height_cm ? parseFloat(infoForm.height_cm) : null,
@@ -152,6 +166,7 @@ export default function ClientProfile() {
       },
     }).eq('profile_id', session.user.id)
     setSavingInfo(false)
+    if (error) { setInfoError(error.message || 'Could not save. Please try again.'); return }
     setInfoSaved(true)
     setTimeout(() => setInfoSaved(false), 2500)
     setShowInfoEdit(false)
@@ -211,7 +226,7 @@ export default function ClientProfile() {
         </div>
 
         {showInfoEdit ? (
-          <form onSubmit={saveInfo} className="space-y-4">
+          <form onSubmit={saveInfo} noValidate className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="label">Phone</label>
@@ -252,6 +267,7 @@ export default function ClientProfile() {
               <label className="label">Food dislikes</label>
               <DislikePicker coachId={clientData?.coach_id} value={infoForm.dislikes || []} onChange={v => setInfoForm(f => ({ ...f, dislikes: v }))} />
             </div>
+            {infoError && <p className="text-sm text-red-500">{infoError}</p>}
             <div className="flex items-center gap-3">
               <button type="submit" disabled={savingInfo} className="btn-primary">{savingInfo ? 'Saving…' : 'Save'}</button>
               <button type="button" onClick={() => setShowInfoEdit(false)} className="btn-secondary">Cancel</button>
@@ -326,33 +342,34 @@ export default function ClientProfile() {
         </div>
 
         {showWeightForm && (
-          <form onSubmit={addWeightEntry} className="flex flex-col sm:flex-row gap-3 items-end border-t border-gray-100 dark:border-gray-800 pt-4">
-            <div className="flex-1">
-              <label className="label">Date</label>
-              <input
-                className="input"
-                type="date"
-                required
-                value={weightForm.date}
-                onChange={e => setWeightForm(f => ({ ...f, date: e.target.value }))}
-              />
+          <form onSubmit={addWeightEntry} noValidate className="space-y-3 border-t border-gray-100 dark:border-gray-800 pt-4">
+            <div className="flex flex-col sm:flex-row gap-3 items-end">
+              <div className="flex-1 w-full">
+                <label className="label">Date</label>
+                <input
+                  className="input"
+                  type="date"
+                  value={weightForm.date}
+                  onChange={e => setWeightForm(f => ({ ...f, date: e.target.value }))}
+                />
+              </div>
+              <div className="flex-1 w-full">
+                <label className="label">Weight (kg)</label>
+                <input
+                  className="input"
+                  type="number" onFocus={e => e.target.select()}
+                  step="0.1"
+                  min="0"
+                  value={weightForm.weight_kg}
+                  onChange={e => setWeightForm(f => ({ ...f, weight_kg: e.target.value }))}
+                  placeholder="e.g. 72.5"
+                />
+              </div>
+              <button type="submit" disabled={savingWeight} className="btn-primary whitespace-nowrap">
+                {savingWeight ? 'Saving…' : 'Add'}
+              </button>
             </div>
-            <div className="flex-1">
-              <label className="label">Weight (kg)</label>
-              <input
-                className="input"
-                type="number" onFocus={e => e.target.select()}
-                step="0.1"
-                min="0"
-                required
-                value={weightForm.weight_kg}
-                onChange={e => setWeightForm(f => ({ ...f, weight_kg: e.target.value }))}
-                placeholder="e.g. 72.5"
-              />
-            </div>
-            <button type="submit" disabled={savingWeight} className="btn-primary whitespace-nowrap">
-              {savingWeight ? 'Saving…' : 'Add'}
-            </button>
+            {weightError && <p className="text-sm text-red-500">{weightError}</p>}
           </form>
         )}
 
