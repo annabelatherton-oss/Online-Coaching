@@ -670,13 +670,29 @@ export default function ClientCheckin() {
 
     // Mirror weight into weight_entries so all coach views (reports, weight chart, progress)
     // immediately reflect this check-in's weight without the client needing to log it separately.
-    if (payload.weight_kg != null) {
-      const today = new Date().toISOString().split('T')[0]
-      await supabase.from('weight_entries').insert({
-        client_id: clientData.id,
-        weight_kg: payload.weight_kg,
-        recorded_at: today,
-      })
+    // Only touches weight_entries when the weight actually changed since last save — this used to
+    // insert unconditionally on every save, so re-opening an old check-in to fix a typo in the
+    // notes (weight untouched) silently added ANOTHER weight_entries row dated to today, piling up
+    // duplicate/phantom entries at the wrong date every time a check-in got edited. Updates the
+    // row this same check-in/week already created (if any) in place instead of adding a new one,
+    // so a correction doesn't move the entry's date or create a second one for the same week.
+    if (payload.weight_kg != null && payload.weight_kg !== existing?.weight_kg) {
+      const { data: updated } = await supabase.from('weight_entries')
+        .update({ weight_kg: payload.weight_kg })
+        .eq('client_id', clientData.id)
+        .eq('week_number', weekNumber)
+        .eq('from_checkin', true)
+        .select('id')
+      if (!updated || updated.length === 0) {
+        const today = new Date().toISOString().split('T')[0]
+        await supabase.from('weight_entries').insert({
+          client_id: clientData.id,
+          weight_kg: payload.weight_kg,
+          week_number: weekNumber,
+          recorded_at: today,
+          from_checkin: true,
+        })
+      }
     }
 
     setSaved(true)

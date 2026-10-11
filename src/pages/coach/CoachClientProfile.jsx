@@ -1179,12 +1179,17 @@ function WeightTab({ clientId, client }) {
     ])
     const manual = weightData || []
     const manualDates = new Set(manual.map(e => e.recorded_at))
+    // Matched by week_number, not just date — a check-in's own mirrored row keeps its original
+    // date when the check-in is later edited, but this synthesized fallback below recomputes its
+    // date from updated_at every load, so after an edit the two would drift apart and the date-only
+    // check below would stop catching it, showing the same week's weight twice.
+    const manualWeekNumbers = new Set(manual.filter(e => e.week_number != null).map(e => e.week_number))
     const withWeight = (checkinData || []).filter(c => c.weight_kg != null)
-    // Add check-in weights only for dates not already covered by a manual entry
-    // (recent check-ins are synced automatically so they'd already be in weight_entries)
+    // Add check-in weights only for weeks not already covered by a manual entry (recent check-ins
+    // are synced automatically so they'd already be in weight_entries)
     const fromCheckins = withWeight
-      .map(c => ({ id: null, weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0], source: 'checkin' }))
-      .filter(c => c.recorded_at && !manualDates.has(c.recorded_at))
+      .map(c => ({ id: null, weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0], week_number: c.week_number, source: 'checkin' }))
+      .filter(c => c.recorded_at && !manualDates.has(c.recorded_at) && !manualWeekNumbers.has(c.week_number))
     const combined = [...manual, ...fromCheckins]
       .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
       .map(e => ({ ...e, week: e.week_number ?? weekForDate(e.recorded_at, client.start_date) }))
