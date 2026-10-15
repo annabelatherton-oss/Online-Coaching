@@ -1190,9 +1190,19 @@ function WeightTab({ clientId, client }) {
     const fromCheckins = withWeight
       .map(c => ({ id: null, weight_kg: c.weight_kg, recorded_at: (c.submitted_at || c.updated_at || '').split('T')[0], week_number: c.week_number, source: 'checkin' }))
       .filter(c => c.recorded_at && !manualDates.has(c.recorded_at) && !manualWeekNumbers.has(c.week_number))
+    // Ordered by week number, not raw date — a backfilled/late entry can have a recorded_at that
+    // doesn't line up with its week (e.g. several historical weeks entered on the same day), which
+    // made date-only sorting show weeks out of sequence. Highest/current week at the top, week 0 at
+    // the bottom; anything with no computable week (client.start_date missing) sinks to the bottom,
+    // ordered by date among themselves since there's nothing else to rank them by.
     const combined = [...manual, ...fromCheckins]
-      .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
       .map(e => ({ ...e, week: e.week_number ?? weekForDate(e.recorded_at, client.start_date) }))
+      .sort((a, b) => {
+        if (a.week != null && b.week != null) return b.week - a.week
+        if (a.week != null) return -1
+        if (b.week != null) return 1
+        return b.recorded_at.localeCompare(a.recorded_at)
+      })
     setEntries(combined)
     setLiftEntries(liftData || [])
     setLiftProgress(computeLiftProgress(checkinData || [], liftData || [], client.start_date))
@@ -1349,9 +1359,15 @@ function MeasurementsTab({ clientId, collectMeasurements, startDate }) {
         waist_cm: c.waist_cm, hips_cm: c.hips_cm, chest_cm: null, thighs_cm: null, arms_cm: null,
       }))
       .filter(c => c.recorded_at && !manualDates.has(c.recorded_at))
+    // Ordered by week number, not raw date — see the Weight tab's load() for why.
     const combined = [...manual, ...fromCheckins]
-      .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at))
       .map(e => ({ ...e, week: weekForDate(e.recorded_at, startDate) }))
+      .sort((a, b) => {
+        if (a.week != null && b.week != null) return b.week - a.week
+        if (a.week != null) return -1
+        if (b.week != null) return 1
+        return b.recorded_at.localeCompare(a.recorded_at)
+      })
     setEntries(combined)
     setLoading(false)
   }
