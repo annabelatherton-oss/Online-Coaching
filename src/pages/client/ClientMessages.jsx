@@ -86,6 +86,7 @@ export default function ClientMessages() {
       .single()
     if (!error && data) {
       setMessages(prev => [...prev, data])
+      supabase.functions.invoke('send-coach-message-notification', { body: { messageBody: body } }).catch(() => {})
     }
     setSending(false)
   }
