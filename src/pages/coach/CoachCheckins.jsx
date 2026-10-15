@@ -944,11 +944,13 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
     // leave this client following it, not silently lock them onto today's week number forever
     // (which is exactly what always writing this here used to do).
     await supabase.from('client_plan_assignments')
-      .update({ week_override: nextTemplateWeek === groupCurrentWeek ? null : nextTemplateWeek, calorie_target: newCalTarget, removed_meal_slots: removedMealSlots })
+      .update({ week_override: nextTemplateWeek === groupCurrentWeek ? null : nextTemplateWeek, removed_meal_slots: removedMealSlots })
       .eq('id', activeAssignment.id)
-    // Mirrors onto clients.current_calories too, so the Overview tab's own copy of the target
-    // (and the client's task checklist) reflect a calorie change made from a check-in response.
-    await supabase.from('clients').update({ current_calories: newCalTarget }).eq('id', client.id)
+    // Routed through the shared helper (not a direct update here) so this also mirrors onto
+    // clients.current_calories and logs to client_calorie_history exactly like every other screen
+    // that can change a client's calories — a check-in response is the main way it happens, so it
+    // needs to log there too, not just from the Overview/Meal Plan tab's own quick-edit.
+    await writeCalorieTarget({ clientId: client.id, assignmentId: activeAssignment.id, value: newCalTarget })
 
     // "What's changed" for the client — training plan and calorie/step changes only (meal content
     // changes every week regardless, so it's not worth flagging). Diffed against whatever schedule

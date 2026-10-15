@@ -1554,6 +1554,67 @@ function PhotosTab({ clientId, startDate }) {
   )
 }
 
+// How long a client has spent on each calorie target, newest first — built from
+// client_calorie_history, which logs a row every time writeCalorieTarget() actually changes the
+// number (see src/lib/calorieTarget.js), regardless of which screen made the change (Overview,
+// Meal Plan tab, or a check-in response, which is the main way it usually happens). Each period
+// runs from its own changed_at up to the NEXT row's changed_at — or to today, for whichever target
+// is currently active.
+function CalorieHistoryTab({ clientId }) {
+  const [rows, setRows] = useState(null)
+
+  useEffect(() => {
+    supabase.from('client_calorie_history')
+      .select('calorie_target, changed_at')
+      .eq('client_id', clientId)
+      .order('changed_at', { ascending: true })
+      .then(({ data }) => setRows(data || []))
+  }, [clientId])
+
+  if (rows === null) return <LoadingSpinner size="sm" className="py-6" />
+  if (rows.length === 0) {
+    return <div className="card text-center py-8"><p className="text-gray-400 dark:text-gray-500 text-sm">No calorie changes logged yet — this fills in the first time their target is set or changed.</p></div>
+  }
+
+  function fmtDate(d) { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) }
+  function fmtDuration(days) {
+    if (days < 7) return `${days} day${days === 1 ? '' : 's'}`
+    const weeks = Math.round(days / 7)
+    return `${weeks} week${weeks === 1 ? '' : 's'}`
+  }
+
+  const periods = rows.map((r, i) => {
+    const start = new Date(r.changed_at)
+    const end = i + 1 < rows.length ? new Date(rows[i + 1].changed_at) : new Date()
+    const days = Math.max(1, Math.round((end - start) / 86400000))
+    return { calorie_target: r.calorie_target, start, end, days, ongoing: i + 1 === rows.length }
+  }).reverse()
+
+  return (
+    <div className="card p-0 overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-200 dark:border-gray-800">
+            {['Calories', 'From', 'To', 'Duration'].map(h => (
+              <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          {periods.map((p, i) => (
+            <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+              <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{p.calorie_target != null ? `${p.calorie_target} kcal` : '—'}</td>
+              <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{fmtDate(p.start)}</td>
+              <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{p.ongoing ? 'Now' : fmtDate(p.end)}</td>
+              <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{fmtDuration(p.days)}{p.ongoing ? ' so far' : ''}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function ProgressTab({ clientId, client }) {
   return (
     <div className="space-y-10">
@@ -1564,6 +1625,10 @@ function ProgressTab({ clientId, client }) {
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Weight</h2>
         <WeightTab clientId={clientId} client={client} />
+      </div>
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Calories</h2>
+        <CalorieHistoryTab clientId={clientId} />
       </div>
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Measurements</h2>
