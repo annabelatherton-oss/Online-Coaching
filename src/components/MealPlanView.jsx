@@ -377,9 +377,9 @@ export function getIngredients(meal, tier, overrides, swapCtx) {
     if (v) base = v.meal_tier_ingredients || []
   }
   let ingredients = applyIngredientOverrides(base, overrides)
-  if (swapCtx?.dislikes?.length) {
+  if (swapCtx?.dislikes?.length || swapCtx?.allergies?.length) {
     const { ingredients: swapped } = applyDislikeSwaps(
-      ingredients, swapCtx.dislikes, meal.id, swapCtx.ingredientSwapsByDislike, swapCtx.mealSwapOptionsByMealAndDislike
+      ingredients, swapCtx.dislikes, swapCtx.allergies, meal.id, swapCtx.ingredientSwapsByDislike, swapCtx.mealSwapOptionsByMealAndDislike
     )
     ingredients = swapped
   }

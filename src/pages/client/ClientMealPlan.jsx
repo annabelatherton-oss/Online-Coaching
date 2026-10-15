@@ -8,7 +8,8 @@ import {
   mealMacros, mealMacrosLayered, addMacros, getIngredients, getIngredientsLayered, normalizeOverrides,
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
-import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus } from '../../lib/mealSwaps'
+import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus, findSafeMeal } from '../../lib/mealSwaps'
+import { mealQualifiesForDiets } from '../../lib/diets'
 import { normalizeGoalMacroSplits, calcBodyweightMacros } from '../../lib/macros'
 import EverydayMealsClient from '../../components/EverydayMealsClient'
 import { weekForDate } from '../../lib/planWeek'
@@ -121,31 +122,65 @@ export default function ClientMealPlan() {
       const finalSlots = { ...tSlots, ...(cwm?.slots || {}) }
       setTemplateSlots(tSlots)
       setTemplateOverrides(tOverrides)
-      setEditedSlots(finalSlots)
-      // Separate from templateSlots — the "needs coach review" flag should only fire on an
-      // actual NEW swap this save, not stay true forever just because an old, already-reviewed
-      // swap is still in place (e.g. the client only tweaked an ingredient quantity within that
-      // same swapped meal). Comparing against the slots as last saved, not the master template,
-      // is what tells "swapped again" apart from "still the swap the coach already saw".
-      setLastSavedSlots(finalSlots)
       setIngredientOverrides(cwm?.ingredient_overrides || {})
       setRemovedCategories(cwm?.removed_categories || [])
       setSlotsDirty(false)
 
-      // Dislikes: resolve any saved swap rule automatically so the client never sees something
-      // they've told their coach they dislike, and quietly log what changed for the dashboard.
+      // Dislikes and allergies: resolve any saved swap rule automatically so the client never sees
+      // something they've told their coach they dislike or are allergic to, and quietly log what
+      // changed for the dashboard. A dislike matches by plain substring (whatever free text the
+      // client typed); an allergy matches the shared keyword list so it catches every name variant
+      // of that allergen — safety-critical, so it can't rely on an exact name match.
+      //
+      // When neither a meal-specific swap option nor a global ingredient rule can resolve it, the
+      // whole meal is swapped for a different, conflict-free one in the same category (same pool
+      // findSafeMeal already offers the coach as a manual "Auto-swap" button) rather than leaving
+      // the disliked/allergenic meal sitting there flagged "needs review" — a client should never
+      // be shown a meal containing something they're allergic to, even temporarily while waiting on
+      // the coach to notice and fix it by hand.
       const dislikes = (clientRow.dislikes || []).filter(Boolean)
-      if (dislikes.length) {
-        const { ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike } = await loadSwapContext(clientRow.id, dislikes)
-        setSwapCtx({ dislikes, ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike })
+      const allergies = (clientRow.allergies || []).filter(Boolean)
+      let mealsWereSwapped = false
+      if (dislikes.length || allergies.length) {
+        const { ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike } = await loadSwapContext(clientRow.id, [...dislikes, ...allergies])
+        setSwapCtx({ dislikes, allergies, ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike })
+        const dietsForAutoSwap = (clientRow.dietary_requirements || []).length > 0 ? clientRow.dietary_requirements : ['']
         for (const slotKey of Object.keys(finalSlots)) {
           const mId = finalSlots[slotKey]
           const meal = mId ? map[mId] : null
           if (!meal) continue
           const baseIngredients = getIngredientsLayered(meal, tier, tOverrides[slotKey], cwm?.ingredient_overrides?.[slotKey])
-          const { applied, unresolved } = applyDislikeSwaps(baseIngredients, dislikes, mId, ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike)
+          const { applied, unresolved } = applyDislikeSwaps(baseIngredients, dislikes, allergies, mId, ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike)
+          if (unresolved.length) {
+            const cat = ALL_SLOT_DEFS.find(s => s.key === slotKey)?.cat
+            const safeMeal = cat ? findSafeMeal(cat, mId, allergies, dislikes, map, byCat, tier, m => mealQualifiesForDiets(m, dietsForAutoSwap)) : null
+            if (safeMeal) {
+              finalSlots[slotKey] = safeMeal.id
+              mealsWereSwapped = true
+              syncMealSwapStatus(clientRow.id, mId, [...applied, ...unresolved.map(u => ({ dislike_name: u.dislike_name, resolution: 'meal_swap' }))], [])
+              continue
+            }
+          }
           if (applied.length || unresolved.length) syncMealSwapStatus(clientRow.id, mId, applied, unresolved)
         }
+      }
+
+      setEditedSlots(finalSlots)
+      // Separate from templateSlots — the "needs coach review" flag should only fire on an actual
+      // NEW swap this save, not stay true forever just because an old, already-reviewed swap (or an
+      // automatic allergy/dislike meal swap, which isn't the client's own edit either) is still in
+      // place. Comparing against the slots as last saved, not the master template, is what tells
+      // "swapped again" apart from "still the swap the coach already saw" — so this is set from the
+      // SAME finalSlots the auto-swap above may have just updated, not from before it ran.
+      setLastSavedSlots(finalSlots)
+      if (mealsWereSwapped) {
+        // The auto-swap changed what's actually in client_week_meals.slots for real (not just this
+        // render) — persisted immediately rather than waiting on the client to notice and hit Save,
+        // since there's nothing for them to "approve" here: it's existing meals being kept safe.
+        await supabase.from('client_week_meals').upsert(
+          { client_id: clientRow.id, coach_id: clientRow.coach_id, assignment_id: asgn.id, week_number: effectiveWeek, slots: finalSlots, ingredient_overrides: cwm?.ingredient_overrides || {} },
+          { onConflict: 'assignment_id,week_number' }
+        )
       }
 
       const { data: delivery } = await supabase

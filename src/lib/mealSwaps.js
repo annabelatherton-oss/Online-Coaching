@@ -129,40 +129,48 @@ export function scaledSwapIngredient(originalQty, libIng) {
   }
 }
 
-// Given a meal's already-resolved ingredient list (tier + per-client overrides
-// already applied) plus a client's dislikes and their saved swap rules, return
-// the list with every resolvable dislike swapped out, and report what happened
-// so the caller can persist a "this meal changed" notification. A meal-specific
-// rule (mealSwapOptions) always wins over a global ingredient-level rule, since
-// it's the coach's deliberate, meal-aware fix (e.g. "tuna + potato" -> "beans +
-// potato" rather than just substituting tuna 1-for-1).
-export function applyDislikeSwaps(ingredients, dislikes, mealId, ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike) {
+// Given a meal's already-resolved ingredient list (tier + per-client overrides already applied)
+// plus a client's dislikes AND allergies and their saved swap rules, return the list with every
+// resolvable restriction swapped out, and report what happened so the caller can persist a "this
+// meal changed" notification. A meal-specific rule (mealSwapOptions) always wins over a global
+// ingredient-level rule, since it's the coach's deliberate, meal-aware fix (e.g. "tuna + potato" ->
+// "beans + potato" rather than just substituting tuna 1-for-1).
+//
+// A dislike matches by plain substring (whatever free text the client typed); an allergy matches
+// the shared ALLERGEN_KEYWORDS list (same as getMealConflicts) so it catches every name variant of
+// that allergen, not just an exact string match — an allergy is safety-critical, so it can't rely
+// on the ingredient happening to be named exactly what the client typed.
+export function applyDislikeSwaps(ingredients, dislikes, allergies, mealId, ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike) {
   let result = ingredients
   const applied = []
   const unresolved = []
 
-  for (const dislike of (dislikes || [])) {
-    if (!dislike) continue
-    const hitIdx = result.findIndex(ing => ing.name.toLowerCase().includes(dislike.toLowerCase()))
+  const restrictions = [
+    ...(dislikes || []).filter(Boolean).map(key => ({ key, test: ing => ing.name.toLowerCase().includes(key.toLowerCase()) })),
+    ...(allergies || []).filter(Boolean).map(key => ({ key, test: ing => ingredientMatchesRestriction(ing.name, key) })),
+  ]
+
+  for (const { key, test } of restrictions) {
+    const hitIdx = result.findIndex(test)
     if (hitIdx === -1) continue
 
-    const mealOption = mealSwapOptionsByMealAndDislike?.[mealId]?.[dislike]
+    const mealOption = mealSwapOptionsByMealAndDislike?.[mealId]?.[key]
     if (mealOption) {
       result = mealOption.ingredients
-      applied.push({ dislike_name: dislike, resolution: 'meal_swap' })
+      applied.push({ dislike_name: key, resolution: 'meal_swap' })
       continue
     }
 
-    const rule = ingredientSwapsByDislike?.[dislike]
+    const rule = ingredientSwapsByDislike?.[key]
     if (rule) {
       const hit = result[hitIdx]
       const replacement = scaledSwapIngredient(parseFloat(hit.quantity_g) || 0, rule)
       result = result.map((ing, i) => i === hitIdx ? replacement : ing)
-      applied.push({ dislike_name: dislike, resolution: 'ingredient_swap' })
+      applied.push({ dislike_name: key, resolution: 'ingredient_swap' })
       continue
     }
 
-    unresolved.push({ dislike_name: dislike, ingredientName: result[hitIdx].name })
+    unresolved.push({ dislike_name: key, ingredientName: result[hitIdx].name })
   }
 
   return { ingredients: result, applied, unresolved }
