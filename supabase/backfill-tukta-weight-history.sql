@@ -16,7 +16,7 @@ begin
   select id into v_coach_id from profiles where email = 'annabelatherton@gmail.com' limit 1;
   if v_coach_id is null then raise exception 'Coach not found'; end if;
 
-  select id, start_date into v_client_id, v_start_date
+  select c.id, c.start_date into v_client_id, v_start_date
   from clients c join profiles p on p.id = c.profile_id
   where c.coach_id = v_coach_id and p.full_name ilike 'Tukta%'
   limit 1;
