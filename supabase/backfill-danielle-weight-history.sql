@@ -48,8 +48,8 @@ end $$;
 
 -- Preview the result
 select 'weight' as kind, week_number::text, weight_kg::text as value, recorded_at::date::text as date
-from weight_entries where client_id = (select id from clients c join profiles p on p.id = c.profile_id where p.full_name ilike 'Danielle%' and c.coach_id = (select id from profiles where email = 'annabelatherton@gmail.com') limit 1)
+from weight_entries where client_id = (select c.id from clients c join profiles p on p.id = c.profile_id where p.full_name ilike 'Danielle%' and c.coach_id = (select id from profiles where email = 'annabelatherton@gmail.com') limit 1)
 union all
 select 'calories', null, calorie_target::text, changed_at::date::text
-from client_calorie_history where client_id = (select id from clients c join profiles p on p.id = c.profile_id where p.full_name ilike 'Danielle%' and c.coach_id = (select id from profiles where email = 'annabelatherton@gmail.com') limit 1)
+from client_calorie_history where client_id = (select c.id from clients c join profiles p on p.id = c.profile_id where p.full_name ilike 'Danielle%' and c.coach_id = (select id from profiles where email = 'annabelatherton@gmail.com') limit 1)
 order by date;
