@@ -16,8 +16,11 @@ self.addEventListener('push', event => {
       body: data.body,
       icon: '/favicon.svg',
       badge: '/favicon.svg',
-      tag: 'checkin-reminder',
-      renotify: false,
+      // No tag: a shared tag across every coach push (Friday reminder, a check-in just submitted,
+      // a new message) made a later one silently REPLACE an earlier one still sitting undismissed
+      // in Notification Center — no sound, no banner, no lock-screen alert, just a quiet content
+      // swap — rather than showing its own alert. Once one coach notification went unread, every
+      // notification after it died the same silent way. Each push is now fully independent.
       data: { url: data.url },
     })
   )

@@ -13,8 +13,8 @@ self.addEventListener('push', event => {
       body: data.body,
       icon: '/favicon.svg',
       badge: '/favicon.svg',
-      tag: 'checkin-reminder',       // replaces any existing reminder notification
-      renotify: false,
+      // No tag: see coach-sw.js for why — a shared tag across different notification types made a
+      // later push silently replace an earlier undismissed one instead of alerting on its own.
       data: { url: data.url },
     })
   )
