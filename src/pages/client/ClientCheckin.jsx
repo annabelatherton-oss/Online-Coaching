@@ -5,6 +5,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import { compressImage, useSignedProgressPhotos } from '../../lib/progressPhotos'
 import TargetDateBanner from '../../components/TargetDateBanner'
 import { weekForDate } from '../../lib/planWeek'
+import CheckinThread from '../../components/CheckinThread'
 
 const RATING_LABELS = {
   energy_level:   ['', 'Very low', 'Low', 'Moderate', 'High', 'Very high'],
@@ -1108,11 +1109,17 @@ export default function ClientCheckin() {
         </div>
       </form>
 
-      {/* Coach response */}
+      {/* Coach response + reply thread for this check-in */}
       {existing?.coach_response && (
         <div className="card space-y-2 border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/10">
           <p className="text-sm font-semibold text-brand-700 dark:text-brand-400">Message from your coach</p>
           <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{existing.coach_response}</p>
+          <CheckinThread
+            checkinId={existing.id}
+            clientId={clientData.id}
+            coachId={clientData.coach_id}
+            viewerRole="client"
+          />
         </div>
       )}
 

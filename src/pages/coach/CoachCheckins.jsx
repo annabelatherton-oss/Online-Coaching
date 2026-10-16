@@ -22,6 +22,7 @@ import LiftNameField from '../../components/LiftNameField'
 import StrengthProgress from '../../components/StrengthProgress'
 import { computeLiftProgress } from '../../lib/liftProgress'
 import ClientWeeklyPlan from './ClientWeeklyPlan'
+import CheckinThread from '../../components/CheckinThread'
 
 const PHOTO_ANGLES = ['front', 'back', 'left', 'right']
 
@@ -2320,6 +2321,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                 {delivered && <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-full px-2 py-0.5 font-medium">Week {deliveryPersonalWeek} plan delivered</span>}
               </div>
               <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{current.coach_response}</p>
+              <CheckinThread checkinId={current.id} clientId={client.id} coachId={profile.id} viewerRole="coach" otherPartyName={client.full_name} />
             </div>
           )}
           <button
@@ -2612,6 +2614,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl p-3">
                 <p className="text-xs font-semibold text-brand-700 dark:text-brand-400 mb-1">Your response</p>
                 <p className="text-sm text-gray-700 dark:text-gray-300">{c.coach_response}</p>
+                <CheckinThread checkinId={c.id} clientId={client.id} coachId={profile.id} viewerRole="coach" otherPartyName={client.full_name} />
               </div>
             )}
             {responding === c.id ? (
