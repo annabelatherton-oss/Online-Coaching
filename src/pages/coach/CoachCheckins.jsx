@@ -787,7 +787,11 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
   // whatever this client has swapped. If this client needs something different, that's exactly what
   // leaving this unapproved (and editing their own plan instead) is for.
   async function approveTemplateWeek() {
-    if (!activeTemplateId || tier == null) return
+    if (tier == null) return
+    if (!activeTemplateId) {
+      window.alert(`There's no ${tier} kcal template for Week ${nextTemplateWeek} yet, so there's nothing to approve — build it out in Plan Group Editor first.`)
+      return
+    }
     setApprovingTemplate(true)
 
     const frozenOverrides = {}
