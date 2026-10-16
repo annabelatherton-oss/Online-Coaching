@@ -1677,10 +1677,10 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
           dayOptionTotals={[{ label: 'Option A', macros: opt1Total }, { label: 'Option B', macros: opt2Total }]}
           dayTargetCal={targetCal > 0 ? targetCal : null}
           target={OPTION_2_KEYS.includes(recipeModal) ? null : slotTarget(recipeModal)}
-          siblingMacros={(() => {
+          siblingMacros={OPTION_2_KEYS.includes(recipeModal) ? (() => {
             const sibKey = siblingSlotKey(recipeModal)
             return sibKey ? mealMacrosLayered(editedSlots[sibKey], mealMap, tier, templateOverrides[sibKey], ingredientOverrides[sibKey]) : null
-          })()}
+          })() : null}
           siblingLabel={ALL_SLOT_DEFS.find(s => s.key === siblingSlotKey(recipeModal))?.optionLabel || 'other option'}
         />
       )}
