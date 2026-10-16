@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { notifyClient } from '../lib/pushNotifications'
 
 // A small threaded conversation attached to one specific check-in — lets a client reply to their
 // coach's comment on that week's check-in (and keep going back and forth) without it getting mixed
@@ -54,6 +55,15 @@ export default function CheckinThread({ checkinId, clientId, coachId, viewerRole
       setMessages(prev => [...prev, data])
       if (viewerRole === 'client') {
         supabase.functions.invoke('send-coach-message-notification', { body: { messageBody: text } }).catch(() => {})
+      } else if (viewerRole === 'coach') {
+        // otherPartyName here is the CLIENT's name (what the coach sees in the reply placeholder),
+        // not the coach's own — so the notification text stays generic rather than echoing it back.
+        notifyClient({
+          clientId,
+          title: 'Your coach replied to your check-in',
+          body: text,
+          url: '/client/checkin',
+        }).catch(() => {})
       }
     } else if (error) {
       setBody(text)

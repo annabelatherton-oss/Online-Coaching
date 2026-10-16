@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -263,6 +264,7 @@ function ComparisonLightbox({ angles, getCols, onClose }) {
 // ── Plan delivery panel ───────────────────────────────────────────────────────
 function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev2, liftProgress, configuredLiftNames, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [loading, setLoading] = useState(true)
   // Always starts blank, never pre-filled from current.coach_response — current is just "the
@@ -790,7 +792,14 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
   async function approveTemplateWeek() {
     if (tier == null) return
     if (!activeTemplateId) {
-      window.alert(`There's no ${tier} kcal template for Week ${nextTemplateWeek} yet, so there's nothing to approve — build it out in Plan Group Editor first.`)
+      // This tier's own fork of the plan group's schedule just hasn't been created yet — every
+      // tier needs one before any of its weeks can be approved/locked. Opening it here pre-selects
+      // the tier, which auto-forks it from the standard template (see selectTier in
+      // PlanGroupEditor.jsx) — one click there is all it takes, same as it would be from the Plan
+      // Group Editor's own tier tabs.
+      if (window.confirm(`There's no ${tier} kcal schedule for this plan yet, so there's nothing to approve here. Open Plan Group Editor now to set it up? It only takes a moment — opening the ${tier} kcal tab builds it automatically from the standard plan.`)) {
+        navigate(`/coach/meal-templates/plans/${activeAssignment.plan_group_id}?tier=${tier}&week=${nextTemplateWeek}`)
+      }
       return
     }
     setApprovingTemplate(true)
