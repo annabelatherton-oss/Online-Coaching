@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Fragment, useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -465,10 +465,6 @@ export default function PlanGroupEditor() {
   const { groupId } = useParams()
   const { profile } = useAuth()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  // Guards the deep-link effect below (from CoachCheckins' "there's no schedule for this tier"
-  // prompt) so it only ever jumps/forks once per page load, not on every re-render it's eligible for.
-  const deepLinkHandled = useRef(false)
 
   const [planGroup, setPlanGroup] = useState(null)
   // The standard/master 20-week template (calorie_tier = null).
@@ -604,25 +600,6 @@ export default function PlanGroupEditor() {
     }
     load()
   }, [groupId, profile.id])
-
-  // Deep-link support: CoachCheckins' "there's no schedule for this tier yet" approve-button prompt
-  // sends the coach here with ?tier=&week= pre-filled — selecting that tier auto-forks it from the
-  // standard template (see selectTier below) and this scrolls to the requested week once it's
-  // rendered, so building it out is still just the one click it would be from this page's own tabs.
-  useEffect(() => {
-    if (loading || deepLinkHandled.current) return
-    deepLinkHandled.current = true
-    const tierParam = parseInt(searchParams.get('tier'))
-    const weekParam = parseInt(searchParams.get('week'))
-    if (!CALORIE_TIERS.includes(tierParam)) return
-    selectTier(tierParam)
-    if (weekParam) {
-      setExpanded(prev => new Set(prev).add(weekParam))
-      setTimeout(() => {
-        document.getElementById(`week-card-${weekParam}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }, 400)
-    }
-  }, [loading])
 
   const currentWeeks = activeTier == null ? weeks : (tierWeeks[activeTier] || [])
   const mealSplit = normalizeMealSplit(profile.meal_split)
@@ -1732,7 +1709,7 @@ export default function PlanGroupEditor() {
         const sendStatus = weekSendStatus(activeTier, week)
 
         return (
-          <div key={week.templateId} id={`week-card-${week.weekNum}`} className="card p-0 overflow-hidden">
+          <div key={week.templateId} className="card p-0 overflow-hidden">
             <button
               className="w-full flex items-center justify-between px-4 py-3 bg-pink-50/60 dark:bg-pink-900/10 hover:bg-pink-100/50 dark:hover:bg-pink-900/20 transition-colors text-left"
               onClick={() => toggleExpand(week.weekNum)}

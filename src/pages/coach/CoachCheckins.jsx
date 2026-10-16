@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
@@ -264,7 +263,6 @@ function ComparisonLightbox({ angles, getCols, onClose }) {
 // ── Plan delivery panel ───────────────────────────────────────────────────────
 function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev2, liftProgress, configuredLiftNames, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
   const { profile } = useAuth()
-  const navigate = useNavigate()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [loading, setLoading] = useState(true)
   // Always starts blank, never pre-filled from current.coach_response — current is just "the
@@ -791,26 +789,77 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
   // leaving this unapproved (and editing their own plan instead) is for.
   async function approveTemplateWeek() {
     if (tier == null) return
-    if (!activeTemplateId) {
-      // This tier's own fork of the plan group's schedule just hasn't been created yet — every
-      // tier needs one before any of its weeks can be approved/locked. Opening it here pre-selects
-      // the tier, which auto-forks it from the standard template (see selectTier in
-      // PlanGroupEditor.jsx) — one click there is all it takes, same as it would be from the Plan
-      // Group Editor's own tier tabs.
-      if (window.confirm(`There's no ${tier} kcal schedule for this plan yet, so there's nothing to approve here. Open Plan Group Editor now to set it up? It only takes a moment — opening the ${tier} kcal tab builds it automatically from the standard plan.`)) {
-        navigate(`/coach/meal-templates/plans/${activeAssignment.plan_group_id}?tier=${tier}&week=${nextTemplateWeek}`)
-      }
-      return
-    }
     setApprovingTemplate(true)
+
+    let templateId = activeTemplateId
+    let effTemplateSlots = templateSlots
+    let effTemplateOverrides = templateOverrides
+
+    if (!templateId) {
+      // This tier has never been forked from the standard template for this plan group — rather
+      // than blocking the coach and sending them to build it out by hand in Plan Group Editor
+      // first, build it right here: clone every week of the standard (calorie_tier null) template
+      // into this tier (mirrors PlanGroupEditor's own forkTier), then carry straight on to
+      // approving this one week. Any client who then lands on this tier gets a schedule that
+      // already exists, not a dead end.
+      const { data: group } = await supabase.from('plan_groups').select('name').eq('id', activeAssignment.plan_group_id).maybeSingle()
+      const { data: masterTemplates, error: masterErr } = await supabase
+        .from('weekly_templates')
+        .select('id, week_number, template_meal_slots(slot_type, meal_id)')
+        .eq('plan_group_id', activeAssignment.plan_group_id)
+        .is('calorie_tier', null)
+        .order('week_number')
+      if (masterErr || !masterTemplates?.length) {
+        window.alert(`Could not set up the ${tier} kcal schedule: ${masterErr?.message || 'no standard plan found for this group yet'}.`)
+        setApprovingTemplate(false)
+        return
+      }
+
+      const templateRows = masterTemplates.map(w => ({
+        coach_id: coachId,
+        name: `${group?.name || 'Plan'} — ${tier} kcal — Week ${w.week_number}`,
+        week_number: w.week_number,
+        plan_group_id: activeAssignment.plan_group_id,
+        plan_group_name: group?.name || null,
+        calorie_tier: tier,
+      }))
+      const { data: inserted, error: insTmplErr } = await supabase.from('weekly_templates').insert(templateRows).select('id, week_number')
+      if (insTmplErr) { window.alert(`Could not set up the ${tier} kcal schedule: ${insTmplErr.message}`); setApprovingTemplate(false); return }
+
+      const slotRows = []
+      for (const ins of inserted) {
+        const masterWeek = masterTemplates.find(w => w.week_number === ins.week_number)
+        for (const slot of (masterWeek?.template_meal_slots || [])) {
+          if (slot.meal_id) slotRows.push({ template_id: ins.id, slot_type: slot.slot_type, meal_id: slot.meal_id, scaled_version_id: null })
+        }
+      }
+      if (slotRows.length) {
+        const { error: insSlotErr } = await supabase.from('template_meal_slots').insert(slotRows)
+        if (insSlotErr) { window.alert(`Could not set up the ${tier} kcal schedule: ${insSlotErr.message}`); setApprovingTemplate(false); return }
+      }
+
+      const thisWeekInserted = inserted.find(ins => ins.week_number === nextTemplateWeek)
+      if (!thisWeekInserted) {
+        window.alert(`Set up the ${tier} kcal schedule, but Week ${nextTemplateWeek} isn't part of the standard plan's week range, so there's nothing to approve for it.`)
+        setApprovingTemplate(false)
+        return
+      }
+      templateId = thisWeekInserted.id
+      const masterWeek = masterTemplates.find(w => w.week_number === nextTemplateWeek)
+      effTemplateSlots = buildTemplateSlots({ template_meal_slots: masterWeek?.template_meal_slots || [] }, null, activeAssignment)
+      effTemplateOverrides = {}
+      setActiveTemplateId(templateId)
+      setTemplateSlots(effTemplateSlots)
+      setTemplateOverrides(effTemplateOverrides)
+    }
 
     const frozenOverrides = {}
     for (const def of ALL_SLOT_DEFS) {
-      const mealId = templateSlots[def.key]
+      const mealId = effTemplateSlots[def.key]
       if (!mealId) continue
       const meal = mealMap[mealId]
-      const effective = getIngredients(meal, tier, templateOverrides[def.key])
-      const existing = templateOverrides[def.key] || {}
+      const effective = getIngredients(meal, tier, effTemplateOverrides[def.key])
+      const existing = effTemplateOverrides[def.key] || {}
       frozenOverrides[def.key] = {
         ...existing,
         qty: Object.fromEntries(effective.filter(ing => !ing._isAdded).map(ing => [ing.id, ing.quantity_g])),
@@ -822,15 +871,15 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
     // switched to the green "Approved" state as if it worked, so there was nothing telling the
     // coach to retry.
     const slotResults = await Promise.all(Object.entries(frozenOverrides).map(([slotKey, overrides]) =>
-      supabase.from('template_meal_slots').update({ ingredient_overrides: overrides }).eq('template_id', activeTemplateId).eq('slot_type', slotKey)
+      supabase.from('template_meal_slots').update({ ingredient_overrides: overrides }).eq('template_id', templateId).eq('slot_type', slotKey)
     ))
     const slotErr = slotResults.find(r => r.error)?.error
     if (slotErr) { window.alert(`Could not approve: ${slotErr.message}`); setApprovingTemplate(false); return }
 
-    const { error: lockErr } = await supabase.from('weekly_templates').update({ locked: true }).eq('id', activeTemplateId)
+    const { error: lockErr } = await supabase.from('weekly_templates').update({ locked: true }).eq('id', templateId)
     if (lockErr) { window.alert(`Could not approve: ${lockErr.message}`); setApprovingTemplate(false); return }
 
-    const combination = Object.fromEntries(ALL_SLOT_DEFS.map(def => [def.key, templateSlots[def.key] || null]))
+    const combination = Object.fromEntries(ALL_SLOT_DEFS.map(def => [def.key, effTemplateSlots[def.key] || null]))
     const { error: sendErr } = await supabase.from('plan_week_sends').upsert(
       [{ plan_group_id: activeAssignment.plan_group_id, calorie_tier: tier, week_number: nextTemplateWeek, meal_combination: combination }],
       { onConflict: 'plan_group_id,calorie_tier,week_number' }
