@@ -629,17 +629,17 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
               {slotDef?.optionLabel && (
                 <p className="text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1">{slotDef.label} — {slotDef.optionLabel}</p>
               )}
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{meal?.name}</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white leading-snug">{meal?.name}</h2>
               {macros && (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm">
+                <div className="flex items-center gap-4 mt-2 text-sm">
                   <span className="font-bold text-gray-900 dark:text-white">{Math.round(macros.cal)} kcal</span>
-                  <span className={`flex items-center gap-1 font-medium ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{Math.round(macros.carb)}g carbs</span>
-                  <span className={`flex items-center gap-1 font-medium ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{Math.round(macros.prot)}g protein</span>
-                  <span className={`flex items-center gap-1 font-medium ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{Math.round(macros.fat)}g fat</span>
+                  <span className={`flex items-center gap-1 font-medium ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{Math.round(macros.carb)}g</span>
+                  <span className={`flex items-center gap-1 font-medium ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{Math.round(macros.prot)}g</span>
+                  <span className={`flex items-center gap-1 font-medium ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{Math.round(macros.fat)}g</span>
                 </div>
               )}
               {macros && (target || siblingMacros) && (
-                <div className="mt-2">
+                <div className="mt-3 rounded-xl border border-gray-100 dark:border-gray-800 p-2.5">
                   <MacroTargetInfo
                     macros={macros}
                     target={target}
@@ -657,8 +657,21 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
               <div>
                 <div className="flex items-center justify-between mb-3 pt-1">
                   <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Ingredients</h3>
-                  <div className="flex items-center gap-3">
-                    {onApplyToSchedule && hasAnyOverride(overrides) && (
+                  <button
+                    onClick={() => setPrepDays(d => d === null ? 1 : null)}
+                    className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors flex-shrink-0 ${
+                      prepDays !== null
+                        ? 'bg-brand-500 text-white border-brand-500'
+                        : 'border-brand-300 text-brand-600 dark:text-brand-400 dark:border-brand-700 hover:bg-brand-50 dark:hover:bg-brand-900/20'
+                    }`}
+                  >
+                    Meal prep
+                  </button>
+                </div>
+
+                {hasAnyOverride(overrides) && (onApplyToSchedule || onRevertIngredients) && (
+                  <div className="flex items-center gap-3 -mt-2 mb-3">
+                    {onApplyToSchedule && (
                       <button
                         onClick={() => onApplyToSchedule(slotKey)}
                         disabled={!canApplyToSchedule || applyingToSchedule}
@@ -670,7 +683,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                         {applyingToSchedule ? 'Applying…' : 'Apply to weekly schedule…'}
                       </button>
                     )}
-                    {onRevertIngredients && hasAnyOverride(overrides) && (
+                    {onRevertIngredients && (
                       <button
                         onClick={() => onRevertIngredients(slotKey)}
                         className="text-xs text-orange-500 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 font-medium"
@@ -678,18 +691,8 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                         Revert to original
                       </button>
                     )}
-                    <button
-                      onClick={() => setPrepDays(d => d === null ? 1 : null)}
-                      className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors ${
-                        prepDays !== null
-                          ? 'bg-brand-500 text-white border-brand-500'
-                          : 'border-brand-300 text-brand-600 dark:text-brand-400 dark:border-brand-700 hover:bg-brand-50 dark:hover:bg-brand-900/20'
-                      }`}
-                    >
-                      Meal prep
-                    </button>
                   </div>
-                </div>
+                )}
 
                 {prepDays !== null && (
                   <div className="mb-4 space-y-3">
@@ -737,53 +740,65 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                     </div>
                   </div>
                 )}
-                <div className="space-y-2">
+                <div className="rounded-xl border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
                   {ingredients.map((ing, i) => {
                     const libUnit = libraryUnit(ing, ingredientLib)
                     const unit = (ing.unit && ing.unit !== 'g') ? ing.unit : (libUnit && libUnit !== 'g') ? libUnit : 'g'
                     const isStatic = ing.is_static && !ing._isAdded
                     const officialQty = !ing._isAdded ? officialQtyByKey[ing.ingredient_id || (ing.name || '').toLowerCase()] : null
                     return (
-                      <div key={ing._tempId || ing.id || i} className="flex items-center gap-2 flex-wrap">
-                        {onToggleStatic && !ing._isAdded && (
-                          <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); onToggleStatic(ing) }}
-                            title={isStatic ? 'Static — click to unlock for all calorie tiers' : 'Click to lock this ingredient\'s quantity across all calorie tiers'}
-                            className={`w-5 h-5 flex items-center justify-center flex-shrink-0 transition-colors ${isStatic ? 'text-amber-400 hover:text-amber-600' : 'text-gray-300 hover:text-gray-500'}`}
-                          >
-                            {isStatic ? (
+                      <div key={ing._tempId || ing.id || i} className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2.5 px-3 py-2.5">
+                        <div className="flex items-center">
+                          {onToggleStatic && !ing._isAdded && (
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); onToggleStatic(ing) }}
+                              title={isStatic ? 'Static — click to unlock for all calorie tiers' : 'Click to lock this ingredient\'s quantity across all calorie tiers'}
+                              className={`w-5 h-5 flex items-center justify-center flex-shrink-0 transition-colors ${isStatic ? 'text-amber-400 hover:text-amber-600' : 'text-gray-300 hover:text-gray-500'}`}
+                            >
+                              {isStatic ? (
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                                  <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
+                                </svg>
+                              ) : (
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 018 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                                </svg>
+                              )}
+                            </button>
+                          )}
+                          {onRemoveIngredient && !isStatic && (
+                            <button
+                              onClick={e => { e.stopPropagation(); onRemoveIngredient(slotKey, ing) }}
+                              className="w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 transition-colors"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                          {onRemoveIngredient && isStatic && !onToggleStatic && (
+                            <span className="w-5 h-5 flex items-center justify-center flex-shrink-0 text-amber-400" title="Static ingredient — cannot be removed">
                               <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                                 <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
                               </svg>
-                            ) : (
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 018 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
-                              </svg>
-                            )}
-                          </button>
-                        )}
-                        {onRemoveIngredient && !isStatic && (
-                          <button
-                            onClick={e => { e.stopPropagation(); onRemoveIngredient(slotKey, ing) }}
-                            className="w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 transition-colors"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        )}
-                        {onRemoveIngredient && isStatic && !onToggleStatic && (
-                          <span className="w-5 h-5 flex items-center justify-center flex-shrink-0 text-amber-400" title="Static ingredient — cannot be removed">
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                              <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
-                            </svg>
-                          </span>
-                        )}
-                        <span className="text-sm text-gray-800 dark:text-gray-200 flex-1">{ing.name}</span>
-                        <div className="flex items-center gap-2 flex-shrink-0 tabular-nums">
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="text-sm text-gray-800 dark:text-gray-200 truncate">{ing.name}</p>
+                          <p className="flex items-center gap-1.5 mt-0.5 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
+                            <span>{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
+                            <span className={`flex items-center gap-0.5 ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{Math.round(parseFloat(ing.carbs_g) || 0)}</span>
+                            <span className={`flex items-center gap-0.5 ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{Math.round(parseFloat(ing.protein_g) || 0)}</span>
+                            <span className={`flex items-center gap-0.5 ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{Math.round(parseFloat(ing.fat_g) || 0)}</span>
+                          </p>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-0.5 flex-shrink-0 tabular-nums">
                           {onUpdateIngredient ? (
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1.5">
                               <QtyInput
                                 min="0"
                                 step="1"
@@ -797,21 +812,15 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                                 }`}
                               />
                               <span className="text-xs text-gray-400 dark:text-gray-500 w-6">{unit}</span>
-                              {officialQty != null && (
-                                <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap" title="Meal Library's standard recipe amount">
-                                  ({fmtQty(officialQty, unit)})
-                                </span>
-                              )}
                             </div>
                           ) : (
                             <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{formatAmount(ing, ingredientLib)}</span>
                           )}
-                          <span className="text-xs text-gray-400 dark:text-gray-500">{Math.round(parseFloat(ing.calories) || 0)} kcal</span>
-                          <span className="hidden sm:flex items-center gap-1.5 text-xs">
-                            <span className={`flex items-center gap-0.5 ${MACRO_META.carb.text}`}><MacroBadge type="carb" />{Math.round(parseFloat(ing.carbs_g) || 0)}</span>
-                            <span className={`flex items-center gap-0.5 ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{Math.round(parseFloat(ing.protein_g) || 0)}</span>
-                            <span className={`flex items-center gap-0.5 ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{Math.round(parseFloat(ing.fat_g) || 0)}</span>
-                          </span>
+                          {officialQty != null && onUpdateIngredient && (
+                            <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap" title="Meal Library's standard recipe amount">
+                              standard: {fmtQty(officialQty, unit)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )
