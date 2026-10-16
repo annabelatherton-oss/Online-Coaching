@@ -264,7 +264,13 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
   const { profile } = useAuth()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [loading, setLoading] = useState(true)
-  const [coachNotes, setCoachNotes] = useState(current?.coach_response || '')
+  // Always starts blank, never pre-filled from current.coach_response — current is just "the
+  // latest check-in that exists", which is still last week's already-answered one if this panel
+  // is opened to prep next week's delivery before the client's next check-in has come in. A note
+  // is for one specific week; it shouldn't still be sitting here looking like it needs re-sending
+  // once that week is done. (loadDraft below still restores an unsaved draft for THIS week, if the
+  // coach was mid-typing and navigated away before submitting.)
+  const [coachNotes, setCoachNotes] = useState('')
   // Coach's own per-struggle advice for THIS week's check-in, keyed by struggle label — e.g. a
   // comment specifically against "Struggling to find time for the gym" rather than one big
   // response covering everything. Saved together with the rest of the response.

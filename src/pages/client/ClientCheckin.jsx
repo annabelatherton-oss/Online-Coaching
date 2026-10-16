@@ -428,21 +428,32 @@ export default function ClientCheckin() {
           .flatMap(s => (s.session_exercises || []).sort((a, b) => a.order_index - b.order_index))
 
         if (allExs.length > 0) {
+          // Current training week AND the one before it — same "fall back a week" the Training
+          // page itself already uses. The client's check-in window is Friday-Thursday, but a
+          // training session can land on any day including the day after check-in (Saturday), so
+          // this week's own log often doesn't exist yet when the check-in is actually filled in —
+          // without the fallback, that lift's field (and its "aim for" target) would just be
+          // empty/stale instead of using the most recent real session on record.
+          const weeksToFetch = trainingWeek > 1 ? [trainingWeek, trainingWeek - 1] : [trainingWeek]
           const { data: logs } = await supabase
             .from('client_exercise_logs')
-            .select('session_exercise_id, weight_kg, reps_completed')
+            .select('session_exercise_id, week_number, weight_kg, reps_completed')
             .eq('client_id', clientRow.id)
-            .eq('week_number', trainingWeek)
+            .in('week_number', weeksToFetch)
             .in('session_exercise_id', allExs.map(e => e.id))
 
-          const logMap = {}
+          const thisWeekMap = {}, prevWeekMap = {}
           ;(logs || []).forEach(l => {
             const ex = allExs.find(e => e.id === l.session_exercise_id)
-            if (ex) logMap[(ex.name || '').toLowerCase()] = l
+            if (!ex) return
+            const key = (ex.name || '').toLowerCase()
+            if (l.week_number === trainingWeek) thisWeekMap[key] = l
+            else prevWeekMap[key] = l
           })
 
           trainingPrePop = lifts.map(lift => {
-            const log = logMap[(lift.name || '').toLowerCase()]
+            const key = (lift.name || '').toLowerCase()
+            const log = thisWeekMap[key] || prevWeekMap[key]
             if (!log) return null
             const best = getBestSet(log.reps_completed, log.weight_kg)
             return best
