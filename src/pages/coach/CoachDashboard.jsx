@@ -154,11 +154,14 @@ export default function CoachDashboard() {
               .in('client_id', clientIds)
               .eq('status', 'resolved')
               .eq('coach_seen_resolved', false),
+            // Only a genuinely unresolved conflict (no swap rule exists yet) needs the coach's
+            // attention here — an auto-swapped one already means the client never saw it.
             supabase
               .from('client_meal_swap_acks')
-              .select('client_id, dislike_name, resolution, meals(name)')
+              .select('client_id, dislike_name, meals(name)')
               .in('client_id', clientIds)
-              .eq('acknowledged', false),
+              .eq('acknowledged', false)
+              .eq('resolution', 'needs_review'),
             supabase
               .from('client_everyday_meals')
               .select('client_id, slot_type, meal:meal_id(name)')
@@ -213,11 +216,7 @@ export default function CoachDashboard() {
 
           ;(mealFlagRows || []).forEach(r => {
             const mealName = r.meals?.name || 'A meal'
-            if (r.resolution === 'needs_review') {
-              flag(r.client_id, { text: `${mealName} needs a swap for "${r.dislike_name}"`, tone: 'amber' })
-            } else {
-              flag(r.client_id, { text: `${mealName} auto-swapped for "${r.dislike_name}"`, tone: 'gray' })
-            }
+            flag(r.client_id, { text: `${mealName} has no swap set up for "${r.dislike_name}"`, tone: 'amber' })
           })
 
           // Grouped per client into one pill instead of one per slot — a client who changes

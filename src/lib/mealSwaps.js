@@ -180,22 +180,45 @@ export function applyDislikeSwaps(ingredients, dislikes, allergies, mealId, ingr
 // resolved dislike (swapped automatically) or one still needing a rule. Safe to call on every
 // page load — only writes rows whose resolution actually changed, so an already-acknowledged
 // notification doesn't get reset to unread just because the client reopened their plan.
+//
+// Also clears out any row for this meal that no longer applies at all — the ingredient was
+// swapped, the meal's recipe changed, or the client's own dislike/allergy list changed — so a
+// fixed conflict stops showing up on the dashboard without the coach having to dismiss it by
+// hand. (A meal swapped OUT of the plan entirely, so this never gets called for its old meal_id
+// again, is cleaned up separately — see the per-client sweep in ClientMealPlan.jsx.)
 export async function syncMealSwapStatus(clientId, mealId, applied, unresolved) {
   const entries = [
     ...(applied || []).map(a => ({ dislike_name: a.dislike_name, resolution: a.resolution })),
     ...(unresolved || []).map(u => ({ dislike_name: u.dislike_name, resolution: 'needs_review' })),
   ]
-  if (!entries.length) return
   const { data: existing } = await supabase.from('client_meal_swap_acks')
-    .select('dislike_name, resolution')
+    .select('id, dislike_name, resolution')
     .eq('client_id', clientId).eq('meal_id', mealId)
-  const existingByDislike = Object.fromEntries((existing || []).map(r => [r.dislike_name, r.resolution]))
-  const toUpsert = entries.filter(e => existingByDislike[e.dislike_name] !== e.resolution)
+  const existingByDislike = Object.fromEntries((existing || []).map(r => [r.dislike_name, r]))
+  const currentNames = new Set(entries.map(e => e.dislike_name))
+
+  const stale = (existing || []).filter(r => !currentNames.has(r.dislike_name))
+  if (stale.length) await supabase.from('client_meal_swap_acks').delete().in('id', stale.map(r => r.id))
+
+  const toUpsert = entries.filter(e => existingByDislike[e.dislike_name]?.resolution !== e.resolution)
   if (!toUpsert.length) return
   await supabase.from('client_meal_swap_acks').upsert(
     toUpsert.map(e => ({ client_id: clientId, meal_id: mealId, dislike_name: e.dislike_name, resolution: e.resolution, acknowledged: false })),
     { onConflict: 'client_id,meal_id,dislike_name' }
   )
+}
+
+// Removes any coach-notification row left over from a meal that's no longer assigned anywhere in
+// this client's current week at all — e.g. the coach (or an earlier auto-swap) replaced it with a
+// different meal, so syncMealSwapStatus never runs against its old meal_id again and its row would
+// otherwise sit there flagged forever. Safe to call even when the client has no dislikes/allergies
+// at all: it only ever deletes rows that already exist for meals no longer in currentMealIds.
+export async function clearOrphanedMealSwapAcks(clientId, currentMealIds) {
+  const { data: existing } = await supabase.from('client_meal_swap_acks').select('id, meal_id').eq('client_id', clientId)
+  if (!existing?.length) return
+  const keep = new Set(currentMealIds.filter(Boolean))
+  const orphaned = existing.filter(r => !keep.has(r.meal_id))
+  if (orphaned.length) await supabase.from('client_meal_swap_acks').delete().in('id', orphaned.map(r => r.id))
 }
 
 // Loads this client's global swap rules and any meal-specific standard swaps

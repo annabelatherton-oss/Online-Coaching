@@ -8,7 +8,7 @@ import {
   mealMacros, mealMacrosLayered, addMacros, getIngredients, getIngredientsLayered, normalizeOverrides,
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
-import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus, findSafeMeal } from '../../lib/mealSwaps'
+import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus, findSafeMeal, clearOrphanedMealSwapAcks } from '../../lib/mealSwaps'
 import { mealQualifiesForDiets } from '../../lib/diets'
 import { normalizeGoalMacroSplits, calcBodyweightMacros } from '../../lib/macros'
 import EverydayMealsClient from '../../components/EverydayMealsClient'
@@ -173,6 +173,8 @@ export default function ClientMealPlan() {
           if (applied.length || unresolved.length) syncMealSwapStatus(clientRow.id, mId, applied, unresolved)
         }
       }
+
+      clearOrphanedMealSwapAcks(clientRow.id, Object.values(finalSlots))
 
       setEditedSlots(finalSlots)
       // Separate from templateSlots — the "needs coach review" flag should only fire on an actual

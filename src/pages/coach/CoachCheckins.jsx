@@ -12,6 +12,7 @@ import {
   MacroBadge, MACRO_META, formatSigned,
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
+import { loadSwapContext, applyDislikeSwaps } from '../../lib/mealSwaps'
 import { weekForDate } from '../../lib/planWeek'
 import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
 import { GOAL_LABELS } from '../../lib/calorieSuggestion'
@@ -265,6 +266,21 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
   const { profile } = useAuth()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [loading, setLoading] = useState(true)
+  // For the "needs a swap" warning below — loaded once per client, same swap-rule lookup
+  // ClientMealPlan.jsx uses to resolve a disliked/allergenic ingredient automatically. Without
+  // this, a coach reviewing and delivering a check-in had no way to know a meal going out
+  // contained something a client is allergic to until the client (or the dashboard's own, easy to
+  // miss "needs attention" card) flagged it after the fact.
+  const [swapCtx, setSwapCtx] = useState(null)
+  useEffect(() => {
+    const dislikes = (client.dislikes || []).filter(Boolean)
+    const allergies = (client.allergies || []).filter(Boolean)
+    if (!dislikes.length && !allergies.length) {
+      setSwapCtx({ dislikes: [], allergies: [], ingredientSwapsByDislike: {}, mealSwapOptionsByMealAndDislike: {} })
+      return
+    }
+    loadSwapContext(client.id, [...dislikes, ...allergies]).then(ctx => setSwapCtx({ dislikes, allergies, ...ctx }))
+  }, [client.id])
   // Always starts blank, never pre-filled from current.coach_response — current is just "the
   // latest check-in that exists", which is still last week's already-answered one if this panel
   // is opened to prep next week's delivery before the client's next check-in has come in. A note
@@ -1077,6 +1093,28 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
     Object.keys(ingredientOverrides).some(k => hasAnyOverride(ingredientOverrides[k])) ||
     Object.keys({ ...templateSlots, ...editedSlots }).some(k => editedSlots[k] !== templateSlots[k])
 
+  // Every slot that still contains something this client dislikes/is allergic to with no swap
+  // rule set up for it — i.e. exactly what's about to be delivered to them as-is. Deliberately
+  // checks the RAW ingredients (no swapCtx applied to the macro totals above), since that's what's
+  // actually in editedSlots right now; an ingredient-level swap rule only ever gets applied live on
+  // the client's own meal plan page, not persisted here.
+  const mealConflicts = swapCtx && (swapCtx.dislikes.length || swapCtx.allergies.length)
+    ? ALL_SLOT_DEFS.map(def => {
+        const mealId = editedSlots[def.key]
+        const meal = mealId ? mealMap[mealId] : null
+        if (!meal) return null
+        const ingredients = getIngredientsLayered(meal, tier, templateOverrides[def.key], ingredientOverrides[def.key])
+        const { unresolved } = applyDislikeSwaps(ingredients, swapCtx.dislikes, swapCtx.allergies, mealId, swapCtx.ingredientSwapsByDislike, swapCtx.mealSwapOptionsByMealAndDislike)
+        if (!unresolved.length) return null
+        return {
+          key: def.key,
+          label: def.optionLabel ? `${def.label} — ${def.optionLabel}` : def.label,
+          mealName: meal.name,
+          items: unresolved,
+        }
+      }).filter(Boolean)
+    : []
+
   const prevCalTarget = activeAssignment?.calorie_target
   const calDiff = calorieTarget && prevCalTarget ? parseInt(calorieTarget) - prevCalTarget : null
 
@@ -1133,6 +1171,21 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
           {saving ? 'Submitting…' : `Submit Week ${deliveryPersonalWeek} Plan`}
         </button>
       </div>
+
+      {mealConflicts.length > 0 && (
+        <div className="mt-4 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 space-y-1.5">
+          <p className="text-sm font-semibold text-red-700 dark:text-red-400">
+            This plan still has {mealConflicts.length === 1 ? 'a meal' : `${mealConflicts.length} meals`} with no swap set up for something {client?.full_name?.split(' ')[0] || 'this client'} dislikes or is allergic to
+          </p>
+          <ul className="text-xs text-red-600 dark:text-red-400 space-y-0.5">
+            {mealConflicts.map(c => (
+              <li key={c.key}>
+                <span className="font-medium">{c.label}</span> ({c.mealName}): {c.items.map(i => `"${i.ingredientName}" — ${i.dislike_name}`).join(', ')}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {loading ? (
         <LoadingSpinner size="lg" className="py-16" />
@@ -2711,7 +2764,7 @@ export default function CoachCheckins() {
 
   async function load() {
     const [{ data: clientData }, { data: checkinData }] = await Promise.all([
-      supabase.from('clients').select('id, collect_measurements, height_cm, date_of_birth, sex, activity_level, goal_type, start_date, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id).eq('is_archived', false),
+      supabase.from('clients').select('id, collect_measurements, height_cm, date_of_birth, sex, activity_level, goal_type, start_date, dietary_requirements, dislikes, allergies, profiles!clients_profile_id_fkey(full_name)').eq('coach_id', profile.id).eq('is_archived', false),
       supabase.from('client_checkins').select('*').eq('coach_id', profile.id).order('week_number', { ascending: false }),
     ])
     const mapped = (clientData || []).map(c => ({ ...c, full_name: c.profiles?.full_name }))
