@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { CoachRoute, ClientRoute } from './components/ProtectedRoute'
@@ -47,7 +47,43 @@ function PageFallback() {
   )
 }
 
+// Recovers from a page that silently froze while backgrounded instead of making the person
+// refresh it by hand. Two distinct causes, both invisible until the next interaction does
+// nothing:
+//  1. bfcache restore (pageshow with event.persisted) — the browser literally paused the whole JS
+//     execution context (including open Supabase realtime sockets) and silently resumed it later;
+//     React never re-runs any effects for this, so sockets/timers stay in whatever broken state
+//     they were frozen in. Always worth a reload — there's no cost to one that wasn't needed.
+//  2. The tab/app was hidden a long time (phone locked, laptop slept) — mobile OSes routinely
+//     suspend background tabs outright, and even when they don't, a long-idle realtime connection
+//     is a common source of "nothing updates anymore". Only reloads past a threshold so briefly
+//     switching apps/tabs is never disrupted.
+const STALE_BACKGROUND_MS = 10 * 60 * 1000
+
+function useRecoverFromFreeze() {
+  useEffect(() => {
+    let hiddenAt = null
+    function onVisibilityChange() {
+      if (document.hidden) {
+        hiddenAt = Date.now()
+      } else if (hiddenAt != null && Date.now() - hiddenAt > STALE_BACKGROUND_MS) {
+        window.location.reload()
+      }
+    }
+    function onPageShow(e) {
+      if (e.persisted) window.location.reload()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('pageshow', onPageShow)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('pageshow', onPageShow)
+    }
+  }, [])
+}
+
 export default function App() {
+  useRecoverFromFreeze()
   return (
     <BrowserRouter>
       <AuthProvider>
