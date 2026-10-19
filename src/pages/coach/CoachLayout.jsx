@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation, useNavigationType } from 're
 import { useAuth } from '../../contexts/AuthContext'
 import DarkModeToggle from '../../components/DarkModeToggle'
 import HelpBox from '../../components/HelpBox'
+import CoachNotificationsPrompt, { shouldAutoShowNotificationsPrompt } from '../../components/CoachNotificationsPrompt'
 import { registerPushNotifications } from '../../lib/pushNotifications'
 
 const HELP_TOPICS = [
@@ -190,11 +191,23 @@ export default function CoachLayout() {
   const navigationType = useNavigationType()
   const mainRef = useRef(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showNotificationsPrompt, setShowNotificationsPrompt] = useState(false)
 
-  // Register for push notifications once after login — used for things like the Friday 7am
-  // "check-ins are due" reminder.
+  // registerPushNotifications() calls Notification.requestPermission() internally, and iOS
+  // silently ignores that call unless it happens directly inside a user gesture (a tap) — calling
+  // it here, unconditionally, on every login had never actually shown the permission prompt, so no
+  // coach ever ended up with a real push_subscriptions row and no coach notification ever arrived.
+  // Same split ClientLayout already uses: a returning coach who's already decided on notifications
+  // one way or the other gets silently kept in sync here, while a coach who's still undecided sees
+  // CoachNotificationsPrompt's explicit "Enable notifications" button instead, so the actual
+  // permission request always happens inside that tap.
   useEffect(() => {
-    if (profile?.id) registerPushNotifications({ coachId: profile.id })
+    if (!profile?.id) return
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'default') {
+      registerPushNotifications({ coachId: profile.id })
+    } else if (shouldAutoShowNotificationsPrompt()) {
+      setShowNotificationsPrompt(true)
+    }
   }, [profile?.id])
 
   // Swaps in a coach-specific manifest (different name + start_url than the client's) while this
@@ -383,6 +396,10 @@ export default function CoachLayout() {
           <Outlet />
         </main>
       </div>
+
+      {showNotificationsPrompt && profile?.id && (
+        <CoachNotificationsPrompt coachId={profile.id} onClose={() => setShowNotificationsPrompt(false)} />
+      )}
     </div>
   )
 }
