@@ -4,7 +4,6 @@ import { useAuth } from '../../contexts/AuthContext'
 import DarkModeToggle from '../../components/DarkModeToggle'
 import HelpBox from '../../components/HelpBox'
 import CoachNotificationsPrompt, { shouldAutoShowNotificationsPrompt } from '../../components/CoachNotificationsPrompt'
-import { registerPushNotifications } from '../../lib/pushNotifications'
 
 const HELP_TOPICS = [
   {
@@ -193,21 +192,17 @@ export default function CoachLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showNotificationsPrompt, setShowNotificationsPrompt] = useState(false)
 
-  // registerPushNotifications() calls Notification.requestPermission() internally, and iOS
-  // silently ignores that call unless it happens directly inside a user gesture (a tap) — calling
-  // it here, unconditionally, on every login had never actually shown the permission prompt, so no
-  // coach ever ended up with a real push_subscriptions row and no coach notification ever arrived.
-  // Same split ClientLayout already uses: a returning coach who's already decided on notifications
-  // one way or the other gets silently kept in sync here, while a coach who's still undecided sees
-  // CoachNotificationsPrompt's explicit "Enable notifications" button instead, so the actual
-  // permission request always happens inside that tap.
+  // Only ever shows the explicit "Enable notifications" prompt when still undecided on THIS
+  // device — never silently re-subscribes in the background. push_subscriptions has one row per
+  // coach (not per device): a background resync here on every login was exactly what made a coach
+  // who uses both a phone and a laptop never reliably get notifications on either — whichever
+  // device was opened most recently silently stole the single subscription slot back from the
+  // other one, every time, with no visible sign it had happened. Deciding which device actually
+  // holds that slot is now always a deliberate action (this prompt, or CoachSettings' own "Enable
+  // notifications on this device" button), never an accident of which one was opened last.
   useEffect(() => {
     if (!profile?.id) return
-    if (typeof Notification !== 'undefined' && Notification.permission !== 'default') {
-      registerPushNotifications({ coachId: profile.id })
-    } else if (shouldAutoShowNotificationsPrompt()) {
-      setShowNotificationsPrompt(true)
-    }
+    if (shouldAutoShowNotificationsPrompt()) setShowNotificationsPrompt(true)
   }, [profile?.id])
 
   // Swaps in a coach-specific manifest (different name + start_url than the client's) while this

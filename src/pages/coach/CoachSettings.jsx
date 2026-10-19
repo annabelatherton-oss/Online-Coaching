@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
+import { registerPushNotifications } from '../../lib/pushNotifications'
 import { MEAL_SPLIT_CATEGORIES, MEAL_SPLIT_LABELS, DEFAULT_MEAL_SPLIT, normalizeMealSplit } from '../../lib/calorieSplit'
 import { regenerateAllTiersForMeal, withIngredientSwaps } from '../../lib/calorieTierScaling'
 import { GOAL_TYPES, normalizeGoalMacroSplits, normalizeProteinPerKg, DEFAULT_PROTEIN_G_PER_KG } from '../../lib/macros'
@@ -50,6 +51,25 @@ function Toggle({ id, label, description, checked, onChange }) {
 
 export default function CoachSettings() {
   const { profile, refetchProfile } = useAuth()
+
+  // push_subscriptions has one row per coach, not per device — enabling notifications here is a
+  // deliberate per-device action rather than something that happens silently in the background
+  // (see CoachLayout.jsx), so switching which device gets them is always a conscious choice: tap
+  // this on the device that should hold it.
+  const [notifRequesting, setNotifRequesting] = useState(false)
+  const [notifResult, setNotifResult] = useState(null) // 'enabled' | 'denied' | 'unsupported' | null
+  async function enableNotificationsHere() {
+    setNotifRequesting(true)
+    setNotifResult(null)
+    if (typeof Notification === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setNotifResult('unsupported')
+      setNotifRequesting(false)
+      return
+    }
+    const ok = await registerPushNotifications({ coachId: profile.id })
+    setNotifResult(ok ? 'enabled' : 'denied')
+    setNotifRequesting(false)
+  }
 
   // ── General settings ──────────────────────────────────────────────────────
   const [s, setS] = useState({
@@ -412,6 +432,31 @@ export default function CoachSettings() {
                 <option value="miles">Miles</option>
               </select>
             </Field>
+          </div>
+        </Section>
+
+        <Section
+          title="Notifications"
+          description="Only one device at a time gets coach notifications — tapping this on a new device moves them there, off whichever device had them before."
+        >
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={enableNotificationsHere}
+              disabled={notifRequesting}
+              className="btn-secondary"
+            >
+              {notifRequesting ? 'Requesting…' : 'Enable notifications on this device'}
+            </button>
+            {notifResult === 'enabled' && (
+              <span className="text-sm text-green-600 dark:text-green-400 font-medium">Enabled on this device</span>
+            )}
+            {notifResult === 'denied' && (
+              <span className="text-sm text-red-500 font-medium">Not allowed — check this browser/phone's notification permission for this app</span>
+            )}
+            {notifResult === 'unsupported' && (
+              <span className="text-sm text-amber-500 font-medium">Not supported here — on iPhone, open this app from its Home Screen icon, not Safari</span>
+            )}
           </div>
         </Section>
 
