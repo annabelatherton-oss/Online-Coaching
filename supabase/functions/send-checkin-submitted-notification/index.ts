@@ -217,8 +217,8 @@ serve(async (req) => {
 
   try {
     const result = await sendPush(subRow.subscription, {
-      title: 'Check-in submitted',
-      body: `${clientName} just submitted ${weekText}.`,
+      title: clientName,
+      body: `Just submitted ${weekText}.`,
       url: '/coach/checkins',
     })
     if (result.status === 410) {

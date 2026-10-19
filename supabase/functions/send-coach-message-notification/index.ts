@@ -221,7 +221,7 @@ serve(async (req) => {
 
   try {
     const result = await sendPush(subRow.subscription, {
-      title: `Message from ${clientName}`,
+      title: clientName,
       body: preview || 'Sent you a new message.',
       url: '/coach/messages',
     })

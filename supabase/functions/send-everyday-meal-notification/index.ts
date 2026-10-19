@@ -208,8 +208,8 @@ serve(async (req) => {
 
   try {
     const result = await sendPush(subRow.subscription, {
-      title: 'Everyday meal changed',
-      body: `${clientName} picked a new ${slotText} for their everyday meals.`,
+      title: clientName,
+      body: `Picked a new ${slotText} for their everyday meals.`,
       url: `/coach/clients/${client.id}?tab=${encodeURIComponent('Meal Plan')}`,
     })
     if (result.status === 410) {

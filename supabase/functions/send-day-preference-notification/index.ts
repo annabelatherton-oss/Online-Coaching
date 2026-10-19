@@ -210,8 +210,8 @@ serve(async (req) => {
 
   try {
     const result = await sendPush(subRow.subscription, {
-      title: 'Training availability updated',
-      body: `${clientName}: ${message}`,
+      title: clientName,
+      body: message,
       url: `/coach/clients/${client.id}?tab=Training`,
     })
     if (result.status === 410) {
