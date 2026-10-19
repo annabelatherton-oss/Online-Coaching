@@ -130,7 +130,7 @@ async function encryptPayload(payload: Uint8Array, p256dhB64url: string, authB64
   return concatBytes(header, ciphertext)
 }
 
-async function sendPush(sub: any, payloadObj: Record<string, unknown>): Promise<{ status: number; ok: boolean }> {
+async function sendPush(sub: any, payloadObj: Record<string, unknown>): Promise<{ status: number; ok: boolean; responseText: string }> {
   const endpoint: string = sub.endpoint
   const origin = new URL(endpoint)
   const audience = `${origin.protocol}//${origin.host}`
@@ -152,7 +152,15 @@ async function sendPush(sub: any, payloadObj: Record<string, unknown>): Promise<
     body,
   })
 
-  return { status: res.status, ok: res.ok }
+  // The push SERVICE (Apple/Google/Mozilla) accepting the request (2xx) only proves it queued
+  // delivery — it says nothing about whether the device actually decrypted and showed it. But a
+  // REJECTION (4xx/5xx) almost always means the VAPID key or the encrypted payload itself is
+  // wrong, and its response body usually says exactly which. Logged (not just returned) so it
+  // shows up in this function's Supabase logs even though the caller never reads the JSON back.
+  const responseText = res.ok ? '' : await res.text().catch(() => '')
+  console.log(`push send: endpoint=${origin.host} status=${res.status} ok=${res.ok}${responseText ? ` body=${responseText}` : ''}`)
+
+  return { status: res.status, ok: res.ok, responseText }
 }
 
 // ─── Main handler ──────────────────────────────────────────────────────────────
@@ -197,6 +205,8 @@ serve(async (req) => {
     .select('subscription')
     .eq('coach_id', client.coach_id)
     .maybeSingle()
+
+  console.log(`coach_id=${client.coach_id} subscribed=${!!subRow}`)
 
   if (!subRow) {
     return json({ sent: false, reason: 'not_subscribed' })
