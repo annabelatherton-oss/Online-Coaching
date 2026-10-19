@@ -21,7 +21,7 @@ union all
 
 select 'meal_tier_ingredients', mti.id::text, m.name || ' (' || mtv.calorie_tier || ' kcal)', mti.quantity_g, mti.unit, mti.calories
 from meal_tier_ingredients mti
-join meal_tier_versions mtv on mtv.id = mti.meal_tier_version_id
+join meal_tier_versions mtv on mtv.id = mti.tier_version_id
 join meals m on m.id = mtv.meal_id
 where lower(trim(mti.name)) = 'baked beans'
 
