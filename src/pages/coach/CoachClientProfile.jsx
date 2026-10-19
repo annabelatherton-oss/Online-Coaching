@@ -4531,6 +4531,17 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
   // checkins[0] = most recent, checkins[last] = oldest
   function prevCheckin(i) { return checkins[i + 1] || null }
 
+  // Calendar-based — weeks elapsed since client.start_date — same convention CoachCheckins.jsx and
+  // ClientCheckin.jsx already use for every other "Week N" label in the app. A check-in's own
+  // stored week_number only counts submissions actually made, so a client who misses a week (or
+  // has one backfilled) ends up with every later check-in mislabeled if that raw value is shown
+  // directly — this is what made Tukta's week-5 check-in display as "Week 1".
+  function personalWeek(c) {
+    if (!c) return null
+    if (c.week_number === 0) return 0
+    return (client.start_date && weekForDate(c.submitted_at || c.updated_at, client.start_date)) || c.week_number
+  }
+
   // Activity-log entries that happened after the previous check-in and up to (inclusive of) this
   // one — i.e. "what the client changed since last time". p === null (the very first check-in)
   // means everything logged before this check-in's date.
@@ -4732,7 +4743,7 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
                 const gymD = metricDelta(c.gym_adherence, p?.gym_adherence, 0)
                 return (
                   <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
-                    <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">Wk {c.week_number}</td>
+                    <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">Wk {personalWeek(c)}</td>
                     <td className="py-2.5 pr-4 whitespace-nowrap">
                       <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{c.weight_kg != null ? `${c.weight_kg} kg` : '—'}</span>
                       {delta !== null && <DeltaTag delta={delta} unit=" kg" className="block" />}
@@ -4803,7 +4814,7 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
         <div className="card space-y-5">
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Photo Comparison</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Week {firstP.week_number} → Week {newestP.week_number}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Week {personalWeek(firstP)} → Week {personalWeek(newestP)}</p>
           </div>
           {compAngles.map(angle => {
             const firstUrl = photoUrlsByCheckin[firstP.id]?.[angle]
@@ -4813,8 +4824,8 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
                 <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2 capitalize">{angle}</p>
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: `First · Wk ${firstP.week_number}`, url: firstUrl },
-                    { label: `Now · Wk ${newestP.week_number}`, url: nowUrl },
+                    { label: `First · Wk ${personalWeek(firstP)}`, url: firstUrl },
+                    { label: `Now · Wk ${personalWeek(newestP)}`, url: nowUrl },
                   ].map(col => (
                     <div key={col.label} className="space-y-1">
                       {col.url ? (
@@ -4852,7 +4863,7 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
             {/* Header + weight delta */}
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">Week {c.week_number}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-white">Week {personalWeek(c)}</h3>
               </div>
               {wDelta !== null && (
                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${

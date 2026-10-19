@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
 import { useSignedProgressPhotosForCheckins } from '../../lib/progressPhotos'
+import { weekForDate } from '../../lib/planWeek'
 
 function WarnIcon({ className = 'w-4 h-4 text-red-400 flex-shrink-0' }) {
   return (
@@ -118,7 +119,7 @@ export default function CoachReports() {
       const [{ data: clientsData }, { data: checkinsData }] = await Promise.all([
         supabase
           .from('clients')
-          .select('id, is_active, is_paused, access_expires_at, profiles!clients_profile_id_fkey(full_name)')
+          .select('id, is_active, is_paused, access_expires_at, start_date, profiles!clients_profile_id_fkey(full_name)')
           .eq('coach_id', profile.id)
           .eq('is_archived', false)
           .order('created_at', { ascending: false }),
@@ -169,6 +170,15 @@ export default function CoachReports() {
     const { weights, checkins, startWeight, currentWeight, weeksElapsed, rateOfLoss, lossFlag, avgFoodAdherence, avgGymAdherence, foodAdherenceFlag, gymAdherenceFlag } =
       computeMetrics(selected, allWeights, allCheckins)
     const { label: statusLabel, cls: statusCls } = clientStatus(client)
+    // Calendar-based — same convention as CoachClientProfile.jsx/CoachCheckins.jsx — so a check-in's
+    // displayed week always matches the client's actual card-level "Week N" elsewhere, rather than
+    // the row's own stored week_number, which only counts submissions actually made (so a missed
+    // week, or a backfilled row, throws every later one off).
+    function personalWeek(c) {
+      if (!c) return null
+      if (c.week_number === 0) return 0
+      return (client.start_date && weekForDate(c.submitted_at || c.updated_at, client.start_date)) || c.week_number
+    }
     const totalLost = startWeight != null && currentWeight != null ? startWeight - currentWeight : null
     const weightPoints = weights.map(w => ({ y: parseFloat(w.weight_kg) }))
     const foodAdherenceBars = checkins.filter(c => c.food_adherence != null).map(c => ({ y: c.food_adherence }))
@@ -308,8 +318,8 @@ export default function CoachReports() {
             <BarChart bars={foodAdherenceBars} />
             {checkins.length >= 2 && (
               <div className="flex justify-between text-xs text-gray-400 mt-1.5">
-                <span>Wk {checkins[0].week_number}</span>
-                <span>Wk {checkins[checkins.length - 1].week_number}</span>
+                <span>Wk {personalWeek(checkins[0])}</span>
+                <span>Wk {personalWeek(checkins[checkins.length - 1])}</span>
               </div>
             )}
           </div>
@@ -325,8 +335,8 @@ export default function CoachReports() {
             <BarChart bars={gymAdherenceBars} />
             {checkins.length >= 2 && (
               <div className="flex justify-between text-xs text-gray-400 mt-1.5">
-                <span>Wk {checkins[0].week_number}</span>
-                <span>Wk {checkins[checkins.length - 1].week_number}</span>
+                <span>Wk {personalWeek(checkins[0])}</span>
+                <span>Wk {personalWeek(checkins[checkins.length - 1])}</span>
               </div>
             )}
           </div>
@@ -354,7 +364,7 @@ export default function CoachReports() {
                 <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
                   {[...checkins].reverse().map(ci => (
                     <tr key={ci.week_number} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20">
-                      <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-white">Wk {ci.week_number}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-white">Wk {personalWeek(ci)}</td>
                       <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-300">
                         {ci.weight_kg != null ? `${ci.weight_kg} kg` : '—'}
                       </td>
@@ -400,7 +410,7 @@ export default function CoachReports() {
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-semibold text-gray-900 dark:text-white">Progress photos</h2>
                 {isComparison && (
-                  <span className="text-xs text-gray-400">Wk {firstP.week_number} → Wk {latestP.week_number}</span>
+                  <span className="text-xs text-gray-400">Wk {personalWeek(firstP)} → Wk {personalWeek(latestP)}</span>
                 )}
               </div>
               {!hasAny ? (
@@ -418,10 +428,10 @@ export default function CoachReports() {
                         </p>
                         <div className={`grid gap-3 ${isComparison ? 'grid-cols-2' : 'grid-cols-1 max-w-[200px]'}`}>
                           {(isComparison ? [
-                            { url: firstUrl, label: `First · Wk ${firstP.week_number}` },
-                            { url: latestUrl, label: `Now · Wk ${latestP.week_number}` },
+                            { url: firstUrl, label: `First · Wk ${personalWeek(firstP)}` },
+                            { url: latestUrl, label: `Now · Wk ${personalWeek(latestP)}` },
                           ] : [
-                            { url: latestUrl || firstUrl, label: `Wk ${(latestP ?? firstP).week_number}` },
+                            { url: latestUrl || firstUrl, label: `Wk ${personalWeek(latestP ?? firstP)}` },
                           ]).map(col => (
                             <div key={col.label} className="space-y-1">
                               {col.url ? (
