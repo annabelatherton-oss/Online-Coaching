@@ -41,17 +41,22 @@ export async function loadDailyMealOptions(clientId) {
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (!asgn) return null
 
-  const [{ data: pg }, { data: coachProfile }, { data: weightRows }, { data: checkinRows }, { data: everydayRows }, { data: libData }] = await Promise.all([
+  const [{ data: pg }, { data: coachProfile }, { data: weightRows }, { data: checkinRows }, { data: everydayRows }, { data: libData }, { data: lastDelivery }] = await Promise.all([
     supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single(),
     supabase.from('profiles').select('goal_macro_splits, protein_g_per_kg').eq('id', clientRow.coach_id).single(),
     supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', clientId).order('recorded_at', { ascending: false }).limit(1),
     supabase.from('client_checkins').select('weight_kg').eq('client_id', clientId).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
     supabase.from('client_everyday_meals').select('slot_type, meal_id, ingredient_overrides').eq('client_id', clientId),
     supabase.from('ingredients').select('id, name, category, serving_size, serving_unit, calories_per_serving, protein_per_serving, carbs_per_serving, fat_per_serving').eq('coach_id', clientRow.coach_id),
+    // The plan group's current_week advances on its own schedule regardless of whether this
+    // client has actually been sent that week's plan yet — see ClientMealPlan.jsx for why this
+    // has to follow the same "last actually delivered" week, not the group's.
+    supabase.from('weekly_deliveries').select('personal_week').eq('client_id', clientId)
+      .order('delivered_at', { ascending: false }).limit(1).maybeSingle(),
   ])
   const ingredientLib = {}
   for (const ing of (libData || [])) ingredientLib[ing.id] = ing
-  const effectiveWeek = asgn.week_override ?? pg?.current_week ?? 1
+  const effectiveWeek = asgn.week_override ?? lastDelivery?.personal_week ?? pg?.current_week ?? 1
   const weightKg = weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null
   const goalMacroSplits = normalizeGoalMacroSplits(coachProfile?.goal_macro_splits)
 

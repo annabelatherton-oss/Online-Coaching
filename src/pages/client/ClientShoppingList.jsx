@@ -69,8 +69,15 @@ export default function ClientShoppingList() {
       const { data: asgn } = await supabase.from('client_plan_assignments').select('*').eq('client_id', clientRow.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle()
       if (!asgn) { setLoading(false); setNoPlan(true); return }
 
-      const { data: pg } = await supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single()
-      const effectiveWeek = asgn.week_override ?? pg?.current_week ?? 1
+      // The plan group's current_week advances on its own schedule regardless of whether this
+      // client has actually been sent that week's plan yet — see ClientMealPlan.jsx for why the
+      // shopping list has to follow the same "last actually delivered" week, not the group's.
+      const [{ data: pg }, { data: lastDelivery }] = await Promise.all([
+        supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single(),
+        supabase.from('weekly_deliveries').select('personal_week').eq('client_id', clientRow.id)
+          .order('delivered_at', { ascending: false }).limit(1).maybeSingle(),
+      ])
+      const effectiveWeek = asgn.week_override ?? lastDelivery?.personal_week ?? pg?.current_week ?? 1
 
       const [{ data: mealsData }, { data: libData }] = await Promise.all([
         supabase.from('meals').select(`

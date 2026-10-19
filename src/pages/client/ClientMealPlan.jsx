@@ -56,14 +56,23 @@ export default function ClientMealPlan() {
       if (!asgn) { setLoading(false); return }
       setAssignment(asgn)
 
-      const [{ data: pg }, { count: checkinCount }] = await Promise.all([
+      const [{ data: pg }, { count: checkinCount }, { data: lastDelivery }] = await Promise.all([
         supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single(),
         // week_number > 0 excludes the one-off starting check-in some clients submit right after
         // signup (a baseline, not a real week) — otherwise every real week's own "Week N" label
         // here would be one higher than it should be.
         supabase.from('client_checkins').select('id', { count: 'exact', head: true }).eq('client_id', clientRow.id).gt('week_number', 0),
+        // The plan group's current_week is a shared counter that advances on its own schedule
+        // (Friday cron) regardless of whether THIS client has actually been sent that week's plan
+        // yet — following it directly moved a client's meal plan forward the moment the group
+        // advanced, even with no check-in response delivered. What the client should see is
+        // whatever was last actually delivered to them (every delivery, direct or via a check-in
+        // response, writes a weekly_deliveries row — see CoachCheckins.jsx/CoachClientProfile.jsx),
+        // staying exactly there until their next one lands.
+        supabase.from('weekly_deliveries').select('personal_week').eq('client_id', clientRow.id)
+          .order('delivered_at', { ascending: false }).limit(1).maybeSingle(),
       ])
-      const effectiveWeek = asgn.week_override ?? pg?.current_week ?? 1
+      const effectiveWeek = asgn.week_override ?? lastDelivery?.personal_week ?? pg?.current_week ?? 1
       setWeekNumber(effectiveWeek)
       // Calendar-based — weeks elapsed since start_date — not a count of check-ins actually
       // submitted, so missing one doesn't make this look a week behind where it really is.
