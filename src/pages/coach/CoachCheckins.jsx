@@ -1645,6 +1645,7 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
           mealMap={mealMap}
           mealsByCategory={mealsByCategory}
           tier={tier}
+          dietKeys={client.dietary_requirements || []}
           onSelect={handleSwapSelect}
           onClose={() => setSwapModal(null)}
         />
