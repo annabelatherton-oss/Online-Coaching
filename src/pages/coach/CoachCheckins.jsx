@@ -371,7 +371,7 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
         { data: programs },
       ] = await Promise.all([
         supabase.from('meals').select(`
-          id, name, category, instructions, photo_url, photo_position,
+          id, name, category, instructions, photo_url, photo_position, diet_tags, standard_eligible,
           meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, scaling_type),
           meal_tier_versions(id, calorie_tier, calories, protein_g, carbs_g, fat_g,
             meal_tier_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, scaling_type, ingredient_id, is_static))
