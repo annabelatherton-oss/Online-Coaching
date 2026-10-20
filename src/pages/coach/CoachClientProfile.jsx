@@ -2322,7 +2322,7 @@ function MealHistoryPanel({ clientId, dietaryRequirements, mealsByCategory }) {
   )
 }
 
-function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg, onCalorieTargetChanged }) {
+function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg, onCalorieTargetChanged, onDirtyChange }) {
   const [clientWeightKg, setClientWeightKg] = useState(null)
   const [planGroups, setPlanGroups] = useState([])
   const [assignment, setAssignment] = useState(null)
@@ -2379,6 +2379,18 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   const [savingEveryday, setSavingEveryday] = useState(false)
   const [expandedEveryday, setExpandedEveryday] = useState(new Set())
   const [changingEveryday, setChangingEveryday] = useState(new Set())
+
+  // Unsaved edits here live only in this tab's own state (editedSlots/staticFlags/everydayOverrides)
+  // until the coach hits one of the explicit Save buttons below. Switching tabs unmounts this
+  // component and would silently discard them, so the parent needs to know whenever any of them
+  // go dirty in order to warn before letting that switch happen.
+  useEffect(() => {
+    onDirtyChange?.(slotsDirty || staticDirty || everydayDirty)
+  }, [slotsDirty, staticDirty, everydayDirty])
+
+  useEffect(() => {
+    return () => onDirtyChange?.(false)
+  }, [])
 
   async function loadEverydayMeals() {
     const { data } = await supabase.from('client_everyday_meals').select('*').eq('client_id', client.id)
@@ -5129,6 +5141,15 @@ export default function CoachClientProfile() {
   const [resendingInvite, setResendingInvite] = useState(false)
   const [resendError, setResendError] = useState('')
   const [resendSent, setResendSent] = useState(false)
+  const [mealPlanDirty, setMealPlanDirty] = useState(false)
+
+  function handleTabClick(tab) {
+    if (tab !== activeTab && activeTab === 'Meal Plan' && mealPlanDirty) {
+      if (!window.confirm("You have unsaved meal changes that haven't been saved yet. Leave this tab without saving them?")) return
+      setMealPlanDirty(false)
+    }
+    setActiveTab(tab)
+  }
 
   async function loadClient() {
     const { data, error: err } = await supabase.from('clients').select(`
@@ -5311,7 +5332,7 @@ export default function CoachClientProfile() {
 
       <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-800 -mx-1 px-1">
         {TABS.map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${activeTab === tab ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+          <button key={tab} onClick={() => handleTabClick(tab)} className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${activeTab === tab ? 'border-brand-500 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
             {tab}
           </button>
         ))}
@@ -5319,7 +5340,7 @@ export default function CoachClientProfile() {
 
       <div>
         {activeTab === 'Overview'    && <OverviewTab client={client} onSaved={loadClient} />}
-        {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} mealSplit={normalizeMealSplit(profile.meal_split)} goalMacroSplits={normalizeGoalMacroSplits(profile.goal_macro_splits)} proteinPerKg={normalizeProteinPerKg(profile.protein_g_per_kg)} onCalorieTargetChanged={loadClient} />}
+        {activeTab === 'Meal Plan'  && <MealPlanTab client={client} coachId={profile.id} mealSplit={normalizeMealSplit(profile.meal_split)} goalMacroSplits={normalizeGoalMacroSplits(profile.goal_macro_splits)} proteinPerKg={normalizeProteinPerKg(profile.protein_g_per_kg)} onCalorieTargetChanged={loadClient} onDirtyChange={setMealPlanDirty} />}
         {activeTab === 'Training'   && <TrainingTab client={client} coachId={profile.id} onSaved={loadClient} />}
         {activeTab === 'Daily Plan' && <DailyPlanTab client={client} />}
         {activeTab === 'Check-ins'  && <CheckinsTab clientId={client.id} collectMeasurements={client.collect_measurements} client={client} />}
