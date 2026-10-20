@@ -1241,12 +1241,17 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
                   {current.lift_results.filter(l => l?.name).map((l, i) => {
                     const d = liftDelta(l, prev)
                     return (
-                      <div key={i} className="flex items-center justify-between text-sm gap-2">
-                        <span className="text-gray-700 dark:text-gray-300">{l.name}</span>
-                        <span className="flex items-center gap-2 flex-shrink-0">
-                          <span className="font-medium text-gray-900 dark:text-white tabular-nums">{l.weight_kg ?? '—'} kg × {l.reps ?? '—'}</span>
-                          {d && (d.kg !== 0 || d.reps !== 0) && <DeltaTag delta={d.kg} />}
-                        </span>
+                      <div key={i}>
+                        <div className="flex items-center justify-between text-sm gap-2">
+                          <span className="text-gray-700 dark:text-gray-300">{l.name}</span>
+                          <span className="flex items-center gap-2 flex-shrink-0">
+                            <span className="font-medium text-gray-900 dark:text-white tabular-nums">{l.weight_kg ?? '—'} kg × {l.reps ?? '—'}</span>
+                            {d && (d.kg !== 0 || d.reps !== 0) && <DeltaTag delta={d.kg} />}
+                          </span>
+                        </div>
+                        {l.skip_reason && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Didn't do this: {l.skip_reason}</p>
+                        )}
                       </div>
                     )
                   })}
@@ -2275,8 +2280,11 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                       <div className="min-w-0">
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{lift.name}</p>
                         <p className="text-sm font-bold text-gray-900 dark:text-white whitespace-nowrap">
-                          {lift.weight_kg} kg <span className="text-xs font-normal text-gray-400">× {lift.reps}</span>
+                          {lift.weight_kg ?? '—'} kg <span className="text-xs font-normal text-gray-400">× {lift.reps ?? '—'}</span>
                         </p>
+                        {lift.skip_reason && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 truncate" title={lift.skip_reason}>Didn't do this: {lift.skip_reason}</p>
+                        )}
                       </div>
                       <div className="flex-shrink-0 text-right space-y-0.5">
                         {dPrev !== null && (dPrev.kg !== 0 || dPrev.reps !== 0) && (
@@ -2682,7 +2690,10 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                     <div key={li} className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-xs text-gray-400 truncate">{lift.name}</p>
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap">{lift.weight_kg} kg <span className="text-xs font-normal text-gray-400">× {lift.reps}</span></p>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap">{lift.weight_kg ?? '—'} kg <span className="text-xs font-normal text-gray-400">× {lift.reps ?? '—'}</span></p>
+                        {lift.skip_reason && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 truncate" title={lift.skip_reason}>Didn't do this: {lift.skip_reason}</p>
+                        )}
                       </div>
                       {d !== null && (d.kg !== 0 || d.reps !== 0) && (
                         <div className="flex gap-1 flex-wrap justify-end flex-shrink-0">

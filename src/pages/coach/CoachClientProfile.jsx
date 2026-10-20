@@ -4976,6 +4976,9 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
                             )}
                           </div>
                         )}
+                        {lift.skip_reason && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Didn't do this: {lift.skip_reason}</p>
+                        )}
                       </div>
                     )
                   })}

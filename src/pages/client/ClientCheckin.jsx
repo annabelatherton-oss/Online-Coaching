@@ -343,6 +343,10 @@ export default function ClientCheckin() {
   const [upcomingPause, setUpcomingPause] = useState(null)
   const [isLateResubmit, setIsLateResubmit] = useState(false)
   const [earlyAccess, setEarlyAccess] = useState(false)
+  // Which lift's "didn't do this" note box is expanded, keyed by index — separate from whether a
+  // note is actually saved (lift_results[i].skip_reason), so re-opening a draft with a saved note
+  // still shows its box open without this ever having been toggled this session.
+  const [liftIssueOpen, setLiftIssueOpen] = useState({})
   const [form, setForm] = useState({
     weight_kg: '',
     waist_cm: '',
@@ -631,6 +635,20 @@ export default function ClientCheckin() {
         .find(field => !form[field])
       if (missingRatingField) {
         setError('Please fill in all 4 ratings above before submitting.')
+        return
+      }
+
+      // Every configured lift needs either a weight or an explanation of why it wasn't done this
+      // week — never a silent gap your coach has to notice and chase up themselves.
+      const missingLiftIndex = topLifts.findIndex((lift, i) => {
+        const r = form.lift_results?.[i]
+        const hasWeight = r?.weight_kg !== '' && r?.weight_kg != null
+        const hasIssueNote = (r?.skip_reason || '').trim().length > 0
+        return !hasWeight && !hasIssueNote
+      })
+      if (missingLiftIndex !== -1) {
+        setLiftIssueOpen(o => ({ ...o, [missingLiftIndex]: true }))
+        setError(`Please enter a weight for "${topLifts[missingLiftIndex].name}", or tap "Didn't do this lift?" to tell your coach why.`)
         return
       }
     }
@@ -1048,12 +1066,18 @@ export default function ClientCheckin() {
         {/* Top lifts */}
         {!isStartingCheckin && topLifts.length > 0 && (
           <div className="card space-y-4">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">This week's lifts</h2>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">This week's lifts</h2>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                Haven't done one of these yet this week? Use the weight and reps from the most recent time you did it.
+              </p>
+            </div>
             {topLifts.map((lift, i) => {
               const result = form.lift_results?.[i] || {}
               const prevCheckins = allCheckins.filter(c => c.week_number !== weekNumber)
               const best = getBestPerformance(lift.name, prevCheckins)
               const target = calcNextTarget(lift, best)
+              const issueOpen = liftIssueOpen[i] || !!(result.skip_reason || '').trim()
 
               return (
                 <div key={i} className="space-y-2">
@@ -1077,6 +1101,22 @@ export default function ClientCheckin() {
                       <input className="input" type="number" onFocus={e => e.target.select()} min="1" value={result.reps ?? ''} onChange={e => setLift(i, 'reps', e.target.value)} placeholder="e.g. 5" />
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setLiftIssueOpen(o => ({ ...o, [i]: !issueOpen }))}
+                    className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 font-medium"
+                  >
+                    {issueOpen ? 'Hide note' : "Didn't do this lift this week?"}
+                  </button>
+                  {issueOpen && (
+                    <textarea
+                      className="input resize-none"
+                      rows={2}
+                      value={result.skip_reason || ''}
+                      onChange={e => setLift(i, 'skip_reason', e.target.value)}
+                      placeholder="Tell your coach why you haven't done this lift yet this week…"
+                    />
+                  )}
                 </div>
               )
             })}
