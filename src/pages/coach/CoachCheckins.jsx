@@ -13,6 +13,7 @@ import {
 } from '../../components/MealPlanView'
 import { snapToConstraints } from '../../lib/calorieTierScaling'
 import { loadSwapContext, applyDislikeSwaps } from '../../lib/mealSwaps'
+import { notifyClient } from '../../lib/pushNotifications'
 import { weekForDate } from '../../lib/planWeek'
 import { calcBodyweightMacros, normalizeGoalMacroSplits } from '../../lib/macros'
 import { GOAL_LABELS } from '../../lib/calorieSuggestion'
@@ -1070,6 +1071,13 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
       plan_changes: planChanges.length ? planChanges : null,
       schedule_snapshot: scheduleSnapshot,
     })
+
+    notifyClient({
+      clientId: client.id,
+      title: 'Your plan is ready',
+      body: `Your coach has responded to your Week ${deliveryPersonalWeek} check-in${coachNotes.trim() ? ' with a note for you' : ''}.`,
+      url: '/client/meals',
+    }).catch(() => {})
 
     clearDraftSlots(nextTemplateWeek)
     setSaving(false)

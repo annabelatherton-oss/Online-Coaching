@@ -64,6 +64,10 @@ function findVisible(selectors) {
   return null
 }
 
+function isStandalone() {
+  return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches
+}
+
 export default function ClientAppTour({ onClose, setSidebarOpen }) {
   const [step, setStep] = useState(0)
   const [rect, setRect] = useState(null)
@@ -71,6 +75,12 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
   const location = useLocation()
   const current = STEPS[step]
   const isLast = step === STEPS.length - 1
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+  const isAndroid = /android/i.test(navigator.userAgent)
+  // Shown inline on the welcome step itself — the very first thing a client sees in the tour —
+  // rather than relying only on the separate ClientHomeScreenPrompt popup later in the onboarding
+  // chain. Skipped once they're already running the installed app (nothing to tell them).
+  const showHomeScreenCallout = step === 0 && !isStandalone()
   const lastElRef = useRef(null) // the element the previous step actually highlighted
   const dirRef = useRef(1) // +1 after Next, -1 after Back - used so an auto-skip moves the same way
 
@@ -198,6 +208,20 @@ export default function ClientAppTour({ onClose, setSidebarOpen }) {
             </button>
           </div>
           <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{current.body}</p>
+
+          {showHomeScreenCallout && (
+            <div className="mt-3 rounded-xl border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/20 px-3 py-2.5 flex items-start gap-2.5">
+              <span className="text-lg flex-shrink-0">📲</span>
+              <p className="text-xs text-gray-700 dark:text-gray-200 leading-relaxed">
+                <span className="font-semibold">First, add this app to your Home Screen</span> — {isIOS
+                  ? <>tap the <strong>Share</strong> icon in Safari, then <strong>"Add to Home Screen"</strong>.</>
+                  : isAndroid
+                  ? <>tap the <strong>⋮</strong> menu in Chrome, then <strong>"Install app"</strong>.</>
+                  : <>look for "Install app" or "Add to Home screen" in your browser's menu.</>}
+                {' '}This is what lets you get reminders and updates from your coach.
+              </p>
+            </div>
+          )}
 
           <div className="flex items-center justify-between mt-3">
             <span className="text-[11px] text-gray-400 dark:text-gray-500">{step + 1} of {STEPS.length}</span>

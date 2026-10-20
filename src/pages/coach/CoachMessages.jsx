@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import { notifyClient } from '../../lib/pushNotifications'
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -155,6 +156,8 @@ export default function CoachMessages() {
           ? { ...c, last_message: body, last_message_at: data.created_at, last_sender: 'coach' }
           : c
       ))
+      const preview = body.length > 120 ? `${body.slice(0, 117)}...` : body
+      notifyClient({ clientId: selectedId, title: selected?.full_name ? `Message from ${selected.full_name}` : 'New message', body: preview, url: '/client/messages' }).catch(() => {})
     }
     setSending(false)
   }

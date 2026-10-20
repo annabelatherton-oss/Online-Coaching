@@ -5,6 +5,7 @@ import LoadingSpinner from '../../components/LoadingSpinner'
 import WeightChart from '../../components/WeightChart'
 import DislikePicker from '../../components/DislikePicker'
 import { DayAvailabilityRows } from '../../components/DayAvailability'
+import { registerPushNotifications } from '../../lib/pushNotifications'
 
 function DayAvailabilityCard({ clientId, coachId, dayPreferences }) {
   return (
@@ -57,6 +58,26 @@ export default function ClientProfile() {
   const [weightEntries, setWeightEntries] = useState([])
   const [measurements, setMeasurements] = useState([])
   const [loading, setLoading] = useState(true)
+
+  // push_subscriptions has one row per client, not per device — same reasoning as the coach's own
+  // "Enable notifications on this device" button (CoachSettings.jsx): the auto-prompt shown on
+  // first visit covers most clients, but this gives a way to (re)enable it deliberately on
+  // whichever device should actually get them, without needing to clear browser data to see the
+  // prompt again.
+  const [notifRequesting, setNotifRequesting] = useState(false)
+  const [notifResult, setNotifResult] = useState(null) // 'enabled' | 'denied' | 'unsupported' | null
+  async function enableNotificationsHere() {
+    setNotifRequesting(true)
+    setNotifResult(null)
+    if (typeof Notification === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setNotifResult('unsupported')
+      setNotifRequesting(false)
+      return
+    }
+    const ok = await registerPushNotifications({ clientId: clientData?.id })
+    setNotifResult(ok ? 'enabled' : 'denied')
+    setNotifRequesting(false)
+  }
 
   // Weight form
   const [showWeightForm, setShowWeightForm] = useState(false)
@@ -209,6 +230,34 @@ export default function ClientProfile() {
             {profile?.full_name || '—'}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">{profile?.email}</p>
+        </div>
+      </div>
+
+      <div className="card space-y-3">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">Notifications</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Get notified when your coach responds to a check-in, sends you a message, or updates your plan.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={enableNotificationsHere}
+            disabled={notifRequesting || !clientData}
+            className="btn-secondary"
+          >
+            {notifRequesting ? 'Requesting…' : 'Enable notifications on this device'}
+          </button>
+          {notifResult === 'enabled' && (
+            <span className="text-sm text-green-600 dark:text-green-400 font-medium">Enabled on this device</span>
+          )}
+          {notifResult === 'denied' && (
+            <span className="text-sm text-red-500 font-medium">Not allowed — check this browser/phone's notification permission for this app</span>
+          )}
+          {notifResult === 'unsupported' && (
+            <span className="text-sm text-amber-500 font-medium">Not supported here — on iPhone, open this app from its Home Screen icon, not Safari</span>
+          )}
         </div>
       </div>
 
