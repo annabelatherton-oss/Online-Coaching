@@ -387,6 +387,18 @@ export default function ClientMealPlan() {
     }
   }
 
+  // Straightforward "how much room is left in the whole day" — shown live inside the recipe modal
+  // while editing a meal's ingredients, from whichever option's total that meal is actually part of.
+  function remainingToday(dayTotal) {
+    if (!dailyMacroTargets) return null
+    return {
+      cal:  Math.round(dailyMacroTargets.cal       - dayTotal.cal),
+      prot: Math.round(dailyMacroTargets.protein_g - dayTotal.prot),
+      carb: Math.round(dailyMacroTargets.carbs_g   - dayTotal.carb),
+      fat:  Math.round(dailyMacroTargets.fat_g     - dayTotal.fat),
+    }
+  }
+
   async function handleSave() {
     if (!assignment || weekNumber == null) return
     setSaving(true); setSaveError(''); setSaved(false)
@@ -627,6 +639,7 @@ export default function ClientMealPlan() {
           })() : null}
           siblingLabel={ALL_SLOT_DEFS.find(s => s.key === siblingSlotKey(recipeModal))?.optionLabel || 'other option'}
           swapCtx={swapCtx}
+          remainingToday={OPTION_2_KEYS.includes(recipeModal) ? remainingToday(opt2Total) : remainingToday(opt1Total)}
         />
       )}
 

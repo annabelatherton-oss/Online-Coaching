@@ -562,7 +562,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onStaticQtyChange, onRemove, swapCtx, target, siblingMacros, siblingLabel, onApplyToSchedule, canApplyToSchedule, applyingToSchedule, dayOptionTotals, dayTargetCal }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onStaticQtyChange, onRemove, swapCtx, target, siblingMacros, siblingLabel, onApplyToSchedule, canApplyToSchedule, applyingToSchedule, dayOptionTotals, dayTargetCal, remainingToday }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
   const [prepDays, setPrepDays] = useState(null)
@@ -941,6 +941,16 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                   </div>
                 )
               })}
+            </div>
+          </div>
+        )}
+
+        {remainingToday && (
+          <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 px-5 py-3 flex items-center justify-between text-sm">
+            <span className="text-gray-500 dark:text-gray-400">Remaining today</span>
+            <div className="text-right">
+              <p className={`font-semibold tabular-nums ${remainingToday.cal < 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>{formatSigned(remainingToday.cal)} kcal</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{formatSigned(remainingToday.carb)}g C &middot; {formatSigned(remainingToday.prot)}g P &middot; {formatSigned(remainingToday.fat)}g F</p>
             </div>
           </div>
         )}

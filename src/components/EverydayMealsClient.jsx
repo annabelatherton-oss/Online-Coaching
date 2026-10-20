@@ -243,8 +243,7 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
           onRevertIngredients={handleRevertIngredients}
-          dayOptionTotals={dailyMacroTargets ? [{ label: 'Daily total', macros: dailyTotal }] : null}
-          dayTargetCal={dailyMacroTargets?.cal ?? null}
+          remainingToday={remaining}
         />
       )}
 
