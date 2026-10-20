@@ -998,7 +998,7 @@ export default function ClientCheckin() {
         <div className="card space-y-4">
           <div>
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Select any that you're struggling with</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Only pick what actually applies — leave it blank if nothing here is an issue right now.</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Only pick what actually applies — leave it blank if nothing here is an issue right now. If a few options describe the same thing, just pick the one that fits best rather than selecting all of them.</p>
           </div>
           <div className="space-y-3">
             {STRUGGLE_GROUPS.map(group => (
