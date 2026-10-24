@@ -6,7 +6,7 @@ import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import { writeCalorieTarget } from '../../lib/calorieTarget'
 import {
   MEAL_GROUPS, ALL_SLOT_DEFS, OPTION_1_KEYS, OPTION_2_KEYS,
-  normalizeOverrides, hasAnyOverride,
+  normalizeOverrides, hasAnyOverride, swapIngredientOverride,
   mealMacros, mealMacrosLayered, addMacros, getIngredients, getIngredientsLayered,
   MealCard, RecipeModal, SwapModal,
   MacroBadge, MACRO_META, formatSigned,
@@ -318,6 +318,7 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
   const [mealMap, setMealMap] = useState({})
   const [mealsByCategory, setMealsByCategory] = useState({})
   const [ingredientLib, setIngredientLib] = useState({})
+  const [ingredientSwapsMap, setIngredientSwapsMap] = useState({})
   const [training, setTraining] = useState(null)
   const [swapModal, setSwapModal] = useState(null)
   const [recipeModal, setRecipeModal] = useState(null)
@@ -370,6 +371,7 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
         { data: cwm },
         { data: trainingAsgn },
         { data: programs },
+        { data: swapRows },
       ] = await Promise.all([
         supabase.from('meals').select(`
           id, name, category, instructions, photo_url, photo_position, diet_tags, standard_eligible,
@@ -385,6 +387,7 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
         supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', weekNum).maybeSingle(),
         supabase.from('client_training_assignments').select('*, training_programs(name, weeks_total)').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('training_programs').select('id, name').eq('coach_id', coachId).order('name'),
+        supabase.from('ingredient_swaps').select('ingredient_id, alternative_ingredient_id').eq('coach_id', coachId),
       ])
 
       const map = {}, byCat = {}
@@ -398,6 +401,14 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
       const lib = {}
       for (const ing of (libData || [])) lib[ing.id] = ing
       setIngredientLib(lib)
+
+      // Ingredients the coach has registered as directly interchangeable (e.g. Bagel <-> Bagel
+      // Thin) — symmetric, so each row covers both directions already (see IngredientsLibrary.jsx).
+      const swapsMap = {}
+      for (const row of (swapRows || [])) {
+        ;(swapsMap[row.ingredient_id] ||= []).push({ id: row.alternative_ingredient_id, name: lib[row.alternative_ingredient_id]?.name || '' })
+      }
+      setIngredientSwapsMap(swapsMap)
 
       setRemovedMealSlots(activeAssignment.removed_meal_slots || [])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
@@ -609,6 +620,13 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
       const next = { ...prev }
       delete next[slotKey]
       return next
+    })
+  }
+
+  function handleSwapIngredient(slotKey, ing, altLibIng) {
+    setIngredientOverrides(prev => {
+      const existing = normalizeOverrides(prev[slotKey])
+      return { ...prev, [slotKey]: swapIngredientOverride(existing, ing, altLibIng) }
     })
   }
 
@@ -1735,6 +1753,8 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
           onRevertIngredients={handleRevertIngredients}
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
+          ingredientSwapsMap={ingredientSwapsMap}
+          onSwapIngredient={handleSwapIngredient}
           onToggleStatic={ing => toggleIngredientStatic(editedSlots[recipeModal], ing)}
           onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(editedSlots[recipeModal], ing, qty)}
           onRemove={handleRemoveMeal}

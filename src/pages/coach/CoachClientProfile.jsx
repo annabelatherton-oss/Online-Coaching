@@ -1902,6 +1902,38 @@ function makeOverrideHandlers(setOverrides, setDirty) {
       })
       setDirty(true)
     },
+    // Swaps an ingredient out for its registered alternative (e.g. Bagel -> Bagel Thin, set in the
+    // Ingredients Library), at the same gram quantity it currently has — removes the original (or
+    // drops it from `added` if it was itself an ingredient added just for this client) and adds the
+    // alternative in its place, scaled from the library's own per-serving macros the same way
+    // manually adding an ingredient already does.
+    swap(key, ing, altLibIng) {
+      setOverrides(prev => {
+        const current = normalizeOverrides(prev[key])
+        const quantity_g = parseFloat(ing.quantity_g) || parseFloat(altLibIng.serving_size) || 100
+        const servingSize = parseFloat(altLibIng.serving_size) || 100
+        const ratio = servingSize > 0 ? quantity_g / servingSize : 1
+        const newIng = {
+          id: `added-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          name: altLibIng.name,
+          quantity_g,
+          unit: altLibIng.serving_unit || 'g',
+          calories:  round1((altLibIng.calories_per_serving || 0) * ratio),
+          protein_g: round1((altLibIng.protein_per_serving  || 0) * ratio),
+          carbs_g:   round1((altLibIng.carbs_per_serving    || 0) * ratio),
+          fat_g:     round1((altLibIng.fat_per_serving      || 0) * ratio),
+          ingredient_id: altLibIng.id,
+        }
+        if (ing._isAdded) {
+          return { ...prev, [key]: { ...current, added: [...current.added.filter(a => a.id !== ing.id), newIng] } }
+        }
+        const qty = { ...current.qty }
+        delete qty[ing.id]
+        return { ...prev, [key]: { ...current, qty, added: [...current.added, newIng],
+          removed: current.removed.includes(ing.id) ? current.removed : [...current.removed, ing.id] } }
+      })
+      setDirty(true)
+    },
   }
 }
 
@@ -1920,7 +1952,7 @@ function sumMealSlots(keys, editedSlots, mealMap, tier, ingredientOverrides, tem
 // and ingredients can be removed or added just for this client — none of it touches the shared
 // master meal/tier-version data. Quantity overrides rescale that ingredient's macros proportionally;
 // added ingredients are pulled from the coach's ingredient library so their macros are accurate.
-function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverridesForSlot, library, libraryById, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onRevertAll, onToggleStatic, onStaticQtyChange, onApplyToSchedule, canApplyToSchedule, applyingToSchedule }) {
+function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverridesForSlot, library, libraryById, ingredientSwapsMap, dietaryRequirements, onQtyChange, onRemove, onRestore, onAdd, onRemoveAdded, onSwap, onRevertAll, onToggleStatic, onStaticQtyChange, onApplyToSchedule, canApplyToSchedule, applyingToSchedule }) {
   const [addingOpen, setAddingOpen] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addSelected, setAddSelected] = useState(null)
@@ -2149,6 +2181,20 @@ function TierIngredientList({ mealId, mealMap, tier, overrides, templateOverride
                     ×
                   </button>
                 )}
+                {onSwap && !isStatic && ingredientSwapsMap && ing.ingredient_id && (ingredientSwapsMap[ing.ingredient_id] || [])[0] && (() => {
+                  const alt = ingredientSwapsMap[ing.ingredient_id][0]
+                  const altLibIng = libraryById[alt.id]
+                  if (!altLibIng) return null
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => onSwap(ing, altLibIng)}
+                      className="basis-full text-left text-[11px] font-medium text-brand-500 hover:text-brand-700 dark:hover:text-brand-400"
+                    >
+                      Swap to {alt.name}
+                    </button>
+                  )
+                })()}
               </div>
             )
           })}
@@ -2338,6 +2384,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   const [mealsByCategory, setMealsByCategory] = useState({})
   const [mealMap, setMealMap] = useState({})
   const [library, setLibrary] = useState([])
+  const [ingredientSwapsMap, setIngredientSwapsMap] = useState({})
   const [ingredientOverrides, setIngredientOverrides] = useState({})
   // The plan group's own per-week/tier override for the currently-loaded week (set from the
   // 50-week schedule editor) — read-only here, applied underneath ingredientOverrides above.
@@ -2516,7 +2563,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
   }
 
   async function load() {
-    const [{ data: groups }, { data: asgnData }, { data: past }, { data: mealsData }, { data: libData }, { data: weightRows }, { data: checkinRows }] = await Promise.all([
+    const [{ data: groups }, { data: asgnData }, { data: past }, { data: mealsData }, { data: libData }, { data: weightRows }, { data: checkinRows }, { data: swapRows }] = await Promise.all([
       supabase.from('plan_groups').select('*').eq('coach_id', coachId).order('created_at', { ascending: false }),
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('client_plan_assignments').select('*').eq('client_id', client.id).eq('active', false).order('created_at', { ascending: false }),
@@ -2529,6 +2576,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
       supabase.from('ingredients').select('*').eq('coach_id', coachId),
       supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', client.id).order('recorded_at', { ascending: false }).limit(1),
       supabase.from('client_checkins').select('weight_kg').eq('client_id', client.id).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
+      supabase.from('ingredient_swaps').select('ingredient_id, alternative_ingredient_id').eq('coach_id', coachId),
     ])
 
     let asgn = asgnData
@@ -2537,6 +2585,15 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     setPastAssignments(past || [])
     setLibrary(libData || [])
     setClientWeightKg(weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null)
+
+    // Ingredients the coach has registered as directly interchangeable (e.g. Bagel <-> Bagel
+    // Thin) — symmetric, so each row covers both directions already (see IngredientsLibrary.jsx).
+    const swapsMap = {}
+    const libById = Object.fromEntries((libData || []).map(l => [l.id, l]))
+    for (const row of (swapRows || [])) {
+      ;(swapsMap[row.ingredient_id] ||= []).push({ id: row.alternative_ingredient_id, name: libById[row.alternative_ingredient_id]?.name || '' })
+    }
+    setIngredientSwapsMap(swapsMap)
 
     const map = {}, byCat = {}
     for (const m of (mealsData || [])) {
@@ -2927,12 +2984,14 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
               overrides={everydayOverrides[slotKey]}
               library={library}
               libraryById={libraryById}
+              ingredientSwapsMap={ingredientSwapsMap}
               dietaryRequirements={client.dietary_requirements}
               onQtyChange={(ingId, val) => everydayHandlers.changeQty(slotKey, ingId, val)}
               onRemove={ingId => everydayHandlers.remove(slotKey, ingId)}
               onRestore={ingId => everydayHandlers.restore(slotKey, ingId)}
               onAdd={newIng => everydayHandlers.add(slotKey, newIng)}
               onRemoveAdded={addedId => everydayHandlers.removeAdded(slotKey, addedId)}
+              onSwap={(ing, altLibIng) => everydayHandlers.swap(slotKey, ing, altLibIng)}
               onRevertAll={() => everydayHandlers.revertAll(slotKey)}
             />
           </div>
@@ -3607,12 +3666,14 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
                 templateOverridesForSlot={templateOverridesForSlot}
                 library={library}
                 libraryById={libraryById}
+                ingredientSwapsMap={ingredientSwapsMap}
                 dietaryRequirements={client.dietary_requirements}
                 onQtyChange={(ingId, val) => slotHandlers.changeQty(slotKey, ingId, val)}
                 onRemove={ingId => slotHandlers.remove(slotKey, ingId)}
                 onRestore={ingId => slotHandlers.restore(slotKey, ingId)}
                 onAdd={newIng => slotHandlers.add(slotKey, newIng)}
                 onRemoveAdded={addedId => slotHandlers.removeAdded(slotKey, addedId)}
+                onSwap={(ing, altLibIng) => slotHandlers.swap(slotKey, ing, altLibIng)}
                 onRevertAll={() => slotHandlers.revertAll(slotKey)}
                 onToggleStatic={ing => toggleIngredientStatic(currentId, ing)}
                 onStaticQtyChange={(ing, qty) => updateStaticIngredientQty(currentId, ing, qty)}

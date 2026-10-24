@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { MealCard, RecipeModal, SwapModal, mealMacros, normalizeOverrides, formatSigned } from './MealPlanView'
+import { MealCard, RecipeModal, SwapModal, mealMacros, normalizeOverrides, formatSigned, swapIngredientOverride } from './MealPlanView'
 
 // All 5 slots behave identically — the client can pick any of them directly, no coach approval
 // needed. Same order the main plan shows its 5 meal categories in.
@@ -25,7 +25,7 @@ const unprefix = key => key.replace(/^everyday:/, '')
  * breakfast/lunch/pre-workout/dinner/evening-snack to eat every day, straight from the coach's
  * meal database — every slot picks and applies immediately, same as the main plan's own swap.
  */
-export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory, ingredientLib, tier, dailyMacroTargets, dietKeys }) {
+export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory, ingredientLib, tier, dailyMacroTargets, dietKeys, ingredientSwapsMap }) {
   const [rows, setRows] = useState({}) // slot_type -> row
   const [loading, setLoading] = useState(true)
   const [recipeModal, setRecipeModal] = useState(null) // prefixed slot key
@@ -115,6 +115,10 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
 
   function handleRevertIngredients(prefixedKey) {
     updateRowOverrides(unprefix(prefixedKey), () => ({ qty: {}, removed: [], added: [] }))
+  }
+
+  function handleSwapIngredient(prefixedKey, ing, altLibIng) {
+    updateRowOverrides(unprefix(prefixedKey), existing => swapIngredientOverride(existing, ing, altLibIng))
   }
 
   function openSwap(slotKey, label, cat) {
@@ -243,6 +247,8 @@ export default function EverydayMealsClient({ clientId, mealMap, mealsByCategory
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
           onRevertIngredients={handleRevertIngredients}
+          ingredientSwapsMap={ingredientSwapsMap}
+          onSwapIngredient={handleSwapIngredient}
           remainingToday={remaining}
         />
       )}

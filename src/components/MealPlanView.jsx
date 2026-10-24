@@ -433,6 +433,50 @@ export function libraryUnit(ing, ingredientLib) {
   return null
 }
 
+// Same lookup as libraryUnit above, but returns the library ingredient's own id rather than one
+// of its fields — used to look up this ingredient's registered swap partners (ingredient_swaps).
+export function resolveLibraryIngredientId(ing, ingredientLib) {
+  if (!ingredientLib) return null
+  if (ing.ingredient_id && ingredientLib[ing.ingredient_id]) return ing.ingredient_id
+  // An ingredient this client/coach added from the library (handleAddIngredient) stores the
+  // library id directly as its own id, not as ingredient_id.
+  if (ing._isAdded && ingredientLib[ing.id]) return ing.id
+  const nameLower = (ing.name || '').trim().toLowerCase()
+  if (!nameLower) return null
+  for (const lib of Object.values(ingredientLib)) {
+    if ((lib.name || '').trim().toLowerCase() === nameLower) return lib.id
+  }
+  return null
+}
+
+// Builds the override diff for swapping one ingredient out for its registered alternative (e.g.
+// Bagel -> Bagel Thin), at the same gram quantity it currently has — removes the original (or
+// drops it from `added` if it was itself an ingredient this client/coach had added) and adds the
+// alternative in its place, scaled from the library's own per-serving macros the same way "Add
+// ingredient" does.
+export function swapIngredientOverride(existing, ing, altLibIng) {
+  const quantity_g = parseFloat(ing.quantity_g) || parseFloat(altLibIng.serving_size) || 100
+  const servingSize = parseFloat(altLibIng.serving_size) || 100
+  const ratio = servingSize > 0 ? quantity_g / servingSize : 1
+  const newIng = {
+    _tempId: `added-${altLibIng.id}-${Date.now()}`,
+    id: altLibIng.id,
+    name: altLibIng.name,
+    quantity_g,
+    unit: altLibIng.serving_unit || 'g',
+    calories:  round1((altLibIng.calories_per_serving || 0) * ratio),
+    protein_g: round1((altLibIng.protein_per_serving  || 0) * ratio),
+    carbs_g:   round1((altLibIng.carbs_per_serving    || 0) * ratio),
+    fat_g:     round1((altLibIng.fat_per_serving      || 0) * ratio),
+    _isAdded: true,
+  }
+  const key = ing._tempId || ing.id
+  if (ing._isAdded && existing.added.some(a => (a._tempId || a.id) === key)) {
+    return { ...existing, added: [...existing.added.filter(a => (a._tempId || a.id) !== key), newIng] }
+  }
+  return { ...existing, removed: [...existing.removed, ing.id], added: [...existing.added, newIng] }
+}
+
 export function formatAmount(ing, ingredientLib) {
   const qty = parseFloat(ing.quantity_g)
   const libUnit = libraryUnit(ing, ingredientLib)
@@ -562,7 +606,7 @@ export function MealCard({ slotKey, label, optionLabel, cat, mealId, templateMea
 
 // ─── Recipe detail modal ──────────────────────────────────────────────────────
 
-export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateOverrides, templateSlots, mealsByCategory, ingredientLib, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onToggleStatic, onStaticQtyChange, onRemove, swapCtx, target, siblingMacros, siblingLabel, onApplyToSchedule, canApplyToSchedule, applyingToSchedule, dayOptionTotals, dayTargetCal, remainingToday }) {
+export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOverrides, templateOverrides, templateSlots, mealsByCategory, ingredientLib, ingredientSwapsMap, onClose, onSwap, onRevert, onUpdateIngredient, onRevertIngredients, onRemoveIngredient, onAddIngredient, onSwapIngredient, onToggleStatic, onStaticQtyChange, onRemove, swapCtx, target, siblingMacros, siblingLabel, onApplyToSchedule, canApplyToSchedule, applyingToSchedule, dayOptionTotals, dayTargetCal, remainingToday }) {
   const [showAddIngredient, setShowAddIngredient] = useState(false)
   const [ingSearch, setIngSearch] = useState('')
   const [prepDays, setPrepDays] = useState(null)
@@ -607,6 +651,51 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
           <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
         </div>
 
+        {showAddIngredient ? (
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="px-5 pt-4 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => { setShowAddIngredient(false); setIngSearch('') }}
+                className="p-1.5 -ml-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex-shrink-0"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <input
+                autoFocus
+                type="text"
+                placeholder="Search ingredients…"
+                value={ingSearch}
+                onChange={e => setIngSearch(e.target.value)}
+                onClick={e => e.stopPropagation()}
+                className="input flex-1 text-sm py-2"
+              />
+            </div>
+            <div className="overflow-y-auto overscroll-contain flex-1 p-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+              {ingSearchResults.length > 0 ? (
+                <div className="space-y-0.5">
+                  {ingSearchResults.map(lib => (
+                    <button
+                      key={lib.id}
+                      onClick={() => { onAddIngredient(slotKey, lib); setIngSearch(''); setShowAddIngredient(false) }}
+                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-brand-50 dark:hover:bg-brand-900/10 transition-colors"
+                    >
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{lib.name}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        {lib.serving_size || '?'}{lib.serving_unit || 'g'} · {Math.round(lib.calories_per_serving || 0)} kcal · {Math.round(lib.protein_per_serving || 0)}g P
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              ) : ingSearch.length >= 2 ? (
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">No ingredients found</p>
+              ) : (
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">Type at least 2 letters to search</p>
+              )}
+            </div>
+          </div>
+        ) : (
         <div className="overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
           <div className="relative">
             {meal?.photo_url ? (
@@ -794,6 +883,21 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                             <span className={`flex items-center gap-0.5 ${MACRO_META.prot.text}`}><MacroBadge type="prot" />{Math.round(parseFloat(ing.protein_g) || 0)}</span>
                             <span className={`flex items-center gap-0.5 ${MACRO_META.fat.text}`}><MacroBadge type="fat" />{Math.round(parseFloat(ing.fat_g) || 0)}</span>
                           </p>
+                          {onSwapIngredient && ingredientSwapsMap && (() => {
+                            const libId = resolveLibraryIngredientId(ing, ingredientLib)
+                            const alt = libId ? (ingredientSwapsMap[libId] || [])[0] : null
+                            const altLibIng = alt ? ingredientLib[alt.id] : null
+                            if (!altLibIng) return null
+                            return (
+                              <button
+                                type="button"
+                                onClick={e => { e.stopPropagation(); onSwapIngredient(slotKey, ing, altLibIng) }}
+                                className="mt-1 text-[11px] font-medium text-brand-500 hover:text-brand-700 dark:hover:text-brand-400"
+                              >
+                                Swap to {alt.name}
+                              </button>
+                            )
+                          })()}
                         </div>
 
                         <div className="flex flex-col items-end gap-0.5 flex-shrink-0 tabular-nums">
@@ -828,56 +932,15 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
                 </div>
                 {onAddIngredient && (
                   <div className="pt-3 border-t border-gray-100 dark:border-gray-800 mt-3">
-                    {showAddIngredient ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <input
-                            autoFocus
-                            type="text"
-                            placeholder="Search ingredients…"
-                            value={ingSearch}
-                            onFocus={scrollSearchIntoView}
-                            onChange={e => setIngSearch(e.target.value)}
-                            onClick={e => e.stopPropagation()}
-                            className="input flex-1 text-sm py-1.5"
-                          />
-                          <button
-                            onClick={() => { setShowAddIngredient(false); setIngSearch('') }}
-                            className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 px-2 py-1.5 flex-shrink-0"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                        {ingSearchResults.length > 0 ? (
-                          <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                            {ingSearchResults.map(lib => (
-                              <button
-                                key={lib.id}
-                                onClick={() => { onAddIngredient(slotKey, lib); setIngSearch(''); setShowAddIngredient(false) }}
-                                className="w-full text-left px-3 py-2 hover:bg-brand-50 dark:hover:bg-brand-900/10 border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors"
-                              >
-                                <p className="text-sm font-medium text-gray-900 dark:text-white">{lib.name}</p>
-                                <p className="text-xs text-gray-400 dark:text-gray-500">
-                                  {lib.serving_size || '?'}{lib.serving_unit || 'g'} · {Math.round(lib.calories_per_serving || 0)} kcal · {Math.round(lib.protein_per_serving || 0)}g P
-                                </p>
-                              </button>
-                            ))}
-                          </div>
-                        ) : ingSearch.length >= 2 ? (
-                          <p className="text-xs text-gray-400 dark:text-gray-500 py-1">No ingredients found</p>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowAddIngredient(true)}
-                        className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex items-center gap-1"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add ingredient
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setShowAddIngredient(true)}
+                      className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium flex items-center gap-1"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add ingredient
+                    </button>
                   </div>
                 )}
               </div>
@@ -915,6 +978,7 @@ export function RecipeModal({ slotKey, mealMap, editedSlots, tier, ingredientOve
             </div>
           </div>
         </div>
+        )}
 
         {dayOptionTotals && (
           <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 px-5 py-3">
@@ -994,8 +1058,8 @@ export function SwapModal({ slotKey, label, category, currentMealId, mealMap, me
     : scored
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 pt-3 sm:p-4 bg-black/60" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-b-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md flex flex-col" style={{ maxHeight: '92dvh' }} onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Swap {label}</h3>

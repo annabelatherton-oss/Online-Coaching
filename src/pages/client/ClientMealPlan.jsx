@@ -6,6 +6,7 @@ import { CALORIE_TIERS } from '../../lib/calorieTiers'
 import {
   MEAL_GROUPS, ALL_SLOT_DEFS, OPTION_1_KEYS, OPTION_2_KEYS,
   mealMacros, mealMacrosLayered, addMacros, getIngredients, getIngredientsLayered, normalizeOverrides,
+  swapIngredientOverride,
   MealCard, RecipeModal, SwapModal,
 } from '../../components/MealPlanView'
 import { loadSwapContext, applyDislikeSwaps, syncMealSwapStatus, findSafeMeal, clearOrphanedMealSwapAcks } from '../../lib/mealSwaps'
@@ -38,6 +39,7 @@ export default function ClientMealPlan() {
   const [saveError, setSaveError] = useState('')
   const [saved, setSaved] = useState(false)
   const [ingredientLib, setIngredientLib] = useState({})
+  const [ingredientSwapsMap, setIngredientSwapsMap] = useState({})
   const [coachDelivery, setCoachDelivery] = useState(null)
   const [swapModal, setSwapModal] = useState(null)   // { slotKey, label, cat }
   const [recipeModal, setRecipeModal] = useState(null) // slotKey
@@ -78,7 +80,7 @@ export default function ClientMealPlan() {
       // submitted, so missing one doesn't make this look a week behind where it really is.
       setPersonalWeek(clientRow.start_date ? (weekForDate(new Date().toISOString(), clientRow.start_date) || (checkinCount ?? 0) + 1) : (checkinCount ?? 0) + 1)
 
-      const [{ data: mealsData }, { data: libData }, { data: coachProfile }, { data: weightRows }, { data: checkinRows }] = await Promise.all([
+      const [{ data: mealsData }, { data: libData }, { data: coachProfile }, { data: weightRows }, { data: checkinRows }, { data: swapRows }] = await Promise.all([
         supabase.from('meals').select(`
           id, name, category, instructions, photo_url, photo_position, diet_tags, standard_eligible,
           meal_ingredients(id, name, quantity_g, unit, calories, protein_g, carbs_g, fat_g, ingredient_id, is_static, scaling_type),
@@ -89,6 +91,7 @@ export default function ClientMealPlan() {
         supabase.from('profiles').select('goal_macro_splits, protein_g_per_kg').eq('id', clientRow.coach_id).single(),
         supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', clientRow.id).order('recorded_at', { ascending: false }).limit(1),
         supabase.from('client_checkins').select('weight_kg').eq('client_id', clientRow.id).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
+        supabase.from('ingredient_swaps').select('ingredient_id, alternative_ingredient_id').eq('coach_id', clientRow.coach_id),
       ])
       setGoalMacroSplits(normalizeGoalMacroSplits(coachProfile?.goal_macro_splits))
       setProteinPerKg(coachProfile?.protein_g_per_kg)
@@ -97,6 +100,14 @@ export default function ClientMealPlan() {
       const lib = {}
       for (const ing of (libData || [])) lib[ing.id] = ing
       setIngredientLib(lib)
+
+      // Ingredients the coach has registered as directly interchangeable (e.g. Bagel <-> Bagel
+      // Thin) — symmetric, so each row covers both directions already (see IngredientsLibrary.jsx).
+      const swapsMap = {}
+      for (const row of (swapRows || [])) {
+        ;(swapsMap[row.ingredient_id] ||= []).push({ id: row.alternative_ingredient_id, name: lib[row.alternative_ingredient_id]?.name || '' })
+      }
+      setIngredientSwapsMap(swapsMap)
 
       const map = {}, byCat = {}
       for (const m of (mealsData || [])) {
@@ -356,6 +367,14 @@ export default function ClientMealPlan() {
     setSlotsDirty(true)
   }
 
+  function handleSwapIngredient(slotKey, ing, altLibIng) {
+    setIngredientOverrides(prev => {
+      const existing = normalizeOverrides(prev[slotKey])
+      return { ...prev, [slotKey]: swapIngredientOverride(existing, ing, altLibIng) }
+    })
+    setSlotsDirty(true)
+  }
+
   // The slot in the same meal group this one is meant to stay interchangeable with (Breakfast A <-> B, etc).
   function siblingSlotKey(slotKey) {
     const i1 = OPTION_1_KEYS.indexOf(slotKey)
@@ -566,6 +585,7 @@ export default function ClientMealPlan() {
         tier={tier}
         dailyMacroTargets={dailyMacroTargets}
         dietKeys={clientData?.dietary_requirements || []}
+        ingredientSwapsMap={ingredientSwapsMap}
       />
 
       {/* Swap impact — shows exactly how today's totals have shifted from the original plan, so a
@@ -632,6 +652,8 @@ export default function ClientMealPlan() {
           onRemoveIngredient={handleRemoveIngredient}
           onAddIngredient={handleAddIngredient}
           onRevertIngredients={handleRevertIngredients}
+          ingredientSwapsMap={ingredientSwapsMap}
+          onSwapIngredient={handleSwapIngredient}
           target={OPTION_2_KEYS.includes(recipeModal) ? null : slotTarget(mealMacrosLayered(editedSlots[recipeModal], mealMap, tier, templateOverrides[recipeModal], ingredientOverrides[recipeModal], swapCtx))}
           siblingMacros={OPTION_2_KEYS.includes(recipeModal) ? (() => {
             const sibKey = siblingSlotKey(recipeModal)
