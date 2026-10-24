@@ -154,6 +154,28 @@ export default function CoachReports() {
   const clientCheckinsForPhotos = selected ? allCheckins.filter(c => c.client_id === selected) : []
   const photoUrlsByCheckin = useSignedProgressPhotosForCheckins(clientCheckinsForPhotos)
 
+  // What the client's calorie target actually was on a given date — every real change is logged
+  // to client_calorie_history (see src/lib/calorieTarget.js), so "what were they on in week N" is
+  // just the most recent logged change on or before that week's own date, not today's live target.
+  // Only fetched once a client is actually drilled into, since this detail view is the only place
+  // it's shown.
+  const [calorieHistory, setCalorieHistory] = useState([])
+  useEffect(() => {
+    if (!selected) { setCalorieHistory([]); return }
+    supabase.from('client_calorie_history').select('calorie_target, changed_at').eq('client_id', selected)
+      .order('changed_at', { ascending: true }).then(({ data }) => setCalorieHistory(data || []))
+  }, [selected])
+  function calorieTargetAt(dateStr) {
+    if (!dateStr || calorieHistory.length === 0) return null
+    const d = new Date(dateStr)
+    let result = null
+    for (const row of calorieHistory) {
+      if (new Date(row.changed_at) <= d) result = row.calorie_target
+      else break
+    }
+    return result
+  }
+
   function clientStatus(c) {
     const exp = c.access_expires_at ? new Date(c.access_expires_at) : null
     if (c.is_paused) return { label: 'Paused', cls: 'text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20' }
@@ -343,53 +365,91 @@ export default function CoachReports() {
         </div>
 
         {/* Check-in table */}
-        {checkins.length > 0 && (
-          <div className="card p-0 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-              <h2 className="font-semibold text-gray-900 dark:text-white">Check-in history</h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-50 dark:border-gray-800 text-xs text-gray-400 font-medium">
-                    <th className="text-left px-4 py-2">Week</th>
-                    <th className="text-right px-4 py-2">Weight</th>
-                    <th className="text-right px-4 py-2">Food</th>
-                    <th className="text-right px-4 py-2">Gym</th>
-                    <th className="text-right px-4 py-2">Energy</th>
-                    <th className="text-right px-4 py-2">Sleep</th>
-                    <th className="text-right px-4 py-2">Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                  {[...checkins].reverse().map(ci => (
-                    <tr key={ci.week_number} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20">
-                      <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-white">Wk {personalWeek(ci)}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-300">
-                        {ci.weight_kg != null ? `${ci.weight_kg} kg` : '—'}
-                      </td>
-                      <td className={`px-4 py-2.5 text-right font-medium ${ci.food_adherence != null && ci.food_adherence < 4 ? 'text-red-500' : 'text-green-500'}`}>
-                        {ci.food_adherence != null ? `${ci.food_adherence}/5` : '—'}
-                      </td>
-                      <td className={`px-4 py-2.5 text-right font-medium ${ci.gym_adherence != null && ci.gym_adherence < 4 ? 'text-red-500' : 'text-green-500'}`}>
-                        {ci.gym_adherence != null ? `${ci.gym_adherence}/5` : '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-300">
-                        {ci.energy_level != null ? `${ci.energy_level}/5` : '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-300">
-                        {ci.sleep_quality != null ? `${ci.sleep_quality}/5` : '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-xs text-gray-400">
-                        {fmtShort(ci.updated_at || ci.submitted_at)}
-                      </td>
+        {checkins.length > 0 && (() => {
+          // Deltas computed from the ascending array first (so "previous" is correct), then
+          // reversed to newest-first for display — same approach as the Progress History tables
+          // elsewhere (CoachCheckins.jsx, CoachClientProfile.jsx).
+          const rows = checkins.map((ci, i) => {
+            const prevWeight = i > 0 ? checkins[i - 1].weight_kg : null
+            const delta = ci.weight_kg != null && prevWeight != null
+              ? parseFloat((parseFloat(ci.weight_kg) - parseFloat(prevWeight)).toFixed(1))
+              : null
+            const date = ci.updated_at || ci.submitted_at
+            return { ci, delta, date, cal: calorieTargetAt(date) }
+          }).reverse()
+          return (
+            <div className="card p-0 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+                <h2 className="font-semibold text-gray-900 dark:text-white">Check-in history</h2>
+              </div>
+              <div className="flex items-start">
+                {/* Core columns — week, date, weight, change, calories — always visible, never
+                    scrolls. */}
+                <table className="text-sm flex-shrink-0">
+                  <thead>
+                    <tr className="border-b border-gray-50 dark:border-gray-800 text-xs text-gray-400 font-medium">
+                      <th className="text-left px-4 py-2">Week</th>
+                      <th className="text-left px-4 py-2">Date</th>
+                      <th className="text-right px-4 py-2">Weight</th>
+                      <th className="text-right px-4 py-2">Change</th>
+                      <th className="text-right px-4 py-2">Calories</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                    {rows.map(({ ci, delta, date, cal }) => (
+                      <tr key={ci.week_number} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20">
+                        <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-white whitespace-nowrap">Wk {personalWeek(ci)}</td>
+                        <td className="px-4 py-2.5 text-xs text-gray-400 whitespace-nowrap">{fmtShort(date)}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-300 tabular-nums whitespace-nowrap">
+                          {ci.weight_kg != null ? `${ci.weight_kg} kg` : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">
+                          {delta !== null
+                            ? <span className={`font-medium text-xs ${delta < 0 ? 'text-green-600 dark:text-green-400' : delta > 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-400'}`}>{delta > 0 ? '+' : ''}{delta} kg</span>
+                            : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">{cal != null ? `${cal} kcal` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Everything else — scrolls independently so it never pushes the core columns
+                    above out of view. */}
+                <div className="overflow-x-auto flex-1 min-w-0">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-50 dark:border-gray-800 text-xs text-gray-400 font-medium">
+                        <th className="text-right px-4 py-2">Food</th>
+                        <th className="text-right px-4 py-2">Gym</th>
+                        <th className="text-right px-4 py-2">Energy</th>
+                        <th className="text-right px-4 py-2">Sleep</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                      {rows.map(({ ci }) => (
+                        <tr key={ci.week_number} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20">
+                          <td className={`px-4 py-2.5 text-right font-medium ${ci.food_adherence != null && ci.food_adherence < 4 ? 'text-red-500' : 'text-green-500'}`}>
+                            {ci.food_adherence != null ? `${ci.food_adherence}/5` : '—'}
+                          </td>
+                          <td className={`px-4 py-2.5 text-right font-medium ${ci.gym_adherence != null && ci.gym_adherence < 4 ? 'text-red-500' : 'text-green-500'}`}>
+                            {ci.gym_adherence != null ? `${ci.gym_adherence}/5` : '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-300">
+                            {ci.energy_level != null ? `${ci.energy_level}/5` : '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-300">
+                            {ci.sleep_quality != null ? `${ci.sleep_quality}/5` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* Progress photos — first vs current per angle */}
         {(() => {

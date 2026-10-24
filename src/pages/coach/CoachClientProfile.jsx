@@ -4575,6 +4575,25 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
       .then(({ data }) => setStruggleTracking(data || []))
   }, [clientId])
 
+  // What the client's calorie target actually was on a given date — every real change is logged
+  // to client_calorie_history (see src/lib/calorieTarget.js), so "what were they on in week N" is
+  // just the most recent logged change on or before that week's own date, not today's live target.
+  const [calorieHistory, setCalorieHistory] = useState([])
+  useEffect(() => {
+    supabase.from('client_calorie_history').select('calorie_target, changed_at').eq('client_id', clientId)
+      .order('changed_at', { ascending: true }).then(({ data }) => setCalorieHistory(data || []))
+  }, [clientId])
+  function calorieTargetAt(dateStr) {
+    if (!dateStr || calorieHistory.length === 0) return null
+    const d = new Date(dateStr)
+    let result = null
+    for (const row of calorieHistory) {
+      if (new Date(row.changed_at) <= d) result = row.calorie_target
+      else break
+    }
+    return result
+  }
+
   async function acknowledgeResolvedStruggle(id) {
     await supabase.from('client_struggle_tracking').update({ coach_seen_resolved: true }).eq('id', id)
     setStruggleTracking(prev => prev.map(s => s.id === id ? { ...s, coach_seen_resolved: true } : s))
@@ -4829,11 +4848,13 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
       {/* ── Weight / progress history table ── */}
       <div className="card overflow-hidden">
         <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Progress History</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="flex items-start">
+          {/* Core columns — week, date, weight (with its change inline), calories — always
+              visible, never scrolls. */}
+          <table className="text-sm flex-shrink-0">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">
-                {['Week', 'Weight', ...(collectMeasurements ? ['Waist', 'Hips'] : []), 'Energy', 'Sleep', 'Food', 'Gym', ...configuredLiftNames].map(h => (
+                {['Week', 'Date', 'Weight', 'Calories'].map(h => (
                   <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -4842,77 +4863,104 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
               {ascending.map((c, i) => {
                 const p = ascending[i - 1] || null
                 const delta = weightDelta(c, p)
-                const waistD = metricDelta(c.waist_cm, p?.waist_cm)
-                const hipsD = metricDelta(c.hips_cm, p?.hips_cm)
-                const energyD = metricDelta(c.energy_level, p?.energy_level, 0)
-                const sleepD = metricDelta(c.sleep_quality, p?.sleep_quality, 0)
-                const foodD = metricDelta(c.food_adherence, p?.food_adherence, 0)
-                const gymD = metricDelta(c.gym_adherence, p?.gym_adherence, 0)
+                const date = c.submitted_at || c.updated_at
+                const cal = calorieTargetAt(date)
                 return (
                   <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                     <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">Wk {personalWeek(c)}</td>
+                    <td className="py-2.5 pr-4 text-xs text-gray-400 whitespace-nowrap">{date ? new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
                     <td className="py-2.5 pr-4 whitespace-nowrap">
                       <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{c.weight_kg != null ? `${c.weight_kg} kg` : '—'}</span>
                       {delta !== null && <DeltaTag delta={delta} unit=" kg" className="block" />}
                     </td>
-                    {collectMeasurements && (
-                      <>
-                        <td className="py-2.5 pr-4 whitespace-nowrap">
-                          <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{c.waist_cm != null ? `${c.waist_cm} cm` : '—'}</span>
-                          {waistD !== null && <DeltaTag delta={waistD} unit=" cm" className="block" />}
-                        </td>
-                        <td className="py-2.5 pr-4 whitespace-nowrap">
-                          <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{c.hips_cm != null ? `${c.hips_cm} cm` : '—'}</span>
-                          {hipsD !== null && <DeltaTag delta={hipsD} unit=" cm" className="block" />}
-                        </td>
-                      </>
-                    )}
-                    <td className="py-2.5 pr-4 whitespace-nowrap">
-                      {c.energy_level != null
-                        ? <span className={`font-semibold text-xs ${checkinRatingColor(c.energy_level)}`}>{c.energy_level}/5</span>
-                        : <span className="text-gray-300 dark:text-gray-700">—</span>}
-                      {energyD !== null && <DeltaTag delta={energyD} higherIsBetter className="block" />}
-                    </td>
-                    <td className="py-2.5 pr-4 whitespace-nowrap">
-                      {c.sleep_quality != null
-                        ? <span className={`font-semibold text-xs ${checkinRatingColor(c.sleep_quality)}`}>{c.sleep_quality}/5</span>
-                        : <span className="text-gray-300 dark:text-gray-700">—</span>}
-                      {sleepD !== null && <DeltaTag delta={sleepD} higherIsBetter className="block" />}
-                    </td>
-                    <td className="py-2.5 pr-4 whitespace-nowrap">
-                      {c.food_adherence != null
-                        ? <span className={`font-semibold text-xs ${checkinRatingColor(c.food_adherence)}`}>{c.food_adherence}/5</span>
-                        : <span className="text-gray-300 dark:text-gray-700">—</span>}
-                      {foodD !== null && <DeltaTag delta={foodD} higherIsBetter className="block" />}
-                    </td>
-                    <td className={`py-2.5 whitespace-nowrap ${configuredLiftNames.length > 0 ? 'pr-4' : ''}`}>
-                      {c.gym_adherence != null
-                        ? <span className={`font-semibold text-xs ${checkinRatingColor(c.gym_adherence)}`}>{c.gym_adherence}/5</span>
-                        : <span className="text-gray-300 dark:text-gray-700">—</span>}
-                      {gymD !== null && <DeltaTag delta={gymD} higherIsBetter className="block" />}
-                    </td>
-                    {configuredLiftNames.map((liftName, li) => {
-                      const lift = c.lift_results?.find(l => l?.name === liftName)
-                      const prevLift = p?.lift_results?.find(l => l?.name === liftName)
-                      const liftD = lift?.weight_kg != null && prevLift?.weight_kg != null
-                        ? Math.round((parseFloat(lift.weight_kg) - parseFloat(prevLift.weight_kg)) * 10) / 10
-                        : null
-                      return (
-                        <td key={liftName} className={`py-2.5 whitespace-nowrap ${li < configuredLiftNames.length - 1 ? 'pr-4' : ''}`}>
-                          {lift?.weight_kg != null ? (
-                            <span className="font-semibold text-gray-900 dark:text-white tabular-nums">
-                              {lift.weight_kg} kg{lift.reps ? <span className="text-xs font-normal text-gray-500 dark:text-gray-400 ml-1">×{lift.reps}</span> : null}
-                            </span>
-                          ) : <span className="text-gray-300 dark:text-gray-700">—</span>}
-                          {liftD !== null && <DeltaTag delta={liftD} unit=" kg" className="block" />}
-                        </td>
-                      )
-                    })}
+                    <td className="py-2.5 pr-4 text-xs text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">{cal != null ? `${cal} kcal` : '—'}</td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
+
+          {/* Everything else — scrolls independently so it never pushes the core columns above
+              out of view. */}
+          <div className="overflow-x-auto flex-1 min-w-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-gray-800">
+                  {[...(collectMeasurements ? ['Waist', 'Hips'] : []), 'Energy', 'Sleep', 'Food', 'Gym', ...configuredLiftNames].map(h => (
+                    <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
+                {ascending.map((c, i) => {
+                  const p = ascending[i - 1] || null
+                  const waistD = metricDelta(c.waist_cm, p?.waist_cm)
+                  const hipsD = metricDelta(c.hips_cm, p?.hips_cm)
+                  const energyD = metricDelta(c.energy_level, p?.energy_level, 0)
+                  const sleepD = metricDelta(c.sleep_quality, p?.sleep_quality, 0)
+                  const foodD = metricDelta(c.food_adherence, p?.food_adherence, 0)
+                  const gymD = metricDelta(c.gym_adherence, p?.gym_adherence, 0)
+                  return (
+                    <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                      {collectMeasurements && (
+                        <>
+                          <td className="py-2.5 pr-4 whitespace-nowrap">
+                            <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{c.waist_cm != null ? `${c.waist_cm} cm` : '—'}</span>
+                            {waistD !== null && <DeltaTag delta={waistD} unit=" cm" className="block" />}
+                          </td>
+                          <td className="py-2.5 pr-4 whitespace-nowrap">
+                            <span className="font-semibold text-gray-900 dark:text-white tabular-nums">{c.hips_cm != null ? `${c.hips_cm} cm` : '—'}</span>
+                            {hipsD !== null && <DeltaTag delta={hipsD} unit=" cm" className="block" />}
+                          </td>
+                        </>
+                      )}
+                      <td className="py-2.5 pr-4 whitespace-nowrap">
+                        {c.energy_level != null
+                          ? <span className={`font-semibold text-xs ${checkinRatingColor(c.energy_level)}`}>{c.energy_level}/5</span>
+                          : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                        {energyD !== null && <DeltaTag delta={energyD} higherIsBetter className="block" />}
+                      </td>
+                      <td className="py-2.5 pr-4 whitespace-nowrap">
+                        {c.sleep_quality != null
+                          ? <span className={`font-semibold text-xs ${checkinRatingColor(c.sleep_quality)}`}>{c.sleep_quality}/5</span>
+                          : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                        {sleepD !== null && <DeltaTag delta={sleepD} higherIsBetter className="block" />}
+                      </td>
+                      <td className="py-2.5 pr-4 whitespace-nowrap">
+                        {c.food_adherence != null
+                          ? <span className={`font-semibold text-xs ${checkinRatingColor(c.food_adherence)}`}>{c.food_adherence}/5</span>
+                          : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                        {foodD !== null && <DeltaTag delta={foodD} higherIsBetter className="block" />}
+                      </td>
+                      <td className={`py-2.5 whitespace-nowrap ${configuredLiftNames.length > 0 ? 'pr-4' : ''}`}>
+                        {c.gym_adherence != null
+                          ? <span className={`font-semibold text-xs ${checkinRatingColor(c.gym_adherence)}`}>{c.gym_adherence}/5</span>
+                          : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                        {gymD !== null && <DeltaTag delta={gymD} higherIsBetter className="block" />}
+                      </td>
+                      {configuredLiftNames.map((liftName, li) => {
+                        const lift = c.lift_results?.find(l => l?.name === liftName)
+                        const prevLift = p?.lift_results?.find(l => l?.name === liftName)
+                        const liftD = lift?.weight_kg != null && prevLift?.weight_kg != null
+                          ? Math.round((parseFloat(lift.weight_kg) - parseFloat(prevLift.weight_kg)) * 10) / 10
+                          : null
+                        return (
+                          <td key={liftName} className={`py-2.5 whitespace-nowrap ${li < configuredLiftNames.length - 1 ? 'pr-4' : ''}`}>
+                            {lift?.weight_kg != null ? (
+                              <span className="font-semibold text-gray-900 dark:text-white tabular-nums">
+                                {lift.weight_kg} kg{lift.reps ? <span className="text-xs font-normal text-gray-500 dark:text-gray-400 ml-1">×{lift.reps}</span> : null}
+                              </span>
+                            ) : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                            {liftD !== null && <DeltaTag delta={liftD} unit=" kg" className="block" />}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

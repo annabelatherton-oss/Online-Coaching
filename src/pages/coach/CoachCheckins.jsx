@@ -2009,6 +2009,26 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
       .map(c => ({ week: personalWeekMap[c.id], comment: c.struggle_comments[label] }))
   }
 
+  // What the client's calorie target actually was on a given date — every real change is logged
+  // to client_calorie_history (see src/lib/calorieTarget.js), so "what were they on in week N" is
+  // just the most recent logged change on or before that week's own date, not today's live target.
+  const [calorieHistory, setCalorieHistory] = useState([])
+  useEffect(() => {
+    if (!client?.id) return
+    supabase.from('client_calorie_history').select('calorie_target, changed_at').eq('client_id', client.id)
+      .order('changed_at', { ascending: true }).then(({ data }) => setCalorieHistory(data || []))
+  }, [client?.id])
+  function calorieTargetAt(dateStr) {
+    if (!dateStr || calorieHistory.length === 0) return null
+    const d = new Date(dateStr)
+    let result = null
+    for (const row of calorieHistory) {
+      if (new Date(row.changed_at) <= d) result = row.calorie_target
+      else break
+    }
+    return result
+  }
+
   // desc order (most recent first)
   const sorted = [...checkins].sort((a, b) => b.week_number - a.week_number)
   const current = sorted[0]
@@ -2637,29 +2657,39 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           })
 
         if (timeline.length === 0) return null
+
+        // Pre-computed once per row so the two side-by-side tables below (core columns that are
+        // always visible, extra columns the coach can scroll to) read off the exact same values
+        // rather than redoing this per table.
+        const rows = timeline.map((row, i) => {
+          const prevRow = timeline[i - 1] || null
+          const prevWeight = prevRow ? prevRow.weight_kg : null
+          const delta = row.weight_kg != null && prevWeight != null
+            ? parseFloat((parseFloat(row.weight_kg) - parseFloat(prevWeight)).toFixed(1))
+            : null
+          const isLog = row._type === 'log'
+          const date = isLog ? row.recorded_at : (row.updated_at || row.submitted_at || '')
+          return { row, isLog, date, delta, key: isLog ? `log-${row.id}` : row.id }
+        })
+
         return (
           <div className="card overflow-hidden">
             <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Progress History</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="flex items-start">
+              {/* Core columns — week, date, weight, change, calories — always visible, never scrolls. */}
+              <table className="text-sm flex-shrink-0">
                 <thead>
                   <tr className="border-b border-gray-100 dark:border-gray-800">
-                    {['Week', 'Date', 'Weight', 'Change', 'Energy', 'Sleep', 'Food', 'Gym', ''].map(h => (
+                    {['Week', 'Date', 'Weight', 'Change', 'Calories'].map(h => (
                       <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
-                  {timeline.map((row, i) => {
-                    const prevRow = timeline[i - 1] || null
-                    const prevWeight = prevRow ? prevRow.weight_kg : null
-                    const delta = row.weight_kg != null && prevWeight != null
-                      ? parseFloat((parseFloat(row.weight_kg) - parseFloat(prevWeight)).toFixed(1))
-                      : null
-                    const isLog = row._type === 'log'
-                    const date = isLog ? row.recorded_at : (row.updated_at || row.submitted_at || '')
+                  {rows.map(({ row, isLog, date, delta, key }) => {
+                    const cal = calorieTargetAt(date)
                     return (
-                      <tr key={isLog ? `log-${row.id}` : row.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/30 ${isLog ? 'opacity-70' : ''}`}>
+                      <tr key={key} className={`hover:bg-gray-50 dark:hover:bg-gray-800/30 ${isLog ? 'opacity-70' : ''}`}>
                         <td className="py-2.5 pr-4 whitespace-nowrap">
                           {isLog
                             ? (row.week != null
@@ -2669,12 +2699,33 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                           }
                         </td>
                         <td className="py-2.5 pr-4 text-xs text-gray-400 whitespace-nowrap">{fmtDate(date)}</td>
-                        <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white tabular-nums">{row.weight_kg != null ? `${row.weight_kg} kg` : '—'}</td>
-                        <td className="py-2.5 pr-4 tabular-nums">
+                        <td className="py-2.5 pr-4 font-semibold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">{row.weight_kg != null ? `${row.weight_kg} kg` : '—'}</td>
+                        <td className="py-2.5 pr-4 tabular-nums whitespace-nowrap">
                           {delta !== null
                             ? <span className={`font-semibold text-xs ${delta < 0 ? 'text-green-600 dark:text-green-400' : delta > 0 ? 'text-red-500 dark:text-red-400' : 'text-gray-400'}`}>{delta > 0 ? '+' : ''}{delta} kg</span>
                             : <span className="text-gray-300 dark:text-gray-700">—</span>}
                         </td>
+                        <td className="py-2.5 pr-4 text-xs text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">{cal != null ? `${cal} kcal` : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+
+              {/* Everything else — scrolls independently so it never pushes the core columns above
+                  out of view. */}
+              <div className="overflow-x-auto flex-1 min-w-0">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 dark:border-gray-800">
+                      {['Energy', 'Sleep', 'Food', 'Gym', ''].map(h => (
+                        <th key={h} className="text-left pb-2.5 pr-4 text-xs text-gray-400 uppercase tracking-wider font-medium whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
+                    {rows.map(({ row, isLog, key }) => (
+                      <tr key={key} className={`hover:bg-gray-50 dark:hover:bg-gray-800/30 ${isLog ? 'opacity-70' : ''}`}>
                         {isLog ? (
                           <><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td><td className="py-2.5 pr-4 text-gray-300 dark:text-gray-700">—</td></>
                         ) : (
@@ -2689,10 +2740,10 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                           {isLog && <button onClick={() => deleteWeightEntry(row.id)} className="text-xs text-red-500 hover:text-red-700 whitespace-nowrap">Remove</button>}
                         </td>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )
