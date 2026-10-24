@@ -1982,6 +1982,22 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     setStruggleTracking(prev => prev.map(s => s.id === id ? { ...s, coach_seen_resolved: true } : s))
   }
 
+  // Lets the coach reply directly against an ongoing struggle (persists on the tracking row
+  // itself, so it stays visible every week it's still open — not tied to any one check-in's
+  // response) and resolve it from their own side, same as the client's own "I'm ok with this
+  // now" — whichever of them acts first closes it out for both.
+  const [struggleCommentDrafts, setStruggleCommentDrafts] = useState({}) // row.id -> draft text
+  async function saveStruggleCoachComment(row, text) {
+    const trimmed = text.trim()
+    if (trimmed === (row.coach_comment || '')) return
+    await supabase.from('client_struggle_tracking').update({ coach_comment: trimmed || null, coach_commented_at: new Date().toISOString() }).eq('id', row.id)
+    setStruggleTracking(prev => prev.map(s => s.id === row.id ? { ...s, coach_comment: trimmed || null } : s))
+  }
+  async function resolveStruggleAsCoach(row) {
+    await supabase.from('client_struggle_tracking').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', row.id)
+    setStruggleTracking(prev => prev.map(s => s.id === row.id ? { ...s, status: 'resolved' } : s))
+  }
+
   const openStruggleRows = struggleTracking.filter(s => s.status === 'open')
   const unseenResolvedStruggles = struggleTracking.filter(s => s.status === 'resolved' && !s.coach_seen_resolved)
 
@@ -2385,7 +2401,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                 const firstWeekCheckin = asc.find(c => c.id === row.first_checkin_id)
                 const sinceWeek = firstWeekCheckin ? personalWeekMap[firstWeekCheckin.id] : null
                 return (
-                  <div key={row.id} className="bg-white dark:bg-gray-900 rounded-lg p-2.5 border border-amber-200 dark:border-amber-800 space-y-1">
+                  <div key={row.id} className="bg-white dark:bg-gray-900 rounded-lg p-2.5 border border-amber-200 dark:border-amber-800 space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">{row.label}</p>
                       {sinceWeek && <span className="text-xs text-gray-400 whitespace-nowrap">Since Wk {sinceWeek}</span>}
@@ -2399,6 +2415,24 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                     ) : (
                       <p className="text-xs text-gray-400 italic">No update yet</p>
                     )}
+                    <div className="pt-1 border-t border-amber-100 dark:border-amber-900/40 space-y-1.5">
+                      <textarea
+                        rows={2}
+                        value={struggleCommentDrafts[row.id] ?? row.coach_comment ?? ''}
+                        onChange={e => setStruggleCommentDrafts(d => ({ ...d, [row.id]: e.target.value }))}
+                        onBlur={e => saveStruggleCoachComment(row, e.target.value)}
+                        placeholder="Reply to this…"
+                        className="input w-full text-xs py-1.5 resize-none"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => resolveStruggleAsCoach(row)}
+                          className="text-xs font-medium text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
+                        >
+                          Mark resolved
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )
               })}

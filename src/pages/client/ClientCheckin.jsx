@@ -998,6 +998,11 @@ export default function ClientCheckin() {
                       I'm ok with this now →
                     </button>
                   </div>
+                  {row.coach_comment && (
+                    <p className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 rounded-lg px-2.5 py-1.5">
+                      <span className="font-medium text-gray-400">Coach:</span> {row.coach_comment}
+                    </p>
+                  )}
                   <textarea
                     className="input resize-none"
                     rows={3}
