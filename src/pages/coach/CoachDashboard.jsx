@@ -194,7 +194,7 @@ export default function CoachDashboard() {
             active.forEach(client => {
               const rows = checkinsByClient[client.id] || []
               const hasCurrent = rows.some(c => (c.submitted_at || c.updated_at) >= windowStartISO)
-              if (!hasCurrent) flag(client.id, { text: "Hasn't checked in this week", tone: 'gray' })
+              if (!hasCurrent) flag(client.id, { text: "Hasn't checked in this week", tone: 'gray', tab: 'Check-ins' })
             })
           }
 
@@ -208,15 +208,15 @@ export default function CoachDashboard() {
                 if (v < 4) streak++
                 else break
               }
-              if (streak > 2) flag(client.id, { text: f.label, badge: `${streak}wks`, tone: 'amber' })
+              if (streak > 2) flag(client.id, { text: f.label, badge: `${streak}wks`, tone: 'amber', tab: 'Check-ins' })
             })
           })
 
-          ;(resolvedRows || []).forEach(r => flag(r.client_id, { text: r.label, icon: 'check', tone: 'green' }))
+          ;(resolvedRows || []).forEach(r => flag(r.client_id, { text: r.label, icon: 'check', tone: 'green', tab: 'Check-ins' }))
 
           ;(mealFlagRows || []).forEach(r => {
             const mealName = r.meals?.name || 'A meal'
-            flag(r.client_id, { text: `${mealName} has no swap set up for "${r.dislike_name}"`, tone: 'amber' })
+            flag(r.client_id, { text: `${mealName} has no swap set up for "${r.dislike_name}"`, tone: 'amber', tab: 'Meal Plan' })
           })
 
           // Grouped per client into one pill instead of one per slot — a client who changes
@@ -232,11 +232,11 @@ export default function CoachDashboard() {
             const text = slots.length === 1
               ? `Everyday ${slots[0]} changed — check macros`
               : `Everyday meals changed (${slots.join(', ')}) — check macros`
-            flag(clientId, { text, tone: 'amber' })
+            flag(clientId, { text, tone: 'amber', tab: 'Meal Plan' })
           })
 
           ;(weekSwapRows || []).forEach(r => {
-            flag(r.client_id, { text: `Swapped a meal for week ${r.week_number} — check quantities`, tone: 'amber' })
+            flag(r.client_id, { text: `Swapped a meal for week ${r.week_number} — check quantities`, tone: 'amber', tab: 'Meal Plan' })
           })
         }
 
@@ -383,17 +383,14 @@ export default function CoachDashboard() {
           </div>
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {attention.map(a => (
-              <Link
-                key={a.clientId}
-                to={`/coach/clients/${a.clientId}?tab=Check-ins`}
-                className="flex flex-col gap-1.5 py-3 first:pt-0 last:pb-0 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 -mx-2 px-2 rounded-lg transition-colors"
-              >
-                <p className="font-medium text-sm text-gray-900 dark:text-white">{a.name}</p>
+              <div key={a.clientId} className="flex flex-col gap-1.5 py-3 first:pt-0 last:pb-0 -mx-2 px-2">
+                <Link to={`/coach/clients/${a.clientId}`} className="font-medium text-sm text-gray-900 dark:text-white hover:underline w-fit">{a.name}</Link>
                 <div className="flex flex-wrap gap-1.5 min-w-0">
                   {a.reasons.map((r, i) => (
-                    <span
+                    <Link
                       key={i}
-                      className={`inline-flex items-center gap-1.5 text-xs font-medium pl-1 pr-2 py-0.5 rounded-full max-w-full ${
+                      to={`/coach/clients/${a.clientId}?tab=${encodeURIComponent(r.tab || 'Check-ins')}`}
+                      className={`inline-flex items-center gap-1.5 text-xs font-medium pl-1 pr-2 py-0.5 rounded-full max-w-full hover:opacity-80 transition-opacity ${
                         r.tone === 'green'  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                         r.tone === 'amber'  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
                                               'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
@@ -418,10 +415,10 @@ export default function CoachDashboard() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
-                    </span>
+                    </Link>
                   ))}
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         </div>
