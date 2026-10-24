@@ -137,18 +137,29 @@ export function suggestCalorieTarget(client, weightPoints, currentTarget) {
   const dailyAdjustment = Math.round((gapFrac * trend.latestWeightKg * KCAL_PER_KG / 7) / 25) * 25
   const base = currentTarget || Math.round(baseTarget / 25) * 25
 
+  // Whether the actual trend is progressing slower toward the goal than intended (not losing
+  // enough on a cut, not gaining enough on a bulk — needs a push) or overshooting it (losing/
+  // gaining faster than intended — needs easing off). The SAME calorie-direction (dailyAdjustment
+  // sign) means opposite things for a cut vs. a bulk, since a cut's rate range is negative and a
+  // bulk's is positive — a goal-agnostic "behind target" label on the decrease-calories branch was
+  // backwards for bulking clients who are gaining too fast, not too slow.
+  const direction = client.goal_type === 'cut' ? -1 : 1
+  const progressingSlower = actualFrac * direction < targetMidFrac * direction
+  const goalLabel = GOAL_LABELS[client.goal_type].toLowerCase()
+  const progressWord = progressingSlower ? 'behind' : 'ahead of'
+
   let recommendation
   if (onTrack) {
-    recommendation = { type: 'keep', message: `Weight is changing at the expected rate for ${GOAL_LABELS[client.goal_type].toLowerCase()} — no change needed.` }
+    recommendation = { type: 'keep', message: `Weight is changing at the expected rate for ${goalLabel} — no change needed.` }
   } else if (dailyAdjustment < 0 && Math.abs(dailyAdjustment) < CARDIO_THRESHOLD_KCAL) {
     recommendation = {
       type: 'increase_cardio',
-      message: `Progress is a little behind target — try adding activity instead of cutting calories further: roughly ${Math.round(Math.abs(dailyAdjustment) / 100) * 1500} extra steps/day, or ~${Math.round(Math.abs(dailyAdjustment) / 10)} minutes of moderate cardio.`,
+      message: `Progress is a little ${progressWord} target — try adding activity instead of cutting calories further: roughly ${Math.round(Math.abs(dailyAdjustment) / 100) * 1500} extra steps/day, or ~${Math.round(Math.abs(dailyAdjustment) / 10)} minutes of moderate cardio.`,
     }
   } else if (dailyAdjustment < 0) {
-    recommendation = { type: 'decrease_calories', amount: dailyAdjustment, message: `Progress is behind target for ${GOAL_LABELS[client.goal_type].toLowerCase()} — suggest lowering by ${Math.abs(dailyAdjustment)} kcal/day.` }
+    recommendation = { type: 'decrease_calories', amount: dailyAdjustment, message: `Progress is ${progressWord} target for ${goalLabel} — suggest lowering by ${Math.abs(dailyAdjustment)} kcal/day.` }
   } else {
-    recommendation = { type: 'increase_calories', amount: dailyAdjustment, message: `Change is faster than the target range for ${GOAL_LABELS[client.goal_type].toLowerCase()} — suggest raising by ${dailyAdjustment} kcal/day.` }
+    recommendation = { type: 'increase_calories', amount: dailyAdjustment, message: `Progress is ${progressWord} target for ${goalLabel} — suggest raising by ${dailyAdjustment} kcal/day.` }
   }
 
   const suggestedTarget = onTrack || recommendation.type === 'increase_cardio'
