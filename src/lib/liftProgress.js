@@ -26,31 +26,40 @@ export function computeLiftProgress(checkins, manualEntries = [], startDate = nu
     return date ? realCheckins.filter(c => (c._date || '') <= date).length : null
   }
 
-  const liftMap = {} // name -> history rows
+  // Grouped by a normalized (trimmed, lower-cased) name so the same real-world lift logged with
+  // slightly different capitalisation or spacing across weeks — e.g. because the client-level
+  // "top lifts" override and the training program's own top_lifts were typed slightly differently
+  // ("Bench Press" vs "bench press") — still merges into one continuous history, rather than
+  // silently splitting into two separate single-entry lifts that each look like they have no
+  // previous data (exactly what showed up as "sometimes doesn't show previous lifts").
+  const liftMap = {} // normalizedName -> rows (each row also carries its own raw `name`)
+  const keyFor = name => (name || '').trim().toLowerCase()
   realCheckins.forEach(ci => {
     ;(ci.lift_results || []).filter(l => l?.name && l.weight_kg != null && l.reps != null).forEach(l => {
-      ;(liftMap[l.name] ||= []).push({
-        weight_kg: parseFloat(l.weight_kg), reps: parseInt(l.reps),
+      ;(liftMap[keyFor(l.name)] ||= []).push({
+        name: l.name.trim(), weight_kg: parseFloat(l.weight_kg), reps: parseInt(l.reps),
         date: ci._date, personalWeek: weekFor(ci._date),
       })
     })
   })
   ;(manualEntries || []).filter(e => e?.lift_name && e.weight_kg != null && e.reps != null && e.recorded_at).forEach(e => {
-    ;(liftMap[e.lift_name] ||= []).push({
-      weight_kg: parseFloat(e.weight_kg), reps: parseInt(e.reps),
+    ;(liftMap[keyFor(e.lift_name)] ||= []).push({
+      name: e.lift_name.trim(), weight_kg: parseFloat(e.weight_kg), reps: parseInt(e.reps),
       date: e.recorded_at, personalWeek: weekFor(e.recorded_at), manual: true,
     })
   })
 
-  return Object.entries(liftMap)
-    .map(([name, rows]) => ({ name, history: rows.sort((a, b) => (a.date || '').localeCompare(b.date || '')) }))
-    .filter(({ history }) => history.length > 0)
-    .map(({ name, history }) => {
+  return Object.values(liftMap)
+    .map(rows => rows.sort((a, b) => (a.date || '').localeCompare(b.date || '')))
+    .filter(history => history.length > 0)
+    .map(history => {
       const first = history[0]
       const latest = history[history.length - 1]
       const kgIncrease = Math.round((latest.weight_kg - first.weight_kg) * 10) / 10
       const pctIncrease = first.weight_kg > 0 ? Math.round((kgIncrease / first.weight_kg) * 100) : null
-      return { name, first, latest, kgIncrease, pctIncrease, history }
+      // Shown under whatever the most recent entry called it — the current spelling, not
+      // necessarily whatever it was first logged as.
+      return { name: latest.name, first, latest, kgIncrease, pctIncrease, history }
     })
     // Biggest increases first, so the most significant gains are what a coach or client sees first.
     .sort((a, b) => b.kgIncrease - a.kgIncrease)

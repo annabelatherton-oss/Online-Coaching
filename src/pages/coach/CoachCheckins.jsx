@@ -92,8 +92,13 @@ function weightDelta(a, b) {
   return Math.round((parseFloat(a.weight_kg) - parseFloat(b.weight_kg)) * 10) / 10
 }
 
+// Case/whitespace-insensitive — the same real-world lift can end up typed slightly differently
+// week to week (client-level "top lifts" override vs. the training program's own top_lifts aren't
+// always typed identically), which otherwise hid a genuinely-logged previous week's weight just
+// because the casing drifted, making the delta silently disappear.
 function liftDelta(currLift, prevCheckin) {
-  const p = prevCheckin?.lift_results?.find(l => l?.name === currLift?.name)
+  const key = (currLift?.name || '').trim().toLowerCase()
+  const p = prevCheckin?.lift_results?.find(l => l?.name && (l.name || '').trim().toLowerCase() === key)
   if (!p || currLift?.weight_kg == null || p?.weight_kg == null) return null
   return {
     kg: Math.round((parseFloat(currLift.weight_kg) - parseFloat(p.weight_kg)) * 10) / 10,

@@ -111,10 +111,15 @@ function getBestSet(reps_completed, weight_kg) {
   return best || (weight_kg != null ? { weight: weight_kg, reps: null } : null)
 }
 
+// Matches lift names case/whitespace-insensitively — the same real-world lift can end up typed
+// slightly differently week to week (the client-level "top lifts" override vs the training
+// program's own top_lifts aren't always typed identically, e.g. "Bench Press" vs "bench press"),
+// which otherwise hides a genuinely-logged previous performance just because the casing drifted.
 function getBestPerformance(liftName, checkins) {
+  const key = (liftName || '').trim().toLowerCase()
   const results = checkins
     .flatMap(c => c.lift_results || [])
-    .filter(r => r?.name === liftName && r.weight_kg != null && r.reps != null)
+    .filter(r => r?.name && (r.name || '').trim().toLowerCase() === key && r.weight_kg != null && r.reps != null)
   if (!results.length) return null
   return results.reduce((best, r) => {
     const w = parseFloat(r.weight_kg), bw = parseFloat(best.weight_kg)

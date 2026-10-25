@@ -4665,8 +4665,13 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
     return Math.round((parseFloat(c.weight_kg) - parseFloat(p.weight_kg)) * 10) / 10
   }
 
+  // Case/whitespace-insensitive — the same real-world lift can end up typed slightly differently
+  // week to week (client-level "top lifts" override vs. the training program's own top_lifts
+  // aren't always typed identically), which otherwise hid a genuinely-logged previous week's
+  // weight just because the casing drifted, making the delta silently disappear.
   function liftDelta(lift, p) {
-    const prev = p?.lift_results?.find(l => l?.name === lift?.name)
+    const key = (lift?.name || '').trim().toLowerCase()
+    const prev = p?.lift_results?.find(l => l?.name && (l.name || '').trim().toLowerCase() === key)
     if (!prev || lift?.weight_kg == null || prev?.weight_kg == null) return null
     return {
       kg: Math.round((parseFloat(lift.weight_kg) - parseFloat(prev.weight_kg)) * 10) / 10,
@@ -4939,8 +4944,9 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
                         {gymD !== null && <DeltaTag delta={gymD} higherIsBetter className="block" />}
                       </td>
                       {configuredLiftNames.map((liftName, li) => {
-                        const lift = c.lift_results?.find(l => l?.name === liftName)
-                        const prevLift = p?.lift_results?.find(l => l?.name === liftName)
+                        const liftKey = (liftName || '').trim().toLowerCase()
+                        const lift = c.lift_results?.find(l => l?.name && (l.name || '').trim().toLowerCase() === liftKey)
+                        const prevLift = p?.lift_results?.find(l => l?.name && (l.name || '').trim().toLowerCase() === liftKey)
                         const liftD = lift?.weight_kg != null && prevLift?.weight_kg != null
                           ? Math.round((parseFloat(lift.weight_kg) - parseFloat(prevLift.weight_kg)) * 10) / 10
                           : null
