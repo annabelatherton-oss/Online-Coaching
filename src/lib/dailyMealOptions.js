@@ -42,7 +42,7 @@ export async function loadDailyMealOptions(clientId) {
   if (!asgn) return null
 
   const [{ data: pg }, { data: coachProfile }, { data: weightRows }, { data: checkinRows }, { data: everydayRows }, { data: libData }, { data: lastDelivery }] = await Promise.all([
-    supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single(),
+    supabase.from('plan_groups').select('current_week, cycle').eq('id', asgn.plan_group_id).single(),
     supabase.from('profiles').select('goal_macro_splits, protein_g_per_kg').eq('id', clientRow.coach_id).single(),
     supabase.from('weight_entries').select('weight_kg, recorded_at').eq('client_id', clientId).order('recorded_at', { ascending: false }).limit(1),
     supabase.from('client_checkins').select('weight_kg').eq('client_id', clientId).not('weight_kg', 'is', null).order('week_number', { ascending: false }).limit(1),
@@ -57,6 +57,7 @@ export async function loadDailyMealOptions(clientId) {
   const ingredientLib = {}
   for (const ing of (libData || [])) ingredientLib[ing.id] = ing
   const effectiveWeek = asgn.week_override ?? lastDelivery?.personal_week ?? pg?.current_week ?? 1
+  const currentCycle = pg?.cycle ?? 1
   const weightKg = weightRows?.[0]?.weight_kg ?? checkinRows?.[0]?.weight_kg ?? null
   const goalMacroSplits = normalizeGoalMacroSplits(coachProfile?.goal_macro_splits)
 
@@ -70,8 +71,12 @@ export async function loadDailyMealOptions(clientId) {
       ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).eq('calorie_tier', tier).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).is('calorie_tier', null).maybeSingle(),
-    supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
+    supabase.from('client_week_meals').select('slots, ingredient_overrides, cycle').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
   ])
+  // A row from a previous lap of the schedule is stale the moment its week_number comes back
+  // around — ignoring it here is what stops it from silently overriding the current, possibly
+  // since-edited shared template.
+  const cwmFresh = cwm && (cwm.cycle ?? 1) === currentCycle ? cwm : null
   const tmpl = tierTmpl || stdTmpl
   const templateSlots = {}, templateOverrides = {}
   for (const s of (tmpl?.template_meal_slots || [])) {
@@ -80,8 +85,8 @@ export async function loadDailyMealOptions(clientId) {
   }
   if (asgn.preworkout_static && asgn.preworkout_meal_id) templateSlots.preworkout = asgn.preworkout_meal_id
   if (asgn.evening_snack_static && asgn.evening_snack_meal_id) templateSlots.evening_snack = asgn.evening_snack_meal_id
-  const finalSlots = { ...templateSlots, ...(cwm?.slots || {}) }
-  const clientOverrides = cwm?.ingredient_overrides || {}
+  const finalSlots = { ...templateSlots, ...(cwmFresh?.slots || {}) }
+  const clientOverrides = cwmFresh?.ingredient_overrides || {}
 
   // Only the handful of meals actually in play today (up to 8: breakfast/lunch/dinner A+B,
   // pre-workout, evening snack, plus whatever's picked for Everyday meals) — not the coach's whole

@@ -24,7 +24,7 @@ serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-  const { data: groups, error: groupsErr } = await supabase.from('plan_groups').select('id, current_week')
+  const { data: groups, error: groupsErr } = await supabase.from('plan_groups').select('id, current_week, cycle')
   if (groupsErr) {
     return new Response(JSON.stringify({ error: groupsErr.message }), { status: 500 })
   }
@@ -40,10 +40,16 @@ serve(async (req) => {
 
     const maxWeek = (standardWeeks ?? []).reduce((max, w) => Math.max(max, w.week_number), 0)
     if (maxWeek === 0) { results.push({ group: group.id, skipped: 'no weeks built yet' }); continue }
-    const nextWeek = outgoingWeek < maxWeek ? outgoingWeek + 1 : 1
+    const wrapped = outgoingWeek >= maxWeek
+    const nextWeek = wrapped ? 1 : outgoingWeek + 1
+    // Lapping back to week 1 means every week_number is about to be reused from the top — bump
+    // the cycle so a client_week_meals row written during the lap that's ending doesn't get
+    // silently reapplied once its week_number comes back around (see the migration this pairs
+    // with: plan-week-cycle-migration.sql).
+    const nextCycle = wrapped ? (group.cycle ?? 1) + 1 : (group.cycle ?? 1)
 
-    const { error: updateErr } = await supabase.from('plan_groups').update({ current_week: nextWeek }).eq('id', group.id)
-    results.push(updateErr ? { group: group.id, error: updateErr.message } : { group: group.id, from: outgoingWeek, to: nextWeek })
+    const { error: updateErr } = await supabase.from('plan_groups').update({ current_week: nextWeek, cycle: nextCycle }).eq('id', group.id)
+    results.push(updateErr ? { group: group.id, error: updateErr.message } : { group: group.id, from: outgoingWeek, to: nextWeek, cycle: nextCycle })
   }
 
   console.log(`Advanced ${results.filter(r => r.to).length}/${results.length} plan groups`)

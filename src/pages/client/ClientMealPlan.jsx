@@ -40,6 +40,11 @@ export default function ClientMealPlan() {
   const [saved, setSaved] = useState(false)
   const [ingredientLib, setIngredientLib] = useState({})
   const [ingredientSwapsMap, setIngredientSwapsMap] = useState({})
+  // Which lap of the whole schedule the plan group is currently on — see
+  // plan-week-cycle-migration.sql. A client_week_meals row only reflects the template as it stood
+  // during its own lap; once the schedule has cycled round again, the week_number it's keyed to
+  // gets reused and the old row is stale.
+  const [planGroupCycle, setPlanGroupCycle] = useState(1)
   const [coachDelivery, setCoachDelivery] = useState(null)
   const [swapModal, setSwapModal] = useState(null)   // { slotKey, label, cat }
   const [recipeModal, setRecipeModal] = useState(null) // slotKey
@@ -59,7 +64,7 @@ export default function ClientMealPlan() {
       setAssignment(asgn)
 
       const [{ data: pg }, { count: checkinCount }, { data: lastDelivery }] = await Promise.all([
-        supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single(),
+        supabase.from('plan_groups').select('current_week, cycle').eq('id', asgn.plan_group_id).single(),
         // week_number > 0 excludes the one-off starting check-in some clients submit right after
         // signup (a baseline, not a real week) — otherwise every real week's own "Week N" label
         // here would be one higher than it should be.
@@ -76,6 +81,8 @@ export default function ClientMealPlan() {
       ])
       const effectiveWeek = asgn.week_override ?? lastDelivery?.personal_week ?? pg?.current_week ?? 1
       setWeekNumber(effectiveWeek)
+      const currentCycle = pg?.cycle ?? 1
+      setPlanGroupCycle(currentCycle)
       // Calendar-based — weeks elapsed since start_date — not a count of check-ins actually
       // submitted, so missing one doesn't make this look a week behind where it really is.
       setPersonalWeek(clientRow.start_date ? (weekForDate(new Date().toISOString(), clientRow.start_date) || (checkinCount ?? 0) + 1) : (checkinCount ?? 0) + 1)
@@ -126,8 +133,12 @@ export default function ClientMealPlan() {
           ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).eq('calorie_tier', tier).maybeSingle()
           : Promise.resolve({ data: null }),
         supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).is('calorie_tier', null).maybeSingle(),
-        supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
+        supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories, cycle').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
       ])
+      // A row from a previous lap of the schedule is stale the moment its week_number comes back
+      // around — ignoring it here is what stops it from silently overriding the current,
+      // possibly since-edited shared template.
+      const cwmFresh = cwm && (cwm.cycle ?? 1) === currentCycle ? cwm : null
 
       const tmpl = tierTmpl || stdTmpl
       const tSlots = {}
@@ -139,11 +150,11 @@ export default function ClientMealPlan() {
       if (asgn.preworkout_static && asgn.preworkout_meal_id) tSlots.preworkout = asgn.preworkout_meal_id
       if (asgn.evening_snack_static && asgn.evening_snack_meal_id) tSlots.evening_snack = asgn.evening_snack_meal_id
 
-      const finalSlots = { ...tSlots, ...(cwm?.slots || {}) }
+      const finalSlots = { ...tSlots, ...(cwmFresh?.slots || {}) }
       setTemplateSlots(tSlots)
       setTemplateOverrides(tOverrides)
-      setIngredientOverrides(cwm?.ingredient_overrides || {})
-      setRemovedCategories(cwm?.removed_categories || [])
+      setIngredientOverrides(cwmFresh?.ingredient_overrides || {})
+      setRemovedCategories(cwmFresh?.removed_categories || [])
       setSlotsDirty(false)
 
       // Dislikes and allergies: resolve any saved swap rule automatically so the client never sees
@@ -169,7 +180,7 @@ export default function ClientMealPlan() {
           const mId = finalSlots[slotKey]
           const meal = mId ? map[mId] : null
           if (!meal) continue
-          const baseIngredients = getIngredientsLayered(meal, tier, tOverrides[slotKey], cwm?.ingredient_overrides?.[slotKey])
+          const baseIngredients = getIngredientsLayered(meal, tier, tOverrides[slotKey], cwmFresh?.ingredient_overrides?.[slotKey])
           const { applied, unresolved } = applyDislikeSwaps(baseIngredients, dislikes, allergies, mId, ingredientSwapsByDislike, mealSwapOptionsByMealAndDislike)
           if (unresolved.length) {
             const cat = ALL_SLOT_DEFS.find(s => s.key === slotKey)?.cat
@@ -200,7 +211,7 @@ export default function ClientMealPlan() {
         // render) — persisted immediately rather than waiting on the client to notice and hit Save,
         // since there's nothing for them to "approve" here: it's existing meals being kept safe.
         await supabase.from('client_week_meals').upsert(
-          { client_id: clientRow.id, coach_id: clientRow.coach_id, assignment_id: asgn.id, week_number: effectiveWeek, slots: finalSlots, ingredient_overrides: cwm?.ingredient_overrides || {} },
+          { client_id: clientRow.id, coach_id: clientRow.coach_id, assignment_id: asgn.id, week_number: effectiveWeek, slots: finalSlots, ingredient_overrides: cwmFresh?.ingredient_overrides || {}, cycle: currentCycle },
           { onConflict: 'assignment_id,week_number' }
         )
       }
@@ -432,7 +443,7 @@ export default function ClientMealPlan() {
     // next unrelated save.
     const hasSlotOverride = ALL_SLOT_DEFS.some(s => (editedSlots[s.key] || null) !== (templateSlots[s.key] || null))
     const { error } = await supabase.from('client_week_meals').upsert(
-      { client_id: clientData.id, coach_id: clientData.coach_id, assignment_id: assignment.id, week_number: weekNumber, slots: editedSlots, ingredient_overrides: ingredientOverrides, needs_coach_review: hasSlotOverride },
+      { client_id: clientData.id, coach_id: clientData.coach_id, assignment_id: assignment.id, week_number: weekNumber, slots: editedSlots, ingredient_overrides: ingredientOverrides, needs_coach_review: hasSlotOverride, cycle: planGroupCycle },
       { onConflict: 'assignment_id,week_number' }
     )
     setSaving(false)

@@ -351,6 +351,12 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
   // group at all. Submitting only writes week_override when the coach picked something other
   // than this, so a client who's just naturally following along never gets silently pinned.
   const [groupCurrentWeek, setGroupCurrentWeek] = useState(null)
+  // Which lap of the whole schedule the group is currently on — bumped by the advance-plan-week
+  // cron every time current_week wraps back to 1 (see plan-week-cycle-migration.sql). A
+  // client_week_meals row only reflects the template as it stood during ITS OWN cycle, so one
+  // from a previous lap is stale the moment the week_number it's keyed to comes back around —
+  // applying it anyway is what made two clients "on the same template week" show different meals.
+  const [groupCycle, setGroupCycle] = useState(1)
   const tier = CALORIE_TIERS.includes(parseInt(calorieTarget)) ? parseInt(calorieTarget) : null
 
   // Initial data load
@@ -362,9 +368,12 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
       // Look up the plan group's current rotation week — without a deliberate override, the panel
       // opens on this week regardless of whatever week this client was last delivered.
       let weekNum = nextTemplateWeek
+      let currentCycle = 1
       if (activeAssignment.plan_group_id) {
-        const { data: pg } = await supabase.from('plan_groups').select('current_week').eq('id', activeAssignment.plan_group_id).maybeSingle()
+        const { data: pg } = await supabase.from('plan_groups').select('current_week, cycle').eq('id', activeAssignment.plan_group_id).maybeSingle()
         setGroupCurrentWeek(pg?.current_week ?? null)
+        currentCycle = pg?.cycle ?? 1
+        setGroupCycle(currentCycle)
         if (activeAssignment.week_override == null && pg?.current_week) { weekNum = pg.current_week; setNextTemplateWeek(pg.current_week) }
       }
 
@@ -389,7 +398,7 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
           ? supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).eq('calorie_tier', currentTier).maybeSingle()
           : Promise.resolve({ data: null }),
         supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
-        supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', weekNum).maybeSingle(),
+        supabase.from('client_week_meals').select('slots, ingredient_overrides, cycle').eq('assignment_id', activeAssignment.id).eq('week_number', weekNum).maybeSingle(),
         supabase.from('client_training_assignments').select('*, training_programs(name, weeks_total)').eq('client_id', client.id).eq('active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('training_programs').select('id, name').eq('coach_id', coachId).order('name'),
         supabase.from('ingredient_swaps').select('ingredient_id, alternative_ingredient_id').eq('coach_id', coachId),
@@ -418,12 +427,17 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
       setRemovedMealSlots(activeAssignment.removed_meal_slots || [])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
       const draft = loadDraft(weekNum)
+      // A client_week_meals row only reflects the template as it stood during its OWN lap of the
+      // schedule — once the group has cycled round again, that week_number gets reused and the old
+      // row is stale (see plan-week-cycle-migration.sql). Ignoring it here is what stops it from
+      // silently overriding the current, possibly since-edited shared template.
+      const cwmFresh = cwm && (cwm.cycle ?? 1) === currentCycle ? cwm : null
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
       setActiveTemplateId((currentTier ? tierTmplData : stdTmplData)?.id ?? null)
       setActiveTemplateLocked(!!(currentTier ? tierTmplData : stdTmplData)?.locked)
-      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...(draft.editedSlots || {}) })
-      if (cwm?.ingredient_overrides) setIngredientOverrides(cwm.ingredient_overrides)
+      setEditedSlots({ ...tSlots, ...(cwmFresh?.slots || {}), ...(draft.editedSlots || {}) })
+      if (cwmFresh?.ingredient_overrides) setIngredientOverrides(cwmFresh.ingredient_overrides)
       // A locally-saved draft always wins over both the delivered defaults above and whatever was
       // there before — it only exists if the coach was mid-edit here and never actually submitted.
       if (draft.ingredientOverrides) setIngredientOverrides(draft.ingredientOverrides)
@@ -451,15 +465,18 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
           ? supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', newTier).maybeSingle()
           : Promise.resolve({ data: null }),
         supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
-        supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
+        supabase.from('client_week_meals').select('slots, ingredient_overrides, cycle').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
       ])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
       const draft = loadDraft(nextTemplateWeek)
+      // See the matching comment in the initial load above — a row from a previous lap of the
+      // schedule is stale and shouldn't override the current template.
+      const cwmFresh = cwm && (cwm.cycle ?? 1) === groupCycle ? cwm : null
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
       setActiveTemplateId((newTier ? tierTmplData : stdTmplData)?.id ?? null)
       setActiveTemplateLocked(!!(newTier ? tierTmplData : stdTmplData)?.locked)
-      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...(draft.editedSlots || {}) })
+      setEditedSlots({ ...tSlots, ...(cwmFresh?.slots || {}), ...(draft.editedSlots || {}) })
     }
     reloadTemplate()
   }, [calorieTarget])
@@ -474,16 +491,19 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
           ? supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).eq('calorie_tier', currentTier).maybeSingle()
           : Promise.resolve({ data: null }),
         supabase.from('weekly_templates').select('id, locked, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', activeAssignment.plan_group_id).eq('week_number', nextTemplateWeek).is('calorie_tier', null).maybeSingle(),
-        supabase.from('client_week_meals').select('slots, ingredient_overrides').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
+        supabase.from('client_week_meals').select('slots, ingredient_overrides, cycle').eq('assignment_id', activeAssignment.id).eq('week_number', nextTemplateWeek).maybeSingle(),
       ])
       const tSlots = buildTemplateSlots(tierTmplData, stdTmplData, activeAssignment)
       const draft = loadDraft(nextTemplateWeek)
+      // See the matching comment in the initial load above — a row from a previous lap of the
+      // schedule is stale and shouldn't override the current template.
+      const cwmFresh = cwm && (cwm.cycle ?? 1) === groupCycle ? cwm : null
       setTemplateSlots(tSlots)
       setTemplateOverrides(buildTemplateOverrides(tierTmplData, stdTmplData))
       setActiveTemplateId((currentTier ? tierTmplData : stdTmplData)?.id ?? null)
       setActiveTemplateLocked(!!(currentTier ? tierTmplData : stdTmplData)?.locked)
-      setEditedSlots({ ...tSlots, ...(cwm?.slots || {}), ...(draft.editedSlots || {}) })
-      setIngredientOverrides(draft.ingredientOverrides || cwm?.ingredient_overrides || {})
+      setEditedSlots({ ...tSlots, ...(cwmFresh?.slots || {}), ...(draft.editedSlots || {}) })
+      setIngredientOverrides(draft.ingredientOverrides || cwmFresh?.ingredient_overrides || {})
     }
     reloadWeek()
   }, [nextTemplateWeek])
@@ -1046,6 +1066,7 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
       week_number: nextTemplateWeek,
       slots: editedSlots,
       ingredient_overrides: ingredientOverrides,
+      cycle: groupCycle,
     }, { onConflict: 'assignment_id,week_number' })
 
     // Only actually pins week_override when the coach picked something other than the plan

@@ -73,11 +73,12 @@ export default function ClientShoppingList() {
       // client has actually been sent that week's plan yet — see ClientMealPlan.jsx for why the
       // shopping list has to follow the same "last actually delivered" week, not the group's.
       const [{ data: pg }, { data: lastDelivery }] = await Promise.all([
-        supabase.from('plan_groups').select('current_week').eq('id', asgn.plan_group_id).single(),
+        supabase.from('plan_groups').select('current_week, cycle').eq('id', asgn.plan_group_id).single(),
         supabase.from('weekly_deliveries').select('personal_week').eq('client_id', clientRow.id)
           .order('delivered_at', { ascending: false }).limit(1).maybeSingle(),
       ])
       const effectiveWeek = asgn.week_override ?? lastDelivery?.personal_week ?? pg?.current_week ?? 1
+      const currentCycle = pg?.cycle ?? 1
 
       const [{ data: mealsData }, { data: libData }] = await Promise.all([
         supabase.from('meals').select(`
@@ -107,8 +108,12 @@ export default function ClientShoppingList() {
           ? supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).eq('calorie_tier', calorieTier).maybeSingle()
           : Promise.resolve({ data: null }),
         supabase.from('weekly_templates').select('template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', asgn.plan_group_id).eq('week_number', effectiveWeek).is('calorie_tier', null).maybeSingle(),
-        supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
+        supabase.from('client_week_meals').select('slots, ingredient_overrides, removed_categories, cycle').eq('assignment_id', asgn.id).eq('week_number', effectiveWeek).maybeSingle(),
       ])
+      // A row from a previous lap of the schedule is stale the moment its week_number comes back
+      // around — ignoring it here is what stops it from silently overriding the current,
+      // possibly since-edited shared template.
+      const cwmFresh = cwm && (cwm.cycle ?? 1) === currentCycle ? cwm : null
       const tmpl = tierTmpl || stdTmpl
       const tSlots = {}
       const tOverrides = {}
@@ -118,11 +123,11 @@ export default function ClientShoppingList() {
       }
       if (asgn.preworkout_static && asgn.preworkout_meal_id) tSlots.preworkout = asgn.preworkout_meal_id
       if (asgn.evening_snack_static && asgn.evening_snack_meal_id) tSlots.evening_snack = asgn.evening_snack_meal_id
-      const finalSlots = { ...tSlots, ...(cwm?.slots || {}) }
+      const finalSlots = { ...tSlots, ...(cwmFresh?.slots || {}) }
       setEditedSlots(finalSlots)
       setTemplateOverrides(tOverrides)
-      setIngredientOverrides(cwm?.ingredient_overrides || {})
-      const removedCats = cwm?.removed_categories || []
+      setIngredientOverrides(cwmFresh?.ingredient_overrides || {})
+      const removedCats = cwmFresh?.removed_categories || []
       setRemovedCategories(removedCats)
 
       const dislikes = (clientRow.dislikes || []).filter(Boolean)

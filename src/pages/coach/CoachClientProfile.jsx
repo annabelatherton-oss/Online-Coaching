@@ -2512,7 +2512,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     setEverydayReviews(prev => prev.filter(r => r.id !== id))
   }
 
-  async function loadWeekSlots(asgn, weekNum, planGroupId) {
+  async function loadWeekSlots(asgn, weekNum, planGroupId, cycle = 1) {
     // If a coach has forked this client's exact calorie target into its own version of the plan
     // (see PlanGroupEditor), it takes priority over the standard template for this week.
     const tier = CALORIE_TIERS.includes(asgn.calorie_target) ? asgn.calorie_target : null
@@ -2521,8 +2521,12 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         ? supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).eq('calorie_tier', tier).maybeSingle()
         : Promise.resolve({ data: null }),
       supabase.from('weekly_templates').select('id, template_meal_slots(slot_type, meal_id, ingredient_overrides)').eq('plan_group_id', planGroupId).eq('week_number', weekNum).is('calorie_tier', null).maybeSingle(),
-      supabase.from('client_week_meals').select('slots, ingredient_overrides, needs_coach_review').eq('assignment_id', asgn.id).eq('week_number', weekNum).maybeSingle(),
+      supabase.from('client_week_meals').select('slots, ingredient_overrides, needs_coach_review, cycle').eq('assignment_id', asgn.id).eq('week_number', weekNum).maybeSingle(),
     ])
+    // A row from a previous lap of the schedule is stale the moment its week_number comes back
+    // around (see plan-week-cycle-migration.sql) — ignoring it here is what stops it from
+    // silently overriding the current, possibly since-edited shared template.
+    const cwmFresh = cwm && (cwm.cycle ?? 1) === cycle ? cwm : null
     const tmpl = tierTmpl || stdTmpl
     const tSlots = {}
     const tOverrides = {}
@@ -2541,10 +2545,10 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
     if (asgn.preworkout_static && asgn.preworkout_meal_id) tSlots.preworkout = asgn.preworkout_meal_id
     if (asgn.evening_snack_static && asgn.evening_snack_meal_id) tSlots.evening_snack = asgn.evening_snack_meal_id
     setTemplateSlots(tSlots)
-    setEditedSlots({ ...tSlots, ...(cwm?.slots || {}) })
-    setIngredientOverrides(cwm?.ingredient_overrides || {})
+    setEditedSlots({ ...tSlots, ...(cwmFresh?.slots || {}) })
+    setIngredientOverrides(cwmFresh?.ingredient_overrides || {})
     setRemovedSlots(asgn.removed_meal_slots || [])
-    setWeekNeedsReview(!!cwm?.needs_coach_review)
+    setWeekNeedsReview(!!cwmFresh?.needs_coach_review)
     setSlotsDirty(false)
   }
 
@@ -2629,7 +2633,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
         preworkout_static: !!asgn.preworkout_static,
         evening_snack_static: !!asgn.evening_snack_static,
       })
-      if (pg) await loadWeekSlots(asgn, asgn.week_override ?? pg.current_week, pg.id)
+      if (pg) await loadWeekSlots(asgn, asgn.week_override ?? pg.current_week, pg.id, pg.cycle ?? 1)
     } else {
       setAssignment(null)
       const suggested = await estimateStartingCalorieTarget()
@@ -3126,7 +3130,7 @@ function MealPlanTab({ client, coachId, mealSplit, goalMacroSplits, proteinPerKg
       // The coach saving IS the review — whatever they end up changing, this clears the "client
       // swapped a meal, go check it" flag their own save set (see ClientMealPlan.jsx handleSave).
       supabase.from('client_week_meals').upsert(
-        { client_id: client.id, coach_id: coachId, assignment_id: assignment.id, week_number: effectiveWeek, slots: editedSlots, ingredient_overrides: ingredientOverrides, needs_coach_review: false },
+        { client_id: client.id, coach_id: coachId, assignment_id: assignment.id, week_number: effectiveWeek, slots: editedSlots, ingredient_overrides: ingredientOverrides, needs_coach_review: false, cycle: planGroup?.cycle ?? 1 },
         { onConflict: 'assignment_id,week_number' }
       ),
       // removed_meal_slots lives on the assignment, not the week — a removed meal (e.g. no evening
