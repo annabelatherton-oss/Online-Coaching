@@ -268,7 +268,7 @@ function ComparisonLightbox({ angles, getCols, onClose }) {
 }
 
 // ── Plan delivery panel ───────────────────────────────────────────────────────
-function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev2, liftProgress, configuredLiftNames, activeAssignment, deliveryPersonalWeek, coachId, onCancel, onDelivered }) {
+function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev2, liftProgress, configuredLiftNames, activeAssignment, deliveryPersonalWeek, coachId, openStruggleRows, struggleHistory, personalWeekMap, asc, struggleCommentDrafts, setStruggleCommentDrafts, onSaveStruggleComment, onResolveStruggle, onCancel, onDelivered }) {
   const { profile } = useAuth()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [loading, setLoading] = useState(true)
@@ -1366,6 +1366,56 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
             </div>
           )}
 
+          {/* Ongoing issues carried over from earlier weeks — reply and/or resolve right here as
+              part of actually sending this week's plan, same as every other edit on this screen,
+              rather than in the read-only preview before the coach gets this far. */}
+          {openStruggleRows?.length > 0 && (
+            <div className="card space-y-3">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Ongoing issues</h2>
+              {openStruggleRows.map(row => {
+                const history = struggleHistory(row.label)
+                const firstWeekCheckin = asc.find(c => c.id === row.first_checkin_id)
+                const sinceWeek = firstWeekCheckin ? personalWeekMap[firstWeekCheckin.id] : null
+                return (
+                  <div key={row.id} className="rounded-lg p-2.5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{row.label}</p>
+                      {sinceWeek && <span className="text-xs text-gray-400 whitespace-nowrap">Since Wk {sinceWeek}</span>}
+                    </div>
+                    {history.length > 0 ? (
+                      <div className="space-y-0.5">
+                        {history.map((h, i) => (
+                          <p key={i} className="text-xs text-gray-600 dark:text-gray-300"><span className="font-medium text-gray-400">Wk {h.week}:</span> {h.comment}</p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">No update yet</p>
+                    )}
+                    <div className="pt-1 border-t border-amber-100 dark:border-amber-900/40 space-y-1.5">
+                      <textarea
+                        rows={2}
+                        value={struggleCommentDrafts[row.id] ?? row.coach_comment ?? ''}
+                        onChange={e => setStruggleCommentDrafts(d => ({ ...d, [row.id]: e.target.value }))}
+                        onBlur={e => onSaveStruggleComment(row, e.target.value)}
+                        placeholder="Reply to this…"
+                        className="input w-full text-xs py-1.5 resize-none"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => onResolveStruggle(row)}
+                          className="text-xs font-medium text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
+                        >
+                          Mark resolved
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           {/* Calorie target — shown before the meal plan below, so the coach sees what they're
               aiming for (and how each option currently measures up against it) before scrolling
               down to the actual meal choices. */}
@@ -2194,6 +2244,14 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           activeAssignment={activeAssignment}
           deliveryPersonalWeek={deliveryPersonalWeek}
           coachId={profile.id}
+          openStruggleRows={openStruggleRows.filter(row => row.first_checkin_id !== current.id)}
+          struggleHistory={struggleHistory}
+          personalWeekMap={personalWeekMap}
+          asc={asc}
+          struggleCommentDrafts={struggleCommentDrafts}
+          setStruggleCommentDrafts={setStruggleCommentDrafts}
+          onSaveStruggleComment={saveStruggleCoachComment}
+          onResolveStruggle={resolveStruggleAsCoach}
           onCancel={() => setShowDeliveryPanel(false)}
           onDelivered={(notes, calTarget, deliveredWeek) => {
             setShowDeliveryPanel(false)
@@ -2447,7 +2505,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                 const firstWeekCheckin = asc.find(c => c.id === row.first_checkin_id)
                 const sinceWeek = firstWeekCheckin ? personalWeekMap[firstWeekCheckin.id] : null
                 return (
-                  <div key={row.id} className="bg-white dark:bg-gray-900 rounded-lg p-2.5 border border-amber-200 dark:border-amber-800 space-y-1.5">
+                  <div key={row.id} className="bg-white dark:bg-gray-900 rounded-lg p-2.5 border border-amber-200 dark:border-amber-800 space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">{row.label}</p>
                       {sinceWeek && <span className="text-xs text-gray-400 whitespace-nowrap">Since Wk {sinceWeek}</span>}
@@ -2461,27 +2519,10 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                     ) : (
                       <p className="text-xs text-gray-400 italic">No update yet</p>
                     )}
-                    <div className="pt-1 border-t border-amber-100 dark:border-amber-900/40 space-y-1.5">
-                      <textarea
-                        rows={2}
-                        value={struggleCommentDrafts[row.id] ?? row.coach_comment ?? ''}
-                        onChange={e => setStruggleCommentDrafts(d => ({ ...d, [row.id]: e.target.value }))}
-                        onBlur={e => saveStruggleCoachComment(row, e.target.value)}
-                        placeholder="Reply to this…"
-                        className="input w-full text-xs py-1.5 resize-none"
-                      />
-                      <div className="flex justify-end">
-                        <button
-                          onClick={() => resolveStruggleAsCoach(row)}
-                          className="text-xs font-medium text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
-                        >
-                          Mark resolved
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 )
               })}
+              <p className="text-xs text-amber-600 dark:text-amber-500">Reply to these when you submit this week's plan.</p>
             </div>
           )}
 
