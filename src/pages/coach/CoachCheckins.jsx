@@ -2345,20 +2345,16 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
       {current && (
         <div className="card space-y-4 border-brand-200 dark:border-brand-800">
           <div className="flex items-start justify-between flex-wrap gap-2">
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wide">This week — Week {currentPersonalWeek}</p>
-                {isLateSubmission(current) && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">Late re-submit</span>
-                )}
+            <div className="flex items-center gap-2.5">
+              <span className="inline-flex items-center px-3 py-1 rounded-full bg-brand-500 text-white text-sm font-bold whitespace-nowrap">
+                Week {currentPersonalWeek}
+              </span>
+              <div>
+                <p className="text-xs font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wide">This week</p>
+                <p className="text-xs text-gray-400">{fmtDate(current.updated_at || current.submitted_at)}</p>
               </div>
-              <p className="text-xs text-gray-400 mt-0.5">{fmtDate(current.updated_at || current.submitted_at)}</p>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {wDeltaStart !== null && (
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${wDeltaStart < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : wDeltaStart > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
-                  {wDeltaStart > 0 ? '↑ +' : wDeltaStart < 0 ? '↓ ' : ''}{wDeltaStart} kg {wDeltaStartLabel}
-                </span>
+              {isLateSubmission(current) && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">Late re-submit</span>
               )}
             </div>
           </div>
@@ -2370,20 +2366,18 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                   <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider flex-shrink-0">Weight</p>
                   <p className="text-base sm:text-lg font-bold text-gray-900 dark:text-white whitespace-nowrap">{current.weight_kg}<span className="text-xs sm:text-sm font-normal text-gray-500"> kg</span></p>
                 </div>
-                {(wDeltaPrev !== null || wDeltaPrev2 !== null) && (
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {wDeltaPrev !== null && (
-                      <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-white dark:bg-gray-900 whitespace-nowrap" title="Change vs last week">
-                        <DeltaTag delta={wDeltaPrev} invertColors suffix="" /><span className="text-gray-400">wk</span>
-                      </span>
-                    )}
-                    {wDeltaPrev2 !== null && (
-                      <span className="flex items-center gap-1 text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-white dark:bg-gray-900 whitespace-nowrap" title="Change vs 2 weeks ago">
-                        <DeltaTag delta={wDeltaPrev2} invertColors suffix="" /><span className="text-gray-400">2wk</span>
-                      </span>
-                    )}
-                  </div>
-                )}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {wDeltaPrev !== null && (
+                    <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-white dark:bg-gray-900 whitespace-nowrap" title="Change vs last week">
+                      <DeltaTag delta={wDeltaPrev} invertColors suffix=" kg" /><span className="text-gray-400">this wk</span>
+                    </span>
+                  )}
+                  {wDeltaStart !== null && (
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${wDeltaStart < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : wDeltaStart > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
+                      {wDeltaStart > 0 ? '↑ +' : wDeltaStart < 0 ? '↓ ' : ''}{wDeltaStart} kg {wDeltaStartLabel}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
             <div className="grid grid-cols-4 gap-1.5 sm:gap-3">
@@ -2414,18 +2408,15 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
             </div>
           </div>
 
-          {/* Full lift history — every lift ever logged (check-ins and manually backfilled alike),
-              with start vs now and the week-by-week trend, same as the client's own profile page. */}
-          <StrengthProgress liftProgress={liftProgress} configuredLiftNames={configuredLiftNames} />
-
-          {/* Current week lifts vs prev and vs start */}
+          {/* Lifts this week, vs last week — the full multi-week trend chart lives one click away
+              on the submit screen (and on the client's own Progress tab), so this stays a quick,
+              plain read rather than repeating the same numbers two different ways. */}
           {current.lift_results?.filter(l => l?.name).length > 0 && (
             <div>
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Lifts</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {current.lift_results.filter(l => l?.name).map((lift, i) => {
-                  const dPrev = liftDelta(lift, prev)
-                  const dStart = first && first.id !== current.id ? liftDelta(lift, first) : null
+                  const d = liftDelta(lift, prev)
                   return (
                     <div key={i} className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -2437,22 +2428,12 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                           <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 truncate" title={lift.skip_reason}>Didn't do this: {lift.skip_reason}</p>
                         )}
                       </div>
-                      <div className="flex-shrink-0 text-right space-y-0.5">
-                        {dPrev !== null && (dPrev.kg !== 0 || dPrev.reps !== 0) && (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <span className="text-xs text-gray-400 whitespace-nowrap">vs last wk</span>
-                            {dPrev.kg !== 0 && <DeltaTag delta={dPrev.kg} />}
-                            {dPrev.reps !== 0 && <DeltaTag delta={dPrev.reps} suffix=" reps" />}
-                          </div>
-                        )}
-                        {dStart !== null && (dStart.kg !== 0 || dStart.reps !== 0) && (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <span className="text-xs text-gray-400 whitespace-nowrap">vs start</span>
-                            {dStart.kg !== 0 && <DeltaTag delta={dStart.kg} />}
-                            {dStart.reps !== 0 && <DeltaTag delta={dStart.reps} suffix=" reps" />}
-                          </div>
-                        )}
-                      </div>
+                      {d !== null && (d.kg !== 0 || d.reps !== 0) && (
+                        <div className="flex-shrink-0 flex gap-1 flex-wrap justify-end">
+                          {d.kg !== 0 && <DeltaTag delta={d.kg} />}
+                          {d.reps !== 0 && <DeltaTag delta={d.reps} suffix=" reps" />}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -2642,78 +2623,6 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         )
       )}
 
-      {/* Add a past weight or lift entry — for backfilling history while reviewing a check-in */}
-      <div className="card space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900 dark:text-white">Add previous weight, lift, or photo</h3>
-          <button onClick={() => setShowAddEntry(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showAddEntry ? 'Cancel' : 'Add Entry'}</button>
-        </div>
-        {showAddEntry && (
-          <form onSubmit={submitAddEntry} noValidate className="space-y-3">
-            <div className="flex gap-2">
-              {['weight', 'lift', 'photo'].map(t => (
-                <button key={t} type="button" onClick={() => setAddEntryType(t)}
-                  className={`text-xs font-medium px-3 py-1.5 rounded-full ${addEntryType === t ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'}`}>
-                  {t === 'weight' ? 'Weight' : t === 'lift' ? 'Lift' : 'Photo'}
-                </button>
-              ))}
-            </div>
-            <div className="max-w-[160px]"><label className="label">Date</label><input className="input" type="date" required value={addEntryForm.date} onChange={e => setAddEntryForm(f => ({ ...f, date: e.target.value }))} /></div>
-
-            {addEntryType === 'weight' ? (
-              <div className="flex items-end gap-3 flex-wrap">
-                <div className="w-28"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" required value={addEntryForm.weight_kg} onChange={e => setAddEntryForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder="e.g. 72.5" /></div>
-                <div className="w-28">
-                  <label className="label">Week # (optional)</label>
-                  <input className="input" type="number" onFocus={e => e.target.select()} step="1" min="0" value={addEntryForm.week_number} onChange={e => setAddEntryForm(f => ({ ...f, week_number: e.target.value }))} placeholder="auto" />
-                </div>
-              </div>
-            ) : addEntryType === 'photo' ? (
-              <div className="flex items-end gap-3 flex-wrap">
-                <div className="w-28">
-                  <label className="label">Week # (optional)</label>
-                  <input className="input" type="number" onFocus={e => e.target.select()} step="1" min="0" value={addEntryForm.week_number} onChange={e => setAddEntryForm(f => ({ ...f, week_number: e.target.value }))} placeholder="auto" />
-                </div>
-                <div className="flex-1 min-w-[180px]">
-                  <label className="label">Photos</label>
-                  <input ref={addEntryPhotoRef} type="file" accept="image/*" multiple className="input py-1.5" onChange={e => setAddEntryPhotoFiles(Array.from(e.target.files))} />
-                </div>
-                {addEntryPhotoFiles.length > 0 && (
-                  <p className="text-xs text-gray-400 w-full">{addEntryPhotoFiles.length} photo{addEntryPhotoFiles.length === 1 ? '' : 's'} selected — the date and week above apply to all of them.</p>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {configuredLiftNames.length === 0 && extraLiftRows.length === 0 && (
-                  <p className="text-xs text-gray-400">No top lifts configured for this client yet — add one below.</p>
-                )}
-                {configuredLiftNames.map((name, idx) => (
-                  <div key={name} className="flex gap-2 items-end flex-wrap">
-                    <p className="flex-1 min-w-[100px] pb-2 text-sm font-medium text-gray-700 dark:text-gray-300">{name}</p>
-                    <div className="w-24"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.5" min="0" value={topLiftValues[idx]?.weight_kg ?? ''} onChange={e => updateTopLift(idx, 'weight_kg', e.target.value)} placeholder="e.g. 80" /></div>
-                    <div className="w-20"><label className="label">Reps</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="1" value={topLiftValues[idx]?.reps ?? ''} onChange={e => updateTopLift(idx, 'reps', e.target.value)} placeholder="e.g. 5" /></div>
-                  </div>
-                ))}
-                {extraLiftRows.map((row, idx) => (
-                  <div key={idx} className="flex gap-2 items-end flex-wrap">
-                    <div className="flex-1 min-w-[120px]">
-                      <label className="label">Lift</label>
-                      <LiftNameField value={row.lift_name} onChange={v => updateExtraLiftRow(idx, 'lift_name', v)} knownLiftNames={knownLiftNames} />
-                    </div>
-                    <div className="w-24"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.5" min="0" value={row.weight_kg} onChange={e => updateExtraLiftRow(idx, 'weight_kg', e.target.value)} placeholder="e.g. 80" /></div>
-                    <div className="w-20"><label className="label">Reps</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="1" value={row.reps} onChange={e => updateExtraLiftRow(idx, 'reps', e.target.value)} placeholder="e.g. 5" /></div>
-                    <button type="button" onClick={() => removeExtraLiftRow(idx)} className="text-xs text-red-500 hover:text-red-700 pb-2">Remove</button>
-                  </div>
-                ))}
-                <button type="button" onClick={addExtraLiftRow} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">+ Add another lift</button>
-              </div>
-            )}
-
-            <button type="submit" disabled={addEntrySaving} className="btn-primary whitespace-nowrap">{addEntrySaving ? 'Saving…' : 'Add'}</button>
-          </form>
-        )}
-      </div>
-
       {/* Progress history table — check-ins merged with manual weight logs */}
       {(sorted.length > 0 || weightEntries.length > 0) && (() => {
         // Build a unified timeline: check-ins + standalone weight_entries (no check-in that date)
@@ -2828,20 +2737,23 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
       })()}
 
       {/* Previous week cards */}
+      {sorted.length > 1 && (
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-2">Past weeks</p>
+      )}
       {sorted.slice(1).map((c, i) => {
         const p = sorted[i + 2] || null
         const wDelta = weightDelta(c, p)
         return (
           <div key={c.id} className="card space-y-4">
             <div className="flex items-start justify-between flex-wrap gap-2">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-gray-900 dark:text-white">Week {personalWeekMap[c.id]}</h3>
-                  {isLateSubmission(c) && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">Late</span>
-                  )}
-                </div>
+              <div className="flex items-center gap-2.5">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-bold whitespace-nowrap">
+                  Week {personalWeekMap[c.id]}
+                </span>
                 <p className="text-xs text-gray-400">{fmtDate(c.updated_at || c.submitted_at)}</p>
+                {isLateSubmission(c) && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">Late</span>
+                )}
               </div>
               {wDelta !== null && (
                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${wDelta < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : wDelta > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
@@ -2947,6 +2859,78 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           </div>
         )
       })}
+
+      {/* Add a past weight or lift entry — for backfilling history while reviewing a check-in */}
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Add previous weight, lift, or photo</h3>
+          <button onClick={() => setShowAddEntry(v => !v)} className="btn-secondary py-1.5 px-3 text-xs">{showAddEntry ? 'Cancel' : 'Add Entry'}</button>
+        </div>
+        {showAddEntry && (
+          <form onSubmit={submitAddEntry} noValidate className="space-y-3">
+            <div className="flex gap-2">
+              {['weight', 'lift', 'photo'].map(t => (
+                <button key={t} type="button" onClick={() => setAddEntryType(t)}
+                  className={`text-xs font-medium px-3 py-1.5 rounded-full ${addEntryType === t ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'}`}>
+                  {t === 'weight' ? 'Weight' : t === 'lift' ? 'Lift' : 'Photo'}
+                </button>
+              ))}
+            </div>
+            <div className="max-w-[160px]"><label className="label">Date</label><input className="input" type="date" required value={addEntryForm.date} onChange={e => setAddEntryForm(f => ({ ...f, date: e.target.value }))} /></div>
+
+            {addEntryType === 'weight' ? (
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="w-28"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.1" min="0" required value={addEntryForm.weight_kg} onChange={e => setAddEntryForm(f => ({ ...f, weight_kg: e.target.value }))} placeholder="e.g. 72.5" /></div>
+                <div className="w-28">
+                  <label className="label">Week # (optional)</label>
+                  <input className="input" type="number" onFocus={e => e.target.select()} step="1" min="0" value={addEntryForm.week_number} onChange={e => setAddEntryForm(f => ({ ...f, week_number: e.target.value }))} placeholder="auto" />
+                </div>
+              </div>
+            ) : addEntryType === 'photo' ? (
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="w-28">
+                  <label className="label">Week # (optional)</label>
+                  <input className="input" type="number" onFocus={e => e.target.select()} step="1" min="0" value={addEntryForm.week_number} onChange={e => setAddEntryForm(f => ({ ...f, week_number: e.target.value }))} placeholder="auto" />
+                </div>
+                <div className="flex-1 min-w-[180px]">
+                  <label className="label">Photos</label>
+                  <input ref={addEntryPhotoRef} type="file" accept="image/*" multiple className="input py-1.5" onChange={e => setAddEntryPhotoFiles(Array.from(e.target.files))} />
+                </div>
+                {addEntryPhotoFiles.length > 0 && (
+                  <p className="text-xs text-gray-400 w-full">{addEntryPhotoFiles.length} photo{addEntryPhotoFiles.length === 1 ? '' : 's'} selected — the date and week above apply to all of them.</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {configuredLiftNames.length === 0 && extraLiftRows.length === 0 && (
+                  <p className="text-xs text-gray-400">No top lifts configured for this client yet — add one below.</p>
+                )}
+                {configuredLiftNames.map((name, idx) => (
+                  <div key={name} className="flex gap-2 items-end flex-wrap">
+                    <p className="flex-1 min-w-[100px] pb-2 text-sm font-medium text-gray-700 dark:text-gray-300">{name}</p>
+                    <div className="w-24"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.5" min="0" value={topLiftValues[idx]?.weight_kg ?? ''} onChange={e => updateTopLift(idx, 'weight_kg', e.target.value)} placeholder="e.g. 80" /></div>
+                    <div className="w-20"><label className="label">Reps</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="1" value={topLiftValues[idx]?.reps ?? ''} onChange={e => updateTopLift(idx, 'reps', e.target.value)} placeholder="e.g. 5" /></div>
+                  </div>
+                ))}
+                {extraLiftRows.map((row, idx) => (
+                  <div key={idx} className="flex gap-2 items-end flex-wrap">
+                    <div className="flex-1 min-w-[120px]">
+                      <label className="label">Lift</label>
+                      <LiftNameField value={row.lift_name} onChange={v => updateExtraLiftRow(idx, 'lift_name', v)} knownLiftNames={knownLiftNames} />
+                    </div>
+                    <div className="w-24"><label className="label">Weight (kg)</label><input className="input" type="number" onFocus={e => e.target.select()} step="0.5" min="0" value={row.weight_kg} onChange={e => updateExtraLiftRow(idx, 'weight_kg', e.target.value)} placeholder="e.g. 80" /></div>
+                    <div className="w-20"><label className="label">Reps</label><input className="input" type="number" onFocus={e => e.target.select()} step="1" min="1" value={row.reps} onChange={e => updateExtraLiftRow(idx, 'reps', e.target.value)} placeholder="e.g. 5" /></div>
+                    <button type="button" onClick={() => removeExtraLiftRow(idx)} className="text-xs text-red-500 hover:text-red-700 pb-2">Remove</button>
+                  </div>
+                ))}
+                <button type="button" onClick={addExtraLiftRow} className="text-xs text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">+ Add another lift</button>
+              </div>
+            )}
+
+            <button type="submit" disabled={addEntrySaving} className="btn-primary whitespace-nowrap">{addEntrySaving ? 'Saving…' : 'Add'}</button>
+          </form>
+        )}
+      </div>
     </div>
   )
 }
