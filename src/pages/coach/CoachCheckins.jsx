@@ -1872,6 +1872,20 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   const [earlyAccess, setEarlyAccess] = useState(false)
   const [togglingEarlyAccess, setTogglingEarlyAccess] = useState(false)
 
+  // Opening a client from the list previously left the page at whatever scroll position the list
+  // itself was at, landing partway down this client's check-in instead of its start.
+  useEffect(() => { window.scrollTo(0, 0) }, [client?.id])
+
+  // Past weeks start collapsed — only the current week needs to be fully visible by default.
+  const [expandedPastWeeks, setExpandedPastWeeks] = useState(new Set())
+  function togglePastWeek(id) {
+    setExpandedPastWeeks(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
   useEffect(() => {
     if (!client?.id) return
     supabase.from('clients').select('checkin_early_access').eq('id', client.id).maybeSingle()
@@ -2745,10 +2759,14 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
       {sorted.slice(1).map((c, i) => {
         const p = sorted[i + 2] || null
         const wDelta = weightDelta(c, p)
+        const isExpanded = expandedPastWeeks.has(c.id)
         return (
           <div key={c.id} className="card space-y-4">
-            <div className="flex items-start justify-between flex-wrap gap-2">
+            <button type="button" onClick={() => togglePastWeek(c.id)} className="w-full flex items-start justify-between flex-wrap gap-2 text-left">
               <div className="flex items-center gap-2.5">
+                <svg className={`w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-bold whitespace-nowrap">
                   Week {personalWeekMap[c.id]}
                 </span>
@@ -2762,8 +2780,10 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                   {wDelta > 0 ? '↑ +' : wDelta < 0 ? '↓ ' : ''}{wDelta} kg
                 </span>
               )}
-            </div>
+            </button>
 
+            {isExpanded && (
+            <>
             <div className="space-y-1.5 sm:space-y-2">
               {c.weight_kg != null && (
                 <div className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2 sm:px-4 sm:py-2.5">
@@ -2857,6 +2877,8 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               <button onClick={() => openRespond(c)} className="text-sm text-brand-500 hover:text-brand-700 dark:hover:text-brand-400 font-medium">
                 {c.coach_responded_at ? 'Edit response' : 'Respond →'}
               </button>
+            )}
+            </>
             )}
           </div>
         )
