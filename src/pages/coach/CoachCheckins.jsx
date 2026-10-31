@@ -268,7 +268,7 @@ function ComparisonLightbox({ angles, getCols, onClose }) {
 }
 
 // ── Plan delivery panel ───────────────────────────────────────────────────────
-function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev2, liftProgress, configuredLiftNames, activeAssignment, deliveryPersonalWeek, coachId, openStruggleRows, struggleHistory, personalWeekMap, asc, struggleCommentDrafts, setStruggleCommentDrafts, onSaveStruggleComment, onResolveStruggle, onCancel, onDelivered }) {
+function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev2, liftProgress, configuredLiftNames, activeAssignment, deliveryPersonalWeek, coachId, openStruggleRows, struggleHistory, personalWeekMap, asc, struggleCommentDrafts, onChangeStruggleComment, onSaveStruggleComment, onResolveStruggle, onCancel, onDelivered }) {
   const { profile } = useAuth()
   const goalSplits = normalizeGoalMacroSplits(profile?.goal_macro_splits)
   const [loading, setLoading] = useState(true)
@@ -1395,7 +1395,7 @@ function DeliveryPanel({ client, current, prev, weightDeltaPrev, weightDeltaPrev
                       <textarea
                         rows={2}
                         value={struggleCommentDrafts[row.id] ?? row.coach_comment ?? ''}
-                        onChange={e => setStruggleCommentDrafts(d => ({ ...d, [row.id]: e.target.value }))}
+                        onChange={e => onChangeStruggleComment(row, e.target.value)}
                         onBlur={e => onSaveStruggleComment(row, e.target.value)}
                         placeholder="Reply to this…"
                         className="input w-full text-xs py-1.5 resize-none"
@@ -2069,6 +2069,17 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
     await supabase.from('client_struggle_tracking').update({ coach_comment: trimmed || null, coach_commented_at: new Date().toISOString() }).eq('id', row.id)
     setStruggleTracking(prev => prev.map(s => s.id === row.id ? { ...s, coach_comment: trimmed || null } : s))
   }
+  // Typing a reply only saved on blur, which depends on the coach clicking/tapping somewhere else
+  // first — navigating away any other way (back button, switching clients, closing the tab) could
+  // skip that and silently lose what they'd typed. Auto-saves a moment after they stop typing too,
+  // so it's already written well before they'd normally leave; onBlur stays as an immediate save
+  // for the common case, and is a harmless no-op here once the debounced save already landed.
+  const struggleSaveTimers = useRef({})
+  function handleStruggleCommentChange(row, text) {
+    setStruggleCommentDrafts(d => ({ ...d, [row.id]: text }))
+    clearTimeout(struggleSaveTimers.current[row.id])
+    struggleSaveTimers.current[row.id] = setTimeout(() => saveStruggleCoachComment(row, text), 800)
+  }
   async function resolveStruggleAsCoach(row) {
     await supabase.from('client_struggle_tracking').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', row.id)
     setStruggleTracking(prev => prev.map(s => s.id === row.id ? { ...s, status: 'resolved' } : s))
@@ -2249,7 +2260,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
           personalWeekMap={personalWeekMap}
           asc={asc}
           struggleCommentDrafts={struggleCommentDrafts}
-          setStruggleCommentDrafts={setStruggleCommentDrafts}
+          onChangeStruggleComment={handleStruggleCommentChange}
           onSaveStruggleComment={saveStruggleCoachComment}
           onResolveStruggle={resolveStruggleAsCoach}
           onCancel={() => setShowDeliveryPanel(false)}
