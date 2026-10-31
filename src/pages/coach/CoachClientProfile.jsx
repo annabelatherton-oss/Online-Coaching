@@ -4736,6 +4736,8 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
 
   // Ascending for the history table
   const ascending = [...checkins].reverse()
+  // checkins is most-recent-first, so the oldest (first-ever) one is the last element.
+  const first = checkins[checkins.length - 1] || null
 
   // Flags a rating that's been yellow (3/5) or red (1-2/5) for more than 2
   // weeks running, counting back from the most recent check-in. checkins
@@ -5031,8 +5033,11 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
 
       {/* ── Individual check-in cards ── */}
       {checkins.map((c, i) => {
+        // p is always the one check-in immediately before c (prevCheckin(i) = checkins[i+1]) —
+        // never a more distant week — so "vs last week" is always a genuine week-on-week delta.
         const p = prevCheckin(i)
         const wDelta = weightDelta(c, p)
+        const wDeltaStart = (first && first.id !== c.id) ? weightDelta(c, first) : null
         const changesSince = logsForCheckin(c, p)
         return (
           <div key={c.id} className="card space-y-4">
@@ -5041,15 +5046,26 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
               <div>
                 <h3 className="font-semibold text-gray-900 dark:text-white">Week {personalWeek(c)}</h3>
               </div>
-              {wDelta !== null && (
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                  wDelta < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : wDelta > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
-                  : 'bg-gray-100 text-gray-500 dark:bg-gray-800'
-                }`}>
-                  {wDelta > 0 ? '↑ +' : wDelta < 0 ? '↓ ' : ''}{wDelta} kg vs last week
-                </span>
-              )}
+              <div className="flex items-center gap-1.5">
+                {wDelta !== null && (
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${
+                    wDelta < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : wDelta > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                    : 'bg-gray-100 text-gray-500 dark:bg-gray-800'
+                  }`}>
+                    {wDelta > 0 ? '↑ +' : wDelta < 0 ? '↓ ' : ''}{wDelta} kg this wk
+                  </span>
+                )}
+                {wDeltaStart !== null && (
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${
+                    wDeltaStart < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : wDeltaStart > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                    : 'bg-gray-100 text-gray-500 dark:bg-gray-800'
+                  }`}>
+                    {wDeltaStart > 0 ? '↑ +' : wDeltaStart < 0 ? '↓ ' : ''}{wDeltaStart} kg since start
+                  </span>
+                )}
+              </div>
             </div>
 
             {changesSince.length > 0 && (
@@ -5069,6 +5085,11 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">{c.weight_kg} <span className="text-sm font-normal text-gray-500">kg</span></p>
                   <DeltaTag delta={wDelta} unit=" kg" className="block mt-0.5" />
                   {p?.weight_kg != null && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Last week: {p.weight_kg} kg</p>}
+                  {wDeltaStart !== null && (
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                      {wDeltaStart > 0 ? '↑ +' : wDeltaStart < 0 ? '↓ ' : ''}{wDeltaStart} kg since start
+                    </p>
+                  )}
                 </div>
               )}
               {collectMeasurements && c.waist_cm != null && (
@@ -5128,6 +5149,7 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {c.lift_results.filter(l => l?.name).map((lift, li) => {
                     const d = liftDelta(lift, p)
+                    const dStart = (first && first.id !== c.id) ? liftDelta(lift, first) : null
                     return (
                       <div key={li} className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800">
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 truncate">{lift.name}</p>
@@ -5136,7 +5158,7 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
                           {lift.reps ? <span className="text-xs font-normal text-gray-500 dark:text-gray-400 ml-1">× {lift.reps}</span> : null}
                         </p>
                         {d !== null && (
-                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                             {d.kg !== 0 && (
                               <span className={`text-xs font-semibold ${d.kg > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
                                 {d.kg > 0 ? '↑ +' : '↓ '}{d.kg} kg
@@ -5150,6 +5172,22 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
                             {d.kg === 0 && d.reps === 0 && (
                               <span className="text-xs text-gray-400">same</span>
                             )}
+                            <span className="text-[10px] text-gray-400">this wk</span>
+                          </div>
+                        )}
+                        {dStart !== null && (dStart.kg !== 0 || dStart.reps !== 0) && (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            {dStart.kg !== 0 && (
+                              <span className={`text-xs font-semibold ${dStart.kg > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                                {dStart.kg > 0 ? '↑ +' : '↓ '}{dStart.kg} kg
+                              </span>
+                            )}
+                            {dStart.reps !== 0 && (
+                              <span className={`text-xs font-semibold ${dStart.reps > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                                {dStart.reps > 0 ? '↑ +' : '↓ '}{dStart.reps} reps
+                              </span>
+                            )}
+                            <span className="text-[10px] text-gray-400">since start</span>
                           </div>
                         )}
                         {lift.skip_reason && (

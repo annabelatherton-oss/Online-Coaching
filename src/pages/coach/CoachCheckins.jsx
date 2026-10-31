@@ -2432,7 +2432,10 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Lifts</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {current.lift_results.filter(l => l?.name).map((lift, i) => {
+                  // prev is always the check-in immediately before this one (sorted[1]) — never a
+                  // more distant week — so "this wk" is a true week-on-week comparison.
                   const d = liftDelta(lift, prev)
+                  const dStart = (first && first.id !== current.id) ? liftDelta(lift, first) : null
                   return (
                     <div key={i} className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -2444,12 +2447,22 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                           <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 truncate" title={lift.skip_reason}>Didn't do this: {lift.skip_reason}</p>
                         )}
                       </div>
-                      {d !== null && (d.kg !== 0 || d.reps !== 0) && (
-                        <div className="flex-shrink-0 flex gap-1 flex-wrap justify-end">
-                          {d.kg !== 0 && <DeltaTag delta={d.kg} />}
-                          {d.reps !== 0 && <DeltaTag delta={d.reps} suffix=" reps" />}
-                        </div>
-                      )}
+                      <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                        {d !== null && (d.kg !== 0 || d.reps !== 0) && (
+                          <div className="flex items-center gap-1 flex-wrap justify-end">
+                            {d.kg !== 0 && <DeltaTag delta={d.kg} />}
+                            {d.reps !== 0 && <DeltaTag delta={d.reps} suffix=" reps" />}
+                            <span className="text-[10px] text-gray-400">this wk</span>
+                          </div>
+                        )}
+                        {dStart !== null && (dStart.kg !== 0 || dStart.reps !== 0) && (
+                          <div className="flex items-center gap-1 flex-wrap justify-end">
+                            {dStart.kg !== 0 && <DeltaTag delta={dStart.kg} />}
+                            {dStart.reps !== 0 && <DeltaTag delta={dStart.reps} suffix=" reps" />}
+                            <span className="text-[10px] text-gray-400">since start</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -2757,8 +2770,11 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-2">Past weeks</p>
       )}
       {sorted.slice(1).map((c, i) => {
+        // p is always the one check-in immediately before c in the sorted sequence — never a more
+        // distant week — so this is always a genuine week-on-week comparison.
         const p = sorted[i + 2] || null
         const wDelta = weightDelta(c, p)
+        const wDeltaStartC = (first && first.id !== c.id) ? weightDelta(c, first) : null
         const isExpanded = expandedPastWeeks.has(c.id)
         return (
           <div key={c.id} className="card space-y-4">
@@ -2775,11 +2791,18 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                   <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">Late</span>
                 )}
               </div>
-              {wDelta !== null && (
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${wDelta < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : wDelta > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
-                  {wDelta > 0 ? '↑ +' : wDelta < 0 ? '↓ ' : ''}{wDelta} kg
-                </span>
-              )}
+              <div className="flex items-center gap-1.5">
+                {wDelta !== null && (
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${wDelta < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : wDelta > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
+                    {wDelta > 0 ? '↑ +' : wDelta < 0 ? '↓ ' : ''}{wDelta} kg this wk
+                  </span>
+                )}
+                {wDeltaStartC !== null && (
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${wDeltaStartC < 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : wDeltaStartC > 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
+                    {wDeltaStartC > 0 ? '↑ +' : wDeltaStartC < 0 ? '↓ ' : ''}{wDeltaStartC} kg since start
+                  </span>
+                )}
+              </div>
             </button>
 
             {isExpanded && (
@@ -2803,6 +2826,7 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {c.lift_results.filter(l => l?.name).map((lift, li) => {
                   const d = liftDelta(lift, p)
+                  const dStart = (first && first.id !== c.id) ? liftDelta(lift, first) : null
                   return (
                     <div key={li} className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -2812,12 +2836,22 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
                           <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 truncate" title={lift.skip_reason}>Didn't do this: {lift.skip_reason}</p>
                         )}
                       </div>
-                      {d !== null && (d.kg !== 0 || d.reps !== 0) && (
-                        <div className="flex gap-1 flex-wrap justify-end flex-shrink-0">
-                          {d.kg !== 0 && <DeltaTag delta={d.kg} />}
-                          {d.reps !== 0 && <DeltaTag delta={d.reps} suffix=" reps" />}
-                        </div>
-                      )}
+                      <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                        {d !== null && (d.kg !== 0 || d.reps !== 0) && (
+                          <div className="flex items-center gap-1 flex-wrap justify-end">
+                            {d.kg !== 0 && <DeltaTag delta={d.kg} />}
+                            {d.reps !== 0 && <DeltaTag delta={d.reps} suffix=" reps" />}
+                            <span className="text-[10px] text-gray-400">this wk</span>
+                          </div>
+                        )}
+                        {dStart !== null && (dStart.kg !== 0 || dStart.reps !== 0) && (
+                          <div className="flex items-center gap-1 flex-wrap justify-end">
+                            {dStart.kg !== 0 && <DeltaTag delta={dStart.kg} />}
+                            {dStart.reps !== 0 && <DeltaTag delta={dStart.reps} suffix=" reps" />}
+                            <span className="text-[10px] text-gray-400">since start</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
