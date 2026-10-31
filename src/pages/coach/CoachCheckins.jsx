@@ -2131,14 +2131,16 @@ function ClientDetail({ client, checkins: rawCheckins, onBack, onResponded }) {
   // week off, and backdating a start date immediately reclassifies their whole history. Falls back
   // to the old counting behaviour only for a client with no start_date set at all.
   const asc = [...sorted].reverse()
+  // Same fallback as CoachClientProfile.jsx/CoachReports.jsx's own personalWeek() — the check-in's
+  // own stored week_number, not a freshly-recomputed "Nth check-in currently visible" counter.
+  // Those two previously disagreed with this page whenever weekForDate couldn't compute a result
+  // (start_date missing, or a check-in dated before it) — a client on a messy start_date could see
+  // one week number here and a different one on their own profile/report page for the exact same
+  // check-in, with no way to tell which (if either) was right.
   const personalWeekMap = {}
-  let personalCounter = 0
   asc.forEach(c => {
     if (c.week_number > 0) {
-      personalCounter++
-      personalWeekMap[c.id] = client.start_date
-        ? (weekForDate(c.submitted_at || c.updated_at, client.start_date) || personalCounter)
-        : personalCounter
+      personalWeekMap[c.id] = (client.start_date && weekForDate(c.submitted_at || c.updated_at, client.start_date)) || c.week_number
     }
   })
   const currentPersonalWeek = current ? (current.week_number === 0 ? 0 : personalWeekMap[current.id]) : 0
