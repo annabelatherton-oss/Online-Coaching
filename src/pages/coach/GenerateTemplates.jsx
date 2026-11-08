@@ -209,10 +209,25 @@ function scheduleBreakfasts(breakfasts) {
     })
   }
 
+  if (std.length === 0) {
+    // Every breakfast the coach has is tagged meal-prep — there's no separate "standard" pool
+    // left to draw Option A from. It used to go without a breakfast at all for most weeks (every
+    // week outside the handful of extraMpWeeks below), leaving the client with only one real
+    // breakfast option that week instead of two. Sharing the same meal-prep pool between two
+    // independent cyclers — same pattern as the no-meal-prep branch just above — guarantees both
+    // options are always a real meal.
+    const cyclerA = buildCycler(mp)
+    const cyclerB = buildCycler(mp)
+    return Array.from({ length: WEEK_COUNT }, () => {
+      const b1 = cyclerA.next()
+      const b2 = cyclerB.nextPreferring(b1?._subtype)
+      return { b1, b2 }
+    })
+  }
+
   // How many of the 40 total slots go to meal-prep meals: at least one per week, and at
   // least enough to use every meal-prep meal once (whichever is bigger), capped at the total.
-  const desiredMp = std.length === 0 ? totalSlots : Math.max(WEEK_COUNT, mp.length)
-  const mpSlots = Math.min(totalSlots, desiredMp)
+  const mpSlots = Math.min(totalSlots, Math.max(WEEK_COUNT, mp.length))
 
   const mpCycler  = buildCycler(mp)
   const stdCycler = buildCycler(std)
@@ -227,7 +242,7 @@ function scheduleBreakfasts(breakfasts) {
       return { b1, b2 }
     }
     const b2 = mpCycler.next()
-    const b1 = std.length > 0 ? stdCycler.nextPreferring(b2?._subtype) : null
+    const b1 = stdCycler.nextPreferring(b2?._subtype)
     return { b1, b2 }
   })
 }
