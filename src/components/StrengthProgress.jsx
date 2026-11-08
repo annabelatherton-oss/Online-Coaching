@@ -69,7 +69,17 @@ export default function StrengthProgress({ liftProgress, configuredLiftNames }) 
     <div className="card space-y-4">
       <h2 className="font-semibold text-gray-900 dark:text-white">Strength Progress</h2>
       <div className="space-y-5">
-        {liftProgress.map(({ name, first, latest, kgIncrease, pctIncrease, history }) => (
+        {liftProgress.map(({ name, first, latest, kgIncrease, pctIncrease, history }) => {
+          // This row is always "starting point vs most recent" — i.e. overall progress since day
+          // one, by design — which previously had no "since start" label on it, so a start point
+          // several real weeks back (e.g. Wk7) read as if the app had skipped straight past every
+          // week in between instead of just summarising across all of them. The chart underneath
+          // still plots every one of those weeks. A true week-on-week delta (vs the one entry right
+          // before latest) is shown alongside so both comparisons are visible, not just this one.
+          const prevEntry = history.length > 1 ? history[history.length - 2] : null
+          const wowKg = prevEntry ? Math.round((latest.weight_kg - prevEntry.weight_kg) * 10) / 10 : null
+          const wowReps = prevEntry ? latest.reps - prevEntry.reps : null
+          return (
           <div key={name} className="space-y-1.5">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{name}</p>
             <div className="flex items-center gap-x-2.5 gap-y-1 flex-wrap rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2">
@@ -82,16 +92,27 @@ export default function StrengthProgress({ liftProgress, configuredLiftNames }) 
                 <span className="text-[10px] text-gray-400">Wk{latest.personalWeek}</span>
                 <span className="text-sm font-semibold text-gray-900 dark:text-white">{latest.weight_kg}kg×{latest.reps}</span>
               </span>
-              <span
-                className={`ml-auto text-xs sm:text-sm font-bold tabular-nums px-2 py-0.5 rounded-full whitespace-nowrap ${kgIncrease > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : kgIncrease < 0 ? 'bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}
-                title="Total increase since the starting point"
-              >
-                {kgIncrease > 0 ? '+' : ''}{kgIncrease}kg{pctIncrease !== null ? ` (${pctIncrease > 0 ? '+' : ''}${pctIncrease}%)` : ''}
-              </span>
+              <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
+                {wowKg !== null && (wowKg !== 0 || wowReps !== 0) && (
+                  <span
+                    className={`flex items-center gap-1 text-xs font-semibold tabular-nums px-2 py-0.5 rounded-full whitespace-nowrap ${wowKg > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : wowKg < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}
+                    title={`Vs the previous check-in — Week ${prevEntry.personalWeek}`}
+                  >
+                    {wowKg > 0 ? '↑ +' : wowKg < 0 ? '↓ ' : ''}{wowKg}kg<span className="text-[10px] opacity-70">wk</span>
+                  </span>
+                )}
+                <span
+                  className={`text-xs sm:text-sm font-bold tabular-nums px-2 py-0.5 rounded-full whitespace-nowrap ${kgIncrease > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : kgIncrease < 0 ? 'bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}
+                  title="Total increase since the starting point"
+                >
+                  {kgIncrease > 0 ? '+' : ''}{kgIncrease}kg{pctIncrease !== null ? ` (${pctIncrease > 0 ? '+' : ''}${pctIncrease}%)` : ''}<span className="text-[10px] opacity-70 ml-0.5">since start</span>
+                </span>
+              </div>
             </div>
             <LiftChart history={history} />
           </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
