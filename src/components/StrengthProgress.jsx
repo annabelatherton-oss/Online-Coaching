@@ -70,44 +70,48 @@ export default function StrengthProgress({ liftProgress, configuredLiftNames }) 
       <h2 className="font-semibold text-gray-900 dark:text-white">Strength Progress</h2>
       <div className="space-y-5">
         {liftProgress.map(({ name, first, latest, kgIncrease, pctIncrease, history }) => {
-          // This row is always "starting point vs most recent" — i.e. overall progress since day
-          // one, by design — which previously had no "since start" label on it, so a start point
-          // several real weeks back (e.g. Wk7) read as if the app had skipped straight past every
-          // week in between instead of just summarising across all of them. The chart underneath
-          // still plots every one of those weeks. A true week-on-week delta (vs the one entry right
-          // before latest) is shown alongside so both comparisons are visible, not just this one.
+          // The primary line is always the previous check-in vs the latest one — a true
+          // week-on-week comparison — never the starting point, no matter how many real weeks
+          // back that was. "Since start" is still shown, but only as a secondary, clearly-labelled
+          // figure underneath, so it never reads as if it were the week-on-week comparison.
           const prevEntry = history.length > 1 ? history[history.length - 2] : null
           const wowKg = prevEntry ? Math.round((latest.weight_kg - prevEntry.weight_kg) * 10) / 10 : null
           const wowReps = prevEntry ? latest.reps - prevEntry.reps : null
           return (
           <div key={name} className="space-y-1.5">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{name}</p>
-            <div className="flex items-center gap-x-2.5 gap-y-1 flex-wrap rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2">
-              <span className="flex items-baseline gap-1 tabular-nums whitespace-nowrap" title={`Starting point — Week ${first.personalWeek}`}>
-                <span className="text-[10px] text-gray-400">Wk{first.personalWeek}</span>
-                <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">{first.weight_kg}kg×{first.reps}</span>
-              </span>
-              <span className="text-gray-300 dark:text-gray-600">→</span>
-              <span className="flex items-baseline gap-1 tabular-nums whitespace-nowrap" title={`Most recent — Week ${latest.personalWeek}`}>
-                <span className="text-[10px] text-gray-400">Wk{latest.personalWeek}</span>
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">{latest.weight_kg}kg×{latest.reps}</span>
-              </span>
-              <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
-                {wowKg !== null && (wowKg !== 0 || wowReps !== 0) && (
+            <div className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2 space-y-1.5">
+              <div className="flex items-center gap-x-2.5 gap-y-1 flex-wrap">
+                {prevEntry ? (
+                  <>
+                    <span className="flex items-baseline gap-1 tabular-nums whitespace-nowrap" title={`Previous check-in — Week ${prevEntry.personalWeek}`}>
+                      <span className="text-[10px] text-gray-400">Wk{prevEntry.personalWeek}</span>
+                      <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">{prevEntry.weight_kg}kg×{prevEntry.reps}</span>
+                    </span>
+                    <span className="text-gray-300 dark:text-gray-600">→</span>
+                  </>
+                ) : null}
+                <span className="flex items-baseline gap-1 tabular-nums whitespace-nowrap" title={`Most recent — Week ${latest.personalWeek}`}>
+                  <span className="text-[10px] text-gray-400">Wk{latest.personalWeek}</span>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">{latest.weight_kg}kg×{latest.reps}</span>
+                </span>
+                {wowKg !== null && (
                   <span
-                    className={`flex items-center gap-1 text-xs font-semibold tabular-nums px-2 py-0.5 rounded-full whitespace-nowrap ${wowKg > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : wowKg < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}
+                    className={`ml-auto flex items-center gap-1 text-xs sm:text-sm font-bold tabular-nums px-2 py-0.5 rounded-full whitespace-nowrap ${wowKg > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : wowKg < 0 ? 'bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}
                     title={`Vs the previous check-in — Week ${prevEntry.personalWeek}`}
                   >
-                    {wowKg > 0 ? '↑ +' : wowKg < 0 ? '↓ ' : ''}{wowKg}kg<span className="text-[10px] opacity-70">wk</span>
+                    {wowKg > 0 ? '↑ +' : wowKg < 0 ? '↓ ' : ''}{wowKg}kg{wowReps ? ` × ${wowReps > 0 ? '+' : ''}${wowReps}` : ''}<span className="text-[10px] opacity-70 ml-0.5">this wk</span>
                   </span>
                 )}
-                <span
-                  className={`text-xs sm:text-sm font-bold tabular-nums px-2 py-0.5 rounded-full whitespace-nowrap ${kgIncrease > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : kgIncrease < 0 ? 'bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}
-                  title="Total increase since the starting point"
-                >
-                  {kgIncrease > 0 ? '+' : ''}{kgIncrease}kg{pctIncrease !== null ? ` (${pctIncrease > 0 ? '+' : ''}${pctIncrease}%)` : ''}<span className="text-[10px] opacity-70 ml-0.5">since start</span>
-                </span>
               </div>
+              {history.length > 1 && (
+                <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                  Started Wk{first.personalWeek} at {first.weight_kg}kg×{first.reps} —{' '}
+                  <span className={kgIncrease > 0 ? 'text-green-600 dark:text-green-400 font-medium' : kgIncrease < 0 ? 'text-red-500 dark:text-red-400 font-medium' : ''}>
+                    {kgIncrease > 0 ? '+' : ''}{kgIncrease}kg{pctIncrease !== null ? ` (${pctIncrease > 0 ? '+' : ''}${pctIncrease}%)` : ''}
+                  </span> since start
+                </p>
+              )}
             </div>
             <LiftChart history={history} />
           </div>
