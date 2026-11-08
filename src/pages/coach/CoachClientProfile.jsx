@@ -4488,6 +4488,21 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
   const [checkins, setCheckins] = useState([])
   const [loading, setLoading] = useState(true)
   const [lightbox, setLightbox] = useState(null)
+  // Lets a swipe started anywhere on the Progress History row (including over the pinned
+  // columns, which aren't themselves a scroll container) drag the scrollable columns alongside
+  // it — without this, only a touch that happened to land exactly on that narrow scrollable
+  // sliver did anything, which on a phone is easy to miss entirely depending on how many extra
+  // columns a given client has.
+  const historyScrollRef = useRef(null)
+  const historyTouchRef = useRef(null)
+  function handleHistoryTouchStart(e) {
+    historyTouchRef.current = { x: e.touches[0].clientX, scrollLeft: historyScrollRef.current?.scrollLeft || 0 }
+  }
+  function handleHistoryTouchMove(e) {
+    if (!historyTouchRef.current || !historyScrollRef.current) return
+    const dx = e.touches[0].clientX - historyTouchRef.current.x
+    historyScrollRef.current.scrollLeft = historyTouchRef.current.scrollLeft - dx
+  }
   // Plans sent directly (assigned/changed outside a check-in response) — e.g. the very first plan
   // a client ever gets, before they've submitted any check-in. These carry no check-in data, just
   // the fact that a plan went out, so they're listed separately rather than in the cards below.
@@ -4870,7 +4885,7 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
       {/* ── Weight / progress history table ── */}
       <div className="card overflow-hidden">
         <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Progress History</h3>
-        <div className="flex items-start">
+        <div className="flex items-start" onTouchStart={handleHistoryTouchStart} onTouchMove={handleHistoryTouchMove}>
           {/* Core columns — week, date, weight (with its change inline), calories — always
               visible, never scrolls. */}
           <table className="text-sm flex-shrink-0">
@@ -4904,7 +4919,7 @@ function CheckinsTab({ clientId, collectMeasurements, client }) {
 
           {/* Everything else — scrolls independently so it never pushes the core columns above
               out of view. */}
-          <div className="overflow-x-auto flex-1 min-w-0">
+          <div ref={historyScrollRef} className="overflow-x-auto flex-1 min-w-0">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-800">
