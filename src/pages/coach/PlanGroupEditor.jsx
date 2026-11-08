@@ -41,6 +41,15 @@ const SLOT_LABELS = Object.fromEntries(SLOTS.map(s => [s.key, s.label]))
 const OPTION_A_KEYS = ['breakfast1', 'lunch1', 'dinner1', 'preworkout', 'evening_snack']
 const OPTION_B_KEYS = ['breakfast2', 'lunch2', 'dinner2', 'preworkout', 'evening_snack']
 
+// Shapes an already-resolved ingredient row for insertion into meal_ingredients/meal_tier_ingredients
+// — strips the row's own id (and anything else layering added, like _isAdded) so a fresh row is
+// always created rather than accidentally colliding with or reusing an unrelated id.
+const tierRowFields = ing => ({
+  name: ing.name, quantity_g: ing.quantity_g, unit: ing.unit,
+  calories: ing.calories, protein_g: ing.protein_g, carbs_g: ing.carbs_g, fat_g: ing.fat_g,
+  ingredient_id: ing.ingredient_id || null, is_static: ing.is_static || false, scaling_type: ing.scaling_type || 'flexible',
+})
+
 // Option B needs to stay as close as possible to Option A (a client eats whichever one on any
 // given day), so each B slot's target is A's own sibling slot rather than a generic tier share.
 const SIBLING_SLOT = { breakfast1: 'breakfast2', breakfast2: 'breakfast1', lunch1: 'lunch2', lunch2: 'lunch1', dinner1: 'dinner2', dinner2: 'dinner1' }
@@ -882,30 +891,32 @@ export default function PlanGroupEditor() {
     const meal = mealId ? mealsById[mealId] : null
     if (!meal) return
     const tierLabel = activeTier != null ? `${activeTier} kcal` : 'Standard'
+    const locked = await lockedTiersForMeal(mealId)
     if (activeTier != null) {
-      const locked = await lockedTiersForMeal(mealId)
       if (locked.includes(activeTier)) {
         window.alert(`This meal is approved/locked at ${activeTier} kcal in at least one week — unlock it first, since this would rewrite that week's frozen ingredients too.`)
         return
       }
+    } else if (locked.length > 0) {
+      // A tier with no ingredient fork of its own for this meal reads straight off the Standard
+      // recipe (see getIngredients' tier fallback), so rewriting it here could silently change
+      // what a locked week at that tier actually serves, even though approving a week is
+      // supposed to mean it never changes again.
+      window.alert(`This meal is approved/locked at ${locked.join(', ')} kcal in at least one week — unlock it there first, since a tier with no ingredients of its own for this meal still reads the Standard recipe directly.`)
+      return
     }
     if (!window.confirm(`Make this week's ingredients the new ${tierLabel} default for this meal? Every week using it will pick up this change immediately.`)) return
 
     const effective = getIngredients(meal, activeTier, week.overrides?.[slotKey])
-    const rowFields = ing => ({
-      name: ing.name, quantity_g: ing.quantity_g, unit: ing.unit,
-      calories: ing.calories, protein_g: ing.protein_g, carbs_g: ing.carbs_g, fat_g: ing.fat_g,
-      ingredient_id: ing.ingredient_id || null, is_static: ing.is_static || false, scaling_type: ing.scaling_type || 'flexible',
-    })
 
     if (activeTier == null) {
       await supabase.from('meal_ingredients').delete().eq('meal_id', mealId)
-      if (effective.length) await supabase.from('meal_ingredients').insert(effective.map(ing => ({ meal_id: mealId, ...rowFields(ing) })))
+      if (effective.length) await supabase.from('meal_ingredients').insert(effective.map(ing => ({ meal_id: mealId, ...tierRowFields(ing) })))
     } else {
       const version = meal.meal_tier_versions?.find(v => v.calorie_tier === activeTier)
       if (!version) return
       await supabase.from('meal_tier_ingredients').delete().eq('tier_version_id', version.id)
-      const rows = effective.map(ing => ({ tier_version_id: version.id, ...rowFields(ing) }))
+      const rows = effective.map(ing => ({ tier_version_id: version.id, ...tierRowFields(ing) }))
       if (rows.length) await supabase.from('meal_tier_ingredients').insert(rows)
       await supabase.from('meal_tier_versions').update(calcTotals(effective)).eq('id', version.id)
     }
@@ -1074,6 +1085,29 @@ export default function PlanGroupEditor() {
     if (!week || week.locked) return
     setApprovingWeek(week.templateId)
     setSaveError('')
+
+    // A meal with no ingredient fork of its own for this tier reads straight off the Standard
+    // recipe (see getIngredients' tier fallback in MealPlanView.jsx) — so a later edit to the
+    // Standard recipe would silently change what this week actually serves, even once it's
+    // "locked", and the frozen per-slot quantities below would stop lining up with anything
+    // (they're keyed to ingredient rows that a Standard edit can delete and recreate with new
+    // ids). Forking now, from exactly what's showing right now, makes this week's ingredients
+    // genuinely independent before they're frozen.
+    for (const slot of SLOTS) {
+      const mealId = week.slots[slot.key]
+      if (!mealId) continue
+      const meal = mealsById[mealId]
+      if ((meal?.meal_tier_versions || []).some(v => v.calorie_tier === activeTier)) continue
+      const effective = getIngredients(meal, activeTier, week.overrides?.[slot.key])
+      try {
+        await insertTierVersion(mealId, activeTier, effective.filter(ing => !ing._isAdded).map(tierRowFields))
+        await refreshMeal(mealId)
+      } catch (err) {
+        setSaveError(err.message || 'Could not protect this week\'s ingredients.')
+        setApprovingWeek(null)
+        return
+      }
+    }
 
     const frozenOverrides = {}
     for (const slot of SLOTS) {

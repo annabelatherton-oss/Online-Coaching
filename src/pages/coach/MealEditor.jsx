@@ -493,6 +493,41 @@ function IngredientsTab({ mealId, coachId, category, mealSplit, dietTags, instru
   async function saveAll() {
     setSaving(true)
     setError('')
+
+    // Any tier that's approved/locked in at least one week, but has never had its own ingredient
+    // fork for this meal, still reads straight off this meal's base recipe below (see
+    // getIngredients' tier fallback in MealPlanView.jsx) — so saving the base recipe would
+    // silently change what that "locked" week actually serves, even though approving a week is
+    // supposed to mean it never changes again. Snapshotting each such tier now, from exactly
+    // what's on record right now (before this save touches it), closes that gap the same way it
+    // would have been closed had the week been forked into its own tier version when it was
+    // first approved.
+    if (category) {
+      try {
+        const [{ data: existingVersions }, lockedTiers] = await Promise.all([
+          supabase.from('meal_tier_versions').select('calorie_tier').eq('meal_id', mealId),
+          lockedTiersForMeal(mealId),
+        ])
+        const existingTierSet = new Set((existingVersions || []).map(v => v.calorie_tier))
+        const unforkedLockedTiers = lockedTiers.filter(t => !existingTierSet.has(t))
+        if (unforkedLockedTiers.length > 0) {
+          const { data: currentRows } = await supabase.from('meal_ingredients').select('*').eq('meal_id', mealId)
+          const currentBase = withIngredientSwaps((currentRows || []).map(r => ({
+            name: r.name, quantity_g: r.quantity_g, unit: r.unit, calories: r.calories, protein_g: r.protein_g,
+            carbs_g: r.carbs_g, fat_g: r.fat_g, scaling_type: r.scaling_type, is_static: r.is_static,
+            ingredient_id: r.ingredient_id, alternative_ingredient_ids: r.alternative_ingredient_ids || [],
+          })), ingredientSwapsMap)
+          const baseTotals = calcTotals(currentBase)
+          for (const tier of unforkedLockedTiers) {
+            const targets = tierTargetsForCategory(tier, category, mealSplit, baseTotals)
+            await insertTierVersion(mealId, tier, bestIngredientsForTier(currentBase, library, targets))
+          }
+        }
+      } catch (err) {
+        console.error('Failed to protect locked tiers before saving recipe:', err)
+      }
+    }
+
     const saved = [] // { ing, savedId }
     for (const ing of ingredients) {
       const payload = {
